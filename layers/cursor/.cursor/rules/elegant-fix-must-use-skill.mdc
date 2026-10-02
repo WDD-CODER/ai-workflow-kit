@@ -1,0 +1,5 @@
+---
+description: Elegant fix skill — after a hacky fix, before a "not ideal" PR, or when duplicate/special-case logic appears
+alwaysApply: false
+---
+Follow `.claude/skills/elegant-fix/SKILL.md` after a hacky fix, before a "not ideal" PR, or when duplicate/special-case logic appears.

@@ -1,0 +1,8 @@
+---
+description: Daily GitHub sync at session start or after time away
+alwaysApply: false
+---
+Follow `.claude/skills/github-sync/SKILL.md` at session start or after time away, once per
+calendar day — check `notes/github-sync/YYYY-MM-DD.md` for today's date first. Claude Code's
+version is driven by a `SessionStart` hook (`.claude/settings.json`); Cursor has no hook system at
+all (`docs/agent/workflow-map.md` §5), so this rule is best-effort, not a guaranteed daily trigger.

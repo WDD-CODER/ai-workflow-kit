@@ -1,0 +1,5 @@
+﻿---
+globs: src/**/*.{scss,css}
+alwaysApply: false
+---
+Follow `docs/agent/conventions.md` and `.claude/skills/cssLayer/SKILL.md`.

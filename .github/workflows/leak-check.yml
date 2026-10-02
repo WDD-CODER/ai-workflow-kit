@@ -1,0 +1,20 @@
+name: leak-check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  leak-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Core and layers must not name a framework, stack or project
+        run: node tools/leak-check.mjs
+      - name: Packs must not name the project
+        run: node tools/leak-check.mjs --root packs --project-only
+      - name: Packs must satisfy the pack contract
+        run: node tools/pack-check.mjs

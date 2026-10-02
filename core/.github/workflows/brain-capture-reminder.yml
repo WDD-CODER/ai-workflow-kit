@@ -1,0 +1,102 @@
+name: brain-capture-reminder
+
+# Non-blocking sticky PR reminder for brain capture (auto-write on gate reply, opt out with "no brain").
+# No LLM. GITHUB_TOKEN only. Never fails the PR.
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  sticky-reminder:
+    if: >
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'pull_request_review' && github.event.review.state == 'approved')
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Collect changed files + optional dead-ref findings
+        id: prep
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+            PR_TITLE="${{ github.event.pull_request.title }}"
+          else
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+            PR_TITLE="${{ github.event.pull_request.title }}"
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          fi
+
+          FILES="$(git diff --name-only "$BASE" "$HEAD" || true)"
+          {
+            echo "CHANGED_FILES<<EOF"
+            echo "$FILES"
+            echo "EOF"
+            echo "PR_NUMBER=$PR_NUMBER"
+            echo "PR_TITLE<<EOF"
+            echo "$PR_TITLE"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
+          FINDINGS=""
+          if [[ -f scripts/brain-review-check.mjs ]]; then
+            FINDINGS="$(node scripts/brain-review-check.mjs --scope=dead-refs 2>&1 || true)"
+            if echo "$FINDINGS" | grep -qiE 'no (issues|findings)|0 finding'; then
+              FINDINGS=""
+            fi
+          fi
+          {
+            echo "DEAD_REF_FINDINGS<<EOF"
+            echo "$FINDINGS"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Build sticky comment body
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/brain-capture-comment.mjs > /tmp/brain-capture-body.md
+
+      - name: Upsert sticky brain-capture comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ env.PR_NUMBER }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          MARKER='<!-- brain-capture-bot -->'
+          EXISTING="$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            --paginate \
+            --jq ".[] | select(.body | contains(\"${MARKER}\")) | .id" \
+            | head -n 1 || true)"
+
+          if [[ -n "${EXISTING}" ]]; then
+            gh api --method PATCH \
+              "repos/${{ github.repository }}/issues/comments/${EXISTING}" \
+              -F body=@/tmp/brain-capture-body.md
+            echo "Updated sticky comment ${EXISTING}"
+          else
+            gh api --method POST \
+              "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+              -F body=@/tmp/brain-capture-body.md
+            echo "Created sticky comment"
+          fi

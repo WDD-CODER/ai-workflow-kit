@@ -1,0 +1,166 @@
+﻿name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      run-gates: ${{ steps.detect.outputs.run-gates }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: detect
+        name: Detect app/code changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            echo "run-gates=true" >> "$GITHUB_OUTPUT"
+            echo "Non-PR event: running full gates"
+            exit 0
+          fi
+
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          mapfile -t FILES < <(git diff --name-only "$BASE" "$HEAD")
+
+          if [[ ${#FILES[@]} -eq 0 ]]; then
+            echo "run-gates=true" >> "$GITHUB_OUTPUT"
+            echo "No files listed; running full gates (safe default)"
+            exit 0
+          fi
+
+          run_gates=false
+          for f in "${FILES[@]}"; do
+            case "$f" in
+              docs/*|plans/*|sessions/*|notes/*|bugs/*|archive/*|.claude/*|.cursor/*|*.md|AGENTS.md|agent.md|CLAUDE.md)
+                ;;
+              *)
+                run_gates=true
+                break
+                ;;
+            esac
+          done
+
+          echo "run-gates=${run_gates}" >> "$GITHUB_OUTPUT"
+          echo "Changed files:"
+          printf '%s\n' "${FILES[@]}"
+          echo "Decision: run-gates=${run_gates}"
+
+  lint:
+    needs: changes
+    if: needs.changes.outputs.run-gates == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: ESLint
+        run: npm run {{commands.lint}}
+
+  build:
+    needs: changes
+    if: needs.changes.outputs.run-gates == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      # <!-- PACK:stack — build cache step (framework cache dir) comes from the stack pack -->
+      - name: Install
+        run: npm ci
+      - name: Build
+        run: npm run {{commands.build}}
+
+  test:
+    needs: changes
+    if: needs.changes.outputs.run-gates == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      # <!-- PACK:stack — build cache step (framework cache dir) comes from the stack pack -->
+      - name: Install
+        run: npm ci
+      - name: Unit tests
+        run: npm run {{commands.test}}
+
+  server-tests:
+    needs: changes
+    if: needs.changes.outputs.run-gates == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: {{paths.serverRoot}}package-lock.json
+      - name: Install
+        run: npm ci --prefix {{paths.serverRoot}}
+      - name: Server tests
+        run: npm test --prefix {{paths.serverRoot}}
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  ci:
+    needs: [changes, lint, build, test, server-tests, gitleaks]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require quality gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ needs.changes.result }}" != "success" ]]; then
+            echo "changes job failed: ${{ needs.changes.result }}"
+            exit 1
+          fi
+          if [[ "${{ needs.gitleaks.result }}" != "success" ]]; then
+            echo "gitleaks failed: ${{ needs.gitleaks.result }}"
+            exit 1
+          fi
+          if [[ "${{ needs.changes.outputs.run-gates }}" == "true" ]]; then
+            if [[ "${{ needs.lint.result }}" != "success" ]]; then
+              echo "lint failed: ${{ needs.lint.result }}"
+              exit 1
+            fi
+            if [[ "${{ needs.build.result }}" != "success" ]]; then
+              echo "build failed: ${{ needs.build.result }}"
+              exit 1
+            fi
+            if [[ "${{ needs.test.result }}" != "success" ]]; then
+              echo "test failed: ${{ needs.test.result }}"
+              exit 1
+            fi
+            if [[ "${{ needs.server-tests.result }}" != "success" ]]; then
+              echo "server-tests failed: ${{ needs.server-tests.result }}"
+              exit 1
+            fi
+            echo "All quality gates passed"
+          else
+            echo "Docs-only PR: lint/build/test skipped; gitleaks passed"
+          fi

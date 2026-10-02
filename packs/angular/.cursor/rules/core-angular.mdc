@@ -1,0 +1,5 @@
+﻿---
+globs: src/app/**/*.{ts,html,scss}
+alwaysApply: false
+---
+Follow `docs/agent/conventions.md` and `docs/agent/standards-angular.md`.

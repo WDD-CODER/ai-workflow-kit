@@ -1,0 +1,9 @@
+{
+  "name": "node-express",
+  "description": "Node / Express / MongoDB backend pack: persistence standards, gotchas and validation scripts.",
+  "standardsDoc": "docs/agent/standards-backend.md",
+  "skills": [],
+  "cursorRules": [],
+  "gotchas": ["docs/brain/gotchas/backend.md"],
+  "validation": ["test"]
+}

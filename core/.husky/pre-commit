@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh" 2>/dev/null || true
+
+npx lint-staged
+node scripts/pre-commit-no-semi.mjs
+node scripts/pre-commit-secret-scan.mjs
+node scripts/pre-commit-security-grep.mjs
+node scripts/plan-ledger-check.mjs

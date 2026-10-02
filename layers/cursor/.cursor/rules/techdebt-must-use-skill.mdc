@@ -1,0 +1,5 @@
+---
+description: Tech debt audit at end of session, before a PR, or on explicit "audit tech debt" request
+alwaysApply: false
+---
+Follow `.claude/skills/techdebt/SKILL.md` at end of session, before a PR, or when asked to "audit tech debt."

@@ -1,0 +1,6 @@
+---
+description: Angular pipe/directive logic skill
+globs: "src/app/**/*.{pipe,directive}.ts"
+alwaysApply: false
+---
+Follow `.claude/skills/angular-pipe-logic/SKILL.md` before creating or refactoring an Angular pipe or directive.

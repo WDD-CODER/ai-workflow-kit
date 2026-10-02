@@ -1,0 +1,66 @@
+{
+  "$comment": "Kit config scaffold (plan 329 B2). Core files reference these keys as {{dotted.key}}. Values here are placeholders; each project fills its own. Generic defaults are kept only for git.mainBranch and the slot naming/count.",
+  "project": {
+    "name": "",
+    "uiLocale": "",
+    "i18nFile": ""
+  },
+  "stack": {
+    "packs": [],
+    "name": "",
+    "backend": "",
+    "stylesheetExt": "",
+    "stateRules": "",
+    "standardsDoc": ""
+  },
+  "commands": {
+    "build": "",
+    "buildProd": "",
+    "dev": "",
+    "devLocal": "",
+    "test": "",
+    "lint": "",
+    "e2e": "",
+    "codegen": "",
+    "cli": "",
+    "npm": [],
+    "lintStaged": "",
+    "dbBackup": []
+  },
+  "deploy": {
+    "host": "",
+    "dbHost": ""
+  },
+  "git": {
+    "mainBranch": "main"
+  },
+  "slots": {
+    "count": 3,
+    "nameFormat": "wt-N",
+    "folderSuffix": "-wt-N",
+    "fePorts": null,
+    "bePorts": null,
+    "dbNameFormat": ""
+  },
+  "hooks": {
+    "shellPath": "",
+    "projectRoot": "",
+    "userHome": ""
+  },
+  "paths": {
+    "hotspots": [],
+    "srcRoot": "",
+    "serverRoot": "",
+    "slotEnvFile": "",
+    "sharedDocs": "docs/project"
+  },
+  "security": {
+    "sensitivePaths": ""
+  },
+  "tools": {
+    "browser": ""
+  },
+  "docs": {
+    "domainStandards": ""
+  }
+}

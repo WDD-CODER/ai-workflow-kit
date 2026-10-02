@@ -1,0 +1,5 @@
+---
+description: Worktree setup skill — explicit "setup worktree" / "new worktree" request only
+alwaysApply: false
+---
+Follow `.claude/skills/worktree-setup/SKILL.md` when the user explicitly says "setup worktree" or "new worktree." On-demand only — never proactively.

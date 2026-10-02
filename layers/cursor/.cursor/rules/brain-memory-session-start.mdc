@@ -1,0 +1,5 @@
+---
+description: Project memory (docs/brain/) session-start read
+alwaysApply: false
+---
+At the start of unfamiliar work, or before an architectural choice, read `docs/brain/index.md` first, then only the relevant sub-file (`projectbrief.md`, `decisions/`, `patterns/`, `gotchas.md`, `glossary.md`). Current work status lives in `docs/session-state.md` / `.claude/todo.md`, not in `docs/brain/`.

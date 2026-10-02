@@ -1,0 +1,9 @@
+﻿---
+description: Git commit skill
+alwaysApply: false
+---
+Follow `docs/agent/standards-git.md` and `.claude/agents/git-agent.md` for commit/push/PR prep.
+After any successful push or PR create, enforce the Post-push Merge Gate in
+`docs/agent/standards-git.md` (visual block + wait — never end at "pushed" alone).
+Brain capture proposal is part of that gate (not `/ship`-only); the full draft is shown, then it auto-writes on the reply that closes the gate — say `no brain` / `skip brain` to opt out. See `docs/brain/decisions/0006-auto-write-brain-capture-by-default.md`.
+Proposals follow `docs/agent/brain-capture.md`: usefulness gate + full draft body in a fenced block under the banner — a title-only line is invalid.

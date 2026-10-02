@@ -1,0 +1,5 @@
+---
+description: Update project docs after a significant feature/component/service, or before a PR
+alwaysApply: false
+---
+Follow `.claude/skills/update-docs/SKILL.md` after significant features/components/services, or before a PR.

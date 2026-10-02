@@ -1,0 +1,5 @@
+---
+description: Pre-flight environment check before dev server / browser / database workflows
+alwaysApply: false
+---
+Follow `.claude/skills/preflight/SKILL.md` before workflows that touch the dev server, browser, or database.

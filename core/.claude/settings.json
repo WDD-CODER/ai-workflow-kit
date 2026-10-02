@@ -1,0 +1,97 @@
+{
+  "permissions": {
+    "defaultMode": "plan",
+    "allow": [
+      "Bash(*)",
+      "Write({{hooks.projectRoot}}/**)",
+      "Write({{hooks.userHome}}/.claude/**)",
+      "Edit({{hooks.projectRoot}}/**)",
+      "Edit({{hooks.userHome}}/.claude/**)",
+      "mcp__ide__getDiagnostics",
+      "WebFetch",
+      "WebSearch",
+      "mcp__ide__getOpenEditors",
+      "mcp__ide__getCurrentSelection",
+      "mcp__ide__executeCode"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"{{hooks.shellPath}}\" \"${CLAUDE_PROJECT_DIR}/scripts/branch-guard.sh\"",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "\"{{hooks.shellPath}}\" \"${CLAUDE_PROJECT_DIR}/scripts/plan-write-guard.sh\"",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "\"{{hooks.shellPath}}\" \"${CLAUDE_PROJECT_DIR}/scripts/scope-guard.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"{{hooks.shellPath}}\" \"${CLAUDE_PROJECT_DIR}/scripts/session-startup.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR}/scripts/session-manifest-hook.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"{{hooks.shellPath}}\" \"${CLAUDE_PROJECT_DIR}/scripts/pre-compact-reminder.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"{{hooks.shellPath}}\" \"${CLAUDE_PROJECT_DIR}/scripts/handoff-check.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "enableAllProjectMcpServers": false,
+  "disabledMcpjsonServers": [
+    "github",
+    "context7"
+  ],
+  "enabledPlugins": {
+    "security-guidance@claude-plugins-official": true
+  }
+}

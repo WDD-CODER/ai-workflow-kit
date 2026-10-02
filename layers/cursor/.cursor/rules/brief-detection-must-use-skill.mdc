@@ -1,0 +1,8 @@
+---
+description: Detect a pasted Plan Contract / structured brief (3+ H2 markers) in the user's first message and route it before executing anything
+alwaysApply: false
+---
+Follow `.claude/skills/brief-detection/SKILL.md` when the user's first message has 3+ structured
+H2 markers (Goal, Milestones, Atomic Sub-tasks, etc.) — this usually means a Plan Contract was
+pasted and must go through `save-plan` before any milestone work starts, not straight into
+execution. See `docs/agent/workflow-map.md` §9 for the known race between this gate and save-plan.

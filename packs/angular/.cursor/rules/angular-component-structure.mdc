@@ -1,0 +1,5 @@
+﻿---
+globs: src/app/**/*.component.ts
+alwaysApply: false
+---
+Follow `docs/agent/conventions.md` and `.claude/skills/angularComponentStructure/SKILL.md`.

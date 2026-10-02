@@ -1,0 +1,21 @@
+﻿---
+description: Persist Plan Contracts via save-plan (name similarity + brief sync)
+alwaysApply: true
+---
+# Plan persist + sync (Cursor)
+
+When the user pastes a big plan / Plan Contract, says "save the plan", or asks to execute a plan that is not yet under `plans/`:
+
+1. Follow `.claude/skills/save-plan/SKILL.md` **before** milestone/brief work.
+2. Run `node scripts/plan-name-similarity.mjs --name="<Plan Display Name>"`.
+3. If **no** similar plans → save (next `NNN`) without asking rewrite/new/cancel.
+4. If similar hits → show path, title, short `why:` (shared name tokens) + excerpt; ask: `rewrite existing | save as new | cancel`.
+5. On save-as-new after a hit: write the target relative path to `.claude/.plan-write-ack` before creating the file.
+
+When executing a **brief** tied to a parent plan:
+
+- Name the parent `plans/…plan.md` in the brief/session notes.
+- If new stages appear mid-flight (review fallout, extra tasks), append `[ ]` items to that plan’s Atomic Sub-tasks **and** `.claude/todo.md` before doing the work.
+- On Human `done` / ship Y, mark matching plan + ledger checkboxes `[x]`.
+
+Never leave a pasted plan only in chat. Never write under `~/.cursor/plans/`.

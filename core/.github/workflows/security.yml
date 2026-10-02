@@ -1,0 +1,38 @@
+﻿name: security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install root
+        run: npm ci
+      - name: Install server
+        run: npm ci
+        working-directory: server
+      # --omit=dev: devDependencies are build/dev-server tooling ({{stack.name}} CLI, vite,
+      # webpack-dev-server, ...) that never ships to production, so their audit
+      # findings are noise for this app's real attack surface — permanent, not a
+      # workaround. --audit-level=critical stays until the {{stack.name}} migration
+      # (tracked in .claude/todo.md) clears the current @{{stack.name}}/* high findings;
+      # restore --audit-level=high on production deps after that migration lands.
+      - name: npm audit (root)
+        run: npm audit --omit=dev --audit-level=critical
+      - name: npm audit (server)
+        run: npm audit --omit=dev --audit-level=critical
+        working-directory: server
+      - name: Semgrep OWASP Top Ten
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: p/owasp-top-ten
