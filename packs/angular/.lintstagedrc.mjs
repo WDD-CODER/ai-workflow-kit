@@ -3,7 +3,7 @@
 const EXCLUDED = new Set([
   'src/main.ts',
   'src/app/app.config.ts',
-  '{{paths.hotspots}}'
+  {{paths.hotspots|quoted}}
 ])
 
 function normalizeAppPath(f) {

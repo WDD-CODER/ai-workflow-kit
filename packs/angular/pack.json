@@ -17,5 +17,18 @@
     "scss-styling-must-use-cssLayer"
   ],
   "gotchas": ["docs/brain/gotchas/angular.md"],
-  "validation": ["build", "lint", "test"]
+  "validation": ["build", "lint", "test"],
+  "agentsFragment": "AGENTS.fragment.md",
+  "configDefaults": {
+    "stack.name": "Angular",
+    "stack.stylesheetExt": "scss",
+    "stack.stateRules": "signals only (`signal()`, `computed()`), no `BehaviorSubject`",
+    "commands.build": "build",
+    "commands.lint": "lint",
+    "commands.test": "test",
+    "commands.dev": "start",
+    "paths.srcRoot": "src/app/",
+    "paths.hotspots": ["src/styles.scss", "src/app/app.routes.ts"],
+    "security.sensitivePaths": ["src/app/core/guards/**", "src/app/core/interceptors/**"]
+  }
 }

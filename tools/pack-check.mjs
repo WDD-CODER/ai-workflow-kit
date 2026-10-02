@@ -15,6 +15,17 @@ const packsDir = resolve('packs')
 const problems = []
 let checked = 0
 
+const configKeys = new Set()
+const collectKeys = (obj, prefix) => {
+  for (const [k, v] of Object.entries(obj)) {
+    if (k.startsWith('$')) continue
+    const key = prefix ? `${prefix}.${k}` : k
+    if (v && typeof v === 'object' && !Array.isArray(v)) collectKeys(v, key)
+    else configKeys.add(key)
+  }
+}
+collectKeys(JSON.parse(readFileSync(resolve('kit.config.json'), 'utf8')), '')
+
 const packs = existsSync(packsDir)
   ? readdirSync(packsDir).filter((d) => statSync(join(packsDir, d)).isDirectory())
   : []
@@ -51,6 +62,19 @@ for (const dir of packs) {
   }
   for (const v of pack.validation ?? []) {
     if (!/^[\w:.-]+$/.test(v)) problems.push(`${dir}: validation "${v}" must be an npm script name, not a command`)
+  }
+  if (pack.agentsFragment != null) {
+    const frag = join(root, String(pack.agentsFragment))
+    if (!existsSync(frag)) problems.push(`${dir}: agentsFragment not found: ${pack.agentsFragment}`)
+    else {
+      const text = readFileSync(frag, 'utf8')
+      for (const h of ['## Hard rules', '## Skill triggers', '## Standards index']) {
+        if (!text.includes(h)) problems.push(`${dir}: agentsFragment is missing "${h}"`)
+      }
+    }
+  }
+  for (const key of Object.keys(pack.configDefaults ?? {})) {
+    if (!configKeys.has(key)) problems.push(`${dir}: configDefaults key not in kit.config.json: ${key}`)
   }
 }
 

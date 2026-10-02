@@ -1,6 +1,6 @@
 ﻿---
 description: Autonomous plan executor — finds next incomplete plan, validates, executes, surfaces for approval
-allowed-tools: Read, Write, Edit, Bash, Agent, Skill, mcp__playwright__*, mcp__plugin_playwright_playwright__*
+allowed-tools: Read, Write, Edit, Bash, Agent, Skill
 ---
 
 # Command: auto-solve
@@ -150,7 +150,7 @@ npm run {{commands.lint}} 2>/dev/null || echo "No lint configured"
 If plan touched UI/layout:
 - Read `.worktree-port` (fallback {{slots.fePorts}})
 - Run `/qa http://localhost:<port>/<affected-page>`
-- Capture screenshot via `$B screenshot /tmp/qa-shot.png` ({{tools.browser}}); fall back to Playwright MCP `browser_take_screenshot` if {{tools.browser}} daemon unavailable
+- Capture screenshot via `$B screenshot /tmp/qa-shot.png` ({{tools.browser}}); if it is unavailable, skip visual QA and note it in the report
 
 ---
 
@@ -237,7 +237,7 @@ After marking a plan complete, run `git status --short`. If output is non-empty:
 ## Error Handling
 
 - **Build fails:** Stop, show full error output, wait for user input — do not auto-fix
-- **{{tools.browser}} unavailable:** Fall back to Playwright MCP for screenshots; if both unavailable, skip visual QA and note in report
+- **{{tools.browser}} unavailable:** Skip visual QA and note it in the report (no raw browser-automation MCP fallback)
 - **Unexpected file state:** Stop that task, mark as "needs human", continue with others
 - **All tasks blocked:** Surface immediately, don't wait for validation phase
 
@@ -249,4 +249,3 @@ These are already in `.claude/settings.json`:
 - `Bash(*)` — for build, git, sound
 - `Write/Edit` for worktree paths
 - `Skill` — for invoking {{tools.browser}}` ({{tools.browser}}; primary visual QA)
-- `mcp__playwright__*` and `mcp__plugin_playwright_playwright__*` — for visual QA (fallback when {{tools.browser}} unavailable)

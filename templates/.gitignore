@@ -1,0 +1,41 @@
+# Dependencies and build output
+/node_modules
+node_modules
+/dist
+/coverage
+/logs/
+*.log
+
+# Secrets — never commit
+.env
+.env.*
+.env.local
+.env.*.local
+!.env.example
+
+# Editors and OS
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.DS_Store
+
+# Worktree slot state (Planner-Worker workflow)
+.worktree-port
+.worktree-root
+.worktree-plan
+.worktree-cleanup
+.claude/.slot-pids
+
+# Claude Code local config and runtime state (never commit)
+.claude/settings.local.json
+.claude/worktrees/
+.claude/.plan-write-ack
+.claude/.session-state-path
+.claude/.ship-baseline
+.claude/.session-lock
+.claude/.last-npm-install-hash
+.claude/.last-npm-install-hash-server
+.claude/sessions/

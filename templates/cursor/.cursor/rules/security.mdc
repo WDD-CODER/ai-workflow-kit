@@ -1,0 +1,5 @@
+---
+globs: "{{security.sensitivePaths|glob}}"
+alwaysApply: false
+---
+Follow `docs/agent/standards-security.md`.

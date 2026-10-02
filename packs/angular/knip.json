@@ -1,5 +1,5 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": ["src/app/app.config.ts", "{{paths.hotspots}}"],
+  "entry": ["src/app/app.config.ts", {{paths.hotspots|dquoted}}],
   "project": ["src/app/**/*.ts"]
 }

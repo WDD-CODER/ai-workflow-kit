@@ -28,9 +28,8 @@ const repoRoot = resolve(__dirname, '..')
 // these regardless of its own Read-Write Scope, but must never remove or
 // rewrite an existing entry — only add to them.
 const HOTSPOTS = [
-  '{{paths.hotspots}}',
-  '{{project.i18nFile}}',
-  '{{paths.hotspots}}'
+  {{project.i18nFile|quoted}},
+  {{paths.hotspots|quoted}}
 ]
 
 function fail(message) {

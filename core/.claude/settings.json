@@ -3,10 +3,6 @@
     "defaultMode": "plan",
     "allow": [
       "Bash(*)",
-      "Write({{hooks.projectRoot}}/**)",
-      "Write({{hooks.userHome}}/.claude/**)",
-      "Edit({{hooks.projectRoot}}/**)",
-      "Edit({{hooks.userHome}}/.claude/**)",
       "mcp__ide__getDiagnostics",
       "WebFetch",
       "WebSearch",

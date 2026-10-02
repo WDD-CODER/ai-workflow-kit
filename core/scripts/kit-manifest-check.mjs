@@ -53,7 +53,7 @@ const SCANNED_TIERS = new Set(['core', 'layer:cursor'])
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const termSources = ['project.name', 'stack.name', 'stack.backend', 'deploy.host', 'deploy.dbHost', 'tools.browser',
-  'hooks.shellPath', 'hooks.projectRoot', 'hooks.userHome']
+  'hooks.shellPath']
 const terms = new Set()
 for (const key of termSources) {
   const v = get(key)

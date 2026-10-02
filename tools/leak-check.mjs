@@ -3,7 +3,7 @@
  * provider, machine path or port outside a {{placeholder}} or a
  * <!-- PACK:<stack> --> marker. Run from the kit repo root:
  *
- *   node tools/leak-check.mjs                          # core/ and layers/ (all terms)
+ *   node tools/leak-check.mjs                          # core/, layers/ and templates/ (all terms)
  *   node tools/leak-check.mjs --root <dir> [--root …]  # explicit roots (all terms)
  *   node tools/leak-check.mjs --root packs --project-only
  *
@@ -20,7 +20,7 @@ const roots = []
 argv.forEach((a, i) => {
   if (a === '--root') roots.push(resolve(argv[i + 1]))
 })
-if (roots.length === 0) roots.push(resolve('core'), resolve('layers'))
+if (roots.length === 0) roots.push(resolve('core'), resolve('layers'), resolve('templates'))
 const projectOnly = argv.includes('--project-only')
 
 const STACK_TERMS = [

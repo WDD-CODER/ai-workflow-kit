@@ -16,7 +16,7 @@ const ASI_DANGER = /^\s*[([`]/
 const EXCLUDED = new Set([
   'src/main.ts',
   'src/app/app.config.ts',
-  '{{paths.hotspots}}',
+  {{paths.hotspots|quoted}},
 ])
 
 const staged = execSync('git diff --cached --name-only --diff-filter=ACMR', { encoding: 'utf8' })

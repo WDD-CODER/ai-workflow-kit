@@ -1,0 +1,1 @@
+- **"Yes chef!" gate:** When a Claude Code session gate requires it, start responses with `Yes chef!` / `No chef!`. Cursor has no equivalent requirement from this file.
