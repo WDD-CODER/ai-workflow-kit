@@ -169,9 +169,8 @@ const { fe: fePort, be: bePort } = ports()
 git(['fetch', 'origin', '--prune'])
 
 const remotePlanRe = new RegExp(`^plans/${nnn}-[^/]+\\.plan\\.md$`)
-const match = tryGit(['ls-tree', '-r', 'origin/{{git.mainBranch}}', '--name-only', '--', 'plans/'])
-  .split('\n')
-  .find(p => remotePlanRe.test(p))
+const mainPlans = tryGit(['ls-tree', '-r', 'origin/{{git.mainBranch}}', '--name-only', '--', 'plans/']).split('\n')
+const match = mainPlans.find(p => remotePlanRe.test(p))
 
 if (!match) fail(`plans/${nnn}-*.plan.md not found on origin/{{git.mainBranch}}`)
 
@@ -184,14 +183,46 @@ if (!extractScopeGlobs(remotePlanText)) {
   fail(`${match} has no readable scope under "## Read-Write Scope" (need a \`\`\`scope block or a **Scope:** list of \`globs\`) - the Planner must fix the plan on {{git.mainBranch}} (see the save-plan skill). Nothing was claimed.`)
 }
 
-// --- (c) safety: refuse dirty; resume our own claim; release a merged feat/* branch
+// --- (c) safety, all before anything changes: dirty tree, plan order, the plan's branch, then this slot's branch
 if (isDirty()) {
   fail('uncommitted or untracked changes present in this slot - refusing to touch it; commit, stash, or ask the Human')
+}
+
+const atomicStats = (text) => {
+  const sec = (text.match(/^## Atomic Sub-tasks[^\n]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m) || [])[1] || ''
+  return { open: (sec.match(/^\s*- \[ \]/gm) || []).length, done: (sec.match(/^\s*- \[x\]/gim) || []).length }
+}
+
+// Plan order: "must run after plan N" / "until N is done" -> refuse while plan N still has open sub-tasks on main.
+const prereqs = new Set()
+for (const m of remotePlanText.matchAll(/\b(?:must\s+)?runs?\s+after\s+plans?\s+#?(\d{1,3})\b|\buntil\s+(?:plan\s+)?#?(\d{1,3})\s+(?:is\s+)?(?:done|merged|shipped|complete)/gi)) {
+  prereqs.add((m[1] || m[2]).padStart(3, '0'))
+}
+prereqs.delete(nnn)
+if (!process.argv.includes('--ignore-order')) {
+  for (const p of prereqs) {
+    const file = mainPlans.find((f) => f.startsWith(`plans/${p}-`) && f.endsWith('.plan.md'))
+    if (!file) continue // unknown plan number - nothing to judge
+    const st = atomicStats(tryGit(['show', `origin/{{git.mainBranch}}:${file}`]))
+    if (st.open > 0) {
+      fail(`plan ${nnn} must run after plan ${p}, which still has ${st.open} open sub-task(s) on {{git.mainBranch}} (${file}). Take another plan, or re-run with --ignore-order if the Human says so. Nothing was changed.`)
+    }
+  }
 }
 
 const currentBranch = tryGit(['branch', '--show-current'])
 const worktreePlanPath = join(repoRoot, '.worktree-plan')
 const resuming = currentBranch === branchName
+
+// The plan's own branch may already exist: taken by another slot, already merged, or left by an interrupted claim.
+const holder = listSlots().find((s) => s.branch === branchName && s.slot !== n)
+if (holder) fail(`plan ${nnn} is already taken by wt-${holder.slot} (branch ${branchName}) - pick another plan. Nothing was changed.`)
+const leftover = !resuming && Boolean(tryGit(['rev-parse', '--verify', '--quiet', `refs/heads/${branchName}`]))
+const leftoverMerged = leftover && isAncestorOfMain(branchName)
+if (leftoverMerged) {
+  const st = atomicStats(remotePlanText)
+  if (st.done > 0 && st.open === 0) fail(`plan ${nnn} is already done (all sub-tasks [x] on {{git.mainBranch}}, branch ${branchName} merged) - pick another plan. Nothing was changed.`)
+}
 
 if (resuming) {
   console.log(`TAKE_PLAN: resuming ${branchName} (already claimed in this slot)`)
@@ -204,7 +235,8 @@ if (resuming) {
     git(['switch', '--detach', 'origin/{{git.mainBranch}}'])
     if (merged) git(['branch', '-D', currentBranch])
     if (existsSync(worktreePlanPath)) unlinkSync(worktreePlanPath)
-    console.log(`TAKE_PLAN: released ${currentBranch} (${merged ? 'merged' : 'remote branch deleted, local branch kept'}) - slot wt-${n} now idle`)
+    // An ancestor of main is merged work or an unused branch (no commits of its own) - the script cannot tell which.
+    console.log(`TAKE_PLAN: released ${currentBranch} (${merged ? 'no commits outside {{git.mainBranch}}: merged or unused' : 'remote branch deleted, local branch kept'}) - slot wt-${n} now idle`)
   } else {
     const heldPlan = existsSync(worktreePlanPath)
       ? readFileSync(worktreePlanPath, 'utf8').replace(/\r?\n+$/, '').trim()
@@ -233,7 +265,13 @@ for (const [label, port] of halves) {
 // --- (e) claim: branch + .worktree-plan + Status: active ----------------------
 const planAbs = join(repoRoot, match)
 if (!resuming) {
-  git(['switch', '-c', branchName, 'origin/{{git.mainBranch}}'])
+  if (leftover && !leftoverMerged) {
+    git(['switch', branchName])
+    console.log(`TAKE_PLAN: reusing existing branch ${branchName} (it has commits not on {{git.mainBranch}})`)
+  } else {
+    if (leftoverMerged) git(['branch', '-D', branchName]) // stale: nothing on it that main lacks
+    git(['switch', '-c', branchName, 'origin/{{git.mainBranch}}'])
+  }
   updateStatusActive(planAbs)
   git(['add', match])
   // The Planner may have saved the plan as "Status: active" already - then there is nothing to commit.

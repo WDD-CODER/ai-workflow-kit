@@ -76,4 +76,4 @@ Follow `docs/agent/standards-git.md` → **Post-push Merge Gate**. Copy the comb
   - `brain edit …` → revise draft, re-show banner, wait again before writing.
   - Combine freely (e.g. `merge`, `merge, no brain`, `later, brain edit …`).
 
-Never auto-merge without Human `merge` / clear `Y`.
+Never merge without the Human's literal word `merge` in the reply to the gate; `Y` / `--yes` never merge.

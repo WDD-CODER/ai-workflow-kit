@@ -47,7 +47,7 @@ End the turn with the combined visual block below and **wait** for Human choice.
 
 | Reply | Action |
 | --- | --- |
-| `merge` | Write any proposed brain draft first (unless opted out), then: if no open PR, `gh pr create`. Then merge — outside a slot `gh pr merge --merge --delete-branch`; inside a `{{slots.nameFormat}}` slot see "Merging from a slot" below. Never force-merge. Never merge without this explicit reply (or clear `Y` to the same ask). |
+| `merge` | Write any proposed brain draft first (unless opted out), then: if no open PR, `gh pr create`. Then merge — outside a slot `gh pr merge --merge --delete-branch`; inside a `{{slots.nameFormat}}` slot see "Merging from a slot" below. Never force-merge. Never merge without this literal reply — a `Y`, `--yes` or "ship fast y" is not a merge. |
 | `later` | Write any proposed brain draft first (unless opted out). Leave branch/PR open. Put the PR URL in session Next Steps. Stop. |
 | `open-pr-only` | Write any proposed brain draft first (unless opted out). Ensure a PR exists (`gh pr create` if needed). Do **not** merge. Re-show Merge Gate after PR URL is known, or stop if Human said later. |
 | `no brain` / `skip brain` (combined with any of the above) | Do not write the proposed draft this ship. Explicit no-op on the brain side only. |
