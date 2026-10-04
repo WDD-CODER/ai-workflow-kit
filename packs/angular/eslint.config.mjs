@@ -1,4 +1,4 @@
-﻿// @ts-check
+// @ts-check
 import tseslint from 'typescript-eslint'
 import angular from '@angular-eslint/eslint-plugin'
 import angularTemplate from '@angular-eslint/eslint-plugin-template'

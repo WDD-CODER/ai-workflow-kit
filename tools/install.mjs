@@ -123,7 +123,8 @@ for (const f of plan.files) {
     if (!BUILTIN.has(name) && !name.startsWith('node:')) deps.add(name)
   }
 }
-if (plan.files.some((f) => f.dest.startsWith('.husky/'))) deps.add('husky')
+const hasHusky = plan.files.some((f) => f.dest.startsWith('.husky/'))
+if (hasHusky) deps.add('husky')
 if (plan.files.some((f) => f.dest === '.lintstagedrc.mjs')) deps.add('lint-staged')
 if (deps.size > 0) {
   const list = [...deps].sort().join(' ')
@@ -132,4 +133,5 @@ if (deps.size > 0) {
     log(r.status === 0 ? `NOTE installed devDependencies: ${list}` : `NOTE npm install failed; run: npm install -D ${list}`)
   } else log(`NOTE the installed scripts need devDependencies — run: npm install -D ${list}  (or re-run with --install-deps)`)
 }
+if (hasHusky) log('NOTE git hooks are inactive until husky is set up — add "prepare": "husky" to package.json scripts, then run: npm run prepare')
 log(`KIT_INSTALL: ok — ${counts.written} ${args['dry-run'] ? 'would be written' : 'written'}, ${counts.same} identical, ${counts.skipped} skipped-existing, packs=[${packs.join(', ')}], cursor=${!!args.cursor}`)

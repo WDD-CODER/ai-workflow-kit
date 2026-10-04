@@ -1,4 +1,4 @@
-﻿import path from 'path'
+import path from 'path'
 
 const EXCLUDED = new Set([
   'src/main.ts',

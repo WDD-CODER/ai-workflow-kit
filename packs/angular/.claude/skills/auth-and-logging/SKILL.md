@@ -1,4 +1,4 @@
-﻿---
+---
 name: auth-and-logging
 description: Audits and hardens authentication guards, mutation entry points, and logging calls in compliance with project Security & QA standards.
 ---

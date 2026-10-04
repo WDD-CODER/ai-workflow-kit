@@ -1,4 +1,4 @@
-﻿---
+---
 description: Alias for /ship
 allowed-tools: Read, Bash
 ---

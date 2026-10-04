@@ -1,4 +1,4 @@
-﻿---
+---
 name: git-agent
 description: Prepares git diffs and commit messages for the Human Director. Never commits or pushes. Invoked when the Human asks for commit prep.
 tools: Read, Grep, Glob, Bash

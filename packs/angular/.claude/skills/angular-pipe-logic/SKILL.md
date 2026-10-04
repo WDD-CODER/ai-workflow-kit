@@ -1,4 +1,4 @@
-﻿---
+---
 name: angular-pipe-logic
 description: Scaffolds, implements, and tests Angular Pipes and Directives following the project's reactivity and purity standards.
 ---

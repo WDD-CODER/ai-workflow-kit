@@ -1,4 +1,4 @@
-﻿---
+---
 globs: src/app/**/*.component.ts
 alwaysApply: false
 ---

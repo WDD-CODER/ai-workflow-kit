@@ -1,4 +1,4 @@
-﻿---
+---
 description: Capture or generate a session brief — source of truth for validation and session-wrap evaluation
 allowed-tools: Read, Write, Grep, Glob, Bash
 ---

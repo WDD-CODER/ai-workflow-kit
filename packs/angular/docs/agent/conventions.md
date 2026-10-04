@@ -1,4 +1,4 @@
-﻿# Conventions — Angular / CSS / TypeScript / Translation
+# Conventions — Angular / CSS / TypeScript / Translation
 
 > Tool-agnostic. Load when creating or editing Angular components, templates, SCSS/CSS, or translation keys.
 

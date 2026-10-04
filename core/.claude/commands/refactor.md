@@ -1,4 +1,4 @@
-﻿# /refactor — Refactor Path
+# /refactor — Refactor Path
 
 Use this path for code cleanup, dead code removal, pattern consolidation, and technical debt reduction.
 

@@ -1,4 +1,4 @@
-﻿---
+---
 name: save-plan
 description: >
   Persist a Plan Contract to plans/ with name-similarity validation, ledger sync,

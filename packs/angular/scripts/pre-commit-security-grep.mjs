@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Pre-commit security grep (Security Officer vulnerability patterns):
  * 1) [innerHTML] without a nearby sanitizer call
  * 2) console.log / LoggingService calls with likely-PII variable names

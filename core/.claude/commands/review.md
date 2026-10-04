@@ -1,4 +1,4 @@
-﻿---
+---
 description: Judgment-only review against docs/agent standards (no CI duplication)
 allowed-tools: Read, Grep, Glob, Bash, Edit
 ---

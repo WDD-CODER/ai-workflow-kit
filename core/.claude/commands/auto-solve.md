@@ -1,4 +1,4 @@
-﻿---
+---
 description: Autonomous plan executor — finds next incomplete plan, validates, executes, surfaces for approval
 allowed-tools: Read, Write, Edit, Bash, Agent, Skill
 ---

@@ -1,4 +1,4 @@
-﻿---
+---
 description: Review the latest Contractor milestone against its Plan Contract. Report only — never silently fix.
 ---
 

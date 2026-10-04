@@ -1,4 +1,4 @@
-﻿---
+---
 globs: src/app/**/*.{ts,html,scss}
 alwaysApply: false
 ---

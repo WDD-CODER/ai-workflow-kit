@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Pre-commit: block staged files that look like hardcoded secrets / API keys.
  */
 import { execSync } from 'child_process'

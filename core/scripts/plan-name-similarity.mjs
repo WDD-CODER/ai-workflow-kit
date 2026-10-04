@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Name/slug similarity check for plans/ - shared by Claude Code and Cursor.
  *
  * Compares an incoming plan name (or proposed filename) against existing

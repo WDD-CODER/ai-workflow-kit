@@ -1,4 +1,4 @@
-﻿# /feat — New Feature Path
+# /feat — New Feature Path
 
 Use this path for building new features. Loads {{stack.name}} + domain standards automatically.
 

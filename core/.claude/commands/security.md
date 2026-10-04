@@ -1,4 +1,4 @@
-﻿# /security — Security Path
+# /security — Security Path
 
 Use this path for security audits, hardening, authentication review, and vulnerability assessment.
 

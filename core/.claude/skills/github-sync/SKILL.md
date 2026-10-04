@@ -1,4 +1,4 @@
-﻿---
+---
 name: github-sync
 description: Pulls recent GitHub activity and syncs the local branch at session start or after time away — runs once per calendar day.
 ---

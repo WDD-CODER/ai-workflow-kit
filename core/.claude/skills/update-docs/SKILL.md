@@ -1,4 +1,4 @@
-﻿---
+---
 name: update-docs
 description: Refreshes breadcrumb navigation maps and project documentation after feature completion in {{project.name}}.
 ---

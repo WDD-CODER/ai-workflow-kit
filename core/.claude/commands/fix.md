@@ -1,4 +1,4 @@
-﻿# /fix — Bug Fix Path
+# /fix — Bug Fix Path
 
 Use this path for fixing bugs, errors, and broken behavior.
 

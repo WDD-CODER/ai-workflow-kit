@@ -1,4 +1,4 @@
-﻿---
+---
 paths:
   - "src/app/**/*.ts"
   - "src/app/**/*.html"

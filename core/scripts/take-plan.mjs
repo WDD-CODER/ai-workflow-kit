@@ -112,14 +112,16 @@ function withDbName(uri, dbName) {
 }
 
 function seedIsolatedDbIfEmpty(dbName) {
+  const dbScript = '{{commands.dbBackup}}'
+  if (!dbScript || dbScript.startsWith('(')) return { seeded: false, error: 'commands.dbBackup is not configured; skipping DB seed' }
   const backupDir = join(repoRoot, '..', '{{project.name}}-db-backups', `wt-seed-${dbName}-${Date.now()}`)
   try {
-    execFileSync('node', ['{{commands.dbBackup}}', '--target=local', `--out=${backupDir}`], { cwd: repoRoot, stdio: 'pipe' })
+    execFileSync('node', [dbScript, '--target=local', `--out=${backupDir}`], { cwd: repoRoot, stdio: 'pipe' })
   } catch (e) {
     return { seeded: false, error: `backup failed: ${String(e.stderr || e.message)}` }
   }
   try {
-    execFileSync('node', ['{{commands.dbBackup}}', '--target=local', `--dir=${backupDir}`, `--db=${dbName}`], { cwd: repoRoot, stdio: 'pipe', encoding: 'utf8' })
+    execFileSync('node', [dbScript, '--target=local', `--dir=${backupDir}`, `--db=${dbName}`], { cwd: repoRoot, stdio: 'pipe', encoding: 'utf8' })
     return { seeded: true }
   } catch (e) {
     const msg = String(e.stdout || e.stderr || e.message || '')

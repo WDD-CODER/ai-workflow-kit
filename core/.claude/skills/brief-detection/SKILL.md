@@ -1,4 +1,4 @@
-﻿---
+---
 name: brief-detection
 description: Detects structured briefs in user messages and gates execution. Source-agnostic.
 ---

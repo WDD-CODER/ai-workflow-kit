@@ -1,4 +1,4 @@
-﻿---
+---
 name: techdebt
 description: Scans for duplicated code, dead code, style violations, and TODO debt — run before PRs, after features, or at session end. Maintains a rolling archive of the last 7 audit reports.
 ---

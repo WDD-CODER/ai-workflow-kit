@@ -1,4 +1,4 @@
-﻿# Git Standards
+# Git Standards
 
 > Load this file when: committing, pushing, creating PRs, renaming branches, or any git write operation.
 

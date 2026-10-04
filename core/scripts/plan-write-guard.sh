@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/bin/bash
 # Plan Write Guard - PreToolUse (Edit|Write|MultiEdit)
 # Blocks naive NEW writes to plans/*.plan.md when name-similar plans exist,
 # unless .claude/.plan-write-ack names the target path (save-as-new after Human confirm).
