@@ -25,7 +25,8 @@
     "cli": "",
     "npm": [],
     "lintStaged": "",
-    "dbBackup": []
+    "dbBackup": [],
+    "slotPrepare": ""
   },
   "deploy": {
     "host": "",

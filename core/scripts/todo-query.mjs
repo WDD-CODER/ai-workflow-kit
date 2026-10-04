@@ -440,10 +440,29 @@ function mergedFeatPlanNumbers() {
   return [...numbers]
 }
 
+// Merged branches are usually deleted (gh --delete-branch, take-plan's release), and a squash merge is never an
+// ancestor - so branch refs miss most merged plans. The plan file itself is the record: a Worker's [x] marks reach
+// this checkout only by merging. Any open todo section whose plan file has more [x] than the section needs a sync.
+function plansAheadOfTodo() {
+  if (!existsSync(TODO_PATH)) return []
+  const { sections } = splitPlanSections(readFileSync(TODO_PATH, 'utf8'))
+  const numbers = []
+  for (const s of sections) {
+    const nnn = planNumberFromHeading(s.heading)
+    if (!nnn) continue
+    const found = findPlanFileOrNull(nnn)
+    if (!found) continue
+    const items = extractAtomicItems(readFileSync(found.abs, 'utf8'))
+    if (!items) continue
+    if (items.filter(i => i.done).length > checkboxStats(s.full).done) numbers.push(nnn)
+  }
+  return numbers
+}
+
 function cmdSyncMerged() {
-  const numbers = mergedFeatPlanNumbers()
+  const numbers = [...new Set([...mergedFeatPlanNumbers(), ...plansAheadOfTodo()])]
   if (!numbers.length) {
-    console.log('TODO_QUERY: sync --merged — no merged feat/NNN-* branches found')
+    console.log('TODO_QUERY: sync --merged — nothing to sync (no merged feat/NNN-* branch, no plan file ahead of its todo section)')
     return
   }
   let synced = 0

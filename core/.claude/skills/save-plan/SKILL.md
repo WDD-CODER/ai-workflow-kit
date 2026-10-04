@@ -107,6 +107,16 @@ Do not Read .claude/todo.md in full.
 
 **Risk Audit:** Medium/Large + auth/storage → note security surface; rely on pre-commit security grep + CI.
 
+**Shape lint (mandatory before saving):** a Worker's `take-plan.mjs` refuses a plan without these, so check them here where the fix is cheap:
+
+- `## Read-Write Scope` holds the globs in one of the two shapes `scripts/lib/plan-scope.mjs` parses: a fenced block opened with ```` ```scope ```` (one glob per line), or a `**Scope:**` line followed by bullets that each start with a `` `backticked` `` glob. A bare `scope` line, or bullets without backticks, are not parsed.
+- Exactly one `Status:` line, with a value (`Status: draft` for a new plan; take-plan sets `active`).
+
+**Prerequisites Gate (Planner only):** If the draft has a `## Prerequisites` section, check it's already true against `origin/{{git.mainBranch}}` *before* saving — do not hand a Worker a plan that will STOP on take. If unmet:
+
+- **Tiny, Planner-owned fix** (a few lines, no plan-worthy scope of its own) → land it directly as its own chore commit/PR to `{{git.mainBranch}}` now, then save this plan.
+- **Anything bigger** → save the prerequisite as its own plan (`NNN-1`, sequenced before this one) instead of writing a Prerequisites gate that STOPs a Worker. A plan should never ship with a hard gate the Worker who takes it cannot clear itself.
+
 ---
 
 ## Phase 3: Write Plan File

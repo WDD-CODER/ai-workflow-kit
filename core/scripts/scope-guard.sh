@@ -30,10 +30,9 @@ json_deny() {
   exit 0
 }
 
-# Not a slot at all -> nothing to enforce.
-[[ -f "$REPO/.worktree-port" ]] || json_allow ""
-# Idle slot (no active plan) -> nothing to enforce.
-[[ -f "$REPO/.worktree-plan" ]] || json_allow ""
+# Plan scope applies only in a slot with an active plan; the kit-owned check below applies everywhere.
+IN_SLOT=1
+[[ -f "$REPO/.worktree-port" && -f "$REPO/.worktree-plan" ]] || IN_SLOT=0
 
 # Read tool stdin with a timeout (same pattern as plan-write-guard.sh) so a
 # left-open pipe can't hang the hook.
@@ -50,7 +49,10 @@ print(sys.stdin.read() if r else '')
 " 2>/dev/null || true)
 fi
 
-[[ -n "$INPUT" ]] || json_allow "SCOPE_GUARD: check failed (no tool input) - /ship scope gate will verify"
+if [[ -z "$INPUT" ]]; then
+  [[ "$IN_SLOT" -eq 1 ]] || json_allow ""
+  json_allow "SCOPE_GUARD: check failed (no tool input) - /ship scope gate will verify"
+fi
 
 FILE_PATH=$(SCOPE_GUARD_INPUT="$INPUT" python - <<'PY'
 import json, os
@@ -70,9 +72,27 @@ print(path)
 PY
 )
 
-[[ -n "$FILE_PATH" ]] || json_allow "SCOPE_GUARD: check failed (no file path in tool input) - /ship scope gate will verify"
+if [[ -z "$FILE_PATH" ]]; then
+  [[ "$IN_SLOT" -eq 1 ]] || json_allow ""
+  json_allow "SCOPE_GUARD: check failed (no file path in tool input) - /ship scope gate will verify"
+fi
 
 NORM=$(printf '%s' "$FILE_PATH" | tr '\\' '/')
+
+# Kit-owned workflow files (ADR 0015 phase 5): the kit repo is their source of truth. Fails open if the checker is absent.
+if [[ -f "$REPO/scripts/kit-owned.mjs" ]]; then
+  KIT_OUT=$(node "$REPO/scripts/kit-owned.mjs" --file="$NORM" 2>&1)
+  if printf '%s' "$KIT_OUT" | grep -q '^KIT_OWNED: yes'; then
+    # Both formats: Cursor reads "permission", Claude Code reads hookSpecificOutput (it ignores the Cursor form).
+    KIT_ESC=$(printf '%s' "$KIT_OUT" | python -c 'import json,sys; print(json.dumps(sys.stdin.read()))' 2>/dev/null)
+    [[ -z "$KIT_ESC" ]] && KIT_ESC='"KIT_OWNED: yes - owned by the workflow kit"'
+    printf '{"permission":"deny","agent_message":%s,"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":%s}}\n' "$KIT_ESC" "$KIT_ESC"
+    exit 0
+  fi
+fi
+
+# Plan scope applies only in a slot with an active plan.
+[[ "$IN_SLOT" -eq 1 ]] || json_allow ""
 
 OUT=$(node "$REPO/scripts/scope-check.mjs" --file="$NORM" 2>&1)
 STATUS=$?

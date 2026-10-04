@@ -30,7 +30,7 @@ git push -u origin {new_name}
 
 ## PR merge fallback
 
-If `gh pr merge --merge --delete-branch` fails due to dirty local tree, fall back to:
+If `gh pr merge --merge --delete-branch` (or, in a slot, `gh pr merge --merge`) fails due to dirty local tree, fall back to:
 ```bash
 gh pr merge {pr_number} --merge --auto
 ```

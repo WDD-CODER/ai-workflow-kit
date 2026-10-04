@@ -20,6 +20,7 @@ import { resolve, dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import picomatch from 'picomatch'
 import { activePlanPath } from './lib/slot.mjs'
+import { extractScopeGlobs } from './lib/plan-scope.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(__dirname, '..')
@@ -70,15 +71,6 @@ function readPlanFile(planPath) {
   return readFileSync(abs, 'utf8')
 }
 
-function extractScopeGlobs(planText) {
-  const m = planText.match(/## Read-Write Scope[\s\S]*?```scope\r?\n([\s\S]*?)```/)
-  if (!m) return null
-  return m[1]
-    .split(/\r?\n/)
-    .map(l => l.trim())
-    .filter(l => l && !l.startsWith('#'))
-}
-
 function extractField(planText, name) {
   const m = planText.match(new RegExp(`^${name}:\\s*(\\S+)`, 'm'))
   return m ? m[1] : null
@@ -94,7 +86,7 @@ function resolvePlanPath(args) {
 function buildMatcher(planPath) {
   const planText = readPlanFile(planPath)
   const scopeGlobs = extractScopeGlobs(planText)
-  if (!scopeGlobs) fail(`${planPath} has no "## Read-Write Scope" \`\`\`scope block`)
+  if (!scopeGlobs) fail(`${planPath} has no readable scope under "## Read-Write Scope" (need a \`\`\`scope block or a **Scope:** list of \`globs\`)`)
 
   const branch = sanitizeBranch(git(['branch', '--show-current']))
   const alwaysAllowed = [
@@ -190,7 +182,7 @@ function cmdDrift(args) {
   if (!snapshot) fail(`${planPath} has no "Snapshot:" line`)
 
   const scopeGlobs = extractScopeGlobs(planText)
-  if (!scopeGlobs) fail(`${planPath} has no "## Read-Write Scope" \`\`\`scope block`)
+  if (!scopeGlobs) fail(`${planPath} has no readable scope under "## Read-Write Scope" (need a \`\`\`scope block or a **Scope:** list of \`globs\`)`)
 
   // Hotspots are append-only and shared by every plan — a hotspot commit
   // from someone else's work isn't drift for this plan.

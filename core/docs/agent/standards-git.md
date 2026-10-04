@@ -47,13 +47,22 @@ End the turn with the combined visual block below and **wait** for Human choice.
 
 | Reply | Action |
 | --- | --- |
-| `merge` | Write any proposed brain draft first (unless opted out), then: if no open PR, `gh pr create`. Then `gh pr merge --merge --delete-branch`. Never force-merge. Never merge without this explicit reply (or clear `Y` to the same ask). |
+| `merge` | Write any proposed brain draft first (unless opted out), then: if no open PR, `gh pr create`. Then merge — outside a slot `gh pr merge --merge --delete-branch`; inside a `{{slots.nameFormat}}` slot see "Merging from a slot" below. Never force-merge. Never merge without this explicit reply (or clear `Y` to the same ask). |
 | `later` | Write any proposed brain draft first (unless opted out). Leave branch/PR open. Put the PR URL in session Next Steps. Stop. |
 | `open-pr-only` | Write any proposed brain draft first (unless opted out). Ensure a PR exists (`gh pr create` if needed). Do **not** merge. Re-show Merge Gate after PR URL is known, or stop if Human said later. |
 | `no brain` / `skip brain` (combined with any of the above) | Do not write the proposed draft this ship. Explicit no-op on the brain side only. |
 | `brain edit …` (combined with any of the above) | Revise the draft, re-show it, wait again before writing. |
 
 Dirty-tree merge fallback (same as `/ship`): if `gh pr merge --merge --delete-branch` fails due to a dirty local tree, use `gh pr merge {n} --merge --auto`. Do not stash/commit unrelated dirty files to unblock merge.
+
+**Merging from a slot** (`node scripts/lib/slot.mjs --describe` prints `WORKER:`): never pass `--delete-branch` — after merging it switches the local checkout to `{{git.mainBranch}}`, which takes the Worker out of its slot. Instead:
+
+```bash
+gh pr merge {n} --merge
+git push origin --delete <branch>
+```
+
+Stay on the branch, in the slot. Do not `cd` to the main folder and do not check out `{{git.mainBranch}}`. Next job: the Human runs `/clear`, then `take plan NNN` in the same slot — `take-plan.mjs` fetches, releases the merged branch, claims the new plan and keeps the slot's dev servers running.
 
 ### Brain capture — auto-write with opt-out
 

@@ -17,7 +17,7 @@ import { fileURLToPath } from 'url'
 export const KIT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 export const NOT_SET = '(not set)'
 // Empty is the right rendering for these (they are prefixes / optional fragments, not words in a sentence).
-const BLANK_OK = new Set(['paths.srcRoot', 'paths.serverRoot', 'paths.slotEnvFile', 'kit.mcpArgs'])
+const BLANK_OK = new Set(['paths.srcRoot', 'paths.serverRoot', 'paths.slotEnvFile', 'kit.mcpArgs', 'commands.slotPrepare'])
 export const REQUIRED = ['project.name', 'commands.build', 'commands.lint', 'commands.test', 'hooks.shellPath']
 const GOTCHA_FILE = /^docs\/brain\/gotchas\/[^/]+\.md$/
 const PACK_SKIP = new Set(['pack.json', 'AGENTS.fragment.md'])

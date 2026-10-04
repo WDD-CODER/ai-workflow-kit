@@ -20,23 +20,34 @@ function git(cmdArgs, cwd) {
   return execFileSync('git', cmdArgs, { cwd: cwd || repoRoot, encoding: 'utf8' }).replace(/\r?\n+$/, '')
 }
 
+// Merged = an ancestor of origin/{{git.mainBranch}} (merge or fast-forward), or its pushed upstream is gone after a
+// prune (a squash merge with --delete-branch is never an ancestor; the deleted remote branch is the signal).
 function isMergedIntoOriginMain(branch) {
   try {
     execFileSync('git', ['merge-base', '--is-ancestor', `refs/heads/${branch}`, 'origin/{{git.mainBranch}}'], {
       cwd: repoRoot,
+      stdio: 'ignore',
     })
     return true
   } catch {
-    return false
+    try {
+      return git(['for-each-ref', '--format=%(upstream:track)', `refs/heads/${branch}`]) === '[gone]'
+    } catch {
+      return false
+    }
   }
 }
 
+// Server logs under .claude/ are runtime noise, not work.
 function isClean(path) {
-  return git(['status', '--porcelain'], path) === ''
+  return git(['status', '--porcelain'], path)
+    .split(/\r?\n/)
+    .filter((l) => l.trim() && !/^\?\? \.claude\/[^/]+\.log$/.test(l.trim()))
+    .length === 0
 }
 
 function main() {
-  git(['fetch', 'origin', '{{git.mainBranch}}'])
+  git(['fetch', 'origin', '--prune'])
 
   const slots = listSlots()
   if (!slots.length) {
@@ -66,6 +77,7 @@ function main() {
       console.log(`wt-${s.slot}: branch=${s.branch} not yet merged — left alone`)
       continue
     }
+    // The slot's dev servers stay up: the next take-plan in this slot reuses them (scripts/slot-stop.mjs stops them).
     git(['checkout', '--detach', 'origin/{{git.mainBranch}}'], s.path)
     const planFile = join(s.path, '.worktree-plan')
     if (existsSync(planFile)) rmSync(planFile)
