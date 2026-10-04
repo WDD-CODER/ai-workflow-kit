@@ -30,6 +30,11 @@ const root = resolve(flagValue('--root') ?? process.cwd())
 const configPath = resolve(flagValue('--config') ?? join(root, 'kit.config.json'))
 const manifestPath = resolve(flagValue('--manifest') ?? join(root, 'docs/workflow-kit/manifest.json'))
 
+if (!existsSync(manifestPath)) {
+  console.log(`KIT_MANIFEST: skipped — no manifest at ${manifestPath} (a kit-maintainer check; not needed in a normal project)`)
+  process.exit(0)
+}
+
 const config = existsSync(configPath) ? JSON.parse(readFileSync(configPath, 'utf8')) : {}
 const get = (key) => key.split('.').reduce((o, k) => (o == null ? undefined : o[k]), config)
 

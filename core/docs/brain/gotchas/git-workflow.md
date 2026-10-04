@@ -30,7 +30,7 @@
 
 **Why the obvious fix is wrong:** Committing the updated pointer “to clean the tree” just schedules the next SessionStart to dirty it again. Leaving Phase 5 until after push guarantees an uncommitted handoff file.
 
-**What to do instead:** Keep `.claude/.session-state-path` gitignored (local pointer only). Save to stable `docs/session-state-${BRANCH}.md` (no PPID). On `/ship`, write that file after commit, amend before push. See Plan 295 / `.claude/commands/ship.md` Phase 5.
+**What to do instead:** Keep `.claude/.session-state-path` gitignored (local pointer only). Save to stable `docs/session-state-${BRANCH}.md` (no PPID). On `/ship`, write that file after commit, amend before push. See `.claude/commands/ship.md` Phase 5.
 
 ---
 
@@ -38,7 +38,7 @@
 
 ## Splitting one file's uncommitted diff across two branches: no `git stash -p` available
 
-**What hurt:** `server/db.js` had two unrelated uncommitted hunks (a plan 301 search-index addition and unrelated mongo connection-visibility listeners) that needed to land on two different branches. The normal tool for this, `git stash push -p` / `git add -p`, is interactive, and this environment's Bash tool explicitly does not support interactive flags.
+**What hurt:** One source file had two unrelated uncommitted hunks (a search-index addition and unrelated connection-logging listeners) that needed to land on two different branches. The normal tool for this, `git stash push -p` / `git add -p`, is interactive, and this environment's Bash tool explicitly does not support interactive flags.
 
 **Why the obvious fix is wrong:** Trying to script `git add -p` with piped `y`/`n` answers is fragile and easy to get wrong silently (wrong hunk staged, file left in a half-applied state).
 
@@ -50,7 +50,7 @@
 
 **What hurt:** Mid-`/ship`, a second session working in the same directory switched the
 branch from `feat/perf-phase1-m3-m5` to `feat/design-migration` and committed. Its commit
-`012d3c9` swept up `src/app/app.config.ts` - an uncommitted edit belonging to the *other*
+A commit swept up a file - an uncommitted edit belonging to the *other*
 session's work - into an unrelated design-migration commit. Switching back to the perf
 branch then restored the pre-edit version, so the change had silently vanished from the
 working tree while living on in a foreign commit.
@@ -117,7 +117,7 @@ A stale dev server left running on another port can masquerade as a regression; 
 
 ## `todo.md`'s "not merged, no PR opened yet" can be stale — verify with `merge-base`, don't just open the PR
 
-**What hurt:** Plan 308's todo.md entry said the dead-CSS-purge branch (`chore/dead-css-purge-plan-308`) was "committed and pushed... not merged, no PR opened yet." Trusting that note, `gh pr create` was run straight away — it failed with "No commits between main and chore/dead-css-purge-plan-308." The branch's tip commit was already an ancestor of `main` (confirmed via `git merge-base --is-ancestor <sha> origin/main`), evidently swept in through an unrelated merge (likely `feat/optimization`/PR #192) without that branch's own PR ever getting tracked back into `todo.md`.
+**What hurt:** A plan's todo.md entry said a cleanup branch (`chore/cleanup-plan-NNN`) was "committed and pushed... not merged, no PR opened yet." Trusting that note, `gh pr create` was run straight away — it failed with "No commits between main and chore/cleanup-plan-NNN." The branch's tip commit was already an ancestor of `main` (confirmed via `git merge-base --is-ancestor <sha> origin/main`), evidently swept in through an unrelated merge (likely another feature branch) without that branch's own PR ever getting tracked back into `todo.md`.
 
 **Why the obvious fix is wrong:** Assuming the todo.md/plan-file note is ground truth and opening the PR anyway wastes a round-trip and produces a confusing GitHub API error that looks like an auth or scope problem rather than a stale-tracking problem.
 
@@ -134,6 +134,6 @@ A stale dev server left running on another port can masquerade as a regression; 
 **Why the obvious fix is wrong:** Assuming "my uncommitted files must be safe because `git checkout` refuses when there'd be a conflict" is wrong — checkout only refuses when the file *differs* between the old and new branch tips. When the file happens to be identical (common for files neither branch is actively touching), checkout succeeds and quietly reassigns your dirty edits to a different branch context with zero warning. `git worktree list` doesn't reveal this either — both sessions show as **one** entry, because neither had created a separate worktree; they were two independent processes pointed at the same physical directory.
 
 **What to do instead:**
-1. **Structural fix — default to a dedicated worktree per session** rather than the shared main checkout, any time another agent/tool might be active in this repo (`worktree-setup` skill / `EnterWorktree`; this repo already keeps live worktrees for `feat/optimization` and `chore/dead-css-purge-plan-308` — the pattern exists, it just wasn't applied to this session before the incident). A worktree has its own independent HEAD; no other process sharing the repo can move it out from under you.
+1. **Structural fix — default to a dedicated worktree per session** rather than the shared main checkout, any time another agent/tool might be active in this repo (`worktree-setup` skill / `EnterWorktree`; this repo already keeps live worktrees for `feat/optimization` and `chore/cleanup-plan-NNN` — the pattern exists, it just wasn't applied to this session before the incident). A worktree has its own independent HEAD; no other process sharing the repo can move it out from under you.
 2. **Cheap guard when a worktree isn't practical:** immediately before any `git commit` in a shared (single-worktree) directory, run `git branch --show-current` and compare against the branch confirmed right after your previous commit this session. Mismatch → STOP before committing; do not assume your edits are still on the branch you think they're on.
 3. **Recovery, if it already happened:** `git show --name-status <foreign-commit>` to confirm it does *not* contain your files (it usually won't, per the mechanism above), then cherry-pick your stray commit onto the correct branch via a scratch `git worktree add` + `git cherry-pick`, and reset the foreign branch back to its pre-your-commit sha (`git reset --hard <foreign-sha>` — only safe when that branch's tree is otherwise clean). Never `checkout` a different branch directly in the shared directory to do this cleanup — that repeats the exact risk for whichever session is still using it; do the reset only on the branch/directory you're already on.

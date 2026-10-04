@@ -7,9 +7,9 @@
   },
   "stack": {
     "packs": [],
-    "name": "",
-    "backend": "",
-    "stylesheetExt": "",
+    "name": "the project stack",
+    "backend": "the backend",
+    "stylesheetExt": "css",
     "stateRules": "",
     "standardsDoc": ""
   },
@@ -56,7 +56,7 @@
     "sensitivePaths": ""
   },
   "tools": {
-    "browser": ""
+    "browser": "browser tool"
   },
   "docs": {
     "domainStandards": ""

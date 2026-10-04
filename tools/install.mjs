@@ -10,6 +10,7 @@
  * Exit 0 ok, 1 error, 2 required config keys missing (nothing written).
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
+import { spawnSync } from 'child_process'
 import { resolve, join, dirname } from 'path'
 import { KIT_ROOT, REQUIRED, isEmpty, readJson, sha256, resolveConfig, planFiles, parseArgs, unflatten, NOT_SET } from './lib/kit.mjs'
 
@@ -17,7 +18,7 @@ let args
 try {
   args = parseArgs(process.argv.slice(2), {
     target: 'value', config: 'value', packs: 'value', cursor: 'bool', 'yes-chef': 'bool',
-    'dry-run': 'bool', force: 'bool', 'allow-unfilled': 'bool',
+    'dry-run': 'bool', force: 'bool', 'allow-unfilled': 'bool', 'install-deps': 'bool',
   })
 } catch (e) {
   console.error(`KIT_INSTALL: FAIL — ${e.message}`)
@@ -112,4 +113,23 @@ if (existsSync(pkgFile)) {
   const absent = ['commands.build', 'commands.lint', 'commands.test'].map((k) => vals[k]).filter((s) => s && !(s in scripts))
   if (absent.length > 0) log(`NOTE package.json has no script(s): ${absent.join(', ')} — the workflow runs them with npm run`)
 } else log('NOTE no package.json yet — create one with the build/lint/test scripts before the first /ship')
+// devDependencies the installed scripts import (bare specifiers) plus the hook runners.
+const BUILTIN = new Set(['fs', 'path', 'url', 'child_process', 'crypto', 'os', 'util', 'readline', 'http', 'https', 'zlib', 'stream', 'events', 'assert'])
+const deps = new Set()
+for (const f of plan.files) {
+  if (!f.dest.endsWith('.mjs')) continue
+  for (const m of f.content.matchAll(/^import\s[^'"\n]*from\s+'([^'.\/][^']*)'/gm)) {
+    const name = m[1].startsWith('@') ? m[1].split('/').slice(0, 2).join('/') : m[1].split('/')[0]
+    if (!BUILTIN.has(name) && !name.startsWith('node:')) deps.add(name)
+  }
+}
+if (plan.files.some((f) => f.dest.startsWith('.husky/'))) deps.add('husky')
+if (plan.files.some((f) => f.dest === '.lintstagedrc.mjs')) deps.add('lint-staged')
+if (deps.size > 0) {
+  const list = [...deps].sort().join(' ')
+  if (args['install-deps'] && !args['dry-run'] && existsSync(pkgFile)) {
+    const r = spawnSync('npm', ['install', '-D', ...deps], { cwd: target, stdio: 'inherit', shell: process.platform === 'win32' })
+    log(r.status === 0 ? `NOTE installed devDependencies: ${list}` : `NOTE npm install failed; run: npm install -D ${list}`)
+  } else log(`NOTE the installed scripts need devDependencies — run: npm install -D ${list}  (or re-run with --install-deps)`)
+}
 log(`KIT_INSTALL: ok — ${counts.written} ${args['dry-run'] ? 'would be written' : 'written'}, ${counts.same} identical, ${counts.skipped} skipped-existing, packs=[${packs.join(', ')}], cursor=${!!args.cursor}`)

@@ -14,7 +14,7 @@ Fill the versions your project actually runs; check them before debugging runtim
 | **Runtime** | Node.js | | Note platform quirks here (e.g. DNS SRV resolution on Windows needs explicit DNS servers) |
 | **Framework** | Express | | |
 | **ODM / driver** | Mongoose or native driver | | |
-| **Database** | MongoDB (managed or local) | | SRV connection string `mongodb+srv://` for managed clusters |
+| **Database** | MongoDB (managed or local) | | always include the database name in the connection string path |
 | **Auth** | jsonwebtoken | | |
 | **Security** | helmet | | |
 | **Rate limiting** | express-rate-limit | | |

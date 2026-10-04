@@ -8,7 +8,7 @@ review-by: 2027-01-31
 
 ## Context
 
-Merge Gate brain proposals were specified as "path + one-line summary." Agents satisfied the letter with slogans that restated the commit subject (Plan 289 M5 proposed "use ensureLoaded" — already visible in the diff), so approve/skip became vibes-based and the brain stayed sparse relative to real learning. Alternatives considered: MCP/vector memory (rejected again per [[0002-file-based-memory-over-tool-memory]]), Cline-style mandatory read-all-files at session start (token cost, contradicts [[0001-lean-native-workflow]]), and compound-engineering-style auto-capture without confirm (violates [[0003-auto-evoke-brain-on-pr]]).
+Merge Gate brain proposals were specified as "path + one-line summary." Agents satisfied the letter with slogans that restated the commit subject (e.g. "use the helper" — already visible in the diff), so approve/skip became vibes-based and the brain stayed sparse relative to real learning. Alternatives considered: MCP/vector memory (rejected again per [[0002-file-based-memory-over-tool-memory]]), Cline-style mandatory read-all-files at session start (token cost, contradicts [[0001-lean-native-workflow]]), and compound-engineering-style auto-capture without confirm (violates [[0003-auto-evoke-brain-on-pr]]).
 
 ## Decision
 

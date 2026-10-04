@@ -142,8 +142,13 @@ function claimLock(dir) {
   return false
 }
 
+// Project shape: dev-server steps run only for the parts this project has.
+const hasServer = existsSync(join(repoRoot, 'server', 'package.json'))
+const envLocalPath = join(repoRoot, 'src', 'environments', 'environment.local.ts')
+const hasFrontend = existsSync(envLocalPath) // the per-slot frontend config is what the dev server runs against
+
 function generateEnvironmentSlot(bePort) {
-  const localPath = join(repoRoot, 'src', 'environments', 'environment.local.ts')
+  const localPath = envLocalPath
   const text = readFileSync(localPath, 'utf8')
   const withApi = text
     .replace(/apiUrl:\s*'[^']*'/, `apiUrl: 'http://localhost:${bePort}'`)
@@ -154,8 +159,9 @@ function generateEnvironmentSlot(bePort) {
 // --- (a) not a slot -> refuse -------------------------------------------------
 if (!isSlot()) fail('not a slot - run this only inside a {{slots.nameFormat}} worktree')
 
-const nnn = process.argv[2]
-if (!nnn) fail('usage: node scripts/take-plan.mjs <NNN>')
+const arg = process.argv[2]
+if (!arg) fail('usage: node scripts/take-plan.mjs <NNN>')
+const nnn = /^\d+$/.test(arg) ? arg.padStart(3, '0') : arg // 1 -> 001, matching plans/NNN-*.plan.md
 
 const n = slotNumber()
 const { fe: fePort, be: bePort } = ports()
@@ -206,16 +212,17 @@ git(['commit', '-m', `chore(plan ${nnn}): mark active in wt-${n}`])
 
 // --- (e) npm install only if the lockfile changed -----------------------------
 const rootInstalled = npmInstallIfChanged(repoRoot, '.last-npm-install-hash')
-const serverInstalled = npmInstallIfChanged(join(repoRoot, 'server'), '.last-npm-install-hash-server')
+const serverInstalled = hasServer ? npmInstallIfChanged(join(repoRoot, 'server'), '.last-npm-install-hash-server') : false
 
 // --- (f) environment.slot.ts --------------------------------------------------
-generateEnvironmentSlot(bePort)
+if (existsSync(envLocalPath)) generateEnvironmentSlot(bePort)
 
 // --- (g) ports: keep this slot's own PIDs, refuse a foreign PID --------------
 const mySlotPids = readSlotPids()
 const newPids = []
 
 for (const [label, port, isBackend] of [['be', bePort, true], ['fe', fePort, false]]) {
+  if (isBackend ? !hasServer : !hasFrontend) continue // nothing to start for this half
   const ownerPid = portOwnerPid(port)
   if (ownerPid && mySlotPids.includes(Number(ownerPid))) {
     newPids.push(Number(ownerPid))

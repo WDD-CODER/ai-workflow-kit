@@ -9,7 +9,7 @@ const PATTERNS = [
   { name: 'generic-api-key', re: /(?:api[_-]?key|apikey|secret[_-]?key|access[_-]?token)\s*[:=]\s*['"][A-Za-z0-9_\-]{16,}['"]/i },
   { name: 'bearer-token', re: /Bearer\s+[A-Za-z0-9\-_\.]{20,}/ },
   { name: 'private-key-block', re: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/ },
-  { name: 'gemini-or-google-key', re: /AIza[0-9A-Za-z\-_]{20,}/ },
+  { name: 'google-api-key', re: /AIza[0-9A-Za-z\-_]{20,}/ },
   { name: 'mongo-uri-creds', re: /mongodb(?:\+srv)?:\/\/[^:\s]+:[^@\s]+@/ }
 ]
 

@@ -40,7 +40,7 @@
 
 **What hurt:** The gotcha above ("Pasted plans that never hit `plans/`") already
 documents save-plan + `plan-write-guard.sh` + the Cursor `.mdc` rule as the fix —
-yet Plan 285 (AI Menu Phase 1) still executed end-to-end with ~22 `.claude/todo.md`
+yet a large plan still executed end-to-end with ~22 `.claude/todo.md`
 items marked `[x]` and no `plans/285-*.plan.md` ever created. The mitigations
 existed on paper and were still bypassed, silently, with no error.
 
@@ -82,7 +82,7 @@ routing Plan-Contract-shaped pastes to save-plan first. See
 
 ## Same-directory concurrent session breaks the plans/ numbering scan
 
-**What hurt:** Saving Plan 294 needed two renumbers (292 → 293 → 294) within
+**What hurt:** Saving a plan needed two renumbers (e.g. 012 → 013 → 014) within
 minutes, and separately, five rounds of unrelated docs edits (the auto-write
 brain-capture policy change) kept getting silently reverted mid-session.
 `ls plans/` / `plan-name-similarity.mjs` were run once early, then the actual
@@ -170,7 +170,7 @@ once after the initial `git add`.
 
 ## `.claude/todo.md` unchecked box doesn't mean the work wasn't done
 
-**What hurt:** After a mid-session crash, plan 301 Milestone 1 looked "not started" from `.claude/todo.md` alone — every box was still `[ ]`. In reality the work was fully implemented and self-verified (`npm run {{commands.build}}` pass, curl tests, live app test — see the session doc) in the crashed session; it just never got committed or human-validated before the machine dropped.
+**What hurt:** After a mid-session crash, a plan's Milestone 1 looked "not started" from `.claude/todo.md` alone — every box was still `[ ]`. In reality the work was fully implemented and self-verified (`npm run {{commands.build}}` pass, curl tests, live app test — see the session doc) in the crashed session; it just never got committed or human-validated before the machine dropped.
 
 **Why the obvious fix is wrong:** Trusting the todo checkbox state as a proxy for "has this been attempted" leads to either re-doing already-finished work from scratch, or (worse) assuming a stale unchecked item is safe to ignore when it's actually sitting live in the working tree.
 
@@ -229,7 +229,7 @@ A bare skill/command name can resolve to a vendored skill instead of the project
 
 ## Naive git-status parsing silently drops path characters and undercounts new directories
 
-**What hurt:** In `scripts/ship-prep.mjs`, calling `execFileSync('git', ['status', '--short']).trim()` on the whole multi-line output stripped the leading space off just the *first* line (unstaged-modified status is `" M path"`), silently truncating `.claude/todo.md` into `claude/todo.md` for that one file. Separately, `git status --short` collapses a brand-new untracked directory into a single `?? dir/` line instead of listing the files inside it — a new `scripts/lib/` folder containing one file (exactly what Plan 323 added) would have reported as 0 files, not 1.
+**What hurt:** In `scripts/ship-prep.mjs`, calling `execFileSync('git', ['status', '--short']).trim()` on the whole multi-line output stripped the leading space off just the *first* line (unstaged-modified status is `" M path"`), silently truncating `.claude/todo.md` into `claude/todo.md` for that one file. Separately, `git status --short` collapses a brand-new untracked directory into a single `?? dir/` line instead of listing the files inside it — a new `scripts/lib/` folder containing one file (a common case) would have reported as 0 files, not 1.
 
 **Why the obvious fix is wrong:** `.trim()` looks like the safe, idiomatic way to clean up command output, but applied to the *whole* multi-line `git status` output it only touches the very first and very last line — and the first line of `git status --short` starts with a status code where a leading space is semantically significant (unstaged vs staged). The bug only manifests on that one specific line, so a spot-check on a diff where the first file happens to be staged (`M ` or `A ` instead of ` M`) looks completely correct while the untracked-modified case silently corrupts.
 
@@ -253,7 +253,7 @@ Pick a branch-naming scheme only after listing existing branches of the same sha
 repo's own hooks/settings — nothing in `.claude/settings.json` references it) denies Bash
 tool calls whose command text mentions `.github`, even for a purely read-only listing or
 count (e.g. `ls .github/workflows`, `find .github -type f`). It pattern-matches on the
-string, not on whether the command actually writes to CI/CD config. Hit during Plan 328
+string, not on whether the command actually writes to CI/CD config. Hit while building the workflow kit
 (`docs/workflow-kit/`) while inventorying `.github/workflows/**`, and separately while
 pushing a fix commit directly to `main` (denied as "[Modify Shared Resources]").
 
@@ -271,7 +271,7 @@ only the Bash tool's command text triggers it.
 
 ## An inline `# comment` after a glob in a plan's `scope` block silently makes that glob match nothing
 
-**What hurt:** Plan 328's scope block had `docs/brain/decisions/*-workflow-kit-extraction.md   # one new ADR`. `scripts/scope-check.mjs` only drops lines that *start* with `#`, so the glob included the trailing comment text. `ship-prep` reported `scope: out` for the plan's own ADR.
+**What hurt:** A plan's scope block had `docs/brain/decisions/*-some-decision.md   # one new ADR`. `scripts/scope-check.mjs` only drops lines that *start* with `#`, so the glob included the trailing comment text. `ship-prep` reported `scope: out` for the plan's own ADR.
 
 **Why the obvious fix is wrong:** Widening the glob or approving the path hides the cause, and every later Worker hits the same trap.
 

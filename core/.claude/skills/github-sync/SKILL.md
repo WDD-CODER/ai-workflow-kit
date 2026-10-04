@@ -44,7 +44,7 @@ If `.worktree-cleanup` does not exist, skip this phase entirely.
 
 ---
 
-## Phase 3: Session Intelligence `[High Reasoning — Sonnet/Gemini 1.5 Pro]`
+## Phase 3: Session Intelligence `[High Reasoning]`
 
 **Daily Log Audit:** Read latest `.claude/sessions/*/session-handoff.md` (preferred) or `notes/session-handoffs/` (legacy fallback) and `notes/github-sync/` files. Summarize the "State of the Project" for the current session.
 

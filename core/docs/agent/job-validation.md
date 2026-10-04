@@ -200,7 +200,7 @@ Do not leave new stages only in chat or only in a session brief.
 
 ---
 
-## Todo archive volumes (Plan 292)
+## Todo archive volumes
 
 When matching todos are marked `[x]` and a plan section is **fully** done:
 

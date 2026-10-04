@@ -1,6 +1,6 @@
 # /ship — Recovery procedures
 
-Loaded from `.claude/commands/ship.md` when a push is rejected, a merge fails, or a prior ship already committed/pushed a job without todos. This file is a direct extraction of ship.md's recovery-path text, moved verbatim (Plan 325).
+Loaded from `.claude/commands/ship.md` when a push is rejected, a merge fails, or a prior ship already committed/pushed a job without todos. This file is a direct extraction of ship.md's recovery-path text, moved verbatim.
 
 ---
 

@@ -3,7 +3,7 @@
 # Automatically loads the previous session's state into context,
 # so the AI picks up exactly where it left off.
 #
-# Branch-canonical save target (Plan 295):
+# Branch-canonical save target:
 #   - SAVE_PATH = docs/session-state-${BRANCH}.md (no PPID — safe to commit on /ship)
 #   - .claude/.session-state-path is local-only (gitignored) so SessionStart never dirties git
 #   - Override both with SESSION_STATE_PATH for rare parallel-window cases
@@ -14,7 +14,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# --- Planner-Worker slot role (plan 326 — replaces the two-slot system, no auto-claim) ---
+# --- Planner-Worker slot role (no auto-claim) ---
 DESCRIBE=$(node "$SCRIPT_DIR/lib/slot.mjs" --describe 2>/dev/null)
 
 if [[ "$DESCRIBE" == IDLE\ SLOT:* ]]; then
@@ -53,7 +53,7 @@ fi
 SAVE_PATH="$RESOLVED"
 SESSION_STATE="$RESOLVED"
 
-# Local pointer only — gitignored (Plan 295)
+# Local pointer only — gitignored
 mkdir -p .claude
 echo "$SAVE_PATH" > .claude/.session-state-path
 

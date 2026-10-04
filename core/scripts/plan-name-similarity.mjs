@@ -205,7 +205,7 @@ for (const full of listPlanFiles(plansDir)) {
   })
 }
 
-// Last two archive volumes — heading titles only (Plan 292)
+// Last two archive volumes — heading titles only
 for (const vol of listLastArchiveVolumes(2)) {
   let body = ''
   try {

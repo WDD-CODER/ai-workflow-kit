@@ -28,4 +28,4 @@ A field the app requires but the source never had passes every migration audit y
 
 **Status:** draft — generalized from a project lesson; review before relying on it.
 
-Verify aggregation/query performance against the real deployment early; a local copy of the data hides unusable latency (cf. Plan 310).
+Verify aggregation/query performance against the real deployment early; a local copy of the data hides unusable latency.

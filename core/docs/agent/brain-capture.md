@@ -14,7 +14,7 @@ Goal: every proposal extracts the **judgment that made the session expensive**, 
    - **Pattern** — the happy path we'd repeat. Shape: **Problem / Solution / When to use**.
    - **Gotcha** — the trap that looked like success. Shape: **What hurt / Why the obvious fix is wrong / What to do instead**.
    - **Decision (ADR)** — a choice between real alternatives. Shape: **Context / Decision / Consequences** + frontmatter. One decision per file; supersede, never edit in place.
-4. **Draft the full file body** from the matching template: `docs/brain/patterns/_TEMPLATE.md`, `docs/brain/decisions/_TEMPLATE.md`, or the gotcha shape stated in `docs/brain/gotchas.md`. Match the length of the good examples ([[defer-singleton-data-ensureLoaded]], [[tombstone-soft-delete]]) — one screen or less, never a session dump. Cross-link related entries with `[[wiki-links]]`. A gotcha's domain file (which `gotchas/<domain>.md` to append to) comes from the routing table in `docs/brain/gotchas.md`.
+4. **Draft the full file body** from the matching template: `docs/brain/patterns/_TEMPLATE.md`, `docs/brain/decisions/_TEMPLATE.md`, or the gotcha shape stated in `docs/brain/gotchas.md`. Match the length of the good examples ([[defer-singleton-data-ensureLoaded]], [[llm-backend-proxy]]) — one screen or less, never a session dump. Cross-link related entries with `[[wiki-links]]`. A gotcha's domain file (which `gotchas/<domain>.md` to append to) comes from the routing table in `docs/brain/gotchas.md`.
 5. **Write a one-line title** for the banner. The title names the entry; it is **never** the entry.
 
 ## Reuse tracking (session logs)
@@ -37,7 +37,7 @@ Cite only entries that changed a choice. Most sessions will have none, and that 
 
 ## Bypass escalation (gotchas)
 
-If the *same* documented gate (script/hook naming a specific bypass) is reported bypassed a second time via a new path, name that explicitly in the new gotcha's **Why the obvious fix is wrong** section as a **structural-fix signal**, not just another instruction restated. Worked example: [[Existing save-plan mitigations still let a plan skip plans/]] (second bypass after the pasted-plans gotcha → Plan 291 structural hardening).
+If the *same* documented gate (script/hook naming a specific bypass) is reported bypassed a second time via a new path, name that explicitly in the new gotcha's **Why the obvious fix is wrong** section as a **structural-fix signal**, not just another instruction restated. Worked example: [[Existing save-plan mitigations still let a plan skip plans/]] (second bypass after the pasted-plans gotcha → structural hardening).
 
 ## Proposal format (ship tree / Merge Gate banner)
 

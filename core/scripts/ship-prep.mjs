@@ -21,11 +21,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(__dirname, '..')
 const BASELINE_PATH = join(repoRoot, '.claude', '.ship-baseline')
 
-// Verbatim from .claude/commands/ship.md Phase 0 (see plan 324) — keep in sync.
+// Verbatim from .claude/commands/ship.md Phase 0 — keep in sync.
 const SENSITIVE_PATHS_RE = /auth|crypto|guard|interceptor|security|payment|migration|schema|\.env|server\/routes|package(-lock)?\.json|\.github\/workflows|\.claude\/(settings|commands\/ship)\./
 const ULTRA_TRIVIAL_RE = /docs\/session-state-.*\.md|\.claude\/todo\.md|CHANGELOG\.md|docs\/.*\.md/
 const SECRET_PATH_RE = /(^|\/)\.env|\.pem$|\.key$|secret/i
-// Planner admin-bypass shape (plan 326) — a diff entirely inside this is
+// Planner admin-bypass shape — a diff entirely inside this is
 // always ULTRA-TRIVIAL, evaluated before SENSITIVE_PATHS_RE so a plan named
 // e.g. "…-migration-spec.plan.md" doesn't get bumped to REGULAR.
 const PLAN_ONLY_RE = /^plans\/[^/]+\.plan\.md$|^\.claude\/todo\.md$/

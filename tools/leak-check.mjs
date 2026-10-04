@@ -36,6 +36,10 @@ const PROJECT_TERMS = [
   ['machine', /C:[\\/]+coding projects|\bdanwe\b|C:[\\/]+Program Files[\\/]+Git/gi],
   ['ports', /\b420[0-3N]\b|\b300[0-3N]\b/g],
   ['browser', /gstack/gi],
+  // Project history and vendors: lessons and comments must be written for any project.
+  ['history', /\b[Pp]lans? #?\d{3}\b|\bPRs? #\d+|\bcommit [0-9a-f]{7,}\b|\bsession \d\b/g],
+  ['host', /\bmongodb(?:\+srv)?:\/\/|[\w-]+\.mongodb\.net|\bcluster0\b/gi],
+  ['vendor', /\bCloudinary\b|\bGemini\b|\bRECIPE_BOOK\w*|\bvenues?\b/gi],
 ]
 const TERMS = projectOnly ? PROJECT_TERMS : [...STACK_TERMS, ...PROJECT_TERMS]
 

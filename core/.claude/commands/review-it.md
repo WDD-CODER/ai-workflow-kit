@@ -14,7 +14,7 @@ You are the Reviewer. Follow CLAUDE.md. Report findings; never silently fix; nev
 
 3. **Checks** (scoped to milestone files only):
    - **Plan-match**: Did Cursor implement only what the milestone declared?
-   - **Convention compliance**: Signals, inject(), input/output/model, `.c-*` placement, quotes/semicolons, translatePipe, no client Gemini keys
+   - **Convention compliance**: the hard rules in AGENTS.md and the standards in `{{stack.standardsDoc}}`, no API keys in client code
    - **Secrets**: No hardcoded API keys, tokens, passwords
    - **Dead code**: No unused imports / stubbed leftovers from the milestone
    - **Verify command**: Run the milestone's declared Verify command (usually `npm run {{commands.lint}}` and/or targeted build). Record exit code.

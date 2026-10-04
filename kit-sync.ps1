@@ -14,7 +14,9 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Write-Error 'node is required (Node 18+).'; exit 1 }
-$argsList = @("$PSScriptRoot/tools/sync.mjs", '--target', $Target)
+$resolved = [System.IO.Path]::GetFullPath((Join-Path (Get-Location).ProviderPath $Target))
+Write-Host "kit-sync target: $resolved"
+$argsList = @("$PSScriptRoot/tools/sync.mjs", '--target', $resolved)
 if ($Apply) { $argsList += '--apply' }
 & node @argsList
 exit $LASTEXITCODE

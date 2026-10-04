@@ -197,8 +197,8 @@ function findDuplicatesAndStrays(planFiles) {
 // --- main ---
 
 if (!existsSync(todoPath)) {
-  console.error('PLAN_LEDGER: .claude/todo.md not found')
-  process.exit(1)
+  console.log('PLAN_LEDGER: ok — no .claude/todo.md yet (nothing to check); create it with the first plan')
+  process.exit(0)
 }
 
 const todoText = readFileSync(todoPath, 'utf8')
