@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # pre-push — Planner-Worker workflow guard.
-# A push to origin/{{git.mainBranch}} may only touch plans/<name>.plan.md or .claude/todo.md
-# (the Planner's admin bypass, see AGENTS.md). Everything else goes through a
+# A push to origin/{{git.mainBranch}} may only touch plans/<name>.plan.md, .claude/todo.md or
+# .claude/todo-archive/*.md (the Planner's admin bypass, see AGENTS.md). Everything else goes through a
 # branch + PR. Human-only override: git push --no-verify.
 
 ZERO="0000000000000000000000000000000000000000"
@@ -23,12 +23,16 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     if [ "$f" = ".claude/todo.md" ]; then
       continue
     fi
+    # todo-archive.mjs volumes — the Planner's archive step writes these alongside todo.md
+    if printf '%s\n' "$f" | grep -Eq '^\.claude/todo-archive/[^/]+\.md$'; then
+      continue
+    fi
     BAD="$BAD
   - $f"
   done
 
   if [ -n "$BAD" ]; then
-    echo "PRE_PUSH: refusing push to main - files outside plans/<name>.plan.md and .claude/todo.md:$BAD"
+    echo "PRE_PUSH: refusing push to main - files outside plans/<name>.plan.md, .claude/todo.md and .claude/todo-archive/:$BAD"
     echo "Code changes go through a branch and PR (see AGENTS.md's Planner-Worker workflow)."
     echo "Human-only override: git push --no-verify"
     exit 1

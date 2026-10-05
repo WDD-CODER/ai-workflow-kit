@@ -341,6 +341,56 @@ function isArchived(nnn) {
     .some(f => re.test(readFileSync(join(ARCHIVE_DIR, f), 'utf8')))
 }
 
+const normalizeItemText = text => text.replace(/\s+/g, ' ').trim()
+
+/** Leading task id of a checkbox item — `A1`, `P2b.3`, `M1`, `Stage 2`, `P3.0–P3.5`. */
+function itemId(text) {
+  const m = text.match(/^(Stage \d+|Milestone \d+|[A-Z]\d+[a-z]?(?:\.\d+[a-z]?)?(?:[–-][A-Z]?\d+(?:\.\d+)?[a-z]?)?)(?=[:\s—]|$)/)
+  return m ? m[1] : null
+}
+
+/** Ticks `[ ]` lines in an existing todo section whose matching plan item is `[x]`.
+ * Never unticks and never rewrites a line's text, notes or spacing — the todo
+ * section is often hand-curated (shortened text, `>` notes) and may be ahead
+ * of the plan file. Match: same text, else the same task id when that id is
+ * unique on both sides. */
+function tickExistingSection(nnn, section, items, lines, eol) {
+  const itemRe = /^- \[([ xX])\]\s*(.*)$/
+  const countIds = texts => texts.reduce((acc, t) => {
+    const id = itemId(t)
+    if (id) acc.set(id, (acc.get(id) ?? 0) + 1)
+    return acc
+  }, new Map())
+  const planIds = countIds(items.map(i => i.text))
+  const sectionIds = countIds(lines.slice(section.start, section.end).map(l => l.match(itemRe)?.[2] ?? ''))
+
+  const done = items.filter(i => i.done)
+  const doneTexts = new Set(done.map(i => normalizeItemText(i.text)))
+  const doneIds = new Set(done.map(i => itemId(i.text)).filter(Boolean))
+  const matched = new Set()
+  let ticked = 0
+
+  for (let i = section.start; i < section.end; i++) {
+    const m = lines[i].match(itemRe)
+    if (!m) continue
+    const text = normalizeItemText(m[2])
+    const id = itemId(text)
+    const uniqueId = id && planIds.get(id) === 1 && sectionIds.get(id) === 1
+    const hit = doneTexts.has(text) ? text : uniqueId && doneIds.has(id) ? id : null
+    if (!hit) continue
+    matched.add(hit)
+    if (m[1] === ' ') {
+      lines[i] = lines[i].replace('- [ ]', '- [x]')
+      ticked++
+    }
+  }
+
+  const unmatched = done.filter(i => !matched.has(normalizeItemText(i.text)) && !matched.has(itemId(i.text))).length
+  if (ticked) writeFileSync(TODO_PATH, lines.join(eol), 'utf8')
+  const stats = checkboxStats(lines.slice(section.start, section.end).join('\n'))
+  return { skipped: false, nnn, done: stats.done, total: stats.done + stats.open, ticked, unmatched }
+}
+
 function syncPlanByNumber(nnn, { requirePlan = true } = {}) {
   const found = findPlanFileOrNull(nnn)
   if (!found) {
@@ -364,16 +414,14 @@ function syncPlanByNumber(nnn, { requirePlan = true } = {}) {
     return { skipped: true, nnn, done: items.filter(i => i.done).length, total: items.length }
   }
 
+  if (existing) return tickExistingSection(nnn, existing, items, lines, eol)
+
   const heading = `### Plan ${nnn} — ${planTitle(planText)} (\`${rel}\`)`
   const body = items.map(it => `- [${it.done ? 'x' : ' '}] ${it.text}`).join('\n')
   const newSectionLines = `${heading}\n${body}`.split('\n')
 
   let out
-  if (existing) {
-    const before = lines.slice(0, existing.start)
-    const after = lines.slice(existing.end)
-    out = [...before, ...newSectionLines, ...after].join(eol)
-  } else {
+  {
     let footerStart = lines.length
     for (let i = 0; i < lines.length; i++) {
       if (isTodoFooterLine(lines, i)) {
@@ -399,7 +447,7 @@ function cmdSyncPlan() {
     console.log(`TODO_QUERY: plan ${nnn} already archived — skipped`)
     return
   }
-  console.log(`TODO_QUERY: sync plan ${nnn} (${result.done}/${result.total} done)`)
+  console.log(`TODO_QUERY: sync plan ${nnn} (${result.done}/${result.total} done${result.unmatched ? `; ${result.unmatched} done plan item(s) matched no todo line - tick by hand` : ''})`)
 }
 
 function git(cmdArgs) {
@@ -473,7 +521,7 @@ function cmdSyncMerged() {
     if (result.skipped) {
       console.log(`TODO_QUERY: plan ${nnn} already archived — skipped`)
     } else {
-      console.log(`TODO_QUERY: sync plan ${nnn} (${result.done}/${result.total} done)`)
+      console.log(`TODO_QUERY: sync plan ${nnn} (${result.done}/${result.total} done${result.unmatched ? `; ${result.unmatched} done plan item(s) matched no todo line - tick by hand` : ''})`)
     }
   }
   if (!synced) console.log('TODO_QUERY: sync --merged — no merged branches matched a plans/NNN-*.plan.md')
