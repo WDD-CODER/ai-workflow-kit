@@ -25,41 +25,58 @@ The table below applies to `[human]` and untagged items:
 
 ## HOW TO VALIDATE checklist (mandatory before validation ask)
 
-Whenever an **execution** job finishes and needs Human validation (brief, milestone, feature, bugfix, or chat job that changed behavior), the agent **must** show a HOW TO VALIDATE block **before** the JOB DONE ask or the `/ship` Approve **Y** gate.
+Whenever an **execution** job finishes and needs Human validation (brief, milestone, feature, bugfix, or chat job that changed behavior), the agent **must** show a HOW TO VALIDATE block (cards, below) **before** the JOB DONE ask or the `/ship` Approve **Y** gate.
 
 Skip only for pure planning / architecture / docs-only turns with no behavior change to validate.
 
-### Format
+### Format — one card per check
 
 ```text
 HOW TO VALIDATE
-- [action] → [expected result]
-- [action] → [expected result]
+① {plain title of what is being checked}
+   ({term} = {short gloss})          ← only when a term of art can't be avoided
+   WHERE   {which window, page, or app screen}
+   DO      {one plain action}  — or —  paste:  {exact text}
+   SEE ✓   {what success looks like; quote on-screen text exactly}
+   FAIL ✗  {what failure looks like}
+
+② …
 ```
 
-### Bullet rules
+Example (a workflow job, checked in a Worker terminal):
 
-- One action, one expected result — nothing more
-- Completable in under 30 seconds each
-- Plain language — no technical jargon, no file paths, no grep/DevTools/commands
-- Cover the **happy path** and any **edge / failure rule** the job introduced
-  (example: “Search with a number → validation error appears”)
-- UI/behavior: say where to go and what to look for
-  (example: “Open recipe builder → add an ingredient → unit pill should be draggable”)
-- Bug fixes: how to trigger the previously broken scenario
-- Non-visible changes (config, refactor, backend): one bullet with the simplest
-  observable proof, **or** one sentence: what changed and why no user action is needed
-- Never ask the Human to open DevTools, run shell commands, or inspect source files
+```text
+① A finished branch isn't reused
+   (squash merge = GitHub folds the branch into one commit on main)
+   WHERE   the Claude window of Worker slot 2
+   DO      paste:  take plan 42
+   SEE ✓   a line ending "…was merged - starting fresh"
+   FAIL ✗  it asks you to reset the branch by hand, or the push is rejected
+```
+
+### Card rules
+
+- Written for someone who is not an engineer: any person can follow it without asking
+- Rewrite each Done-when item in plain words — never copy the plan's wording verbatim
+- One check per card, completable in under a minute
+- WHERE names the exact place (app page + what to click to get there, or which terminal window)
+- DO is one action. When the only way to check is to type something, give the exact text after `paste:` and name the window — never "run the script" or a description of a command
+- SEE ✓ and FAIL ✗ are both required; quote on-screen text exactly when there is any
+- Keep a term of art when it's the real name of the thing, and gloss it once in brackets
+- Cover the **happy path** and any **edge / failure rule** the job introduced (its own card)
+- Bug fixes: the card triggers the previously broken scenario
+- Never ask the Human to open DevTools, read source files, or work out a command themselves
+- Non-visible changes (config, refactor, backend) with nothing to click: one line instead of cards — what changed and why no check is needed
 
 ### Brief-sourced criteria
 
-If a session brief exists (e.g. `.claude/sessions/…/brief.md`), prepend its Success Criteria / Done-when items as the first bullets, then add task-specific bullets below (blank line between groups).
+If a session brief exists (e.g. `.claude/sessions/…/brief.md`), turn its Success Criteria / Done-when items into the first cards, then add task-specific cards below.
 
 ### Optional agent verify
 
 (For `[auto]` items this runs automatically — see **Tier 1 — auto-verified** below. The rest of this section is the opt-in `verify` reply for `[human]` items.)
 
-After the checklist is shown, the Human may reply `verify`. Then the agent walks each item:
+After the cards are shown, the Human may reply `verify`. Then the agent walks each card:
 
 - Pass → mark ✓
 - Fail → fix, re-check, then ✓
@@ -127,7 +144,7 @@ When the agent finishes a requested job and is **not** immediately entering `/sh
 | Case | What the agent does |
 | --- | --- |
 | **All `[auto]`, all pass** | Print the `VERIFIED BY AGENT` block. Mark matching todos with `todo-query mark --line … --auto-verified`. Do **not** print the JOB DONE ask; the job finishes without a wait. |
-| **Any `[human]` item** | Print the full close-out block: `VERIFIED BY AGENT` on top (the `[auto]` items), then HOW TO VALIDATE listing **only** the `[human]` items, then JOB DONE. Wait. |
+| **Any `[human]` item** | Print the full close-out block: `VERIFIED BY AGENT` on top (the `[auto]` items), then HOW TO VALIDATE with a card for **only** the `[human]` items, then JOB DONE. Wait. |
 | **No plan, or untagged items** | Unchanged: the close-out block below, then wait. |
 
 For the last two cases:
@@ -146,8 +163,12 @@ For the last two cases:
 
 ```text
 HOW TO VALIDATE
-- {action} → {expected result}
-- …
+① {plain title}
+   WHERE   {place}
+   DO      {action}  — or —  paste:  {exact text}
+   SEE ✓   {success}
+   FAIL ✗  {failure}
+② …
 
 JOB DONE — awaiting your validation
 Matched todos (still [ ]):
@@ -156,7 +177,7 @@ Matched todos (still [ ]):
 Reply: done  |  not yet  |  verify  |  edit list
 ```
 
-If the job has no user-visible effect, replace the bullet list with one line under HOW TO VALIDATE explaining what changed and why no click-test is needed — still show the block.
+If the job has no user-visible effect, replace the cards with one line under HOW TO VALIDATE explaining what changed and why no click-test is needed — still show the block.
 
 Never show the JOB DONE ask without HOW TO VALIDATE above it (or `VERIFIED BY AGENT` for an all-`[auto]` job, which has no JOB DONE ask).
 

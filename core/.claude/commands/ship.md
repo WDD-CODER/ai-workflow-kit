@@ -98,8 +98,12 @@ Also proposing a brain entry:   # only when durable; may be 2 lines (pattern + p
   docs/brain/{gotchas/<domain>.md | patterns/*.md | decisions/NNNN-*.md} — "one-line title"
 
 HOW TO VALIDATE
-  - {action} → {expected result}
-  - …
+  ① {plain title}
+     WHERE   {window / page}
+     DO      {action}  — or —  paste:  {exact text}
+     SEE ✓   {success}
+     FAIL ✗  {failure}
+  ② …
 
 Approve? (Y / merge / edit list / abort)   # Y = commit + push (+ PR); only "merge" merges
 ~~~
@@ -111,7 +115,7 @@ VERIFIED BY AGENT
   - ✓ [auto] {item} — `{command}` → {output / exit code}
 ~~~
 
-HOW TO VALIDATE is mandatory before Approve? — plain action → expected result per `docs/agent/job-validation.md`; happy path + any edge/failure rule introduced; one line if no user-visible effect. Mandatory for `[human]`/untagged; all-`[auto]` shows VERIFIED BY AGENT instead. Never omit both.
+HOW TO VALIDATE is mandatory before Approve? — one card per check (WHERE / DO / SEE ✓ / FAIL ✗, plain words, exact paste text when a terminal is needed) per `docs/agent/job-validation.md` → Card rules; happy path + any edge/failure rule introduced; one line if no user-visible effect. Mandatory for `[human]`/untagged; all-`[auto]` shows VERIFIED BY AGENT instead. Never omit both.
 
 Matching open todos: list *before* Y (still `[ ]`). On **Y**, mark `[x]` and stage in the **same** commit — never a second push for checkboxes. Chat-only jobs (no ship): `docs/agent/job-validation.md` Path B / `/done`.
 
