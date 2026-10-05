@@ -12,7 +12,8 @@
  * --plan defaults to the active slot's .worktree-plan. Exit 1 on a missing
  * plan / scope block, on --file/--diff finding an out-of-scope file, on
  * --overlap finding a shared glob with another active plan, or on --drift
- * finding an in-scope commit since the plan's Snapshot.
+ * finding an in-scope commit since the plan's Snapshot (or, without one, since
+ * the commit that added the plan).
  */
 import { readFileSync, existsSync, readdirSync } from 'fs'
 import { execFileSync } from 'child_process'
@@ -178,8 +179,13 @@ function cmdOverlap(args) {
 function cmdDrift(args) {
   const planPath = resolvePlanPath(args)
   const planText = readPlanFile(planPath)
-  const snapshot = extractField(planText, 'Snapshot')
-  if (!snapshot) fail(`${planPath} has no "Snapshot:" line`)
+  let snapshot = extractField(planText, 'Snapshot')
+  if (!snapshot) {
+    // No Snapshot line: the commit that added the plan on {{git.mainBranch}} is the next best baseline.
+    snapshot = git(['log', '--diff-filter=A', '-1', '--format=%H', 'origin/{{git.mainBranch}}', '--', planPath])
+    if (!snapshot) fail(`${planPath} has no "Snapshot:" line and is not on origin/{{git.mainBranch}}`)
+    console.log(`SCOPE_CHECK: no "Snapshot:" line - checking drift since the commit that added the plan (${snapshot.slice(0, 8)})`)
+  }
 
   const scopeGlobs = extractScopeGlobs(planText)
   if (!scopeGlobs) fail(`${planPath} has no readable scope under "## Read-Write Scope" (need a \`\`\`scope block or a **Scope:** list of \`globs\`)`)

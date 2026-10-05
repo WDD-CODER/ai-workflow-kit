@@ -9,7 +9,7 @@
  *   node scripts/lib/slot.mjs --describe
  *   node scripts/lib/slot.mjs --list
  */
-import { readFileSync, existsSync } from 'fs'
+import { readFileSync, existsSync, readdirSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { resolve, dirname, join, basename } from 'path'
 import { fileURLToPath } from 'url'
@@ -43,12 +43,27 @@ export function ports() {
   return { fe: {{slots.fePorts}} + n, be: {{slots.bePorts}} + n }
 }
 
-/** The plan path recorded in .worktree-plan, or null when idle / not a slot. */
+/** The plan a branch named <type>/NNN-<slug> works on (plans/NNN-*.plan.md in that checkout), or null. */
+export function branchPlanPath(branch, cwd) {
+  const m = (branch || '').match(/^[\w.-]+\/(\d{3})-/)
+  if (!m) return null
+  const dir = join(cwd || repoRoot, 'plans')
+  if (!existsSync(dir)) return null
+  const f = readdirSync(dir).find(name => name.startsWith(`${m[1]}-`) && name.endsWith('.plan.md'))
+  return f ? `plans/${f}` : null
+}
+
+/**
+ * The active plan, or null when idle / not a slot. .worktree-plan marks the slot as busy; when the
+ * branch names a different plan (one saved inside the slot), the branch's plan wins.
+ */
 export function activePlanPath() {
   const p = join(repoRoot, '.worktree-plan')
   if (!existsSync(p)) return null
   const rel = readFileSync(p, 'utf8').replace(/\r?\n+$/, '').trim()
-  return rel || null
+  if (!rel) return null
+  const fromBranch = branchPlanPath(git(['branch', '--show-current']))
+  return fromBranch && !rel.startsWith(fromBranch.slice(0, 'plans/NNN-'.length)) ? fromBranch : rel
 }
 
 /** Every {{slots.nameFormat}} worktree: { slot, path, branch (null if detached), detached, plan }. */
@@ -97,7 +112,9 @@ function list() {
   }
   for (const s of slots) {
     const where = s.detached ? 'detached' : `branch=${s.branch}`
-    console.log(`wt-${s.slot}: ${where}${s.plan ? ` plan=${s.plan}` : ' idle'}`)
+    const fromBranch = s.plan && branchPlanPath(s.branch, s.path)
+    const mismatch = fromBranch && fromBranch !== s.plan ? ` (branch works on ${fromBranch} - that plan is used)` : ''
+    console.log(`wt-${s.slot}: ${where}${s.plan ? ` plan=${s.plan}${mismatch}` : ' idle'}`)
   }
 }
 

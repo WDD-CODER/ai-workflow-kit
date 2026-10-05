@@ -25,7 +25,7 @@ Run this skill **before executing milestones** when any of these is true:
 
 ## Plan Rules (inline)
 
-- Plan numbering: `NNN = highest existing + 1`, zero-padded to 3 digits
+- Plan numbering: `node scripts/next-plan-number.mjs` (highest number used by any plan or `<type>/NNN-*` branch, + 1, zero-padded)
 - Refactor variant suffix: `NNN-R`
 - No plans yet → start at `001`
 - Write to `plans/<NNN>-<slug>.plan.md` in project root only — never `~/.cursor/plans/`
@@ -88,16 +88,7 @@ Do not Read .claude/todo.md in full.
 
 **State Verification:** Run `node scripts/todo-query.mjs open` — if unrelated open tasks exist → surface them before proceeding.
 
-**Numbering (save as new only):** List `plans/` → `NNN = highest + 1`. Collision guard:
-
-1. After determining `NNN`, check if `plans/<NNN>-*.plan.md` already exists
-2. If created in the last 60 seconds → re-scan and increment
-3. Worktree: also check main repo `plans/` via `git -C $(cat .worktree-root) ls-files plans/`
-4. Also check `origin/{{git.mainBranch}}`'s `plans/` tree (stale local / parallel-branch race):  
-   `git ls-tree -r origin/{{git.mainBranch}} --name-only -- plans/`  
-   (fetch not required if already fresh). Take the higher of (local max + 1) vs (origin/{{git.mainBranch}} max + 1) vs (main-repo worktree max + 1).  
-   Closes: parallel Cursor/Claude sessions on different branches both computing `NNN` from stale local state.
-5. Use the higher of those maxima for the final `NNN`
+**Numbering (save as new only):** run `node scripts/next-plan-number.mjs` and use the number it prints. It fetches, then takes the highest number used by local plans, `origin/{{git.mainBranch}}`'s plans, the main worktree's plans, and any local or remote `<type>/NNN-*` branch (a Worker's open branch whose plan you may not see yet), plus 1. Never compute `NNN` by hand from `plans/` alone — that is how a Worker's open branch number got reused. Re-run it right before the write if anything else saved a plan meanwhile.
 
 ---
 
@@ -111,6 +102,7 @@ Do not Read .claude/todo.md in full.
 
 - `## Read-Write Scope` holds the globs in one of the two shapes `scripts/lib/plan-scope.mjs` parses: a fenced block opened with ```` ```scope ```` (one glob per line), or a `**Scope:**` line followed by bullets that each start with a `` `backticked` `` glob. A bare `scope` line, or bullets without backticks, are not parsed.
 - Exactly one `Status:` line, with a value (`Status: draft` for a new plan; take-plan sets `active`).
+- A `Snapshot:` line (see Phase 3) — the Worker's drift check compares against it.
 
 **Prerequisites Gate (Planner only):** If the draft has a `## Prerequisites` section, check it's already true against `origin/{{git.mainBranch}}` *before* saving — do not hand a Worker a plan that will STOP on take. If unmet:
 
@@ -128,8 +120,9 @@ Do not Read .claude/todo.md in full.
 - rewrite → overwrite the existing plan path Human confirmed
 - save as new → write `plans/<NNN>-<slug>.plan.md` (after `.claude/.plan-write-ack` if the write-guard may block)
 
-Never write under `~/.cursor/plans/`. `Snapshot:` — fill with the current `origin/{{git.mainBranch}}` SHA
-only if the draft left it empty; never overwrite a SHA the Architect already filled in.
+Never write under `~/.cursor/plans/`. `Snapshot:` — every plan has one. Fill it with the current
+`origin/{{git.mainBranch}}` SHA (`git rev-parse origin/{{git.mainBranch}}`) when the draft left it empty or has no
+`Snapshot:` line at all; never overwrite a SHA the Architect already filled in.
 
 **Pre-commit branch check (Planner only):** Run `git branch --show-current` immediately
 before committing. If it is not `main` (or `master`) — e.g. `branch-guard.sh` mis-fired and

@@ -146,6 +146,7 @@ has no PreToolUse hook of its own.
 | Script | Called by |
 | --- | --- |
 | `plan-name-similarity.mjs` | save-plan Phase 0 (both agents), `plan-write-guard.sh` |
+| `next-plan-number.mjs` | save-plan Phase 1 numbering (Planner) |
 | `session-manifest-ship.py` | `/ship` Phase 3, outside a slot, only when another slot is on a live (non-detached) branch — otherwise skipped in favor of `scope-check.mjs` |
 | `brain-review-check.mjs` | `/ship` feature-complete path (advisory) |
 | `brain-capture-comment.mjs` | PR sticky brain-capture comment |

@@ -114,6 +114,8 @@ Order is hard (see `.claude/commands/ship.md` Phase 4 On approval):
 
 One commit. No second push just for checkboxes.
 
+**Validated after the merge (slot):** when the Human validates `[human]` items only after the PR merged, the Worker does **not** open a branch or PR just to tick boxes. It tells the Human: "Tell the Planner: plan NNN validated (items …)". The Planner marks those items `[x]` in `plans/NNN-*.plan.md` on `{{git.mainBranch}}` (a Planner write it already owns) and runs `node scripts/todo-query.mjs sync --merged`.
+
 **All items `[auto]`:** the `VERIFIED BY AGENT` block replaces HOW TO VALIDATE in the Phase 4 tree. **Y** is still required, but it now means commit/push consent only. Todos marked on ship **Y** get no `(auto-verified)` suffix. With any `[human]` item, **Y** also counts as Human validation of those items.
 
 ---

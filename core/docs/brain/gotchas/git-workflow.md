@@ -147,3 +147,11 @@ A stale dev server left running on another port can masquerade as a regression; 
 **Why the obvious fix is wrong:** `merge-base --is-ancestor` only proves a regular or fast-forward merge landed. A squash merge is structurally disconnected from the source branch in the commit graph even though its content is fully merged — ancestry is the wrong question to ask for a squash-merged branch.
 
 **What to do instead:** Run `git fetch origin --prune` before trusting any branch-exists-or-is-merged check. "The ref doesn't resolve at all anymore" (local + `origin/<branch>`) is a reliable merged-or-abandoned signal that works regardless of merge style, because GitHub — not local git history — is the source of truth for whether the branch still exists; ancestry checks alone silently miss every squash merge.
+
+## `gh pr merge --delete-branch` from a worktree slot leaves the slot
+
+**What hurt:** Two Workers ran `/ship` in their slots and merged with `gh pr merge --merge --delete-branch`. After merging, `gh` tries to switch the local checkout to `{{git.mainBranch}}`, which is already checked out in the Planner's folder. It printed `fatal: '{{git.mainBranch}}' is already used by worktree…`, did not delete the remote branch, and the session drifted toward `{{git.mainBranch}}` instead of staying in its slot ready for the next `take plan`.
+
+**Why the obvious fix is wrong:** Switching the slot to `{{git.mainBranch}}`, or `cd`-ing to the main folder to "finish" the merge, takes the Worker out of its slot. The next `take-plan` then refuses with "not a slot", and `{{git.mainBranch}}` is the Planner's checkout.
+
+**What to do instead:** In a slot, run `gh pr merge {n} --merge`, then `git push origin --delete <branch>` and `git fetch origin --prune`, and stay on the branch. The next `take plan NNN` in the same slot releases the merged branch and claims the new plan (`docs/agent/standards-git.md` → "Merging from a slot").

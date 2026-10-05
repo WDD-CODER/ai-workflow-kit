@@ -60,9 +60,10 @@ Dirty-tree merge fallback (same as `/ship`): if `gh pr merge --merge --delete-br
 ```bash
 gh pr merge {n} --merge
 git push origin --delete <branch>
+git fetch origin --prune
 ```
 
-Stay on the branch, in the slot. Do not `cd` to the main folder and do not check out `{{git.mainBranch}}`. Next job: the Human runs `/clear`, then `take plan NNN` in the same slot — `take-plan.mjs` fetches, releases the merged branch, claims the new plan and keeps the slot's dev servers running.
+The fetch matters: `gh` merges on GitHub, so without it `origin/{{git.mainBranch}}` is one commit behind. Stay on the branch, in the slot. Do not `cd` to the main folder and do not check out `{{git.mainBranch}}`. Next job: the Human runs `/clear`, then `take plan NNN` in the same slot — `take-plan.mjs` fetches, releases the merged branch, claims the new plan and keeps the slot's dev servers running.
 
 ### Brain capture — auto-write with opt-out
 

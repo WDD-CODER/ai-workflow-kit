@@ -3,8 +3,8 @@
  * handoff-check.sh and write-session-state.mjs, so all three resolve the same
  * path the same way. See plans/326-planner-worker-workflow.plan.md.
  *
- * Order: SESSION_STATE_PATH env -> .claude/.session-state-path pointer ->
- * docs/session-state-<branch>.md. Falls back to docs/session-state.md only
+ * Order: SESSION_STATE_PATH env -> .claude/.session-state-path pointer (ignored
+ * when it names another branch's file) -> docs/session-state-<branch>.md. Falls back to docs/session-state.md only
  * when not in a slot and HEAD is detached. In a slot with no branch (idle,
  * detached at origin/main), prints the literal NONE — an explicit result,
  * not an empty string.
@@ -37,12 +37,16 @@ function sanitizeBranch(branch) {
 export function resolveSessionStatePath() {
   if (process.env.SESSION_STATE_PATH) return process.env.SESSION_STATE_PATH
 
+  const branch = git(['branch', '--show-current'])
+
   if (existsSync(POINTER_PATH)) {
     const pointed = readFileSync(POINTER_PATH, 'utf8').replace(/\r?\n+$/, '').trim()
-    if (pointed) return pointed
+    // A pointer left by an earlier branch (a slot moves from plan to plan) must not redirect this branch's notes.
+    const pointedBranch = (pointed.match(/session-state-(.+)\.md$/) || [])[1]
+    const stale = branch && pointedBranch && pointedBranch !== sanitizeBranch(branch)
+    if (pointed && !stale) return pointed
   }
 
-  const branch = git(['branch', '--show-current'])
   if (branch) return `docs/session-state-${sanitizeBranch(branch)}.md`
 
   return isSlot() ? 'NONE' : 'docs/session-state.md'

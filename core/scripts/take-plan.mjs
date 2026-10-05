@@ -11,7 +11,10 @@
  * so a refusal never leaves a half-claimed slot. A failure after the claim
  * (prepare step, server start) is resumable: re-run with the same NNN.
  *
- * Never deletes uncommitted work and never force-switches. This slot's own
+ * Never deletes uncommitted work and never force-switches. A branch is treated
+ * as merged when it is an ancestor of {{git.mainBranch}} or its GitHub PR was merged
+ * (squash merges included) with nothing added since; only then is it deleted
+ * (with its old remote branch, so the fresh branch can be pushed). This slot's own
  * servers keep running from plan to plan (they reload as files change) and are
  * restarted only when an npm install ran. Unrecorded leftover dev servers on the
  * slot's reserved ports are stopped; any other program there is refused.
@@ -59,6 +62,24 @@ function isAncestorOfMain(ref) {
     return true
   } catch {
     return false
+  }
+}
+
+// gh and pushes use the stored login: a limited GITHUB_TOKEN in the env would shadow it.
+const ghEnv = { ...process.env }
+delete ghEnv.GITHUB_TOKEN
+
+/**
+ * PR number when the branch's work was merged on GitHub with nothing added since, else null. A squash
+ * merge is never an ancestor of {{git.mainBranch}}, so this is the only reliable signal. null when gh is missing or offline.
+ */
+function mergedPrFor(branch) {
+  try {
+    const out = execFileSync('gh', ['pr', 'list', '--head', branch, '--state', 'merged', '--json', 'number,headRefOid', '--limit', '1'], { cwd: repoRoot, encoding: 'utf8', env: ghEnv, stdio: ['ignore', 'pipe', 'ignore'] })
+    const [pr] = JSON.parse(out || '[]')
+    return pr && pr.headRefOid === tryGit(['rev-parse', branch]) ? pr.number : null
+  } catch {
+    return null
   }
 }
 
@@ -218,7 +239,8 @@ const resuming = currentBranch === branchName
 const holder = listSlots().find((s) => s.branch === branchName && s.slot !== n)
 if (holder) fail(`plan ${nnn} is already taken by wt-${holder.slot} (branch ${branchName}) - pick another plan. Nothing was changed.`)
 const leftover = !resuming && Boolean(tryGit(['rev-parse', '--verify', '--quiet', `refs/heads/${branchName}`]))
-const leftoverMerged = leftover && isAncestorOfMain(branchName)
+const leftoverPr = leftover && !isAncestorOfMain(branchName) ? mergedPrFor(branchName) : null
+const leftoverMerged = leftover && (Boolean(leftoverPr) || isAncestorOfMain(branchName))
 if (leftoverMerged) {
   const st = atomicStats(remotePlanText)
   if (st.done > 0 && st.open === 0) fail(`plan ${nnn} is already done (all sub-tasks [x] on {{git.mainBranch}}, branch ${branchName} merged) - pick another plan. Nothing was changed.`)
@@ -226,17 +248,19 @@ if (leftoverMerged) {
 
 if (resuming) {
   console.log(`TAKE_PLAN: resuming ${branchName} (already claimed in this slot)`)
-} else if (currentBranch && currentBranch.startsWith('feat/')) {
+} else if (currentBranch) {
   const merged = isAncestorOfMain(currentBranch)
-  // A squash merge is never an ancestor; its deleted remote branch is the signal. Keep the local branch then.
-  const upstreamGone = !merged && tryGit(['for-each-ref', '--format=%(upstream:track)', `refs/heads/${currentBranch}`]) === '[gone]'
-  if (merged || upstreamGone) {
+  const pr = merged ? null : mergedPrFor(currentBranch)
+  // A squash merge is never an ancestor; a merged PR or a deleted remote branch is the signal.
+  const upstreamGone = !merged && !pr && tryGit(['for-each-ref', '--format=%(upstream:track)', `refs/heads/${currentBranch}`]) === '[gone]'
+  if (merged || pr || upstreamGone) {
     // The slot's own servers keep running: they reload as the branch's files change (restarted below only when deps changed).
     git(['switch', '--detach', 'origin/{{git.mainBranch}}'])
-    if (merged) git(['branch', '-D', currentBranch])
+    if (merged || pr) git(['branch', '-D', currentBranch])
     if (existsSync(worktreePlanPath)) unlinkSync(worktreePlanPath)
     // An ancestor of main is merged work or an unused branch (no commits of its own) - the script cannot tell which.
-    console.log(`TAKE_PLAN: released ${currentBranch} (${merged ? 'no commits outside {{git.mainBranch}}: merged or unused' : 'remote branch deleted, local branch kept'}) - slot wt-${n} now idle`)
+    const why = pr ? `merged in PR #${pr}` : merged ? 'no commits outside {{git.mainBranch}}: merged or unused' : 'remote branch deleted, local branch kept'
+    console.log(`TAKE_PLAN: released ${currentBranch} (${why}) - slot wt-${n} now idle`)
   } else {
     const heldPlan = existsSync(worktreePlanPath)
       ? readFileSync(worktreePlanPath, 'utf8').replace(/\r?\n+$/, '').trim()
@@ -270,6 +294,19 @@ if (!resuming) {
     console.log(`TAKE_PLAN: reusing existing branch ${branchName} (it has commits not on {{git.mainBranch}})`)
   } else {
     if (leftoverMerged) git(['branch', '-D', branchName]) // stale: nothing on it that main lacks
+    if (leftoverPr) {
+      // The old remote branch would reject the fresh branch's push. GitHub keeps it restorable from the merged PR.
+      let note = 'starting fresh'
+      if (tryGit(['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branchName}`])) {
+        try {
+          execFileSync('git', ['push', 'origin', '--delete', branchName], { cwd: repoRoot, env: ghEnv, stdio: 'ignore' })
+          note = 'deleted its old remote branch, starting fresh'
+        } catch {
+          note = `starting fresh; its old remote branch is still there - delete it (git push origin --delete ${branchName}) before pushing`
+        }
+      }
+      console.log(`TAKE_PLAN: ${branchName} was merged in PR #${leftoverPr} - ${note}`)
+    }
     git(['switch', '-c', branchName, 'origin/{{git.mainBranch}}'])
   }
   updateStatusActive(planAbs)
@@ -278,6 +315,9 @@ if (!resuming) {
   if (tryGit(['diff', '--cached', '--name-only'])) git(['commit', '-m', `chore(plan ${nnn}): mark active in wt-${n}`])
 }
 writeFileSync(worktreePlanPath, `${match}\n`)
+// The session-state pointer belongs to the previous plan's branch; the next session start writes a fresh one.
+const statePointer = join(repoRoot, '.claude', '.session-state-path')
+if (existsSync(statePointer)) unlinkSync(statePointer)
 
 // --- (f) npm install only if the lockfile changed -----------------------------
 const rootInstalled = npmInstallIfChanged(repoRoot, '.last-npm-install-hash')
@@ -349,7 +389,7 @@ for (const [label, port, logPath] of started) {
   pids.push(owner) // the real port owner, so a later run recognises it even if the launcher shell is gone
 }
 writeSlotPids(pids)
-if (started.length) console.log(`TAKE_PLAN: servers listening: ${started.map(([l, p]) => `${l}=${p}`).join(' ')}`)
+if (halves.length) console.log(`TAKE_PLAN: servers: ${halves.map(([l, p]) => `${l}=${p} ${running.has(l) ? 'kept' : 'started'}`).join(', ')}`)
 
 // --- (i) isolated DB seed (advisory, best-effort) -----------------------------
 let dbLabel = 'shared'
