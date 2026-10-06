@@ -5,7 +5,8 @@
  * after a Worker's branch merges. See plans/326-planner-worker-workflow.plan.md.
  *
  * Usage:
- *   node scripts/free-merged-slots.mjs
+ *   node scripts/free-merged-slots.mjs             # fetch first
+ *   node scripts/free-merged-slots.mjs --no-fetch  # local refs only (session start: fast, no network)
  */
 import { existsSync, rmSync } from 'fs'
 import { execFileSync } from 'child_process'
@@ -47,7 +48,7 @@ function isClean(path) {
 }
 
 function main() {
-  git(['fetch', 'origin', '--prune'])
+  if (!process.argv.includes('--no-fetch')) git(['fetch', 'origin', '--prune'])
 
   const slots = listSlots()
   if (!slots.length) {

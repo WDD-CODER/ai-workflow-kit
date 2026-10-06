@@ -35,7 +35,8 @@ review docs allow a direct push to `main` — restricted to `plans/*.plan.md` an
 
 1. Main must be clean and on `main`: `git status --porcelain` empty, `git branch
    --show-current` = `main`. Otherwise STOP and ask the Human. Then `git pull --ff-only`.
-2. Run `node scripts/todo-query.mjs sync --merged`, then `node scripts/todo-archive.mjs`,
+2. Run `node scripts/todo-query.mjs sync --merged`, then `node scripts/todo-archive.mjs` (the todo-sync
+   Action already does both after every merge; running them again is a no-op),
    then `node scripts/free-merged-slots.mjs` (detaches any `{{slots.nameFormat}}` whose branch already
    merged into `origin/{{git.mainBranch}}` back to idle), then `node scripts/lib/slot.mjs --list` to see
    current slot occupancy.

@@ -42,6 +42,7 @@ Show all registered slash commands with short descriptions and file locations.
 | `/fix` | Bug fix path — matching rules + elegant-fix | `.claude/commands/fix.md` | FLOW | SHARED |
 | `/fix-pr-checks` | Bounded PR CI/security fix loop (2 rounds max) | `.claude/commands/fix-pr-checks.md` | FLOW | SHARED |
 | `/plan` | Planning / Plan Contract path | `.claude/commands/plan.md` | FLOW | SHARED |
+| `/workflow-report` | Workflow report (not the feature) before `/clear` — feeds the next kit round | `.claude/commands/workflow-report.md` | UTIL | SHARED |
 | `/refactor` | Refactor path — {{stack.name}}/domain rules, cssLayer, techdebt | `.claude/commands/refactor.md` | FLOW | SHARED |
 | `/review-it` | Reviewer pass — plan-match, conventions, Verify; report-only by default | `.claude/commands/review-it.md` | FLOW | CC |
 | `/security` | Security path — security rules + pre-commit security grep + CI | `.claude/commands/security.md` | FLOW | SHARED |

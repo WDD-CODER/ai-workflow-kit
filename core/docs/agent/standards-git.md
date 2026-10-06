@@ -61,9 +61,10 @@ Dirty-tree merge fallback (same as `/ship`): if `gh pr merge --merge --delete-br
 gh pr merge {n} --merge
 git push origin --delete <branch>
 git fetch origin --prune
+node scripts/free-merged-slots.mjs
 ```
 
-The fetch matters: `gh` merges on GitHub, so without it `origin/{{git.mainBranch}}` is one commit behind. Stay on the branch, in the slot. Do not `cd` to the main folder and do not check out `{{git.mainBranch}}`. Next job: the Human runs `/clear`, then `take plan NNN` in the same slot — `take-plan.mjs` fetches, releases the merged branch, claims the new plan and keeps the slot's dev servers running.
+The fetch matters: `gh` merges on GitHub, so without it `origin/{{git.mainBranch}}` is one commit behind. The last line frees the slot: it detaches to `origin/{{git.mainBranch}}` (idle) and clears `.worktree-plan`, so a later "pull {{git.mainBranch}}" cannot fast-forward the merged branch. Stay in the slot folder. Do not `cd` to the main folder and do not check out `{{git.mainBranch}}`. Next job: the Human runs `/clear`, then `take plan NNN` in the same slot — `take-plan.mjs` fetches, releases the merged branch, claims the new plan and keeps the slot's dev servers running.
 
 ### Brain capture — auto-write with opt-out
 

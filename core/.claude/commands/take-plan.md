@@ -44,4 +44,4 @@ Read anything in the repo; only write inside the plan's `## Read-Write Scope` (e
 Human for anything outside scope — see `AGENTS.md`'s Planner-Worker bullet.
 
 Done means: mark `[x]` in the plan file's own Atomic Sub-tasks. Never edit `.claude/todo.md`;
-the Planner's `todo-query.mjs sync --merged` copies your marks there after the merge.
+the todo-sync Action (`.github/workflows/todo-sync.yml`) copies your marks there after the merge.

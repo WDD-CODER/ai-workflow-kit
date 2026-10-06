@@ -15,7 +15,24 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # --- Planner-Worker slot role (no auto-claim) ---
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# A slot whose branch already merged is freed before the role check, so it starts idle; the
+# Planner folder frees finished slots too. An idle slot skips it (nothing to free). Local refs only:
+# a fetch can outlast the hook's timeout, and the slot merge step already fetched.
+if [[ -f "$REPO_ROOT/.worktree-plan" || ! -f "$REPO_ROOT/.worktree-port" ]]; then
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 5 node "$SCRIPT_DIR/free-merged-slots.mjs" --no-fetch >/dev/null 2>&1 || true
+  fi
+fi
+
 DESCRIBE=$(node "$SCRIPT_DIR/lib/slot.mjs" --describe 2>/dev/null)
+
+# The Planner folder stays on {{git.mainBranch}}: every session open in that folder shares its branch.
+PLANNER_BRANCH=$(git -C "$REPO_ROOT" branch --show-current 2>/dev/null)
+if [[ "$DESCRIBE" == PLANNER:* && -n "$PLANNER_BRANCH" && "$PLANNER_BRANCH" != "{{git.mainBranch}}" ]]; then
+  DESCRIBE="$DESCRIBE WARNING: the Planner folder is on $PLANNER_BRANCH, not {{git.mainBranch}}, and every session in this folder is on it too. Tell the Human before doing anything else."
+fi
 
 if [[ "$DESCRIBE" == IDLE\ SLOT:* ]]; then
   cat <<EOF

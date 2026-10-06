@@ -79,6 +79,28 @@ fi
 
 NORM=$(printf '%s' "$FILE_PATH" | tr '\\' '/')
 
+# A file in another worktree (a slot edited from the Planner session, or the reverse) is judged by
+# that worktree's own guard: its plan scope, not this folder's.
+TARGET_DIR=$(dirname "$NORM")
+while [[ -n "$TARGET_DIR" && ! -d "$TARGET_DIR" && "$(dirname "$TARGET_DIR")" != "$TARGET_DIR" ]]; do TARGET_DIR=$(dirname "$TARGET_DIR"); done
+TARGET_ROOT=$(git -C "$TARGET_DIR" rev-parse --show-toplevel 2>/dev/null)
+THIS_ROOT=$(git -C "$REPO" rev-parse --show-toplevel 2>/dev/null)
+# Only a worktree of this same repository (same git common dir): never run another repo's script.
+SAME_REPO=0
+if [[ -n "$TARGET_ROOT" && -n "$THIS_ROOT" && "$TARGET_ROOT" != "$THIS_ROOT" ]]; then
+  [[ "$(cd "$TARGET_ROOT" && cd "$(git rev-parse --git-common-dir)" && pwd)" == "$(cd "$REPO" && cd "$(git rev-parse --git-common-dir)" && pwd)" ]] && SAME_REPO=1
+fi
+if [[ "$SAME_REPO" -eq 1 && -f "$TARGET_ROOT/scripts/scope-guard.sh" ]]; then
+  printf '%s' "$INPUT" | bash "$TARGET_ROOT/scripts/scope-guard.sh"
+  exit 0
+fi
+# Outside this worktree and not a sibling worktree (e.g. the kit repo): plan scope governs this repo only.
+NORM_LC=$(printf '%s' "$NORM" | tr '[:upper:]' '[:lower:]')
+ROOT_LC=$(printf '%s' "$THIS_ROOT" | tr '[:upper:]' '[:lower:]')
+if [[ -n "$ROOT_LC" && "$NORM_LC" == /* || -n "$ROOT_LC" && "$NORM_LC" == ?:/* ]]; then
+  [[ "$NORM_LC" == "$ROOT_LC"/* ]] || json_allow ""
+fi
+
 # Kit-owned workflow files (ADR 0015 phase 5): the kit repo is their source of truth. Fails open if the checker is absent.
 if [[ -f "$REPO/scripts/kit-owned.mjs" ]]; then
   KIT_OUT=$(node "$REPO/scripts/kit-owned.mjs" --file="$NORM" 2>&1)

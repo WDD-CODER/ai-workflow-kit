@@ -17,7 +17,7 @@
  */
 import { readFileSync, existsSync, readdirSync } from 'fs'
 import { execFileSync } from 'child_process'
-import { resolve, dirname, join } from 'path'
+import { resolve, dirname, join, relative, isAbsolute } from 'path'
 import { fileURLToPath } from 'url'
 import picomatch from 'picomatch'
 import { activePlanPath } from './lib/slot.mjs'
@@ -95,6 +95,7 @@ function buildMatcher(planPath) {
     `docs/session-state-${branch}.md`,
     '.claude/sessions/**',
     '.worktree-*',
+    'docs/brain/**', // the merge gate's brain capture appends here
     ...HOTSPOTS
   ]
 
@@ -122,7 +123,9 @@ function changedFiles(base) {
 function cmdFile(args) {
   const planPath = resolvePlanPath(args)
   const { isMatch } = buildMatcher(planPath)
-  const file = normalize(args.file)
+  // Hooks pass absolute paths (C:\...\file); scope globs are repo-relative.
+  const raw = normalize(args.file)
+  const file = isAbsolute(raw) ? normalize(relative(repoRoot, raw)) : raw
 
   if (isMatch(file)) {
     console.log(`SCOPE: ok ${file}`)

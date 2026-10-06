@@ -223,8 +223,10 @@ prereqs.delete(nnn)
 if (!process.argv.includes('--ignore-order')) {
   for (const p of prereqs) {
     const file = mainPlans.find((f) => f.startsWith(`plans/${p}-`) && f.endsWith('.plan.md'))
-    if (!file) continue // unknown plan number - nothing to judge
-    const st = atomicStats(tryGit(['show', `origin/{{git.mainBranch}}:${file}`]))
+    if (!file) continue // unknown or archived plan number - nothing to judge
+    const prereqText = tryGit(['show', `origin/{{git.mainBranch}}:${file}`])
+    if (/^Status:\s*(superseded|done|closed|complete|abandoned)\b/im.test(prereqText)) continue // finished another way
+    const st = atomicStats(prereqText)
     if (st.open > 0) {
       fail(`plan ${nnn} must run after plan ${p}, which still has ${st.open} open sub-task(s) on {{git.mainBranch}} (${file}). Take another plan, or re-run with --ignore-order if the Human says so. Nothing was changed.`)
     }

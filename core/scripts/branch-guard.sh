@@ -77,6 +77,20 @@ PY
   )
   INSIDE_REPO="${READ_RESULT%%|*}"
   if [[ "$INSIDE_REPO" == "0" ]]; then
+    # The file lives in another worktree (a slot, or the Planner folder): that worktree's own
+    # guard decides, so a session never borrows the wrong folder's rules.
+    TARGET_DIR=$(dirname "$NORM")
+    while [[ -n "$TARGET_DIR" && ! -d "$TARGET_DIR" && "$(dirname "$TARGET_DIR")" != "$TARGET_DIR" ]]; do TARGET_DIR=$(dirname "$TARGET_DIR"); done
+    TARGET_ROOT=$(git -C "$TARGET_DIR" rev-parse --show-toplevel 2>/dev/null)
+    # Only a worktree of this same repository (same git common dir): never run another repo's script.
+    SAME_REPO=0
+    if [[ -n "$TARGET_ROOT" ]]; then
+      [[ "$(cd "$TARGET_ROOT" && cd "$(git rev-parse --git-common-dir)" && pwd)" == "$(cd "$REPO" && cd "$(git rev-parse --git-common-dir)" && pwd)" ]] && SAME_REPO=1
+    fi
+    if [[ "$SAME_REPO" -eq 1 && -f "$TARGET_ROOT/scripts/branch-guard.sh" ]]; then
+      printf '%s' "$INPUT" | bash "$TARGET_ROOT/scripts/branch-guard.sh"
+      exit 0
+    fi
     printf '{"permission":"allow","agent_message":"BRANCH_GUARD: %s is outside this worktree - no branch action taken."}\n' "$NORM"
     exit 0
   fi
@@ -89,6 +103,16 @@ MSG=""
 if [[ "$CURRENT" == "{{git.mainBranch}}" || "$CURRENT" == "master" ]]; then
   if [[ "$REL_PATH" =~ ^plans/[^/]+\.plan\.md$ ]] || [[ "$REL_PATH" == ".claude/todo.md" ]]; then
     printf '{"permission":"allow","agent_message":"BRANCH_GUARD: Planner admin bypass - %s stays on main."}\n' "$REL_PATH"
+    exit 0
+  fi
+
+  # The Planner folder (no .worktree-port) never leaves {{git.mainBranch}} on its own: every session open
+  # in it would follow the switch. Code goes through a slot, or a branch the Human asked for.
+  if [[ ! -f "$REPO/.worktree-port" ]]; then
+    DENY="BRANCH_GUARD: the Planner folder stays on {{git.mainBranch}} - only plans/*.plan.md and .claude/todo.md are written here. Do code work in a {{slots.nameFormat}} slot (take-plan). If the Human explicitly wants it done in this folder, create the branch first (git switch -c <type>/<slug>) and tell them every session in this folder moves with it."
+    DENY_ESC=$(printf '%s' "$DENY" | python -c 'import json,sys; print(json.dumps(sys.stdin.read()))' 2>/dev/null)
+    [[ -z "$DENY_ESC" ]] && DENY_ESC="\"BRANCH_GUARD: the Planner folder stays on {{git.mainBranch}}\""
+    printf '{"permission":"deny","agent_message":%s,"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":%s}}\n' "$DENY_ESC" "$DENY_ESC"
     exit 0
   fi
 

@@ -1,0 +1,61 @@
+name: todo-sync
+
+# Workers tick [x] in their own plan file (they never write .claude/todo.md — parallel
+# Workers would conflict on it). Once their PR merges, this copies those ticks into the
+# ledger and archives fully-done sections. main requires a PR, so the bot opens one and
+# squash-merges it. Needs repo setting: Actions → "Allow GitHub Actions to create and
+# approve pull requests". A merge made with GITHUB_TOKEN does not re-trigger workflows,
+# so this cannot loop.
+
+on:
+  push:
+    branches: [{{git.mainBranch}}]
+    paths:
+      - 'plans/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: todo-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Sync plan checkboxes into the ledger
+        run: |
+          node scripts/todo-query.mjs sync --merged
+          node scripts/todo-archive.mjs
+
+      - name: Open and merge a ledger PR when something changed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain -- .claude/todo.md .claude/todo-archive)" ]; then
+            echo 'Ledger already in sync.'
+            exit 0
+          fi
+          branch="chore/todo-sync-${GITHUB_SHA::8}"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -c "$branch"
+          git add .claude/todo.md .claude/todo-archive
+          git commit -m "chore(todo): sync ledger from merged plan files (${GITHUB_SHA::8})"
+          git push origin "$branch"
+          gh pr create --base {{git.mainBranch}} --head "$branch" \
+            --title "chore(todo): sync ledger from merged plan files" \
+            --body "Automatic: copies Worker [x] marks from plans/*.plan.md into .claude/todo.md (todo-sync workflow, triggered by ${GITHUB_SHA::8})."
+          gh pr merge "$branch" --squash --delete-branch

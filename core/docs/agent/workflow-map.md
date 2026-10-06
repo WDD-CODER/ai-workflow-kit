@@ -156,7 +156,7 @@ has no PreToolUse hook of its own.
 | `session-state-path.mjs` | `session-startup.sh`, `handoff-check.sh`, `write-session-state.mjs` — one resolver, no duplicated logic |
 | `scope-check.mjs` | `scope-guard.sh` (`--file`), `ship-prep.mjs` (`--diff`), the Planner protocol (`--overlap`), `take-plan.mjs` + `take-plan.md` (`--drift`) |
 | `take-plan.mjs` | "execute plan NNN" / "take plan NNN" (`.claude/commands/take-plan.md`) |
-| `todo-query.mjs sync --plan NNN` / `sync --merged` | the Planner protocol (`.claude/commands/plan.md`), after a `feat/NNN-*` branch merges |
+| `todo-query.mjs sync --plan NNN` / `sync --merged` | the todo-sync Action (`.github/workflows/todo-sync.yml`) on every push to {{git.mainBranch}} touching `plans/**`; the Planner protocol (`.claude/commands/plan.md`) re-runs it as a no-op |
 | `free-merged-slots.mjs` | the Planner protocol (`.claude/commands/plan.md`), step 2 — detaches a `{{slots.nameFormat}}` back to idle once its branch merges into `origin/{{git.mainBranch}}` |
 
 
