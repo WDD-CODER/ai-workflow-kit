@@ -5,7 +5,8 @@ name: todo-sync
 # ledger and archives fully-done sections. main requires a PR, so the bot opens one and
 # squash-merges it. Needs repo setting: Actions → "Allow GitHub Actions to create and
 # approve pull requests". A merge made with GITHUB_TOKEN does not re-trigger workflows,
-# so this cannot loop.
+# so this cannot loop. Merge right away — never wait on the PR's checks: runs on a
+# GITHUB_TOKEN PR end as "action_required", so a wait never finishes.
 
 on:
   push:
