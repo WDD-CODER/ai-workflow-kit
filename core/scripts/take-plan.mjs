@@ -92,6 +92,16 @@ function isDirty() {
     .length > 0
 }
 
+// On Windows a detached process started through cmd.exe (shell: true) loses its stdio handles, so the
+// slot logs stayed empty. Run npm's own CLI under node directly instead; npm.cmd + shell is the fallback.
+const NPM_CLI = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js')
+
+function spawnNpm(args, opts) {
+  const base = { ...opts, detached: true, windowsHide: true }
+  if (isWin && existsSync(NPM_CLI)) return spawn(process.execPath, [NPM_CLI, ...args], base)
+  return spawn(isWin ? 'npm.cmd' : 'npm', args, { ...base, shell: isWin })
+}
+
 function npmInstallIfChanged(dir, hashFileName) {
   const lockPath = join(dir, 'package-lock.json')
   if (!existsSync(lockPath)) return false
@@ -236,6 +246,11 @@ const prereqs = new Set()
 for (const m of remotePlanText.matchAll(/\b(?:must\s+)?runs?\s+after\s+plans?\s+#?(\d{1,3})\b|\buntil\s+(?:plan\s+)?#?(\d{1,3})\s+(?:is\s+)?(?:done|merged|shipped|complete)/gi)) {
   prereqs.add((m[1] || m[2]).padStart(3, '0'))
 }
+// "Prerequisite: plan 386 merged" / "Prerequisites: plans 385, 386 (…)": every plan number before the first ( — . or ;
+for (const m of remotePlanText.matchAll(/^\s*[-*]?\s*\**Prerequisites?\**:\**\s*([^\n(—.;]*)/gim)) {
+  if (!/\bplans?\b/i.test(m[1])) continue
+  for (const d of m[1].matchAll(/#?\b(\d{1,3})\b/g)) prereqs.add(d[1].padStart(3, '0'))
+}
 prereqs.delete(nnn)
 if (!process.argv.includes('--ignore-order')) {
   for (const p of prereqs) {
@@ -379,20 +394,9 @@ for (const [label, port] of halves) {
     if (isIsolatedDb(planText) && process.env.MONGO_LOCAL_URI) {
       env.MONGO_LOCAL_URI = withDbName(process.env.MONGO_LOCAL_URI, `{{slots.dbNameFormat}}`)
     }
-    child = spawn(isWin ? 'npm.cmd' : 'npm', ['run', 'dev:local'], {
-      cwd: join(repoRoot, 'server'),
-      shell: isWin,
-      env,
-      detached: true,
-      stdio: ['ignore', logFd, logFd]
-    })
+    child = spawnNpm(['run', 'dev:local'], { cwd: join(repoRoot, 'server'), env, stdio: ['ignore', logFd, logFd] })
   } else {
-    child = spawn(isWin ? 'npx.cmd' : 'npx', ['ng', 'serve', '-c', 'slot', '--port', String(fePort)], {
-      cwd: repoRoot,
-      shell: isWin,
-      detached: true,
-      stdio: ['ignore', logFd, logFd]
-    })
+    child = spawnNpm(['exec', '--', 'ng', 'serve', '-c', 'slot', '--port', String(fePort)], { cwd: repoRoot, stdio: ['ignore', logFd, logFd] })
   }
   child.unref()
   pids.push(child.pid)

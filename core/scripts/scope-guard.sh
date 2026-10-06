@@ -26,11 +26,13 @@ json_deny() {
   local escaped
   escaped=$(printf '%s' "$msg" | python -c 'import json,sys; print(json.dumps(sys.stdin.read()))' 2>/dev/null)
   [[ -z "$escaped" ]] && escaped="\"SCOPE_GUARD: denied - out of Read-Write Scope\""
-  printf '{"permission":"deny","agent_message":%s}\n' "$escaped"
+  # Both formats: Cursor reads "permission", Claude Code reads hookSpecificOutput (it ignores the Cursor form).
+  printf '{"permission":"deny","agent_message":%s,"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":%s}}\n' "$escaped" "$escaped"
   exit 0
 }
 
-# Plan scope applies only in a slot with an active plan; the kit-owned check below applies everywhere.
+# Plan scope applies only in a slot with an active plan; the kit-owned check applies everywhere else
+# (and in a slot to files the plan's scope doesn't cover).
 IN_SLOT=1
 [[ -f "$REPO/.worktree-port" && -f "$REPO/.worktree-plan" ]] || IN_SLOT=0
 
@@ -102,24 +104,35 @@ if [[ -n "$ROOT_LC" && "$NORM_LC" == /* || -n "$ROOT_LC" && "$NORM_LC" == ?:/* ]
 fi
 
 # Kit-owned workflow files (ADR 0015 phase 5): the kit repo is their source of truth. Fails open if the checker is absent.
+KIT_OUT=""
+KIT_OWNED=0
 if [[ -f "$REPO/scripts/kit-owned.mjs" ]]; then
   KIT_OUT=$(node "$REPO/scripts/kit-owned.mjs" --file="$NORM" 2>&1)
-  if printf '%s' "$KIT_OUT" | grep -q '^KIT_OWNED: yes'; then
-    # Both formats: Cursor reads "permission", Claude Code reads hookSpecificOutput (it ignores the Cursor form).
-    KIT_ESC=$(printf '%s' "$KIT_OUT" | python -c 'import json,sys; print(json.dumps(sys.stdin.read()))' 2>/dev/null)
-    [[ -z "$KIT_ESC" ]] && KIT_ESC='"KIT_OWNED: yes - owned by the workflow kit"'
-    printf '{"permission":"deny","agent_message":%s,"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":%s}}\n' "$KIT_ESC" "$KIT_ESC"
-    exit 0
-  fi
+  printf '%s' "$KIT_OUT" | grep -q '^KIT_OWNED: yes' && KIT_OWNED=1
 fi
 
-# Plan scope applies only in a slot with an active plan.
-[[ "$IN_SLOT" -eq 1 ]] || json_allow ""
+kit_deny() {
+  # Both formats: Cursor reads "permission", Claude Code reads hookSpecificOutput (it ignores the Cursor form).
+  local esc
+  esc=$(printf '%s' "$KIT_OUT" | python -c 'import json,sys; print(json.dumps(sys.stdin.read()))' 2>/dev/null)
+  [[ -z "$esc" ]] && esc='"KIT_OWNED: yes - owned by the workflow kit"'
+  printf '{"permission":"deny","agent_message":%s,"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":%s}}
+' "$esc" "$esc"
+  exit 0
+}
 
+# Outside a slot with an active plan (the Planner folder, an idle slot): kit-owned files stay blocked.
+if [[ "$IN_SLOT" -eq 0 ]]; then
+  [[ "$KIT_OWNED" -eq 1 ]] && kit_deny
+  json_allow ""
+fi
+
+# In a slot the plan's Read-Write Scope decides: a kit-owned file the plan lists was approved with the plan.
 OUT=$(node "$REPO/scripts/scope-check.mjs" --file="$NORM" 2>&1)
 STATUS=$?
 
 if [[ "$STATUS" -eq 0 ]]; then
+  [[ "$KIT_OWNED" -eq 1 ]] && json_allow "SCOPE_GUARD: $NORM is kit-owned but in this plan's scope - allowed. Back-port the change to the workflow kit at /ship."
   json_allow ""
 fi
 
@@ -127,4 +140,5 @@ if printf '%s' "$OUT" | grep -q '^SCOPE: out'; then
   json_deny "SCOPE_GUARD: $NORM is outside this plan's Read-Write Scope. Reading is fine; writing is not. STOP and tell the Human: file, exact change, why it can't be done in-scope. Wait for \"approved: $NORM\", then append the path to the plan's scope block and retry."
 fi
 
+[[ "$KIT_OWNED" -eq 1 ]] && kit_deny
 json_allow "SCOPE_GUARD: check failed ($OUT) - /ship scope gate will verify"

@@ -39,7 +39,9 @@ Triggers: "execute plan NNN", "take plan NNN" (only meaningful inside a {{slots.
    - **`REALITY: clean`** → read the plan (`plans/NNN-*.plan.md`) and start executing its
      milestones. No reality-check report needed.
    - **`REALITY: drift`** → run the plan's own "Step 0 — Reality Check" against exactly the
-     commits listed (nothing more), then **STOP for a go** before touching any milestone.
+     commits listed (nothing more). Print one line per commit: `ok` or `conflict: <what>`. All `ok`
+     → start executing, no go needed. **STOP for a go** only on a `conflict` (a symbol, line or
+     file the plan names was removed, renamed or rewritten).
 
 Read anything in the repo; only write inside the plan's `## Read-Write Scope` (enforced by
 `scripts/scope-guard.sh` and, at `/ship` time, `scripts/ship-prep.mjs`). Escalate to the

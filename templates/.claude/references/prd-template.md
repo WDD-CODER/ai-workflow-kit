@@ -51,8 +51,9 @@ in chat first — never write `Arch-approved:` without it.
 ## Step 0 — Reality Check
 
 Runs only when `scope-check.mjs --drift` reports `REALITY: drift`. Check the listed commits
-by symbol (do not re-run the whole reality check from scratch), then STOP for a go before
-touching any milestone.
+by symbol (do not re-run the whole reality check from scratch) and print one line per commit:
+`ok` or `conflict: <what>`. All `ok` → continue. STOP for a go only on a `conflict` (a symbol,
+line or file this plan names was removed, renamed or rewritten).
 
 ## User Stories
 - As a [user], I want [goal] so that [benefit]

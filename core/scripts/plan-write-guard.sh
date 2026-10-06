@@ -45,7 +45,8 @@ json_deny() {
   if [[ -z "$escaped" ]]; then
     escaped="\"Denied: run save-plan / plan-name-similarity first.\""
   fi
-  printf '{"permission":"deny","agent_message":%s}\n' "$escaped"
+  # Both formats: Cursor reads "permission", Claude Code reads hookSpecificOutput (it ignores the Cursor form).
+  printf '{"permission":"deny","agent_message":%s,"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":%s}}\n' "$escaped" "$escaped"
   exit 0
 }
 
