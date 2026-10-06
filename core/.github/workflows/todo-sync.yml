@@ -5,8 +5,9 @@ name: todo-sync
 # ledger and archives fully-done sections. main requires a PR, so the bot opens one and
 # squash-merges it. Needs repo setting: Actions → "Allow GitHub Actions to create and
 # approve pull requests". A merge made with GITHUB_TOKEN does not re-trigger workflows,
-# so this cannot loop. Merge right away — never wait on the PR's checks: runs on a
-# GITHUB_TOKEN PR end as "action_required", so a wait never finishes.
+# so this cannot loop. Merge right away: main has no required checks, ci/security/brain
+# skip the bot's PRs, and runs on a GITHUB_TOKEN PR end as "action_required" — waiting on
+# them never finishes (and `gh pr checks` under pipefail broke the wait loop outright).
 
 on:
   push:
@@ -26,6 +27,7 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:

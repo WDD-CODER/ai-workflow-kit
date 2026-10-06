@@ -9,6 +9,12 @@ on:
 
 jobs:
   security:
+    # The todo-sync bot's ledger PRs only touch .claude/ — nothing to audit. Skip only when the
+    # bot opened the PR from this repo, so naming a branch chore/todo-sync-* can't dodge the audit.
+    if: >
+      !(startsWith(github.head_ref, 'chore/todo-sync-') &&
+      github.event.pull_request.user.login == 'github-actions[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
