@@ -314,15 +314,17 @@ function extractAtomicItems(planText) {
 
   const items = []
   let current = null
+  let stage = null
   const flush = () => {
     if (current) items.push(current)
     current = null
   }
   for (const line of lines.slice(startIdx + 1, endIdx)) {
+    if (/^###/.test(line)) stage = line.match(/\bStage \d+\b/)?.[0] ?? null
     const m = line.match(/^- \[([ xX])\]\s*(.*)$/)
     if (m) {
       flush()
-      current = { done: m[1].toLowerCase() === 'x', text: m[2].trim() }
+      current = { done: m[1].toLowerCase() === 'x', text: m[2].trim(), stage }
     } else if (current && /^\s+\S/.test(line)) {
       current.text += ` ${line.trim()}`
     } else {
@@ -343,19 +345,37 @@ function isArchived(nnn) {
 
 const normalizeItemText = text => text.replace(/\s+/g, ' ').trim()
 
-/** Leading task id of a checkbox item — `A1`, `P2b.3`, `M1`, `Stage 2`, `P3.0–P3.5`. */
+/** Leading task id of a checkbox item — `A1`, `P2b.3`, `M1`, `Stage 2`, `P3.0–P3.5`, `P2a.0–P2a.6`, `P7a–P7f`. */
 function itemId(text) {
-  const m = text.match(/^(Stage \d+|Milestone \d+|[A-Z]\d+[a-z]?(?:\.\d+[a-z]?)?(?:[–-][A-Z]?\d+(?:\.\d+)?[a-z]?)?)(?=[:\s—]|$)/)
+  const m = text.match(/^(Stage \d+|Milestone \d+|[A-Z]\d+[a-z]?(?:\.\d+[a-z]?)?(?:[–-][A-Z]?\d*[a-z]?(?:\.\d+[a-z]?)?)?)(?=[:\s—]|$)/)
   return m ? m[1] : null
+}
+
+/** True when a todo line's id groups the plan item — a range (`P2a.0–P2a.6` holds
+ * `P2a.3` and `P2a.3b`; `P7a–P7f` holds `P7c`) or the plan `### Stage N` it sits under. */
+function idCovers(lineId, item) {
+  if (!lineId) return false
+  if (item.stage && lineId === item.stage) return true
+  const id = itemId(item.text)
+  if (!id) return false
+  const dotted = lineId.match(/^([A-Z]\d+[a-z]?)\.(\d+)[–-](?:\1\.)?(\d+)$/)
+  const sub = id.match(/^([A-Z]\d+[a-z]?)\.(\d+)/)
+  if (dotted && sub) return dotted[1] === sub[1] && +sub[2] >= +dotted[2] && +sub[2] <= +dotted[3]
+  const lettered = lineId.match(/^([A-Z]\d+)([a-z])[–-](?:\1)?([a-z])$/)
+  const letter = id.match(/^([A-Z]\d+)([a-z])$/)
+  if (lettered && letter) return lettered[1] === letter[1] && letter[2] >= lettered[2] && letter[2] <= lettered[3]
+  return false
 }
 
 /** Ticks `[ ]` lines in an existing todo section whose matching plan item is `[x]`.
  * Never unticks and never rewrites a line's text, notes or spacing — the todo
  * section is often hand-curated (shortened text, `>` notes) and may be ahead
  * of the plan file. Match: same text, else the same task id when that id is
- * unique on both sides. */
+ * unique on both sides, else a grouping line (range id or `Stage N`) — ticked
+ * only once every plan item it groups is done. */
 function tickExistingSection(nnn, section, items, lines, eol) {
-  const itemRe = /^- \[([ xX])\]\s*(.*)$/
+  // `[-]` (dropped/folded) lines still account for their plan items but are never ticked
+  const itemRe = /^- \[([ xX-])\]\s*(.*)$/
   const countIds = texts => texts.reduce((acc, t) => {
     const id = itemId(t)
     if (id) acc.set(id, (acc.get(id) ?? 0) + 1)
@@ -368,6 +388,7 @@ function tickExistingSection(nnn, section, items, lines, eol) {
   const doneTexts = new Set(done.map(i => normalizeItemText(i.text)))
   const doneIds = new Set(done.map(i => itemId(i.text)).filter(Boolean))
   const matched = new Set()
+  const covered = new Set()
   let ticked = 0
 
   for (let i = section.start; i < section.end; i++) {
@@ -377,15 +398,17 @@ function tickExistingSection(nnn, section, items, lines, eol) {
     const id = itemId(text)
     const uniqueId = id && planIds.get(id) === 1 && sectionIds.get(id) === 1
     const hit = doneTexts.has(text) ? text : uniqueId && doneIds.has(id) ? id : null
-    if (!hit) continue
-    matched.add(hit)
-    if (m[1] === ' ') {
+    if (hit) matched.add(hit)
+    const grouped = hit ? [] : items.filter(it => idCovers(id, it))
+    grouped.filter(it => it.done).forEach(it => covered.add(it))
+    const groupDone = grouped.length > 0 && grouped.every(it => it.done)
+    if ((hit || groupDone) && m[1] === ' ') {
       lines[i] = lines[i].replace('- [ ]', '- [x]')
       ticked++
     }
   }
 
-  const unmatched = done.filter(i => !matched.has(normalizeItemText(i.text)) && !matched.has(itemId(i.text))).length
+  const unmatched = done.filter(i => !covered.has(i) && !matched.has(normalizeItemText(i.text)) && !matched.has(itemId(i.text))).length
   if (ticked) writeFileSync(TODO_PATH, lines.join(eol), 'utf8')
   const stats = checkboxStats(lines.slice(section.start, section.end).join('\n'))
   return { skipped: false, nnn, done: stats.done, total: stats.done + stats.open, ticked, unmatched }
