@@ -8,12 +8,23 @@
  *   node scripts/scope-check.mjs --diff=<base> [--plan=<path>]
  *   node scripts/scope-check.mjs --overlap --plan=<path>
  *   node scripts/scope-check.mjs --drift [--plan=<path>]
+ *   node scripts/scope-check.mjs --arch --plan=<path>                   (BLOCK)
+ *   node scripts/scope-check.mjs --arch --diff=<base> [--plan=<path>]   (WARN, exit 0)
  *
  * --plan defaults to the active slot's .worktree-plan. Exit 1 on a missing
  * plan / scope block, on --file/--diff finding an out-of-scope file, on
  * --overlap finding a shared glob with another active plan, or on --drift
  * finding an in-scope commit since the plan's Snapshot (or, without one, since
  * the commit that added the plan).
+ *
+ * --arch reads the architecture invariants registry (docs/brain/invariants.md; see
+ * scripts/lib/invariants.mjs). With --plan: exit 1 when the plan's scope touches an
+ * invariant that has no "## Architecture Impact" entry, or a deviation/changes entry
+ * lacks "Arch-approved: Human" or a valid ADR; a plan numbered below "Enforced from plan:"
+ * without the section prints "ARCH: skipped (grandfathered)". With --diff: print
+ * "ARCH: warn …" lines for touched invariants the active plan doesn't cover and for
+ * "Human decision" notes that name no INV-n / ADR; always exit 0. No registry file:
+ * "ARCH: skipped (no registry)", exit 0. --registry=<path> overrides the file (tests).
  */
 import { readFileSync, existsSync, readdirSync } from 'fs'
 import { execFileSync } from 'child_process'
@@ -22,6 +33,7 @@ import { fileURLToPath } from 'url'
 import picomatch from 'picomatch'
 import { activePlanPath } from './lib/slot.mjs'
 import { extractScopeGlobs } from './lib/plan-scope.mjs'
+import { parseInvariants, checkPlanArch, diffArchWarnings, decisionWithoutAdr, parseAddedLines } from './lib/invariants.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(__dirname, '..')
@@ -207,10 +219,66 @@ function cmdDrift(args) {
   process.exit(1)
 }
 
+function readRegistry(args) {
+  const path = normalize(args.registry || 'docs/brain/invariants.md')
+  const abs = isAbsolute(path) ? path : join(repoRoot, path)
+  if (!existsSync(abs)) {
+    if (args.registry) fail(`invariants registry not found: ${path}`)
+    console.log('ARCH: skipped (no registry)')
+    process.exit(0)
+  }
+  return parseInvariants(readFileSync(abs, 'utf8'))
+}
+
+function cmdArchPlan(args) {
+  const planPath = normalize(args.plan)
+  const planText = readPlanFile(planPath)
+  const registry = readRegistry(args)
+  const scopeGlobs = extractScopeGlobs(planText)
+  if (!scopeGlobs) fail(`${planPath} has no readable scope under "## Read-Write Scope" (need a \`\`\`scope block or a **Scope:** list of \`globs\`)`)
+  const { ok, lines } = checkPlanArch({
+    planPath,
+    planText,
+    scopeGlobs,
+    registry,
+    trackedFiles: git(['ls-files']).split('\n').filter(Boolean),
+    adrExists: (p) => existsSync(join(repoRoot, p))
+  })
+  for (const l of lines) (ok ? console.log : console.error)(l)
+  process.exit(ok ? 0 : 1)
+}
+
+// Added lines (with line numbers) in session-state and plan files since the merge base with <base>.
+function addedDecisionLines(base) {
+  const mergeBase = git(['merge-base', base, 'HEAD']) || base
+  const specs = [':(glob)docs/session-state*.md', ':(glob)plans/*.plan.md']
+  const added = parseAddedLines(git(['diff', '-U0', '--no-color', mergeBase, '--', ...specs]))
+  const untracked = git(['ls-files', '--others', '--exclude-standard', '--', ...specs]).split('\n').filter(Boolean)
+  for (const f of untracked) {
+    readFileSync(join(repoRoot, f), 'utf8').split(/\r?\n/).forEach((text, i) => added.push({ file: normalize(f), line: i + 1, text }))
+  }
+  return added
+}
+
+function cmdArchDiff(args) {
+  const registry = readRegistry(args)
+  const planPath = args.plan ? normalize(args.plan) : activePlanPath()
+  const planAbs = planPath ? join(repoRoot, planPath) : null
+  const planText = planAbs && existsSync(planAbs) ? readFileSync(planAbs, 'utf8') : null
+  const lines = [
+    ...diffArchWarnings({ changedFiles: changedFiles(args.diff), registry, planText }),
+    ...decisionWithoutAdr(addedDecisionLines(args.diff))
+  ]
+  console.log(lines.length ? lines.join('\n') : 'ARCH: ok (diff)')
+}
+
 const args = parseArgs(process.argv.slice(2))
 
-if (args.file) cmdFile(args)
+if (args.arch && args.diff) cmdArchDiff(args)
+else if (args.arch && args.plan) cmdArchPlan(args)
+else if (args.arch) fail('--arch needs --plan=<p> or --diff=<base>')
+else if (args.file) cmdFile(args)
 else if (args.diff) cmdDiff(args)
 else if (args.overlap) cmdOverlap(args)
 else if (args.drift) cmdDrift(args)
-else fail('usage: --file=<p> | --diff=<base> | --overlap --plan=<p> | --drift [--plan=<p>]')
+else fail('usage: --file=<p> | --diff=<base> | --overlap --plan=<p> | --drift [--plan=<p>] | --arch --plan=<p> | --arch --diff=<base>')

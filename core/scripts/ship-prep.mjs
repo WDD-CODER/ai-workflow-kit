@@ -124,6 +124,16 @@ function scopeDiffReport() {
   }
 }
 
+// Architecture-invariant warnings (`scope-check.mjs --arch --diff`): advisory, never blocks.
+function archDiffReport() {
+  try {
+    const out = execFileSync('node', ['scripts/scope-check.mjs', '--arch', '--diff=origin/{{git.mainBranch}}'], { cwd: repoRoot, encoding: 'utf8' })
+    return out.split(/\r?\n/).map(l => l.trim()).filter(l => l.startsWith('ARCH: warn'))
+  } catch {
+    return []
+  }
+}
+
 function parseStatusPaths() {
   // --untracked-files=all: don't collapse a brand-new directory into one
   // "?? dir/" line — list each untracked file individually (e.g. a new
@@ -220,6 +230,7 @@ function classify() {
   const wtCount = worktreeCount()
   const inSlot = isSlot()
   const scopeReport = inSlot ? scopeDiffReport() : null
+  const archWarnings = archDiffReport()
   const manifestOverlap = inSlot
     ? { no_manifest: noManifest, files: [...thisChatFiles], overlaps: [] }
     : hasActiveSiblingSlot()
@@ -257,6 +268,7 @@ function classify() {
     overlaps: manifestOverlap.overlaps || [],
     scope: scopeReport ? scopeReport.scope : null,
     scopeFiles: scopeReport ? scopeReport.files : [],
+    archWarnings,
     planTodos
   }
 }
@@ -280,6 +292,7 @@ function checkBaselineReport() {
   const wtCount = worktreeCount()
   const inSlot = isSlot()
   const scopeReport = inSlot ? scopeDiffReport() : null
+  const archWarnings = archDiffReport()
   const manifestOverlap = inSlot
     ? { no_manifest: false, files: [], overlaps: [] }
     : hasActiveSiblingSlot()
@@ -294,6 +307,7 @@ function checkBaselineReport() {
     head,
     scope: scopeReport ? scopeReport.scope : null,
     scopeFiles: scopeReport ? scopeReport.files : [],
+    archWarnings,
     baselineBranch: baseline ? baseline.branch : null,
     baselineHead: baseline ? baseline.head : null,
     worktreeCount: wtCount,
@@ -322,6 +336,7 @@ if (checkBaseline) {
       console.log(`  scope: ${report.scope}`)
       for (const f of report.scopeFiles) console.log(`    - ${f}`)
     }
+    for (const w of report.archWarnings) console.log(`  ${w}`)
   }
 } else {
   const report = classify()
@@ -338,6 +353,7 @@ if (checkBaseline) {
       console.log(`  scope: ${report.scope}`)
       for (const f of report.scopeFiles) console.log(`    - ${f}`)
     }
+    for (const w of report.archWarnings) console.log(`  ${w}`)
     if (report.secretPaths.length) {
       console.log(`  SECRET-SHAPED PATHS — do not stage: ${report.secretPaths.join(', ')}`)
     }

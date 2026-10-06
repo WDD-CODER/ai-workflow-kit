@@ -66,6 +66,8 @@ jobs:
         run: npm ci
       - name: ESLint
         run: npm run {{commands.lint}}
+      - name: Workflow script tests
+        run: npm run test:scripts --if-present
 
   build:
     needs: changes

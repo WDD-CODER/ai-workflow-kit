@@ -28,6 +28,8 @@ Triggers: "execute plan NNN", "take plan NNN" (only meaningful inside a {{slots.
    - plan has no readable scope (neither a ```` ```scope ```` block nor a `**Scope:**` list of
      backticked globs) → the Planner fixes the plan on `{{git.mainBranch}}`; nothing was claimed.
    - a port is held by a program that is not a dev server → the Human frees it.
+   - `… fails the architecture gate` plus `ARCH: …` lines → the plan's `## Architecture Impact`
+     misses an invariant or an approval; the Planner fixes it on main. Nothing was claimed.
    - prepare step or a server failed after the claim → the log tail is printed; fix the cause,
      then re-run the same command: it resumes the claim instead of refusing "busy".
    - leftover servers to clear by hand → `node scripts/slot-stop.mjs` (never `taskkill /PID`

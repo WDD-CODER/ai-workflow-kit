@@ -13,6 +13,7 @@ Single source of truth for hard rules and skill triggers. Both agents defer here
 - **Job validation (all agents):** A job is not done until every Done-when item is validated — `[auto]` by agent evidence, `[human]`/untagged by the Human; never self-mark `[human]` items or skip marking with "Contractor does not mark." Full procedure: `docs/agent/job-validation.md`.
 - **Plan Contracts (all agents):** A pasted/approved big plan must be persisted under `plans/` via `.claude/skills/save-plan/SKILL.md` before milestone execution. Mid-brief new tasks append to that plan's Atomic Sub-tasks (and `.claude/todo.md` — Planner only).
 - **Planner-Worker workflow:** Planner (main, on `{{git.mainBranch}}`) writes/pushes `plans/*.plan.md` + `.claude/todo.md` directly; Workers use slots `{{slots.nameFormat}}` (frontend port {{slots.fePorts}}+N, backend {{slots.bePorts}}+N; `{{git.mainBranch}}` = {{slots.fePorts}}/{{slots.bePorts}}), writing only inside their plan's `## Read-Write Scope`. Hotspots (`{{paths.hotspots}}`) are append-only; Workers never write `.claude/todo.md`; `--no-verify` push to `{{git.mainBranch}}` is human-only. Rest: `docs/brain/decisions/0009-planner-worker-worktrees.md`.
+- **Architecture invariants (`docs/brain/invariants.md`):** every plan fills `## Architecture Impact`. Any question to the Human whose answer could break an invariant is asked as: INV-n · current rule · proposed change · who loses what. A yes becomes an ADR (supersede) plus an `Arch-approved:` line, never only a session-state/commit note. Agents never write `Arch-approved:` without the Human's explicit `approve arch change INV-n` in chat. Blocking is bypassed only by that explicit Human approval.
 - **Worker blocked outside scope (including an unmet plan Prerequisite):** offer `approved: <path>` first — per the plan's Escalation Protocol — never conclude unprompted that "this needs its own plan." That costs a full Planner round trip; a one-line `approved:` reply does not.
 
 ## Compact instructions
@@ -42,7 +43,7 @@ Preserve across `/compact`: current plan number + branch, open todos, and any fa
 | Job validation — finishing a job, marking todos `[x]`, or done/verified/approved | `docs/agent/job-validation.md` + `/done` |
 | PR checks failing | `docs/agent/pr-check-fix-loop.md` (via `/fix-pr-checks`), 2 rounds max |
 | Session start on unfamiliar work | `docs/brain/index.md`, then the relevant sub-file |
-| Architectural choice | `docs/brain/decisions/` first; supersede, never edit in place |
+| Architectural choice | `docs/brain/invariants.md` first, then `docs/brain/decisions/`; supersede, never edit in place |
 | Surprising behavior / a trap cost time | `docs/brain/gotchas.md` first |
 
 ## Standards index

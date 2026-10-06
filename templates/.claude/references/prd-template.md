@@ -36,6 +36,18 @@ Worker needs a file outside the `## Read-Write Scope` above: STOP, tell the Huma
 the exact change, and why it can't be done in-scope; offer `approved: <path>`; then
 append the path to the scope block above and retry.
 
+## Architecture Impact
+
+One line per invariant in `docs/brain/invariants.md` whose `Touches` globs this plan's scope
+reaches (`node scripts/scope-check.mjs --arch --plan=<this file>` lists what's missing). Pick
+one form per line; a deviation or change needs the Human's explicit `approve arch change INV-n`
+in chat first — never write `Arch-approved:` without it.
+
+- INV-n: preserves — [how the rule still holds]
+- INV-n: deviation until [plan/phase] — users lose: [plain words] — Arch-approved: Human YYYY-MM-DD
+- INV-n: changes — ADR docs/brain/decisions/NNNN-[slug].md — Arch-approved: Human YYYY-MM-DD
+- INV-none: preserves — [why no invariant is touched]
+
 ## Step 0 — Reality Check
 
 Runs only when `scope-check.mjs --drift` reports `REALITY: drift`. Check the listed commits

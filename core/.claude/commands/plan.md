@@ -21,6 +21,12 @@ Claude Code / Cursor may plan when the Human Director explicitly overrides).
 
 1. User describes the problem or feature area.
 2. Architect runs structured scoping (forcing questions, landscape, premise challenge).
+   **Architecture step:** read `docs/brain/invariants.md` and fill the plan's
+   `## Architecture Impact` — one line per invariant whose `Touches` globs the scope reaches
+   (`preserves` / `deviation until …` / `changes — ADR …`), or `INV-none: preserves — <why>`.
+   A question whose answer could break an invariant is asked as: INV-n · current rule ·
+   proposed change · who loses what. A yes needs the Human's explicit `approve arch change INV-n`,
+   then a superseding ADR plus an `Arch-approved: Human YYYY-MM-DD` line.
 3. Output: a Plan Contract under `plans/NNN-slug.plan.md` with numbered milestones
    and a Verify command per milestone. Persist with save-plan (never invent a
    parallel naming scheme).

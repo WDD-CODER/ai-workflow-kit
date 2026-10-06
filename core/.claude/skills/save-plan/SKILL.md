@@ -103,6 +103,7 @@ Do not Read .claude/todo.md in full.
 - `## Read-Write Scope` holds the globs in one of the two shapes `scripts/lib/plan-scope.mjs` parses: a fenced block opened with ```` ```scope ```` (one glob per line), or a `**Scope:**` line followed by bullets that each start with a `` `backticked` `` glob. A bare `scope` line, or bullets without backticks, are not parsed.
 - Exactly one `Status:` line, with a value (`Status: draft` for a new plan; take-plan sets `active`).
 - A `Snapshot:` line (see Phase 3) — the Worker's drift check compares against it.
+- **Architecture gate (block):** `node scripts/scope-check.mjs --arch --plan=<path>` exits 0 (`ARCH: ok …`, or `ARCH: skipped …` for a grandfathered plan / no registry). It fails when the scope touches an invariant in `docs/brain/invariants.md` that has no `## Architecture Impact` line, or a `deviation`/`changes` line lacks `Arch-approved: Human YYYY-MM-DD` or a valid ADR. Fix the draft; only the Human's explicit `approve arch change INV-n` in chat allows an `Arch-approved:` line.
 
 **Prerequisites Gate (Planner only):** If the draft has a `## Prerequisites` section, check it's already true against `origin/{{git.mainBranch}}` *before* saving — do not hand a Worker a plan that will STOP on take. If unmet:
 

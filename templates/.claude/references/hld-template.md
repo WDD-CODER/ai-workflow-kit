@@ -16,6 +16,9 @@
 | A | ... | ... |
 | B | ... | ... |
 
+### Architecture Impact
+- [Same lines as the plan's `## Architecture Impact`: `INV-n: preserves | deviation until … | changes — ADR …` per invariant in `docs/brain/invariants.md` this design touches, or `INV-none: preserves — <why>`]
+
 ## Component Structure
 [Which components, services, models are needed and how they connect]
 

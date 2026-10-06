@@ -27,6 +27,7 @@ import { resolve, dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import { isSlot, slotNumber, ports, listSlots } from './lib/slot.mjs'
 import { extractScopeGlobs } from './lib/plan-scope.mjs'
+import { parseInvariants, checkPlanArch } from './lib/invariants.mjs'
 import { portState, killTree, waitForPort, waitForPortFree, tail, readSlotPids, writeSlotPids, stopSlotServers } from './lib/slot-procs.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -202,6 +203,22 @@ const branchName = `feat/${nnn}-${slug}`
 const remotePlanText = tryGit(['show', `origin/{{git.mainBranch}}:${match}`])
 if (!extractScopeGlobs(remotePlanText)) {
   fail(`${match} has no readable scope under "## Read-Write Scope" (need a \`\`\`scope block or a **Scope:** list of \`globs\`) - the Planner must fix the plan on {{git.mainBranch}} (see the save-plan skill). Nothing was claimed.`)
+}
+
+// Architecture gate (same check as `scope-check.mjs --arch --plan`), judged against origin/{{git.mainBranch}} so a stale
+// slot checkout can't pass a plan that main's invariants registry would block. No registry -> no gate.
+const registryText = tryGit(['show', 'origin/{{git.mainBranch}}:docs/brain/invariants.md'])
+if (registryText) {
+  const mainFiles = new Set(tryGit(['ls-tree', '-r', 'origin/{{git.mainBranch}}', '--name-only']).split('\n').filter(Boolean))
+  const arch = checkPlanArch({
+    planPath: match,
+    planText: remotePlanText,
+    scopeGlobs: extractScopeGlobs(remotePlanText),
+    registry: parseInvariants(registryText),
+    trackedFiles: [...mainFiles],
+    adrExists: (p) => mainFiles.has(p)
+  })
+  if (!arch.ok) fail(`${match} fails the architecture gate - the Planner must fix its "## Architecture Impact" on main (see docs/brain/invariants.md). Nothing was claimed.\n${arch.lines.join('\n')}`)
 }
 
 // --- (c) safety, all before anything changes: dirty tree, plan order, the plan's branch, then this slot's branch
