@@ -23,19 +23,31 @@ The table below applies to `[human]` and untagged items:
 
 ---
 
-## HOW TO VALIDATE checklist (mandatory before validation ask)
+## HOW TO VALIDATE checklist (shown once — at the first validation ask)
 
-Whenever an **execution** job finishes and needs Human validation (brief, milestone, feature, bugfix, or chat job that changed behavior), the agent **must** show a HOW TO VALIDATE block (cards, below) **before** the JOB DONE ask or the `/ship` Approve **Y** gate.
+Whenever an **execution** job finishes and needs Human validation (brief, milestone, feature, bugfix, or chat job that changed behavior), the agent **must** show a HOW TO VALIDATE block (cards, below) **the first time it asks the Human to validate — and only then.**
+
+### When that moment is
+
+| Situation | Where the cards appear | What `/ship` Phase 4 shows instead |
+| --- | --- | --- |
+| Worker finishes a plan or milestone in a slot | The end-of-job close-out (JOB DONE block, Path B) — **before** any `/ship` | `VALIDATED BY HUMAN` — one line per card with the Human's reply word |
+| Chat job, no ship | The `/done` close-out (Path B) | — |
+| Human runs `/ship` right after the work and no close-out happened | The Phase 4 approval tree (Path A) — ship *is* the first ask | the cards |
+
+The Human reads the cards while the app is running and the work is fresh, **not** while approving a commit. The commit gate repeats nothing: it records that validation already happened. If the agent cannot point to the Human's validation reply in this session, the gate is the first ask and shows the cards.
 
 Skip only for pure planning / architecture / docs-only turns with no behavior change to validate.
 
 ### Format — one card per check
 
 ```text
-HOW TO VALIDATE
+HOW TO VALIDATE — {N} checks · app: {url, or which window} · reply: done | not yet | verify
 ① {plain title of what is being checked}
+   WHY     {one sentence: what changed and what this check proves}
    ({term} = {short gloss})          ← only when a term of art can't be avoided
-   WHERE   {which window, page, or app screen}
+   WHERE   {which window, page, or app screen — and how to get there}
+   SETUP   {only when needed: data or state the check needs first, and how to get it}
    DO      {one plain action}  — or —  paste:  {exact text}
    SEE ✓   {what success looks like; quote on-screen text exactly}
    FAIL ✗  {what failure looks like}
@@ -46,9 +58,12 @@ HOW TO VALIDATE
 Example (a workflow job, checked in a Worker terminal):
 
 ```text
+HOW TO VALIDATE — 1 check · app: the Claude window of Worker slot 2 · reply: done | not yet | verify
 ① A finished branch isn't reused
+   WHY     take-plan now notices a branch that was already merged, so a slot never continues on stale work
    (squash merge = GitHub folds the branch into one commit on main)
    WHERE   the Claude window of Worker slot 2
+   SETUP   plan 42's branch must already be merged on GitHub (it is, PR #87)
    DO      paste:  take plan 42
    SEE ✓   a line ending "…was merged - starting fresh"
    FAIL ✗  it asks you to reset the branch by hand, or the push is rejected
@@ -57,6 +72,9 @@ Example (a workflow job, checked in a Worker terminal):
 ### Card rules
 
 - Written for someone who is not an engineer: any person can follow it without asking
+- The header line says how many checks, where the app is running (URL, or which window), and the reply words — the Human should not have to scroll back to find the port
+- WHY is one sentence in the user's words: what changed and what this check proves — never the commit subject or the plan's Done-when text
+- SETUP appears only when the check needs data or state that may not exist (e.g. "have at least 3 venues"); say how to get it in one line, or that the agent already seeded it
 - Rewrite each Done-when item in plain words — never copy the plan's wording verbatim
 - One check per card, completable in under a minute
 - WHERE names the exact place (app page + what to click to get there, or which terminal window)
@@ -120,7 +138,7 @@ Mark matching todos with `node scripts/todo-query.mjs mark --line N[,N…] --aut
 
 Order is hard (see `.claude/commands/ship.md` Phase 4 On approval):
 
-0. Show **HOW TO VALIDATE** in the Phase 4 approval tree (before Approve?)
+0. Show **VALIDATED BY HUMAN** in the Phase 4 approval tree when the Human already answered the cards in this session (format below). Show **HOW TO VALIDATE** there only when no close-out happened before `/ship` — then ship is the first ask (see "When that moment is").
 1. Human **Y**
 2. Mark matching todos / plan Atomic Sub-tasks `[x]`:
    - **Inside a `{{slots.nameFormat}}` slot:** mark `[x]` in the plan file's own Atomic Sub-tasks only. Never run `todo-query.mjs mark` or `todo-archive.mjs` — `.claude/todo.md` is Planner-owned; `todo-query.mjs sync --merged` picks up this plan's checkboxes once the branch merges.
@@ -132,6 +150,17 @@ Order is hard (see `.claude/commands/ship.md` Phase 4 On approval):
 One commit. No second push just for checkboxes.
 
 **Validated after the merge (slot):** when the Human validates `[human]` items only after the PR merged, the Worker does **not** open a branch or PR just to tick boxes. It tells the Human: "Tell the Planner: plan NNN validated (items …)". The Planner marks those items `[x]` in `plans/NNN-*.plan.md` on `{{git.mainBranch}}` (a Planner write it already owns) and runs `node scripts/todo-query.mjs sync --merged`.
+
+**Already validated (format):**
+
+```text
+VALIDATED BY HUMAN
+  - ✓ ① {card title} — "{reply word}" (this chat, {time or turn})
+  - ✓ ② {card title} — "{reply word}"
+  - ⚠ ③ {card title} — not answered yet → its card is repeated below
+```
+
+Only cards the Human did not answer are repeated under a HOW TO VALIDATE heading beneath it. A `[human]` item the Human never saw a card for is **not** validated by **Y** alone.
 
 **All items `[auto]`:** the `VERIFIED BY AGENT` block replaces HOW TO VALIDATE in the Phase 4 tree. **Y** is still required, but it now means commit/push consent only. Todos marked on ship **Y** get no `(auto-verified)` suffix. With any `[human]` item, **Y** also counts as Human validation of those items.
 
@@ -162,9 +191,11 @@ For the last two cases:
 ### Required close-out block
 
 ```text
-HOW TO VALIDATE
+HOW TO VALIDATE — {N} checks · app: {url or window} · reply: done | not yet | verify
 ① {plain title}
-   WHERE   {place}
+   WHY     {what changed and what this check proves}
+   WHERE   {place — and how to get there}
+   SETUP   {only when needed}
    DO      {action}  — or —  paste:  {exact text}
    SEE ✓   {success}
    FAIL ✗  {failure}

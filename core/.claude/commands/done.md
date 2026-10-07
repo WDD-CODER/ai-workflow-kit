@@ -17,9 +17,11 @@ Do not Read .claude/todo.md in full.
 3. Read the plan's Done-when tags (`job-validation.md` Path B). **All `[auto]`:** run each check, print the `VERIFIED BY AGENT` block (raw command + output), mark with `node scripts/todo-query.mjs mark --line N[,N…] --auto-verified` (plan file only inside a `{{slots.nameFormat}}` slot), run step 4's archive, and **do not wait**. **Any `[human]`/untagged item:** print `VERIFIED BY AGENT` on top (if any `[auto]`), then the close-out block (HOW TO VALIDATE with a card for only the `[human]` items, then JOB DONE) and **wait** (unless the Human’s invoking message already contains a validation phrase: `done` / `mark done` / `mark it` / `verified` / `approved` / `LGTM for this job`):
 
 ```text
-HOW TO VALIDATE
+HOW TO VALIDATE — {N} checks · app: {url or window} · reply: done | not yet | verify
 ① {plain title}
-   WHERE   {window / page}
+   WHY     {what changed and what this check proves}
+   WHERE   {window / page — and how to get there}
+   SETUP   {only when needed}
    DO      {action}  — or —  paste:  {exact text}
    SEE ✓   {success}
    FAIL ✗  {failure}
@@ -48,3 +50,4 @@ Card rules: `docs/agent/job-validation.md` → **Card rules**. Never omit HOW TO
 - Never invent completion for unrelated open todos.
 - Never show JOB DONE without HOW TO VALIDATE above it.
 - `/ship` Approve **Y** remains the formal path (todos in the same ship commit). Use `/done` when there is no ship.
+- Cards are shown once, here. A later `/ship` prints `VALIDATED BY HUMAN` and never repeats them (`job-validation.md` → "When that moment is").
