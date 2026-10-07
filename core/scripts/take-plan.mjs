@@ -246,7 +246,7 @@ const prereqs = new Set()
 for (const m of remotePlanText.matchAll(/\b(?:must\s+)?runs?\s+after\s+plans?\s+#?(\d{1,3})\b|\buntil\s+(?:plan\s+)?#?(\d{1,3})\s+(?:is\s+)?(?:done|merged|shipped|complete)/gi)) {
   prereqs.add((m[1] || m[2]).padStart(3, '0'))
 }
-// "Prerequisite: plan 386 merged" / "Prerequisites: plans 385, 386 (…)": every plan number before the first ( — . or ;
+// "Prerequisite: plan NNN merged" / "Prerequisites: plans NNN, MMM (…)": every plan number before the first ( — . or ;
 for (const m of remotePlanText.matchAll(/^\s*[-*]?\s*\**Prerequisites?\**:\**\s*([^\n(—.;]*)/gim)) {
   if (!/\bplans?\b/i.test(m[1])) continue
   for (const d of m[1].matchAll(/#?\b(\d{1,3})\b/g)) prereqs.add(d[1].padStart(3, '0'))
