@@ -6,7 +6,7 @@ Agents finished milestones with a JOB DONE ask, but Humans had to invent what to
 
 ## Solution
 
-1. Put HOW TO VALIDATE (`action → expected result`) on the same gate both agents already must hit: `docs/agent/job-validation.md` Path A (ship Phase 4) and Path B (chat `/done`).
+1. Put HOW TO VALIDATE (one card per check) on the **first** gate both agents already must hit: the end-of-job close-out (`docs/agent/job-validation.md` Path B / `/done`). The ship gate (Path A) shows `VALIDATED BY HUMAN` and repeats the cards only when no close-out came before it. (Amended: the cards first lived on both gates, and the Human got them a second time while approving a commit they had already validated.)
 2. Mirror the template in `AGENTS.md`, `.cursorrules`, `done.md`, and `ship.md` — one canonical rule body, thin copies.
 3. If an old instruction path must remain for archive links, replace it with a stub that points at the canonical section — never a second live copy.
 4. Cover happy path and any edge/failure rule the job introduced; allow opt-in `verify` after the checklist, not an upfront ask.

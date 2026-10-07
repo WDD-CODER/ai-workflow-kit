@@ -97,9 +97,17 @@ Files to stage:
 Also proposing a brain entry:   # only when durable; may be 2 lines (pattern + paired gotcha)
   docs/brain/{gotchas/<domain>.md | patterns/*.md | decisions/NNNN-*.md} — "one-line title"
 
-HOW TO VALIDATE
+VALIDATED BY HUMAN                      # the usual case: the close-out cards were answered before /ship
+  - ✓ ① {card title} — "{reply word}" (this chat)
+  - ✓ ② …
+
+  — or, only when no close-out happened before /ship (this gate is the first ask) —
+
+HOW TO VALIDATE — {N} checks · app: {url or window} · reply: Y | edit list | abort
   ① {plain title}
-     WHERE   {window / page}
+     WHY     {what changed and what this check proves}
+     WHERE   {window / page — and how to get there}
+     SETUP   {only when needed}
      DO      {action}  — or —  paste:  {exact text}
      SEE ✓   {success}
      FAIL ✗  {failure}
@@ -115,7 +123,11 @@ VERIFIED BY AGENT
   - ✓ [auto] {item} — `{command}` → {output / exit code}
 ~~~
 
-HOW TO VALIDATE is mandatory before Approve? — one card per check (WHERE / DO / SEE ✓ / FAIL ✗, plain words, exact paste text when a terminal is needed) per `docs/agent/job-validation.md` → Card rules; happy path + any edge/failure rule introduced; one line if no user-visible effect. Mandatory for `[human]`/untagged; all-`[auto]` shows VERIFIED BY AGENT instead. Never omit both.
+Phase 4 shows exactly one of these, never none:
+- **VALIDATED BY HUMAN** — the Human already answered the HOW TO VALIDATE cards in this session (end-of-job close-out, `/done`, or a validation word such as `done` / `verified` / `approved`). List each card with the reply word. **Never repeat cards the Human already answered** — the commit gate records validation, it does not re-run it.
+- **HOW TO VALIDATE** — no close-out happened before `/ship`, so this gate is the first ask. One card per check (WHY / WHERE / SETUP / DO / SEE ✓ / FAIL ✗, plain words, exact paste text when a terminal is needed) per `docs/agent/job-validation.md` → Card rules; happy path + any edge/failure rule introduced; one line if no user-visible effect.
+- **VERIFIED BY AGENT** — every Done-when item is `[auto]`.
+A mix (some cards answered, some not) shows VALIDATED BY HUMAN with the unanswered cards repeated beneath it. Rules: `docs/agent/job-validation.md` → "When that moment is".
 
 Matching open todos: list *before* Y (still `[ ]`). On **Y**, mark `[x]` and stage in the **same** commit — never a second push for checkboxes. Chat-only jobs (no ship): `docs/agent/job-validation.md` Path B / `/done`.
 
