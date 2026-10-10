@@ -21,6 +21,7 @@ import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { resolve, dirname, join } from 'path'
 import { fileURLToPath } from 'url'
+import { findOpenPlan } from './lib/plan-paths.mjs'
 import {
   isTodoFooterLine,
   splitPlanSections,
@@ -32,7 +33,6 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(__dirname, '..')
 const TODO_PATH = join(repoRoot, '.claude', 'todo.md')
-const PLANS_DIR = join(repoRoot, 'plans')
 const ARCHIVE_DIR = join(repoRoot, '.claude', 'todo-archive')
 
 function fail(message) {
@@ -277,14 +277,13 @@ function cmdAppend() {
   console.log(`TODO_QUERY: appended ${newSection[0] || '(section)'}`)
 }
 
-// Only the flat plans/<NNN>-<slug>.plan.md convention counts — legacy plans
-// filed under plans/1-100/, plans/100-200/, plans/200-300/ (pre-dating this
-// convention) are deliberately not matched, so an old feat/NNN-* branch from
-// before this workflow existed is silently not a sync candidate.
+// Only open plans count (plans/<NNN>-<slug>.plan.md, or an open subfolder such as
+// plans/design/ — lib/plan-paths.mjs). Plans filed under plans/1-100/, plans/100-200/, …
+// are deliberately not matched, so an old feat/NNN-* branch from before this workflow
+// existed is silently not a sync candidate.
 function findPlanFileOrNull(nnn) {
-  if (!existsSync(PLANS_DIR)) return null
-  const match = readdirSync(PLANS_DIR).find(f => f.startsWith(`${nnn}-`) && f.endsWith('.plan.md'))
-  return match ? { rel: `plans/${match}`, abs: join(PLANS_DIR, match) } : null
+  const rel = findOpenPlan(repoRoot, nnn)
+  return rel ? { rel, abs: join(repoRoot, rel) } : null
 }
 
 function findPlanFile(nnn) {

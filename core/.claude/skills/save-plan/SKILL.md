@@ -29,6 +29,7 @@ Run this skill **before executing milestones** when any of these is true:
 - Refactor variant suffix: `NNN-R`
 - No plans yet → start at `001`
 - Write to `plans/<NNN>-<slug>.plan.md` in project root only — never `~/.cursor/plans/`
+- Open plans live directly in one of the open plan folders ({{plans.openDirs}}). When `plans/design` is one of them, a plan with `Track: design` or `Track: split` (Claude Design work: mostly style and layout) goes to `plans/design/<NNN>-<slug>.plan.md`. Closed plans always go to the range folder `plans/<range>/`, design or not.
 - Preferred H1 shape: `# Plan NNN — <Human Title>` (name must describe the work — similarity depends on it)
 - Todo / Atomic Sub-tasks sync happens as part of save (see phases)
 - Every sub-task: `[ ] Brief description of target file(s)`
@@ -119,7 +120,7 @@ Do not Read .claude/todo.md in full.
 **Write:**
 
 - rewrite → overwrite the existing plan path Human confirmed
-- save as new → write `plans/<NNN>-<slug>.plan.md` (after `.claude/.plan-write-ack` if the write-guard may block)
+- save as new → write `plans/<NNN>-<slug>.plan.md`, or `plans/design/…` for Track `design`/`split` (after `.claude/.plan-write-ack` if the write-guard may block)
 
 Never write under `~/.cursor/plans/`. `Snapshot:` — every plan has one. Fill it with the current
 `origin/{{git.mainBranch}}` SHA (`git rev-parse origin/{{git.mainBranch}}`) when the draft left it empty or has no
@@ -146,7 +147,7 @@ ready):**
    `origin/{{git.mainBranch}}`, so an unpushed plan fails silently in the worktree instead of here where
    it's cheap to fix.
 2. After a successful push, confirm it actually landed: `git fetch origin --quiet` then
-   `git ls-tree origin/{{git.mainBranch}} --name-only -- plans/<NNN>-<slug>.plan.md` must print the path
+   `git ls-tree origin/{{git.mainBranch}} --name-only -- <plan path>` must print the path
    (non-empty). If empty, the push did not do what it looked like — STOP and investigate
    before announcing done.
 3. Only once both checks pass does the Completion Gate's "Plan NNN pushed" line become true.
@@ -177,7 +178,7 @@ After the plan is saved, **any agent** executing a brief from it must keep the p
 Output:
 
 ```text
-Plan saved: plans/<NNN>-<slug>.plan.md
+Plan saved: plans/[design/]<NNN>-<slug>.plan.md
 Ledger updated. Similarity: <none | rewrite | save-as-new>
 ```
 

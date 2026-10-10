@@ -38,7 +38,7 @@ The `.ps1` files are thin wrappers; the engine is `node tools/install.mjs` / `no
 | `tools/install-check.mjs` | Installs three fixtures into temp dirs and checks them (no git needed). |
 | `.github/workflows/leak-check.yml` | Runs all four checks on push and PR. |
 
-Placeholder filters (code contexts): `{{paths.hotspots|quoted}}` -> `'a', 'b'`, `|dquoted`, `|glob` -> `{a,b}`.
+Placeholder filters (code contexts): `{{paths.hotspots|quoted}}` -> `'a', 'b'`, `|dquoted`, `|glob` -> `{a,b}`, `|alt` -> `a|b` (regex alternation, metacharacters escaped; used by the shell guards with `{{plans.openDirs|alt}}`).
 
 A `<!-- PACK:<stack> -->` marker in a core file is a hint for where pack content belongs; the installer does not yet inject pack text there (the pack's own standards doc carries it).
 

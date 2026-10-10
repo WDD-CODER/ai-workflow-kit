@@ -9,10 +9,11 @@
  *   node scripts/lib/slot.mjs --describe
  *   node scripts/lib/slot.mjs --list
  */
-import { readFileSync, existsSync, readdirSync } from 'fs'
+import { readFileSync, existsSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { resolve, dirname, join, basename } from 'path'
 import { fileURLToPath } from 'url'
+import { findOpenPlan } from './plan-paths.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(__dirname, '..', '..')
@@ -43,19 +44,17 @@ export function ports() {
   return { fe: {{slots.fePorts}} + n, be: {{slots.bePorts}} + n }
 }
 
-/** The plan a branch named <type>/NNN-<slug> works on (plans/NNN-*.plan.md in that checkout), or null. */
+/** The plan a branch named <type>/NNN-<slug> works on (an open plans/…/NNN-*.plan.md in that checkout), or null. */
 export function branchPlanPath(branch, cwd) {
   const m = (branch || '').match(/^[\w.-]+\/(\d{3})-/)
   if (!m) return null
-  const dir = join(cwd || repoRoot, 'plans')
-  if (!existsSync(dir)) return null
-  const f = readdirSync(dir).find(name => name.startsWith(`${m[1]}-`) && name.endsWith('.plan.md'))
-  return f ? `plans/${f}` : null
+  return findOpenPlan(cwd || repoRoot, m[1])
 }
 
 /**
  * The active plan, or null when idle / not a slot. .worktree-plan marks the slot as busy; when the
- * branch names a different plan (one saved inside the slot), the branch's plan wins.
+ * branch names a different plan (one saved inside the slot), or the recorded file has moved
+ * (e.g. into plans/design/), the branch's plan wins.
  */
 export function activePlanPath() {
   const p = join(repoRoot, '.worktree-plan')
@@ -63,7 +62,9 @@ export function activePlanPath() {
   const rel = readFileSync(p, 'utf8').replace(/\r?\n+$/, '').trim()
   if (!rel) return null
   const fromBranch = branchPlanPath(git(['branch', '--show-current']))
-  return fromBranch && !rel.startsWith(fromBranch.slice(0, 'plans/NNN-'.length)) ? fromBranch : rel
+  const planNum = (f) => basename(f).slice(0, 'NNN-'.length)
+  const stale = planNum(rel) !== planNum(fromBranch || '') || !existsSync(join(repoRoot, rel))
+  return fromBranch && stale ? fromBranch : rel
 }
 
 /** Every {{slots.nameFormat}} worktree: { slot, path, branch (null if detached), detached, plan }. */
