@@ -16,6 +16,7 @@ import { execFileSync } from 'child_process'
 import { resolve, dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import { isSlot, listSlots } from './lib/slot.mjs'
+import { isOpenPlanPath } from './lib/plan-paths.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(__dirname, '..')
@@ -28,7 +29,7 @@ const SECRET_PATH_RE = /(^|\/)\.env|\.pem$|\.key$|secret/i
 // Planner admin-bypass shape — a diff entirely inside this is
 // always ULTRA-TRIVIAL, evaluated before SENSITIVE_PATHS_RE so a plan named
 // e.g. "…-migration-spec.plan.md" doesn't get bumped to REGULAR.
-const PLAN_ONLY_RE = /^plans\/[^/]+\.plan\.md$|^\.claude\/todo\.md$/
+const isPlanOnly = f => isOpenPlanPath(f) || f === '.claude/todo.md'
 
 function parseArgs(argv) {
   const out = {}
@@ -201,7 +202,7 @@ function classify() {
   const sensitiveMatches = thisChatFiles.filter(f => SENSITIVE_PATHS_RE.test(f))
   const secretPaths = thisChatFiles.filter(f => SECRET_PATH_RE.test(f))
 
-  const allPlanOnly = fileCount > 0 && thisChatFiles.every(f => PLAN_ONLY_RE.test(f))
+  const allPlanOnly = fileCount > 0 && thisChatFiles.every(isPlanOnly)
 
   let lane
   let laneReason
