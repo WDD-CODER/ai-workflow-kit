@@ -29,7 +29,7 @@ save-plan:
 
 - Path `plans/<NNN>-<slug>.plan.md`, H1 `# Plan NNN — <Human Title>` (the title drives similarity — make it describe the work). Refactor variant: `NNN-R`.
 - `## Read-Write Scope` in a shape `scripts/lib/plan-scope.mjs` parses: a fenced ```` ```scope ```` block, one glob per line, **or** a `**Scope:**` line followed by bullets whose first token is a `` `backticked` `` glob. A bare `scope` line or un-backticked bullets are not parsed and `take-plan` refuses the plan.
-- Exactly one `Status:` line (`Status: draft` for new; `take-plan` sets `active`). One `Snapshot:` line (filled in Phase 3).
+- Exactly one `Status:` line (`Status: draft` for new; `take-plan` sets `active`; after the merge the todo-sync workflow's `plan-close.mjs` sets `done` and moves the plan into `plans/<range>/`). One `Snapshot:` line (filled in Phase 3).
 - Every Atomic Sub-task is `[ ] <what> — <target file(s)>`.
 - Every Done-when item starts with `[auto]` or `[human]`. `[auto]` means the expected output is exact — a string, an exit code, `npm run {{commands.build}}` passing, deterministic CLI output. `[human]` is visual/UI judgement, live interaction, product decisions; untagged counts as `[human]`. A UI-touching plan whose only Done-when is `[auto] npm run {{commands.build}}` is under-specified — add a `[human]` item. Only the plan author tags; agents never promote to `[auto]`.
 - Medium/large plan touching auth or storage → a one-line security-surface note; `scripts/pre-commit-security-grep.mjs` is the gate.
