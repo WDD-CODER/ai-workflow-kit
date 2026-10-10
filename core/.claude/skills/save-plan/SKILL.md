@@ -1,63 +1,44 @@
 ---
 name: save-plan
-description: >
-  Persist a Plan Contract to plans/ with name-similarity validation, ledger sync,
-  and Human confirm on collisions. Use when the user pastes/approves a big plan,
-  says save the plan, or any agent (Claude or Cursor) receives a Plan Contract to execute.
+description: Persists a Plan Contract to `plans/NNN-slug.plan.md` with the name-similarity gate, shape lint, architecture gate, ledger sync and (Planner only) commit + push to {{git.mainBranch}} with verification. Use when the user says "save the plan" / "save plan", pastes or approves a Plan Contract or big plan (Milestones, Atomic Sub-tasks, Goals), says "here is the plan" / "execute this plan", or when `/plan` or Cursor plan mode produced a contract that is not yet under `plans/`. Runs before any milestone execution.
+allowed-tools: Bash(node scripts/plan-name-similarity.mjs *) Bash(node scripts/next-plan-number.mjs *) Bash(node scripts/todo-query.mjs *) Bash(node scripts/scope-check.mjs *) Bash(git branch *) Bash(git rev-parse *) Bash(git ls-tree *) Bash(git fetch *)
 ---
 
-# Skill: save-plan
+# save-plan
 
-**Model Guidance:** Use Haiku/Flash for Phases 0–1 and 3. Use Sonnet for Phase 2 only when validating PRD alignment on a complex plan.
+A plan is not real until it is on disk under `plans/` — and, for the Planner, until it is on `origin/{{git.mainBranch}}`, because a Worker's `take-plan.mjs` reads only `origin/{{git.mainBranch}}`. Everything below exists to make that true without reusing a number, duplicating a plan, or shipping a plan a Worker cannot take.
 
-## Triggers (any agent — Claude Code or Cursor)
+**Who am I?** `git branch --show-current` on `{{git.mainBranch}}` in the main folder = **Planner**. Inside a `{{slots.nameFormat}}` slot (`.worktree-root` exists) = **Worker** saving mid-brief. The two differ in Phases 1 and 3; everything else is shared.
 
-Run this skill **before executing milestones** when any of these is true:
+## Checklist — copy into your reply and tick
 
-- User says "save the plan" / "save plan" / confirms a plan and asks to persist it
-- User pastes a **Plan Contract** / big plan (milestones, Atomic Sub-tasks, Goals)
-- User says "here is the plan" / "execute this plan" / drops a plan body into chat
-- Architect `/plan` or Cursor plan mode produced a contract that is not yet under `plans/`
-
-**Hard rule:** Do not start Brief/milestone execution until the plan is on disk under `plans/` (or Human explicitly cancels save).
-
----
-
-## Plan Rules (inline)
-
-- Plan numbering: `node scripts/next-plan-number.mjs` (highest number used by any plan or `<type>/NNN-*` branch, + 1, zero-padded)
-- Refactor variant suffix: `NNN-R`
-- No plans yet → start at `001`
-- Write to `plans/<NNN>-<slug>.plan.md` in project root only — never `~/.cursor/plans/`
-- Preferred H1 shape: `# Plan NNN — <Human Title>` (name must describe the work — similarity depends on it)
-- Todo / Atomic Sub-tasks sync happens as part of save (see phases)
-- Every sub-task: `[ ] Brief description of target file(s)`
-- Medium/Large plan touching auth/storage → note security surface
-- Not on a worktree + plan involves code changes → suggest `feat/` branch checkout
-- Every Done-when / Success Criteria item starts with `[auto]` or `[human]`. `[auto]` = the expected output is exact: an exact string, an exit code, a byte-identical diff, `npm run {{commands.build}}` or a test suite passing, or deterministic CLI output. `[human]` = visual/UI judgement, live interaction, subjective or design quality, product decisions. Untagged counts as `[human]`. A UI-touching plan whose only Done-when is `[auto]` `npm run {{commands.build}}` passes is under-specified — the planner must add a `[human]` item. Only the plan author tags; agents never promote an item to `[auto]`.
-
----
-
-## Phase 0: Detect + Name Similarity Gate (mandatory)
-
-1. Extract a **plan display name** from the H1 / YAML `name:` / first heading (e.g. `Project Memory Bank`).
-2. Propose a slug: lowercase kebab-case from that name (e.g. `project-memory-bank`).
-3. Run the shared checker (Claude and Cursor — same script):
-
-```bash
-node scripts/plan-name-similarity.mjs --name="<Plan Display Name>"
+```
+save-plan:
+- [ ] 0 similarity: node scripts/plan-name-similarity.mjs --name="<Display Name>" → no hits, or Human chose rewrite/new/cancel
+- [ ] 1 number (Planner, save-as-new only): node scripts/next-plan-number.mjs → NNN
+- [ ] 1 ledger (Planner): Atomic Sub-tasks appended to .claude/todo.md via todo-query.mjs append
+- [ ] 2 shape: Read-Write Scope parses, exactly one Status:, Snapshot: present, every Done-when tagged [auto]/[human]
+- [ ] 2 arch gate: node scripts/scope-check.mjs --arch --plan=<path> → exit 0
+- [ ] 2 prerequisites (Planner): already true on origin/{{git.mainBranch}}, or split into NNN-1
+- [ ] 3 written to plans/NNN-slug.plan.md (never ~/.cursor/plans/)
+- [ ] 3 Planner: on {{git.mainBranch}} → commit plan + todo only → push → git ls-tree origin/{{git.mainBranch}} prints the path
+- [ ] 4 completion line printed
 ```
 
-4. Interpret stdout:
+## Plan rules (what a saved plan looks like)
 
-| Result | Action |
-| --- | --- |
-| `no similar plans` | Proceed to Phase 1 — **do not** ask rewrite/new/cancel |
-| `similar plan(s)` | **Stop.** Show Human a short validation block (below). Wait for answer |
+- Path `plans/<NNN>-<slug>.plan.md`, H1 `# Plan NNN — <Human Title>` (the title drives similarity — make it describe the work). Refactor variant: `NNN-R`.
+- `## Read-Write Scope` in a shape `scripts/lib/plan-scope.mjs` parses: a fenced ```` ```scope ```` block, one glob per line, **or** a `**Scope:**` line followed by bullets whose first token is a `` `backticked` `` glob. A bare `scope` line or un-backticked bullets are not parsed and `take-plan` refuses the plan.
+- Exactly one `Status:` line (`Status: draft` for new; `take-plan` sets `active`). One `Snapshot:` line (filled in Phase 3).
+- Every Atomic Sub-task is `[ ] <what> — <target file(s)>`.
+- Every Done-when item starts with `[auto]` or `[human]`. `[auto]` means the expected output is exact — a string, an exit code, `npm run {{commands.build}}` passing, deterministic CLI output. `[human]` is visual/UI judgement, live interaction, product decisions; untagged counts as `[human]`. A UI-touching plan whose only Done-when is `[auto] npm run {{commands.build}}` is under-specified — add a `[human]` item. Only the plan author tags; agents never promote to `[auto]`.
+- Medium/large plan touching auth or storage → a one-line security-surface note; `scripts/pre-commit-security-grep.mjs` is the gate.
 
-### Human validation block (only when hits exist)
+## Phase 0 — similarity gate (always)
 
-Copy the script output into chat, then ask exactly:
+1. Extract the display name from the H1 / `name:` / first heading; derive the kebab-case slug.
+2. `node scripts/plan-name-similarity.mjs --name="<Display Name>"`
+3. `no similar plans` → go on, do **not** ask rewrite/new/cancel. `similar plan(s)` → paste the script output and ask exactly:
 
 ```text
 Similar plan(s) found — validate:
@@ -68,121 +49,48 @@ Similar plan(s) found — validate:
 Reply: rewrite existing | save as new | cancel
 ```
 
-- **rewrite existing** → Edit/overwrite the chosen existing path; sync its Atomic Sub-tasks + `.claude/todo.md`; do **not** allocate a new `NNN`.
-- **save as new** → Continue Phase 1 with next `NNN`. Before Write, put the relative path in `.claude/.plan-write-ack` (one line, e.g. `plans/291-foo.plan.md`) so the PreToolUse guard allows the create.
-- **cancel** → Stop. Do not write. Do not execute briefs.
+- **rewrite existing** → overwrite that path, sync its Atomic Sub-tasks + `.claude/todo.md`, no new `NNN`.
+- **save as new** → continue; before the Write put the relative path in `.claude/.plan-write-ack` (one line, e.g. `plans/291-foo.plan.md`) so the PreToolUse guard allows the create.
+- **cancel** → stop, write nothing, execute nothing.
 
----
+## Phase 1 — number + ledger (Planner only)
 
-## Phase 1: Ledger Sync
+A Worker never assigns `NNN` and never touches `.claude/todo.md` (it is Planner-owned; `todo-query.mjs sync --merged` collects the Worker's plan-file changes after merge).
 
-**Planner-only.** This phase (NNN assignment + `.claude/todo.md` append) runs only for the
-Planner — main folder, checked out on `main`. A Worker inside a `{{slots.nameFormat}}` slot never assigns a
-new `NNN` and never touches `.claude/todo.md`; see Phase 4 for what a Worker does instead.
+- **Number (save-as-new):** `node scripts/next-plan-number.mjs`. The script's number wins even when the pasted H1 already carries one (an Architect drafting in chat cannot see Workers' open branches) — rename the H1 and tell the Human in the completion line. It fetches, then takes the highest number across local plans, `origin/{{git.mainBranch}}` plans, the main worktree, and every local/remote `<type>/NNN-*` branch — a Worker's open branch whose plan you cannot see yet — plus 1. Never count `plans/` by hand; that is exactly how a number got reused. Re-run right before the write if anything else saved a plan meanwhile.
+- **Ledger:** don't read `.claude/todo.md` in full. Extract the Atomic Sub-tasks into a temp file and `node scripts/todo-query.mjs append --from <file>` (it inserts under `### Plan NNN — <Title>` before the footers). Then `node scripts/todo-query.mjs open` — unrelated open items get surfaced, not silently buried.
 
-Do not Read .claude/todo.md in full.
+## Phase 2 — lint the draft (cheap here, expensive in a slot)
 
-**Todo Update:** Extract `# Atomic Sub-tasks` (or equivalent checklist), write it to a temp file, and run `node scripts/todo-query.mjs append --from <file>` to insert it under `### Plan NNN — <Title>` before `.claude/todo.md`'s footers.
+- **Shape:** scope block parses; one `Status:`; a `Snapshot:` line exists (may be empty until Phase 3); Done-when tags present.
+- **Coverage:** every requirement in the plan has an Atomic Sub-task.
+- **Architecture gate:** `node scripts/scope-check.mjs --arch --plan=<path>` must exit 0 (`ARCH: ok …` or `ARCH: skipped …`). A crash that is environmental (`Cannot find package 'picomatch'` → `node_modules` missing, run `npm ci`) is not a gate result — fix the environment and re-run; do not reason the gate out by hand. It fails when the scope touches an invariant in `docs/brain/invariants.md` with no `## Architecture Impact` line, or a `deviation`/`changes` line lacking `Arch-approved: Human YYYY-MM-DD` or a valid ADR. Fix the draft. Only the Human's literal `approve arch change INV-n` in chat allows an `Arch-approved:` line — never write one on your own.
+- **Prerequisites (Planner):** if the draft has `## Prerequisites`, verify each is already true on `origin/{{git.mainBranch}}` *now*. A tiny Planner-owned fix (a few lines) → land it as its own chore commit first. Anything bigger → save it as its own plan `NNN-1`, sequenced before this one. A Worker must never take a plan with a gate it cannot clear itself.
 
-**Sub-task Formatting:** Every task `[ ]` with target file(s) when known.
+## Phase 3 — write, and (Planner) commit + push + verify
 
-**State Verification:** Run `node scripts/todo-query.mjs open` — if unrelated open tasks exist → surface them before proceeding.
+- `Snapshot:` = `git rev-parse origin/{{git.mainBranch}}` when the draft left it empty; never overwrite a SHA the Architect filled in. If `origin/{{git.mainBranch}}` cannot be resolved (no remote, fetch failed), leave it empty and say so — a local `HEAD` SHA is not what the Worker's drift check compares against, and substituting it hides the problem.
+- Write the file (rewrite → existing path; new → `plans/<NNN>-<slug>.plan.md`). Never under `~/.cursor/plans/`.
+- Not in a worktree and the plan changes code → suggest a `feat/` branch for whoever executes it.
 
-**Numbering (save as new only):** run `node scripts/next-plan-number.mjs` and use the number it prints. It fetches, then takes the highest number used by local plans, `origin/{{git.mainBranch}}`'s plans, the main worktree's plans, and any local or remote `<type>/NNN-*` branch (a Worker's open branch whose plan you may not see yet), plus 1. Never compute `NNN` by hand from `plans/` alone — that is how a Worker's open branch number got reused. Re-run it right before the write if anything else saved a plan meanwhile.
+**Planner only:**
 
----
+1. `git branch --show-current` **immediately before committing** — if it is not `{{git.mainBranch}}` (e.g. `branch-guard.sh` auto-switched to `feat/session-*`), `git checkout {{git.mainBranch}}` first. Catch it here, not after.
+2. `git add` the plan file and `.claude/todo.md` only (never `-A`), commit. This is the Planner's admin write to `{{git.mainBranch}}` (`AGENTS.md` Planner-Worker bullet; enforced by `scripts/branch-guard.sh` and `.husky/pre-push`).
+3. `git push origin {{git.mainBranch}}`. Blocked, rejected or non-zero → **stop**; surface the blocker and ask. Do not tell the Human the plan is ready.
+4. `git fetch origin --quiet` then `git ls-tree origin/{{git.mainBranch}} --name-only -- plans/<NNN>-<slug>.plan.md` must print the path. Empty → the push did not land; stop and investigate.
 
-## Phase 2: Logic Validation
+A Worker saving mid-brief does not commit here — its plan-file change rides its `feat/NNN-*` branch at `/ship`.
 
-**PRD Alignment:** Atomic sub-tasks cover the plan requirements — no requirement without a task.
-
-**Risk Audit:** Medium/Large + auth/storage → note security surface; rely on pre-commit security grep + CI.
-
-**Shape lint (mandatory before saving):** a Worker's `take-plan.mjs` refuses a plan without these, so check them here where the fix is cheap:
-
-- `## Read-Write Scope` holds the globs in one of the two shapes `scripts/lib/plan-scope.mjs` parses: a fenced block opened with ```` ```scope ```` (one glob per line), or a `**Scope:**` line followed by bullets that each start with a `` `backticked` `` glob. A bare `scope` line, or bullets without backticks, are not parsed.
-- Exactly one `Status:` line, with a value (`Status: draft` for a new plan; take-plan sets `active`).
-- A `Snapshot:` line (see Phase 3) — the Worker's drift check compares against it.
-- **Architecture gate (block):** `node scripts/scope-check.mjs --arch --plan=<path>` exits 0 (`ARCH: ok …`, or `ARCH: skipped …` for a grandfathered plan / no registry). It fails when the scope touches an invariant in `docs/brain/invariants.md` that has no `## Architecture Impact` line, or a `deviation`/`changes` line lacks `Arch-approved: Human YYYY-MM-DD` or a valid ADR. Fix the draft; only the Human's explicit `approve arch change INV-n` in chat allows an `Arch-approved:` line.
-
-**Prerequisites Gate (Planner only):** If the draft has a `## Prerequisites` section, check it's already true against `origin/{{git.mainBranch}}` *before* saving — do not hand a Worker a plan that will STOP on take. If unmet:
-
-- **Tiny, Planner-owned fix** (a few lines, no plan-worthy scope of its own) → land it directly as its own chore commit/PR to `{{git.mainBranch}}` now, then save this plan.
-- **Anything bigger** → save the prerequisite as its own plan (`NNN-1`, sequenced before this one) instead of writing a Prerequisites gate that STOPs a Worker. A plan should never ship with a hard gate the Worker who takes it cannot clear itself.
-
----
-
-## Phase 3: Write Plan File
-
-**Worktree Verification:** If not on a worktree and plan involves code changes → suggest `feat/` branch checkout.
-
-**Write:**
-
-- rewrite → overwrite the existing plan path Human confirmed
-- save as new → write `plans/<NNN>-<slug>.plan.md` (after `.claude/.plan-write-ack` if the write-guard may block)
-
-Never write under `~/.cursor/plans/`. `Snapshot:` — every plan has one. Fill it with the current
-`origin/{{git.mainBranch}}` SHA (`git rev-parse origin/{{git.mainBranch}}`) when the draft left it empty or has no
-`Snapshot:` line at all; never overwrite a SHA the Architect already filled in.
-
-**Pre-commit branch check (Planner only):** Run `git branch --show-current` immediately
-before committing. If it is not `main` (or `master`) — e.g. `branch-guard.sh` mis-fired and
-auto-switched to a `feat/session-*` branch — STOP before committing: `git checkout main`
-first, so the commit lands directly on `main`. Do not commit on a stray branch and fix it
-after; catch it here.
-
-**Commit (Planner, on `main`, only):** `git add` only the plan file and `.claude/todo.md`
-(never `-A`), then commit. This is the Planner's admin-bypass write to `main` — see
-`AGENTS.md`'s Planner-Worker bullet, enforced by `scripts/branch-guard.sh` and
-`.husky/pre-push`. A Worker saving mid-brief inside a `{{slots.nameFormat}}` slot does not commit here —
-its commit happens at `/ship` time on its `feat/NNN-*` branch, plan file only (Phase 4).
-
-**Push + Verify (Planner only, mandatory — do this before telling the Human the plan is
-ready):**
-
-1. `git push origin main`. If the push is blocked (permission prompt, rejected, or any
-   non-zero exit) — STOP. Do not tell the Human to execute the plan yet; surface the
-   blocker and ask for a decision first. A Worker's `take-plan.mjs` only reads
-   `origin/{{git.mainBranch}}`, so an unpushed plan fails silently in the worktree instead of here where
-   it's cheap to fix.
-2. After a successful push, confirm it actually landed: `git fetch origin --quiet` then
-   `git ls-tree origin/{{git.mainBranch}} --name-only -- plans/<NNN>-<slug>.plan.md` must print the path
-   (non-empty). If empty, the push did not do what it looked like — STOP and investigate
-   before announcing done.
-3. Only once both checks pass does the Completion Gate's "Plan NNN pushed" line become true.
-
----
-
-## Phase 4: Brief / mid-flight sync (ongoing — not only at save)
-
-After the plan is saved, **any agent** executing a brief from it must keep the plan file live:
-
-1. Brief must name its **parent plan path** (e.g. `plans/290-….plan.md`).
-2. If review fail / fallout / Human adds a stage → **append** a new `[ ]` Atomic Sub-task
-   (and milestone row if needed) **before** doing the new work.
-   - **Worker (inside a `{{slots.nameFormat}}` slot):** append to the plan file **only**. Never touch
-     `.claude/todo.md` — it is Planner-owned; the Planner's `todo-query.mjs sync --merged`
-     picks this up once the branch merges.
-   - **Planner (main folder, on `main`):** append to the plan file **and**
-     `.claude/todo.md`, as before.
-3. On validation per `docs/agent/job-validation.md` (Human reply, ship Y, or the Tier 1 auto path) → mark the matching item(s) `[x]`.
-   - **Worker:** mark `[x]` in the plan file's own Atomic Sub-tasks only.
-   - **Planner:** mark `[x]` in both the plan file and `.claude/todo.md` (see
-     `docs/agent/job-validation.md`).
-
----
-
-## Completion Gate
-
-Output:
+## Phase 4 — completion line
 
 ```text
 Plan saved: plans/<NNN>-<slug>.plan.md
 Ledger updated. Similarity: <none | rewrite | save-as-new>
 ```
 
-Then the last line depends on who saved it:
+then, **Planner:** `Plan NNN pushed. Open a free slot and say: execute plan NNN.` — the Planner never starts execution, even for a one-milestone plan. **Worker / anywhere else:** `Ready to execute Task 1: [Task Name].`
 
-- **Planner (main folder, on `main`):** `Plan NNN pushed. Open a free slot and say: execute plan NNN.`
-  The Planner never starts execution itself, even for a one-milestone plan.
-- **Worker (inside a `{{slots.nameFormat}}` slot) or anywhere else:** `Ready to execute Task 1: [Task Name].`
+## After the save — keeping the plan live
+
+Briefs executed from a saved plan must keep the plan file current (new sub-tasks appended *before* the work, `[x]` only after validation per `docs/agent/job-validation.md`). The Planner/Worker split for that is in [reference/mid-flight-sync.md](reference/mid-flight-sync.md) — read it when a brief adds a stage, a review produces fallout, or you are marking items done.

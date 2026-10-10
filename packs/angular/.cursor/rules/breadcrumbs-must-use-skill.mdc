@@ -1,0 +1,5 @@
+---
+description: Breadcrumbs skill — after adding a pages/<x>/ or top-level subtree, moving/deleting files, or before a PR that reshaped folders
+alwaysApply: false
+---
+Follow `.claude/skills/breadcrumbs/SKILL.md` (start with `node scripts/breadcrumbs-check.mjs`) after adding a `pages/<x>/` or top-level subtree, moving or deleting files, or before a PR that reshaped folders.
