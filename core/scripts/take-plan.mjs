@@ -27,6 +27,7 @@ import { resolve, dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import { isSlot, slotNumber, ports, listSlots } from './lib/slot.mjs'
 import { extractScopeGlobs } from './lib/plan-scope.mjs'
+import { findOpenPlanIn } from './lib/plan-paths.mjs'
 import { parseInvariants, checkPlanArch } from './lib/invariants.mjs'
 import { portState, killTree, waitForPort, waitForPortFree, tail, readSlotPids, writeSlotPids, stopSlotServers } from './lib/slot-procs.mjs'
 
@@ -200,13 +201,13 @@ const { fe: fePort, be: bePort } = ports()
 // --- (b) fetch + locate and validate the plan on origin/{{git.mainBranch}} ----------------
 git(['fetch', 'origin', '--prune'])
 
-const remotePlanRe = new RegExp(`^plans/${nnn}-[^/]+\\.plan\\.md$`)
+// Open plans live in plans/ or an open subfolder such as plans/design/ (lib/plan-paths.mjs).
 const mainPlans = tryGit(['ls-tree', '-r', 'origin/{{git.mainBranch}}', '--name-only', '--', 'plans/']).split('\n')
-const match = mainPlans.find(p => remotePlanRe.test(p))
+const match = findOpenPlanIn(mainPlans, nnn)
 
 if (!match) fail(`plans/${nnn}-*.plan.md not found on origin/{{git.mainBranch}}`)
 
-const slug = match.replace(/^plans\/\d+-/, '').replace(/\.plan\.md$/, '')
+const slug = match.replace(/^.*\/\d+-/, '').replace(/\.plan\.md$/, '')
 const branchName = `feat/${nnn}-${slug}`
 
 // Same parser as scope-check.mjs: without a readable scope every scope check fails after the claim.
@@ -254,7 +255,7 @@ for (const m of remotePlanText.matchAll(/^\s*[-*]?\s*\**Prerequisites?\**:\**\s*
 prereqs.delete(nnn)
 if (!process.argv.includes('--ignore-order')) {
   for (const p of prereqs) {
-    const file = mainPlans.find((f) => f.startsWith(`plans/${p}-`) && f.endsWith('.plan.md'))
+    const file = findOpenPlanIn(mainPlans, p)
     if (!file) continue // unknown or archived plan number - nothing to judge
     const prereqText = tryGit(['show', `origin/{{git.mainBranch}}:${file}`])
     if (/^Status:\s*(superseded|done|closed|complete|abandoned)\b/im.test(prereqText)) continue // finished another way

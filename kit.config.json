@@ -1,5 +1,5 @@
 {
-  "$comment": "Kit config scaffold (plan 329 B2, phase 4 conventions: slots.fePorts/bePorts are BASE port numbers (main = base, slot N = base+N); paths.srcRoot/serverRoot end with a slash when set; slots.dbNameFormat is a JS template body with ${n}; paths.hotspots is a list, rendered per context). Core files reference these keys as {{dotted.key}}. Values here are placeholders; each project fills its own. Generic defaults are kept only for git.mainBranch and the slot naming/count.",
+  "$comment": "Kit config scaffold (plan 329 B2, phase 4 conventions: slots.fePorts/bePorts are BASE port numbers (main = base, slot N = base+N); paths.srcRoot/serverRoot end with a slash when set; slots.dbNameFormat is a JS template body with ${n}; paths.hotspots is a list, rendered per context; plans.openDirs lists the folders whose *.plan.md files are open plans - range folders like plans/300-400/ are never open). Core files reference these keys as {{dotted.key}}. Values here are placeholders; each project fills its own. Generic defaults are kept only for git.mainBranch and the slot naming/count.",
   "project": {
     "name": "",
     "uiLocale": "",
@@ -52,6 +52,9 @@
     "serverRoot": "",
     "slotEnvFile": "",
     "sharedDocs": "docs/project"
+  },
+  "plans": {
+    "openDirs": ["plans"]
   },
   "security": {
     "sensitivePaths": ""

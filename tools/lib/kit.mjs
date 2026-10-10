@@ -106,6 +106,8 @@ export function render(text, vals, report = { unknown: new Set(), notSet: new Se
     if (filter === 'quoted') return list.length ? list.map((i) => `'${i}'`).join(', ') : "''"
     if (filter === 'dquoted') return list.length ? list.map((i) => `"${i}"`).join(', ') : '""'
     if (filter === 'glob') return list.length > 1 ? `{${list.join(',')}}` : (list[0] ?? '')
+    // Regex alternation body for shell guards: plans|plans/design (dots escaped).
+    if (filter === 'alt') return list.map((i) => i.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
     if (isEmpty(v)) {
       if (BLANK_OK.has(key)) return ''
       report.notSet.add(key)

@@ -2,7 +2,8 @@
 # Branch Guard - PreToolUse hook
 # stdout MUST be valid JSON for Cursor PreToolUse.
 #
-# On main, a write to plans/<name>.plan.md or .claude/todo.md is the
+# On main, a write to an open plan (plans/<name>.plan.md, plans/design/<name>.plan.md)
+# or .claude/todo.md is the
 # Planner's admin bypass (see AGENTS.md's Planner-Worker workflow) and is
 # allowed without switching. Any other path on main still auto-switches.
 
@@ -101,7 +102,9 @@ CURRENT=$(git -C "$REPO" branch --show-current 2>/dev/null)
 MSG=""
 
 if [[ "$CURRENT" == "{{git.mainBranch}}" || "$CURRENT" == "master" ]]; then
-  if [[ "$REL_PATH" =~ ^plans/[^/]+\.plan\.md$ ]] || [[ "$REL_PATH" == ".claude/todo.md" ]]; then
+  # Open plans: plans/ and its open subfolders (scripts/lib/plan-paths.mjs OPEN_PLAN_SHELL_RE). Range folders are not.
+  OPEN_PLAN_RE='^({{plans.openDirs|alt}})/[^/]+\.plan\.md$'
+  if [[ "$REL_PATH" =~ $OPEN_PLAN_RE ]] || [[ "$REL_PATH" == ".claude/todo.md" ]]; then
     printf '{"permission":"allow","agent_message":"BRANCH_GUARD: Planner admin bypass - %s stays on main."}\n' "$REL_PATH"
     exit 0
   fi

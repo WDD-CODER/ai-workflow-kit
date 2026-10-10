@@ -6,7 +6,8 @@
  * moves it when every item is ticked) and the plan file's own `## Atomic Sub-tasks` has no
  * `- [ ]` left. Runs in the todo-sync workflow right after `todo-archive.mjs`.
  *
- * Only flat `plans/NNN-<slug>.plan.md` files are candidates. The range folder is
+ * Only open plans are candidates: `plans/NNN-<slug>.plan.md` and the open subfolders such as
+ * `plans/design/` (lib/plan-paths.mjs). Every closed plan goes to its range folder:
  * `plans/1-100/` for 001–099, then `plans/100-200/`, `plans/200-300/`, …
  *
  * Usage:
@@ -16,15 +17,13 @@
  * Exit: 0 always (advisory tooling). Prints one line per closed plan.
  */
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, renameSync } from 'fs'
-import { resolve, dirname, join } from 'path'
+import { resolve, dirname, join, posix } from 'path'
 import { fileURLToPath } from 'url'
 import { splitPlanSections } from './lib/todo-parse.mjs'
+import { listOpenPlans } from './lib/plan-paths.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(__dirname, '..')
-const PLANS_DIR = join(repoRoot, 'plans')
-const TODO_PATH = join(repoRoot, '.claude', 'todo.md')
-const ARCHIVE_DIR = join(repoRoot, '.claude', 'todo-archive')
 
 const PLAN_FILE_RE = /^(\d{3})-.+\.plan\.md$/
 
@@ -57,17 +56,19 @@ function headingNumbers(text) {
   return out
 }
 
-function openTodoNumbers() {
-  if (!existsSync(TODO_PATH)) return new Set()
-  const { sections } = splitPlanSections(readFileSync(TODO_PATH, 'utf8'))
+function openTodoNumbers(root) {
+  const todoPath = join(root, '.claude', 'todo.md')
+  if (!existsSync(todoPath)) return new Set()
+  const { sections } = splitPlanSections(readFileSync(todoPath, 'utf8'))
   return headingNumbers(sections.map(s => s.heading).join('\n'))
 }
 
-function archivedNumbers() {
-  if (!existsSync(ARCHIVE_DIR)) return new Set()
-  const all = readdirSync(ARCHIVE_DIR)
+function archivedNumbers(root) {
+  const archiveDir = join(root, '.claude', 'todo-archive')
+  if (!existsSync(archiveDir)) return new Set()
+  const all = readdirSync(archiveDir)
     .filter(f => f.endsWith('.md'))
-    .map(f => readFileSync(join(ARCHIVE_DIR, f), 'utf8'))
+    .map(f => readFileSync(join(archiveDir, f), 'utf8'))
     .join('\n')
   return headingNumbers(all)
 }
@@ -75,7 +76,7 @@ function archivedNumbers() {
 export function findClosable({ files, openNums, archivedNums, readPlan }) {
   const out = []
   for (const file of files) {
-    const m = file.match(PLAN_FILE_RE)
+    const m = posix.basename(file).match(PLAN_FILE_RE)
     if (!m) continue
     const nnn = m[1]
     if (openNums.has(nnn) || !archivedNums.has(nnn)) continue
@@ -85,32 +86,30 @@ export function findClosable({ files, openNums, archivedNums, readPlan }) {
   return out
 }
 
-function main() {
-  const dryRun = process.argv.includes('--dry-run')
-  if (!existsSync(PLANS_DIR)) {
-    console.log('PLAN_CLOSE: no plans/ folder')
-    return
-  }
+/** Close every finished open plan under root (plans/ and plans/design/ …) into plans/<range>/. Returns the report lines. */
+export function closePlans(root, { dryRun = false } = {}) {
+  if (!existsSync(join(root, 'plans'))) return ['PLAN_CLOSE: no plans/ folder']
   const closable = findClosable({
-    files: readdirSync(PLANS_DIR),
-    openNums: openTodoNumbers(),
-    archivedNums: archivedNumbers(),
-    readPlan: f => readFileSync(join(PLANS_DIR, f), 'utf8')
+    files: listOpenPlans(root),
+    openNums: openTodoNumbers(root),
+    archivedNums: archivedNumbers(root),
+    readPlan: f => readFileSync(join(root, f), 'utf8')
   })
-  if (!closable.length) {
-    console.log('PLAN_CLOSE: nothing to close')
-    return
-  }
+  if (!closable.length) return ['PLAN_CLOSE: nothing to close']
+  const lines = []
   for (const { file, nnn } of closable) {
-    const dest = `plans/${rangeFolder(nnn)}/${file}`
+    const dest = `plans/${rangeFolder(nnn)}/${posix.basename(file)}`
     if (!dryRun) {
-      const src = join(PLANS_DIR, file)
+      const src = join(root, file)
       writeFileSync(src, setStatusDone(readFileSync(src, 'utf8')), 'utf8')
-      mkdirSync(join(PLANS_DIR, rangeFolder(nnn)), { recursive: true })
-      renameSync(src, join(repoRoot, dest))
+      mkdirSync(join(root, 'plans', rangeFolder(nnn)), { recursive: true })
+      renameSync(src, join(root, dest))
     }
-    console.log(`PLAN_CLOSE: ${dryRun ? 'would close' : 'closed'} plans/${file} → ${dest}`)
+    lines.push(`PLAN_CLOSE: ${dryRun ? 'would close' : 'closed'} ${file} → ${dest}`)
   }
+  return lines
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main()
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  for (const line of closePlans(repoRoot, { dryRun: process.argv.includes('--dry-run') })) console.log(line)
+}

@@ -8,10 +8,10 @@
  *
  * Usage: node scripts/next-plan-number.mjs [--no-fetch]
  */
-import { readdirSync, existsSync } from 'fs'
 import { execFileSync } from 'child_process'
-import { resolve, dirname, join } from 'path'
+import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
+import { listOpenPlans } from './lib/plan-paths.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(__dirname, '..')
@@ -34,7 +34,8 @@ const take = (names, re) => {
   }
 }
 const planRe = /(?:^|\/)(\d{3})-[^/]*\.plan\.md$/
-const listPlans = (dir) => (existsSync(join(dir, 'plans')) ? readdirSync(join(dir, 'plans')) : [])
+// Open plans only (plans/ and plans/design/ …): a filed plan is on origin/main, which is read recursively.
+const listPlans = (dir) => listOpenPlans(dir)
 
 take(listPlans(repoRoot), planRe)
 take(git(['ls-tree', '-r', '--name-only', 'origin/{{git.mainBranch}}', '--', 'plans/']).split('\n'), planRe)

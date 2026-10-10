@@ -26,13 +26,14 @@
  * "Human decision" notes that name no INV-n / ADR; always exit 0. No registry file:
  * "ARCH: skipped (no registry)", exit 0. --registry=<path> overrides the file (tests).
  */
-import { readFileSync, existsSync, readdirSync } from 'fs'
+import { readFileSync, existsSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { resolve, dirname, join, relative, isAbsolute } from 'path'
 import { fileURLToPath } from 'url'
 import picomatch from 'picomatch'
 import { activePlanPath } from './lib/slot.mjs'
 import { extractScopeGlobs } from './lib/plan-scope.mjs'
+import { listOpenPlans, OPEN_PLAN_DIRS } from './lib/plan-paths.mjs'
 import { parseInvariants, checkPlanArch, diffArchWarnings, decisionWithoutAdr, parseAddedLines } from './lib/invariants.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -177,10 +178,7 @@ function cmdOverlap(args) {
   const planPath = normalize(args.plan)
   const { scopeGlobs } = buildMatcher(planPath)
 
-  const plansDir = join(repoRoot, 'plans')
-  const siblingFiles = existsSync(plansDir)
-    ? readdirSync(plansDir).filter(f => f.endsWith('.plan.md')).map(f => `plans/${f}`)
-    : []
+  const siblingFiles = listOpenPlans(repoRoot)
 
   const overlaps = []
   for (const other of siblingFiles) {
@@ -262,7 +260,7 @@ function cmdArchPlan(args) {
 // Added lines (with line numbers) in session-state and plan files since the merge base with <base>.
 function addedDecisionLines(base) {
   const mergeBase = git(['merge-base', base, 'HEAD']) || base
-  const specs = [':(glob)docs/session-state*.md', ':(glob)plans/*.plan.md']
+  const specs = [':(glob)docs/session-state*.md', ...OPEN_PLAN_DIRS.map(d => `:(glob)${d}/*.plan.md`)]
   const added = parseAddedLines(git(['diff', '-U0', '--no-color', mergeBase, '--', ...specs]))
   const untracked = git(['ls-files', '--others', '--exclude-standard', '--', ...specs]).split('\n').filter(Boolean)
   for (const f of untracked) {
