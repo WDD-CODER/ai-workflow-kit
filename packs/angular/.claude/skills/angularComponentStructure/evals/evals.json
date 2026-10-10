@@ -1,0 +1,21 @@
+{
+  "skill_name": "angularComponentStructure",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "create a shared component tip-of-the-day under {{paths.srcRoot}}shared/tip-of-the-day. it gets a list of tips as input (required), shows one at random, has an expanded state the parent can two-way bind, emits an event when the user dismisses it, and uses UserMsgService to show 'tip_saved' when the user saves a tip. give it methods to add a tip, find a tip by id, remove one, rename one and list them. no spec file needed right now, we're mid plan.",
+      "expected_output": "tip-of-the-day.component.ts/.html/.scss with a class laid out as injected → inputs/model → outputs → signals/constants → computed → methods in CRDUL order, standalone, OnPush, inject(), input.required(), model(), output(), private signals with trailing underscore exposed via asReadonly(), no semicolons, no any, {{project.uiLocale}} text via translatePipe.",
+      "files": [],
+      "assertions": [
+        "{{paths.srcRoot}}shared/tip-of-the-day/tip-of-the-day.component.ts exists; no .spec.ts was created",
+        "Class members appear in this order: inject() calls, then input()/model(), then output(), then signal()/readonly constants, then computed(), then methods",
+        "Methods are ordered Create (add), Read (find by id), Delete (remove), Update (rename), List",
+        "Uses changeDetection: ChangeDetectionStrategy.OnPush and standalone: true",
+        "No @Input/@Output decorators, no constructor injection, no BehaviorSubject, no `any`",
+        "Private writable signals end with _ and are exposed via .asReadonly()",
+        "No semicolons at end of statements in the .ts file; single quotes in .ts, double quotes in .html",
+        "User-facing text in the template goes through the translate pipe, not a hardcoded {{project.uiLocale}}/English string"
+      ]
+    }
+  ]
+}

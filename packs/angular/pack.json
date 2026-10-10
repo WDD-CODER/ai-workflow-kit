@@ -3,16 +3,14 @@
   "description": "Angular stack pack: standards doc, skills, Cursor rules, gotchas and validation scripts.",
   "standardsDoc": "docs/agent/standards-angular.md",
   "skills": [
-    "angular-pipe-logic",
     "angularComponentStructure",
     "auth-and-logging",
-    "breadcrumb-navigator",
+    "breadcrumbs",
     "cssLayer"
   ],
   "cursorRules": [
     "angular-component-structure",
-    "angular-pipe-logic-must-use-skill",
-    "breadcrumb-navigator-must-use-skill",
+    "breadcrumbs-must-use-skill",
     "core-angular",
     "scss-styling-must-use-cssLayer"
   ],

@@ -1,64 +1,60 @@
 ---
 name: cssLayer
-description: Enforces the project CSS architecture — engine placement, five-group rhythm, and token tier rules — before any SCSS/CSS file is written or edited.
+description: {{project.name}} CSS architecture — where `.c-*` engine classes may live, design-token usage (`var(--*)`, `$break-*`), logical properties and the five-group property order. Use before creating or editing ANY `.scss` or `.css` file under `src/`, when styling a component, adding a breakpoint or a glass surface, and whenever the user mentions styles, SCSS, CSS, theme, tokens, layout, spacing or responsive — even if they never say "cssLayer".
+paths:
+  - "src/**/*.scss"
+  - "src/**/*.css"
 ---
 
-# Skill: cssLayer
-**Model Guidance:** Use Haiku/Flash for Phases 1 and 2. Use Sonnet for Phase 3 only when designing a new global `.c-*` engine class.
+# cssLayer — writing SCSS in {{project.name}}
 
-**Trigger:** Before creating or editing any `.scss` or `.css` file in `src/`.
+The design system lives in `src/styles.scss`: the token block at the top (`/* Designated global tokens */`), the `$break-*` variables, and the `.c-*` engine classes. Component `.scss` files only *compose* that system. Every rule below exists to keep that true.
 
-**CSS Rules (inline — no guide read required):**
-- `.c-*` engine classes belong **only** in `src/styles.scss` — never inside a component `.scss`
-- Angular view encapsulation will scope `.c-*` defined in components, breaking cross-component reuse
-- If a `.c-*` is found in a component file → move to `src/styles.scss` before proceeding
-- No inline styles unless the value is dynamic/runtime
-- Logical properties only: `padding-inline`, `padding-block`, `margin-inline` — no physical directional values
-- Responsive breakpoints must follow project token definitions (`$break-mobile`, `$break-tablet`, `$break-desktop` from `src/styles.scss` — never hardcode pixel values)
-- **No hardcoded values** — use `var(--*)` for ALL colors, shadows, radii, blur, and easing. Hardcoding `#ffffff`, `rgba(0,0,0,0.1)`, `8px` radius, or `blur(16px)` is a theme violation — the design system tokens exist for exactly these values
+## Rules and why
 
----
+- **`.c-*` engine classes are defined only in `src/styles.scss`.** Angular view encapsulation rewrites selectors inside a component stylesheet, so a `.c-*` defined there is scoped to that component and silently stops being reusable. Use an engine by adding its class to the host element in the template, not by copying its properties.
+- **No hardcoded design values.** Colors, shadows, radii, blur and easing come from `var(--*)` tokens. A literal `#fff`, `rgba(0,0,0,.1)`, `8px` radius or `blur(16px)` is a theme fork: it will not follow the theme when a token changes. If no token fits, that is a signal the value doesn't belong in the design — ask before inventing one.
+- **Breakpoints.** `$break-mobile` (768) / `$break-tablet` (900) / `$break-desktop` (1200) are declared in `src/styles.scss`, and Sass variables there are *not* reachable from a component stylesheet (no `stylePreprocessorOptions.includePaths`). Until a shared `_breakpoints.scss` partial exists, declare a local mirror at the top of the component file with a comment naming the global it mirrors — `$break-tablet: 900px; // mirrors src/styles.scss` — and use that in `@media`. Never a bare number inside `@media`.
+- **Logical properties only** (`padding-inline`, `margin-block`, `inset-inline-start`). The UI is RTL ({{project.uiLocale}}); physical `left`/`right` breaks mirroring.
+- **No inline styles** unless the value is runtime-dynamic.
+- **Native CSS nesting**, breakpoint blocks *after* the base styles of the selector.
 
-## Phase 1: Token & Engine Audit 
+## Workflow
 
-**Theme Alignment:** Read the design system comment block at the top of `src/styles.scss` (the `/* Designated global tokens */` section). Identify which tokens apply to the component type you're about to style — surface tokens (`--bg-glass`, `--blur-glass`), semantic tokens (`--bg-warning`, `--text-warning`), radius tokens (`--radius-*`), shadow tokens (`--shadow-*`). Every value you write should map to one of these. If you can't find a token for a value, that's a signal the value might not belong in the design.
+1. **Audit before writing.** Read the token block at the top of `src/styles.scss` and pick the tokens for this surface (surface: `--bg-glass`, `--bg-glass-strong`, `--blur-glass`; semantic: `--bg-warning-soft`, `--text-warning`; type: `--fs-*`, `--fw-*`; `--space-*`; `--radius-*`; `--shadow-*`; `--ease-smooth`/`--ease-spring`). Grep `src/styles.scss` for an existing `.c-*` engine and `{{paths.srcRoot}}shared/` for a composable pattern before authoring anything new.
+2. **Write each selector in five groups**, blank line between groups, in this order:
 
-**Engine Search:** Scan `src/styles.scss` for existing `.c-*` engine classes that can be composed before writing new styles. Composing an engine means adding it as an HTML class on the host element — not replicating its properties in the component SCSS.
+   ```scss
+   .recipe-card {
+     display: grid;                       /* 1 layout: display, flex/grid, position, gap, z-index */
+     grid-template-columns: 1fr auto;
 
-**Component Scan:** Check all component `.scss` files in scope for any `.c-*` definitions → move any found to `src/styles.scss`.
+     inline-size: 100%;                   /* 2 dimensions: width/height (logical), aspect-ratio */
 
-**Shared UI Check:** Scan `src/app/shared/` for composable patterns before writing new markup.
+     color: var(--color-primary);         /* 3 content: typography, colors, content */
+     font-size: var(--fs-md);
 
----
+     padding-inline: var(--space-4);      /* 4 structure: margin, padding, border, radius */
+     border-radius: var(--radius-md);
 
-## Phase 2: Structural Authoring 
+     transition: box-shadow var(--ease-smooth); /* 5 effects: transition, animation, shadow, opacity */
+     box-shadow: var(--shadow-glass);
 
-Apply the **Five-Group Vertical Rhythm** in every selector — in this order, each group separated by a blank line:
+     @media (min-width: $break-tablet) {  /* breakpoints come last; $break-tablet is the local mirror */
+       grid-template-columns: 1fr 1fr;
+     }
+   }
+   ```
 
-1. **Layout** — `display`, `flex`, `grid`, `position`, `gap`, `z-index`
-2. **Dimensions** — `width`, `height`, `aspect-ratio`
-3. **Content** — typography, colors, `content`
-4. **Structure** — `margin`, `padding`, `border`, `border-radius`
-5. **Effects** — `transition`, `animation`, `shadow`, `opacity`
+3. **Promote, don't repeat.** The same block in more than two components → define a `.c-*` engine in `src/styles.scss`, then replace the copies with the class in each template.
 
-Use logical properties throughout (`margin-inline`, `padding-block`). Use native CSS nesting syntax. Place responsive breakpoint blocks after the base selector — never before the base styles.
+## Verify before you finish (loop until both are empty)
 
----
+```bash
+# engines defined in a component stylesheet — must print nothing for the files you edited
+grep -nE "^\s*\.c-[a-z]" <edited .scss files>
+# hardcoded values — must print nothing (tokens, and the one-line $break-* mirror declaration, are fine)
+grep -nE "#[0-9a-fA-F]{3,8}\b|rgba?\(|[0-9]+px.*(radius|blur)|@media.*[0-9]+px" <edited .scss files>
+```
 
-## Phase 3: Complexity Review 
-
-> **Only invoke if** the same styles are repeated across more than two components.
-
-**Abstraction:** Propose a new `.c-*` engine class for `src/styles.scss` — name it, define it, register it. Then replace the repeated styles in each affected component file with the new `.c-*` class.
-
-**Performance:** Optimize for layout stability (avoid CLS) and minimal selector depth.
-
----
-
-## Completion Gate
-
-- No inline styles added (unless value is dynamic/runtime)
-- Responsive breakpoints use `$break-*` SCSS variables — no hardcoded pixel values
-- No `.c-*` class defined in any component `.scss` file
-- Five-Group Vertical Rhythm applied to every new/edited selector
-- No hardcoded colors, shadows, radii, or blur values — every value uses `var(--*)` or a `$` SCSS variable from `src/styles.scss`
+A hit means fix it, re-run. Pre-existing hits in files you did not touch are tech debt, not your job here — note them for `techdebt`.

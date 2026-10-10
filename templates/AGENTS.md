@@ -29,13 +29,11 @@ Preserve across `/compact`: current plan number + branch, open todos, and any fa
 | Trigger | File |
 | --- | --- |
 <!-- PACK:skill-triggers -->
-| After a hacky fix, or duplicate/special-case logic appears | `.claude/skills/elegant-fix/SKILL.md` |
-| Session start or after time away (once/day) | `.claude/skills/github-sync/SKILL.md` |
-| Before dev server / browser / database workflows | `.claude/skills/preflight/SKILL.md` |
+| Session start or after time away (once/day) | `.claude/skills/github-sync/SKILL.md` (gate: `scripts/github-sync-gate.mjs`) |
+| Before dev server / browser / database workflows | `.claude/skills/preflight/SKILL.md` (`node scripts/preflight.mjs`) |
 | "save the plan" or pastes a Plan Contract to execute | `.claude/skills/save-plan/SKILL.md` (+ `scripts/plan-name-similarity.mjs`) |
 | Brief adds a new stage / review fallout task | Append `[ ]` to parent plan's Atomic Sub-tasks + `.claude/todo.md` first |
-| Before PR, or "audit tech debt" | `.claude/skills/techdebt/SKILL.md` |
-| Before a PR | `.claude/skills/update-docs/SKILL.md` |
+| Before PR, or "audit tech debt" | `.claude/skills/techdebt/SKILL.md` (+ `scripts/techdebt-report.mjs`) |
 | "execute plan NNN" inside a `{{slots.nameFormat}}` slot | `.claude/commands/take-plan.md` |
 | "setup worktree" (one-time slot init, not per-plan) | `.claude/skills/worktree-setup/SKILL.md` |
 | List skills / commands | `.claude/commands/skills.md` / `commands.md` |

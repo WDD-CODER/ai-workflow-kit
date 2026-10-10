@@ -1,0 +1,21 @@
+{
+  "skill_name": "cssLayer",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I need styles for a new shared component, kitchen-tip-banner. Create {{paths.srcRoot}}shared/kitchen-tip-banner/kitchen-tip-banner.component.scss only (the .ts/.html already exist in my head, don't write them). It's a dismissible banner: glass background, rounded corners, an icon on the start side and text + a close button on the end side, a `.is-warning` variant with the warning colors, and on tablet and up the content goes two-column. Keep it consistent with how the rest of the app is styled.",
+      "expected_output": "One SCSS file that composes the design tokens (var(--bg-glass), --radius-*, --space-*, --text-warning etc.), uses only logical properties, $break-tablet for the breakpoint placed after base styles, defines no .c-* class, and writes each selector in the five-group order.",
+      "files": [],
+      "assertions": [
+        "The file {{paths.srcRoot}}shared/kitchen-tip-banner/kitchen-tip-banner.component.scss exists and is non-empty",
+        "No hardcoded color literal (#hex, rgb(), rgba(), hsl()) appears in the file",
+        "No hardcoded px radius or blur value appears; radius/blur come from var(--radius-*) / var(--blur-*)",
+        "No physical directional property appears (padding-left/right, margin-left/right, left:, right:, border-left/right, text-align: left/right)",
+        "The breakpoint uses $break-tablet (or another $break-* variable), not a px literal, and appears after the base declarations of its selector",
+        "No .c-* class is defined in the file",
+        "Within the main selector, declarations are grouped layout → dimensions → content → structure → effects with blank lines between groups",
+        "The transcript shows the agent read src/styles.scss (token block) before writing"
+      ]
+    }
+  ]
+}

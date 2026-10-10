@@ -1,145 +1,67 @@
 ---
 name: techdebt
-description: Scans for duplicated code, dead code, style violations, and TODO debt — run before PRs, after features, or at session end. Maintains a rolling archive of the last 7 audit reports.
+description: Tech-debt audit for {{project.name}} — dead code, duplicated logic, style-rule violations (banned state types, untyped escape hatches, lint rules), oversized components, leftover TODO/FIXME and security leftovers — written as a dated report with a 7-report trend. Use before a PR, after a large feature, at session end, from `/refactor`, by the nightly maintenance job, or when the user says "audit", "tech debt", "cleanup", "dead code" or "check todos".
+allowed-tools: Bash(node scripts/techdebt-report.mjs *) Bash(npm run {{commands.lint}} *)
 ---
 
-# Skill: techdebt
+# techdebt
 
-**Trigger:** End of development session, before a PR, after large features, or user says "audit tech debt" / "cleanup" / "check todos".
+Produces `.claude/techdebt-reports/techdebt-<today>.md`. The folder keeps the newest 7 so the Trend section can show whether debt is shrinking; the script owns that bookkeeping so you never compute dates or decide what to delete.
 
-**Style Violation Rules (inline — no guide read required):**
-- Flag: any state type the project's state rules ban ({{stack.stateRules}}) → replace per those rules
-- Flag: untyped escape hatches (`any` or the language's equivalent) → replace with explicit types
-- Flag: components or modules exceeding 300 lines → refactor candidate
-- Flag: temporary auth bypasses or hardcoded keys → security risk, must fix before PR
-- Reusable logic → move to the project's shared utilities
+## 1. Prepare (script)
 
-<!-- PACK:stack — framework-specific style flags (decorators, banned state types, lint-only rules) come from the stack pack -->
-
-
----
-
-## Report Archive — Rolling 7-Report Retention
-
-**Folder:** `.claude/techdebt-reports/`
-
-**Filename convention:** `techdebt-YYYY-MM-DD.md` (one report per calendar day; re-running on the same day overwrites that day's report).
-
-**Retention logic — execute at the START of every audit, before writing the new report:**
-
-1. List all files in `.claude/techdebt-reports/` matching `techdebt-*.md`.
-2. Sort by date extracted from filename (oldest first).
-3. Count existing reports:
-   - **Count < 7:** No deletion needed — proceed to write the new report.
-   - **Count ≥ 7:** Delete the oldest file(s) until only 6 remain, making room for the new report (result: 7 after write).
-4. Write (or overwrite) today's report: `techdebt-YYYY-MM-DD.md`.
-
-> **Edge case:** If the audit runs multiple times on the same day, the existing report for that date is overwritten in-place — it does NOT count as a new addition, so no old reports are deleted.
-
----
-
-## Scope Modes
-
-- **Working-tree mode** (invoked from `commit-to-github` [S-full] Phase 0): scope = only files staged for commit
-- **Full-project mode** (invoked at session end): scope = all of `{{paths.srcRoot}}`
-- **Fast-path skip:** If no source files are in scope → skip entirely and report clean
-
----
-
-## Phase 0 — docs/brain Orient (CONDITIONAL)
-
-If the task involves an unfamiliar area, an architectural choice, or known-recurring debt: read `docs/brain/index.md`, then only the relevant sub-file (`gotchas.md`, `decisions/`, `patterns/`, etc.). Default: skip for routine cleanup or pattern application. Do not call optional MCP memory tools.
-
----
-
-## Phase 1: Static Analysis `[Procedural — Haiku/Composer (Fast/Flash)]`
-
-**Duplicate Detection:** Scan for redundant utility functions or UI patterns that should move to the project's shared utilities.
-
-**Dead Code:** Identify unused imports, variables, and commented-out code blocks.
-
-**TODO Audit:** Scan for `// TODO` or `// FIXME` comments — categorize by urgency (critical / nice-to-have).
-
-**Style Violations:** Flag all violations listed in the rules above.
-
----
-
-## Phase 2: Logic & Complexity Pruning
-
-> **Only invoke if** style violations, refactor candidates, or security flags were found in Phase 1.
-
-**Refactor Candidates:** Identify components or services exceeding 300 lines — propose split strategy.
-
-**Signal Optimization:** Identify imperative logic convertible to declarative Signals or `computed()` values.
-
-**Security Surface:** Verify no temporary auth bypasses or hardcoded keys remain — these are blocking, must be resolved before PR.
-
----
-
-## Phase 3: Report Generation & Archive Management
-
-**3a — Retention cleanup:**
-```
-1. Ensure `.claude/techdebt-reports/` exists (create if missing).
-2. Glob `.claude/techdebt-reports/techdebt-*.md`.
-3. Parse dates from filenames, sort oldest-first.
-4. If today's date already has a report → that slot will be overwritten (no deletion needed unless count > 7).
-5. If count of *other* dates ≥ 7 → delete oldest until 6 remain.
-6. Write today's report.
+```bash
+node scripts/techdebt-report.mjs prepare --scope full-project    # session end, nightly, "audit tech debt"
+node scripts/techdebt-report.mjs prepare --scope working-tree    # before a PR: only staged files
 ```
 
-**3b — Report template:** Each report file must follow this structure:
+It prints `REPORT_PATH`, the scope (and the staged file list in working-tree mode), what it pruned, and a `TREND` table of the previous reports' Summary counts. If the scope lists no source files, write a two-line "clean, nothing in scope" report and stop.
+
+## 2. Analyze the scope
+
+Run the tools that exist before reading code by hand — they are faster and don't miss files:
+
+- `npm run {{commands.lint}}` — style rules (semicolons, quotes, `any`)
+- the project's dead-code tool, if the stack pack provides one <!-- PACK:stack -->
+- grep for the state patterns the project bans ({{stack.stateRules}}) — lint does not catch them
+- `grep -rnE "TODO|FIXME" <scope>` — classify each as critical / nice-to-have
+- components or services over 300 lines (`wc -l`) — split candidates
+- anything that looks like a temporary auth bypass or a hardcoded key — these are **blocking** and go to the top of the report
+
+Then read for what tools can't see: copied logic blocks that belong in the project's shared utilities, imperative state that should be derived state.
+
+Fix only what is mechanical and safe in this scope (unused imports, commented-out code, stray `console.log`). Anything that changes behaviour is a finding, not a fix — it becomes a `[ ]` in the report for a plan to pick up.
+
+## 3. Write the report
+
+Write `REPORT_PATH` with exactly this structure; the script parses the `## Summary` lines next time to build the trend, so keep the labels verbatim:
 
 ```markdown
 # Tech Debt Audit — YYYY-MM-DD
 
 ## Summary
-- Unused imports removed: X
-- TODOs logged: Y (critical: C / nice-to-have: N)
-- Components flagged for refactor: Z
-- Style violations fixed: W
-- Security flags: S
+- Unused imports removed: N
+- TODOs logged: N (critical: C / nice-to-have: N)
+- Components flagged for refactor: N
+- Style violations: N
+- Security flags: N
 
 ## Scope
-<!-- working-tree | full-project -->
+full-project | working-tree (file list)
 
 ## Detailed Findings
-
-### Dead Code
-<!-- list removed imports, unused vars, commented blocks -->
-
-### TODO / FIXME Inventory
-<!-- table: location | text | urgency -->
-
-### Style Violations
-<!-- list: file, line, violation, fix applied or pending -->
-
-### Refactor Candidates
-<!-- components/services > 300 lines, proposed split -->
-
 ### Security Flags
-<!-- any temp auth bypasses, hardcoded keys -->
+### Dead Code
+### Style Violations
+### Refactor Candidates
+### TODO / FIXME Inventory
 
 ## Trend (last 7 audits)
-<!-- Compare today's totals vs previous reports in the folder.
-     Show direction arrows: ↑ worse / ↓ better / → stable -->
+<the TREND table from the script, with ↑ worse / ↓ better / → stable next to today's numbers>
 ```
 
-> The **Trend** section is populated by reading the Summary block from the other reports in the archive folder and comparing counts. This gives a quick at-a-glance view of whether tech debt is growing or shrinking over the rolling window.
+## 4. Hand-off
 
----
-
-## Phase 4: Documentation & Sync `[Procedural — Haiku/Composer (Fast/Flash)]`
-
-**Breadcrumb Check:** Run `update-docs` skill to ensure navigation maps reflect the cleaned state.
-
-**Ledger Update:** Mark completed items in `.claude/todo.md` — move unresolved debt to a dedicated "Tech Debt" section.
-
----
-
-## Completion Gate
-
-Output: `"Tech debt audit complete. [X] unused imports removed, [Y] TODOs logged, [Z] components flagged for refactor. Report saved to .claude/techdebt-reports/techdebt-YYYY-MM-DD.md ([N]/7 reports in archive)."`
-
-If critical logic was changed → invoke CI / npm run {{commands.test}} for verification before committing.
-
+- Open findings that need a plan → append `[ ]` items under a `### Tech Debt` heading in `.claude/todo.md` (Planner only; a Worker lists them in the report and in its PR description instead).
+- Breadcrumbs stale after deletions → run `breadcrumbs`.
+- Finish with one line: `Tech debt audit written to <REPORT_PATH> — N blocking, N findings, N fixed.`

@@ -1,71 +1,68 @@
 ---
 name: angularComponentStructure
-description: Defines the mandatory class structure, section ordering, and CRDUL method grouping for every Angular component in this project.
+description: The required class layout for every Angular component in {{project.name}} — section order (injected → inputs → outputs → signals → computed → CRDUL methods), signals-only state, `inject()`, `input()`/`output()`/`model()`, OnPush. Use before creating, scaffolding, refactoring or reviewing ANY `*.component.ts`, when adding a page or modal, and whenever the user mentions a component, page, modal, dialog, widget or "class structure" — even without naming this skill.
+paths:
+  - "{{paths.srcRoot}}**/*.component.ts"
 ---
 
-# Skill: angularComponentStructure
+# angularComponentStructure
 
-**Model Guidance:** Use Haiku/Flash for Phases 1 and 3. Use Sonnet for Phases 2 and 4.
+Every component class reads the same way, top to bottom, so any agent or developer can find state, API and behaviour without scanning. The order is the rule; the rest of the Angular conventions (signals only, `inject()`, no `any`, quotes/semicolons) are in `AGENTS.md` and `docs/agent/standards-angular.md` and are not repeated here.
 
-**Trigger:** Before creating or refactoring any Angular component class.
+## Class section order
 
-**Component Rules (inline — no guide read required):**
-- `standalone: true` — always
-- `changeDetection: ChangeDetectionStrategy.OnPush` — always
-- `inject()` for all dependencies — no constructor injection ever
-- No `.c-*` classes defined in component `.scss` — use `src/styles.scss` engines only
-- Icons must be registered with the project icon registry before use in templates
-- `.spec.ts` only during `commit-to-github` Phase 0 or explicit user request — never during iterative work
-- No `any` types — use explicit TypeScript types for all method parameters and return values
+```ts
+@Component({
+  selector: 'recipe-card',            // kebab-case, no app- prefix unless it collides with native HTML
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [TranslatePipe, LucideAngularComponent],
+  templateUrl: './recipe-card.component.html',
+  styleUrl: './recipe-card.component.scss',
+})
+export class RecipeCardComponent {
+  // 1. INJECTED
+  private readonly recipeService = inject(RecipeService)
+  private readonly userMsg = inject(UserMsgService)
 
----
+  // 2. INPUTS  — input(), model()
+  recipe = input.required<Recipe>()
+  expanded = model(false)
 
-## Phase 1: Boilerplate Generation 
+  // 3. OUTPUTS — output()
+  selected = output<Recipe>()
 
-**File Creation:** Standard four-file split: `.ts`, `.html`, `.scss`, `.spec.ts` (unless `inlineTemplate` requested). When refactoring an existing component, skip file creation — reorder class sections in place.
+  // 4. SIGNALS & CONSTANTS — writable private state ends with _; expose it via asReadonly(). computed() never carries the _ suffix
+  private readonly saving_ = signal(false)
+  readonly saving = this.saving_.asReadonly()
+  readonly maxTags = 5
 
-**Class Section Order (strict — enforce this sequence every time):**
-1. INJECTED services
-2. INPUTS (`input()`, `model()`)
-3. OUTPUTS (`output()`)
-4. SIGNALS & CONSTANTS (`signal()`, `readonly`)
-5. COMPUTED SIGNALS (`computed()`)
-6. CRDUL methods — Create, Read, Delete, Update, List (grouped in this order)
+  // 5. COMPUTED
+  readonly title = computed(() => this.recipe().name.trim())
 
----
+  // 6. METHODS in CRDUL order: Create, Read, Delete, Update, List — then UI handlers
+  addTag(tag: string) { /* C */ }
+  tagById(id: string) { /* R */ }
+  removeTag(id: string) { /* D */ }
+  rename(name: string) { /* U */ }
+  tags() { /* L */ }
+  toggleExpanded() { /* UI handlers (toggle, dismiss, next…) come after the five data groups, never between them */ }
+}
+```
 
-## Phase 2: Reactive State Definition 
+Why CRDUL and not alphabetical: the verbs map to the data flow a reader is tracing, and grouping them makes a missing branch (a delete with no confirm, an update with no validation) visible at a glance.
 
-**Signal Mapping:** Define internal state using `signal()`. Expose public state via `.asReadonly()`.
+## When you create a component
 
-**Derived State:** Implement `computed()` values to prevent unnecessary `effect()` calls.
+- Four files: `.ts`, `.html`, `.scss`, `.spec.ts` (skip `.spec.ts` during iterative plan work — specs are written when the unit is finalized or on request, per `docs/agent/standards-angular.md`).
+- Register every Lucide icon the template uses in `app.config.ts` before using it — an unregistered icon renders nothing and fails silently.
+- Styles follow `cssLayer` (it activates on its own when you touch the `.scss`).
+- UI strings go through the translation pipe + `{{project.i18nFile}}` (append-only hotspot).
 
-**API Definition:** Use `input()`, `output()`, `model()` for all component communication — no `@Input`/`@Output` decorators.
+## When you refactor an existing component
 
----
+Reorder the existing members into the six sections in place; do not recreate files. Keep behaviour identical — a reorder commit should contain no logic change.
 
-## Phase 3: Template & Style Integration 
+## Check before finishing
 
-**HTML:** Double quotes throughout. Semantic element choice. Verify every icon used is registered with the project icon registry.
-
-**SCSS:** Follow cssLayer skill rules — logical properties (`margin-inline`, `padding-block`), five-group vertical rhythm.
-
-**Engine Check:** Scan component `.scss` for any `.c-*` class definitions → move to `src/styles.scss` if found.
-
----
-
-## Phase 4: Unit Test Strategy 
-
-> **Only execute this phase during `commit-to-github` Phase 0 or on explicit user request.**
-
-**Spec Logic:** Define core testing requirements for the component's Signal-driven logic.
-
-**Signal Testing:** Ensure `.spec.ts` correctly triggers and asserts signal changes.
-
----
-
-## Completion Gate
-
-Output: `"Component [Name] created with [X] signals and [Y] inputs. Icon registry verified."`
-
-Update `.claude/todo.md` and proceed to the next atomic task.
+Re-read the class top to bottom and confirm: sections appear in order 1–6 with nothing interleaved; CRDUL is contiguous with UI handlers after it; no `@Input`/`@Output`, `BehaviorSubject`, constructor injection or `any`; writable private signals end with `_` and are exposed read-only; nothing public carries the `_` suffix. Build is checked at `/ship`, not here.

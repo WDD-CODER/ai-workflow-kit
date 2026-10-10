@@ -1,63 +1,42 @@
 ---
 name: github-sync
-description: Pulls recent GitHub activity and syncs the local branch at session start or after time away — runs once per calendar day.
+description: Once-a-day sync at session start or after time away — pulls with rebase, cleans up remote branches listed in `.worktree-cleanup`, prunes merged locals, and summarizes open PRs and the project state for this session. Use when a session begins, when the user says "sync", "pull", "what changed", "I'm back", or when `git status` shows the branch is behind. Skips itself if it already ran today.
+allowed-tools: Bash(node scripts/github-sync-gate.mjs *) Bash(git status *) Bash(git fetch *) Bash(git branch *) Bash(git log *) Bash(gh pr list *)
 ---
 
-# Skill: github-sync
+# github-sync
 
-**Trigger:** Session start or after time away. **Once-per-day gate:** Check `notes/github-sync/<today-date>.md` first — if it exists, skip and print `✓ GitHub sync already ran today`. Only run if missing.
-**Standard:** Session start rules are in session context from startup — no file reload needed.
+## Gate (computed before you read this)
 
----
+!`node scripts/github-sync-gate.mjs || true`
 
-## Phase 0: Worktree Remote Cleanup `[Procedural — Haiku/Composer (Fast/Flash)]`
+If the first line is `GATE: already-ran`, print `✓ GitHub sync already ran today` and stop — nothing else in this file applies. Otherwise continue; the facts above (branch, dirty count, ahead/behind, cleanup list) replace any need to re-run `git status`.
 
-**Check for breadcrumb:** If `.worktree-cleanup` exists in the repo root:
-1. Read each line (one branch name per line)
-2. For each branch name, run: `git push origin --delete <branch-name>`
-   - If it succeeds: log `✓ Deleted remote branch: <branch-name>`
-   - If it fails with "remote ref does not exist": log `✓ Already gone: <branch-name>` (safe to ignore)
-3. Delete the `.worktree-cleanup` file after processing all entries
-4. Run `git fetch --prune` to sync remote refs
+## 1. Remote cleanup (only if `CLEANUP` listed branches)
 
-If `.worktree-cleanup` does not exist, skip this phase entirely.
+For each branch in `.worktree-cleanup`: `git push origin --delete <branch>`. "remote ref does not exist" means it is already gone — log `✓ Already gone: <branch>` and move on. When all entries are processed, delete `.worktree-cleanup` and run `git fetch --prune`. The file is the hand-off from `/cleanup` in a slot that cannot push deletes itself; leaving it behind would re-delete on every sync.
 
----
+## 2. Sync
 
-## Phase 1: Environment Audit `[Procedural — Haiku/Composer (Fast/Flash)]`
+- `DIRTY > 0` → `git stash` first, pop after the pull. Never rebase on top of uncommitted work.
+- `git pull --rebase` (rebase keeps the Planner/Worker history linear, which `plan-ledger-check` relies on).
+- On a conflict: stop, show the conflicting files, and ask — do not resolve someone else's work.
+- List local branches already merged into `{{git.mainBranch}}` (`git branch --merged {{git.mainBranch}}`) and offer them for deletion; do not delete without a yes.
 
-**Status Check:** Run `git status` and `git fetch`.
+## 3. Session intelligence
 
-**Conflict Check:** Identify if local changes conflict with remote `main` or active `feat/` branch.
+- Read the newest `.claude/sessions/*/session-handoff.md` and the newest `docs/session-state-*.md` (by date suffix) — these are the "where were we" files.
+- `gh pr list --state open` → surface pending reviews and failing checks.
+- Compare `.claude/todo.md` open items (`node scripts/todo-query.mjs open`) with the current branch; flag anything that looks finished but unmarked.
 
-**Worktree Detection:** Identify if operating in a worktree; verify `.worktree-port` and `.worktree-root`.
+## 4. Finish
 
----
+Write `notes/github-sync/<today>.md` (the `MARKER` path from the gate) with: branch, what was pulled, branches deleted, open PRs, and the 3–5 line project summary. Writing the marker is the last step on purpose — a sync that failed halfway must not count as done for today.
 
-## Phase 2: Synchronization `[Procedural — Haiku/Composer (Fast/Flash)]`
+Then report in chat, in this shape:
 
-**Pull / Rebase:** Execute `git pull --rebase` for clean history.
-
-**Stash Management:** If uncommitted changes exist: `git stash` → sync → `git stash pop`.
-
-**Branch Cleanup:** Identify merged local branches safe to delete.
-
----
-
-## Phase 3: Session Intelligence `[High Reasoning]`
-
-**Daily Log Audit:** Read latest `.claude/sessions/*/session-handoff.md` (preferred) or `notes/session-handoffs/` (legacy fallback) and `notes/github-sync/` files. Summarize the "State of the Project" for the current session.
-
-**GitHub Context:** Read open PRs via MCP (`mcp__github__list_pull_requests`) → fallback to `gh pr list`. Surface any pending reviews or CI failures.
-
-**Todo Alignment:** Verify `.claude/todo.md` matches the current branch state.
-
----
-
-## Completion Gate
-
-Output: `"GitHub sync complete. Remote changes merged. Local branch is up to date."`
-
-Save sync log to `notes/github-sync/<today-date>.md`.
-
-
+```
+GitHub sync complete — <branch> up to date (<n> commits pulled, <m> remote branches cleaned).
+Open PRs: …
+State: …
+```
