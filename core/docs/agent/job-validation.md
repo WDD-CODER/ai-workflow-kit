@@ -63,7 +63,7 @@ HOW TO VALIDATE — 1 check · app: the Claude window of Worker slot 2 · reply:
    WHY     take-plan now notices a branch that was already merged, so a slot never continues on stale work
    (squash merge = GitHub folds the branch into one commit on main)
    WHERE   the Claude window of Worker slot 2
-   SETUP   plan 42's branch must already be merged on GitHub (it is, PR #87)
+   SETUP   plan 42's branch must already be merged on GitHub (it is)
    DO      paste:  take plan 42
    SEE ✓   a line ending "…was merged - starting fresh"
    FAIL ✗  it asks you to reset the branch by hand, or the push is rejected
@@ -74,7 +74,7 @@ HOW TO VALIDATE — 1 check · app: the Claude window of Worker slot 2 · reply:
 - Written for someone who is not an engineer: any person can follow it without asking
 - The header line says how many checks, where the app is running (URL, or which window), and the reply words — the Human should not have to scroll back to find the port
 - WHY is one sentence in the user's words: what changed and what this check proves — never the commit subject or the plan's Done-when text
-- SETUP appears only when the check needs data or state that may not exist (e.g. "have at least 3 venues"); say how to get it in one line, or that the agent already seeded it
+- SETUP appears only when the check needs data or state that may not exist (e.g. "have at least 3 saved records"); say how to get it in one line, or that the agent already seeded it
 - Rewrite each Done-when item in plain words — never copy the plan's wording verbatim
 - One check per card, completable in under a minute
 - WHERE names the exact place (app page + what to click to get there, or which terminal window)
