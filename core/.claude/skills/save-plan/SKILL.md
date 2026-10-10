@@ -101,7 +101,7 @@ Do not Read .claude/todo.md in full.
 **Shape lint (mandatory before saving):** a Worker's `take-plan.mjs` refuses a plan without these, so check them here where the fix is cheap:
 
 - `## Read-Write Scope` holds the globs in one of the two shapes `scripts/lib/plan-scope.mjs` parses: a fenced block opened with ```` ```scope ```` (one glob per line), or a `**Scope:**` line followed by bullets that each start with a `` `backticked` `` glob. A bare `scope` line, or bullets without backticks, are not parsed.
-- Exactly one `Status:` line, with a value (`Status: draft` for a new plan; take-plan sets `active`).
+- Exactly one `Status:` line, with a value (`Status: draft` for a new plan; take-plan sets `active`; after the merge the todo-sync workflow's `plan-close.mjs` sets `done` and moves the plan into `plans/<range>/`).
 - A `Snapshot:` line (see Phase 3) — the Worker's drift check compares against it.
 - **Architecture gate (block):** `node scripts/scope-check.mjs --arch --plan=<path>` exits 0 (`ARCH: ok …`, or `ARCH: skipped …` for a grandfathered plan / no registry). It fails when the scope touches an invariant in `docs/brain/invariants.md` that has no `## Architecture Impact` line, or a `deviation`/`changes` line lacks `Arch-approved: Human YYYY-MM-DD` or a valid ADR. Fix the draft; only the Human's explicit `approve arch change INV-n` in chat allows an `Arch-approved:` line.
 

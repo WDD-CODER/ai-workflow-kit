@@ -2,7 +2,9 @@ name: todo-sync
 
 # Workers tick [x] in their own plan file (they never write .claude/todo.md — parallel
 # Workers would conflict on it). Once their PR merges, this copies those ticks into the
-# ledger and archives fully-done sections. main requires a PR, so the bot opens one and
+# ledger and archives fully-done sections. A merge only happens after the Human validated,
+# so a plan whose section was archived is finished: plan-close.mjs sets its Status: done
+# and moves it into plans/<range>/ (e.g. plans/300-400/). main requires a PR, so the bot opens one and
 # squash-merges it. Needs repo setting: Actions → "Allow GitHub Actions to create and
 # approve pull requests". A merge made with GITHUB_TOKEN does not re-trigger workflows,
 # so this cannot loop. Merge right away: main has no required checks, ci/security/brain
@@ -41,13 +43,14 @@ jobs:
         run: |
           node scripts/todo-query.mjs sync --merged
           node scripts/todo-archive.mjs
+          node scripts/plan-close.mjs
 
       - name: Open and merge a ledger PR when something changed
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -z "$(git status --porcelain -- .claude/todo.md .claude/todo-archive)" ]; then
+          if [ -z "$(git status --porcelain -- .claude/todo.md .claude/todo-archive plans)" ]; then
             echo 'Ledger already in sync.'
             exit 0
           fi
@@ -55,8 +58,8 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git switch -c "$branch"
-          git add .claude/todo.md .claude/todo-archive
-          git commit -m "chore(todo): sync ledger from merged plan files (${GITHUB_SHA::8})"
+          git add -A .claude/todo.md .claude/todo-archive plans
+          git commit -m "chore(todo): sync ledger and close finished plans (${GITHUB_SHA::8})"
           git push origin "$branch"
           gh pr create --base {{git.mainBranch}} --head "$branch" \
             --title "chore(todo): sync ledger from merged plan files" \
