@@ -19,7 +19,7 @@ Use this path for fixing bugs, errors, and broken behavior.
 | Area | Standards loaded |
 |------|-----------------|
 | `css` | `{{stack.standardsDoc}}` (CSS section) + `cssLayer` skill |
-| `auth` | `docs/agent/standards-security.md` + `auth-and-logging` + `auth-crypto` |
+| `auth` | `docs/agent/standards-security.md` + `auth-and-logging` (covers crypto) |
 | `data` | `{{docs.domainStandards}}` + `docs/agent/standards-backend.md` |
 | `ui` | `{{stack.standardsDoc}}` (Components) + `{{docs.domainStandards}}` |
 | `api` | `docs/agent/standards-backend.md` + `docs/agent/standards-security.md` |
@@ -28,14 +28,14 @@ Use this path for fixing bugs, errors, and broken behavior.
 ## Invokes
 
 - `investigate` — root cause analysis before any fix is applied
-- `elegant-fix` — after a working fix exists, refine it to production quality
+- After a working fix exists, refine it to production quality against `{{stack.standardsDoc}}` (naming, pure utils in `util.service.ts`, no nested subscriptions, components under 300 lines)
 
 ## Typical flow
 
 1. User describes the bug (area + symptom).
 2. `investigate` traces the root cause (checks recent changes, failure history, source).
 3. Fix is implemented atomically — one targeted change.
-4. `elegant-fix` reviews the fix for code quality, edge cases, and consistency.
+4. Review the fix for code quality, edge cases, and consistency against `{{stack.standardsDoc}}`; CSS touched → `cssLayer`.
 5. `npm run {{commands.build}}` / `npm run {{commands.lint}}` pass. Human commits via `git-agent` prep.
 
 ## Hard rules

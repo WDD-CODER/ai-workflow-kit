@@ -16,9 +16,9 @@ Repo root = **workspace cwd** (never hardcode a machine path).
 
 ## Execution
 
-Invoke the `update-docs` skill from the repo root (cwd):
+Invoke the `breadcrumbs` skill from the repo root (cwd):
 
-1. Read `.claude/skills/update-docs/SKILL.md`
+1. Read `.claude/skills/breadcrumbs/SKILL.md` (it runs `node scripts/breadcrumbs-check.mjs` first)
 2. Follow the skill's steps to refresh breadcrumbs and documentation
 
 Or spawn a general agent with a **path-free** prompt:
@@ -27,7 +27,7 @@ Or spawn a general agent with a **path-free** prompt:
 Agent(
   subagent_type: "generalPurpose",
   description: "Refresh breadcrumbs and project docs",
-  prompt: "Run the update-docs skill from the workspace repo root (cwd). Refresh breadcrumbs.md at major seams, prune stale entries, update key exports. Do not use any hardcoded absolute machine path."
+  prompt: "Run the breadcrumbs skill from the workspace repo root (cwd). Refresh breadcrumbs.md at major seams, prune stale entries, update key exports. Do not use any hardcoded absolute machine path."
 )
 ```
 

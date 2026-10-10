@@ -5,8 +5,7 @@ Use this path for security audits, hardening, authentication review, and vulnera
 ## Loads
 
 - `docs/agent/standards-security.md` — OWASP top 10, auth patterns, API security, input validation
-- `auth-and-logging` skill — authentication guards, mutation logging, auth audit checklist
-- `auth-crypto` skill — hashing, encryption, token handling, secrets management
+- `auth-and-logging` skill — authentication guards, mutation logging, auth audit checklist, and the `auth-crypto.ts` hashing/token rules
 
 ## Invokes
 

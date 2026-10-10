@@ -34,4 +34,4 @@ Use this path for code cleanup, dead code removal, pattern consolidation, and te
 | Scope | Approach |
 |-------|----------|
 | Single file or component | Solo Contractor |
-| 2–5 files, single subsystem | Solo + `elegant-fix` review |
+| 2–5 files, single subsystem | Solo + a code-quality pass against `{{stack.standardsDoc}}` |

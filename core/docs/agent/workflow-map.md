@@ -76,16 +76,14 @@ Redirect stubs for palette discoverability ship with the optional `layer:cursor`
 
 | Skill | Trigger | Key connections | Cursor `.mdc` |
 | --- | --- | --- | --- |
-| `save-plan` | Plan Contract pasted / "save the plan" / plan not yet under `plans/` | runs `scripts/plan-name-similarity.mjs`; writes `plans/NNN-slug.plan.md` + `.claude/todo.md`; `.claude/.plan-write-ack` handshake with `plan-write-guard.sh`; Phase 4 = mid-flight brief↔plan sync | `save-plan-must-use-skill` |
+| `save-plan` | Plan Contract pasted / "save the plan" / plan not yet under `plans/` | runs `scripts/plan-name-similarity.mjs`; writes `plans/NNN-slug.plan.md` + `.claude/todo.md`; `.claude/.plan-write-ack` handshake with `plan-write-guard.sh`; mid-flight brief↔plan sync in `reference/mid-flight-sync.md` | `save-plan-must-use-skill` |
 | `brief-detection` | 3+ structured H2 markers in first message | gates execution → routes to `/feat` (option b) or discussion | `brief-detection-must-use-skill` |
-| `elegant-fix` | after hacky fix / duplicate logic | — | `elegant-fix-must-use-skill` |
-| `github-sync` | session start, once per day | writes `notes/github-sync/YYYY-MM-DD.md` | `github-sync-must-use-skill` — best-effort, no `SessionStart`-hook equivalent in Cursor |
-| `preflight` | before dev server / browser / DB workflows | env check | `preflight-must-use-skill` |
-| `techdebt` | end of session / before PR / audit | — | `techdebt-must-use-skill` |
-| `update-docs` | after significant features / before PR | — | `update-docs-must-use-skill` |
+| `github-sync` | session start, once per day | `scripts/github-sync-gate.mjs` (injected gate); writes `notes/github-sync/YYYY-MM-DD.md` | `github-sync-must-use-skill` — best-effort, no `SessionStart`-hook equivalent in Cursor |
+| `preflight` | before dev server / browser / DB workflows | `scripts/preflight.mjs` | `preflight-must-use-skill` |
+| `techdebt` | before PR / audit | `scripts/techdebt-report.mjs` (rolling 7 reports + trend) | `techdebt-must-use-skill` |
 | `worktree-setup` | "setup worktree" (explicit only) | — | `worktree-setup-must-use-skill` |
 
-<!-- PACK:stack — stack skill rows (component structure, pipe/directive logic, auth, styling layer, breadcrumb navigator) come from the stack pack -->
+<!-- PACK:stack — stack skill rows (component structure, auth, styling layer, breadcrumbs) come from the stack pack -->
 
 ---
 

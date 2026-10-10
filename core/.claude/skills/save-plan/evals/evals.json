@@ -1,0 +1,21 @@
+{
+  "skill_name": "save-plan",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "save the plan\n\n<pasted Plan Contract: see plan-contract-fixture.md — title 'Plan NNN — Supplier Contact Quick-Edit', empty Status/Snapshot, scope block, Architecture Impact, 3 Atomic Sub-tasks, one [auto] and one [human] Done-when>",
+      "expected_output": "Phase 0 similarity script run; plan written to plans/<NNN>-supplier-contact-quick-edit.plan.md with Status: draft and Snapshot filled; Atomic Sub-tasks appended to .claude/todo.md via todo-query.mjs; arch gate script run; on this repo (no origin) the push cannot succeed, so the agent must STOP and surface the blocker instead of announcing 'Plan NNN pushed'; no execution of A1–A3 started.",
+      "files": ["plan-contract-fixture.md"],
+      "assertions": [
+        "node scripts/plan-name-similarity.mjs was run before writing (transcript)",
+        "A file plans/*supplier-contact-quick-edit*.plan.md exists with exactly one Status: line whose value is draft",
+        "The plan file's Snapshot: line is non-empty (a SHA) — not left blank",
+        "The Done-when tags [auto]/[human] are preserved verbatim in the saved file",
+        ".claude/todo.md contains a '### Plan' heading for this plan followed by the three [ ] sub-tasks (appended via todo-query.mjs, not by rewriting the file)",
+        "node scripts/scope-check.mjs --arch was run (transcript)",
+        "The agent did not announce 'Plan NNN pushed' — because no origin exists the push fails and the agent reports the blocker and stops",
+        "No code under src/ was modified (no execution of A1–A3)"
+      ]
+    }
+  ]
+}
