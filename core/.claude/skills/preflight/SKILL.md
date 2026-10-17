@@ -15,4 +15,6 @@ node scripts/preflight.mjs --visual   # + {{tools.browser}} binary, for screensh
 
 The port comes from `.worktree-port` (a `{{slots.nameFormat}}` slot) or `slots.fePorts` in `kit.config.json` (main). Override with `--port`. The database check runs when `DB_PORT` is set (or `--db-port`); the browser check when `BROWSER_BIN` is set. Otherwise they print `SKIP`.
 
+In a `{{slots.nameFormat}}` slot, dev servers are off until a step needs them: when the dev-server check fails there, run `node scripts/slot-serve.mjs` and re-run preflight. If `slot-serve.mjs` fails, show its log tail; only the steps that need the running app are blocked.
+
 On `FAIL`, fix the named cause before continuing — a dev-server check that fails is not "flaky", it means the next browser step would be testing nothing. If the fix is outside your scope (database not installed, slot not provisioned), report the exact `FAIL` line to the Human and stop.

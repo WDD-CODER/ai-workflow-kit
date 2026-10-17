@@ -39,6 +39,8 @@ The Human reads the cards while the app is running and the work is fresh, **not*
 
 Skip only for pure planning / architecture / docs-only turns with no behavior change to validate.
 
+**Servers first.** Cards that need the running app need its servers: in a `{{slots.nameFormat}}` slot they are off by default, so run `node scripts/slot-serve.mjs` before showing the cards (or tell the Human to say "start servers"). They stop again at the merge.
+
 ### Format — one card per check
 
 ```text

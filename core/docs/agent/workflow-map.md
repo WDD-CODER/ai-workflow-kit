@@ -129,10 +129,16 @@ has no PreToolUse hook of its own.
 - **Worker** (a `{{slots.nameFormat}}` slot): says "execute plan NNN" → `scripts/take-plan.mjs` (see
   `.claude/commands/take-plan.md`) claims the slot — safety checks (dirty tree, busy slot,
   plan must exist on `origin/{{git.mainBranch}}`), branch `feat/NNN-<slug>`, conditional `npm install`,
-  generated `{{paths.slotEnvFile}}`, port/PID-safe server spawn (`npm run {{commands.devLocal}}`
-  on port {{slots.fePorts}}+N, backend with `PORT={{slots.bePorts}}+N`/`ALLOWED_ORIGIN`), optional isolated
-  per-slot {{stack.backend}} database (`{{slots.dbNameFormat}}`), then reports `scope-check.mjs --drift` so the
-  Worker knows whether to run the plan's Step 0 reality check before starting milestones.
+  generated `{{paths.slotEnvFile}}`, optional isolated per-slot {{stack.backend}} database
+  (`{{slots.dbNameFormat}}`), then reports `scope-check.mjs --drift` so the Worker knows whether to run the
+  plan's Step 0 reality check before starting milestones. It starts **no** servers.
+- **Slot dev servers are on demand.** `scripts/slot-serve.mjs` starts them when a step needs the app
+  (browser check, validation cards, `/remote`, preflight, or the Human's "start servers"): frontend on
+  {{slots.fePorts}}+N, backend `npm run {{commands.devLocal}}` with `PORT={{slots.bePorts}}+N`/`ALLOWED_ORIGIN`. It never
+  spawns while a port is held. `scripts/slot-stop.mjs` stops them — every chain from its root, orphaned
+  `node --watch` watchers included — and runs at the slot merge, in `free-merged-slots.mjs` and as the
+  `SessionEnd` hook. `scripts/orphan-sweep.mjs` (session start, slot and main folder) kills only idle
+  watchers that hold no port.
 - Idle slots are always detached at `origin/{{git.mainBranch}}`, never on `main`. Releasing a slot
   (taking a new plan into it) only happens once its current branch is merged.
 - Liveness lock (`.claude/.session-lock`, `scripts/session-lock.sh`) is claimed by
@@ -155,8 +161,12 @@ has no PreToolUse hook of its own.
 | `scope-check.mjs` | `scope-guard.sh` (`--file`), `ship-prep.mjs` (`--diff`, `--arch --diff` warn), the Planner protocol (`--overlap`), save-plan Shape lint (`--arch --plan` block), `/review-it` step 3 (`--arch --diff`), `take-plan.mjs` + `take-plan.md` (`--drift`) |
 | `lib/invariants.mjs` | `scope-check.mjs --arch` and `take-plan.mjs` (pre-claim architecture gate, judged against the main branch): parses `docs/brain/invariants.md` and a plan's `## Architecture Impact` |
 | `take-plan.mjs` | "execute plan NNN" / "take plan NNN" (`.claude/commands/take-plan.md`) |
+| `slot-serve.mjs` | a Worker step that needs the running app; preflight in a slot; validation cards; the Human's "start servers" |
+| `slot-stop.mjs` | "Merging from a slot" (`standards-git.md`), the `SessionEnd` hook (`--if-slot`), by hand |
+| `orphan-sweep.mjs` | `session-startup.sh` (every folder; orphans only) |
+| `lib/slot-procs.mjs` | `take-plan.mjs`, `slot-serve.mjs`, `slot-stop.mjs`, `orphan-sweep.mjs`, `free-merged-slots.mjs` — process chains, port state, start/stop |
 | `todo-query.mjs sync --plan NNN` / `sync --merged` | the todo-sync Action (`.github/workflows/todo-sync.yml`) on every push to {{git.mainBranch}} touching `plans/**`; the Planner protocol (`.claude/commands/plan.md`) re-runs it as a no-op |
-| `free-merged-slots.mjs` | the Planner protocol (`.claude/commands/plan.md`), step 2 — detaches a `{{slots.nameFormat}}` back to idle once its branch merges into `origin/{{git.mainBranch}}` |
+| `free-merged-slots.mjs` | the Planner protocol (`.claude/commands/plan.md`), step 2 — detaches a `{{slots.nameFormat}}` back to idle once its branch merges into `origin/{{git.mainBranch}}`, stopping its servers |
 
 
 ---

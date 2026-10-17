@@ -51,6 +51,7 @@ Show all registered slash commands with short descriptions and file locations.
 | `/end-session` | Alias for `/ship` | `.claude/commands/end-session.md` | FLOW | SHARED |
 | `/skills` | List all registered skills, triggers, and scope | `.claude/commands/skills.md` | UTIL | SHARED |
 | `/sweep-stale-todos` | Find and close todos that are no longer relevant | `.claude/commands/sweep-stale-todos.md` | UTIL | SHARED |
+| `/take-plan` | Claim this slot for a plan; dev servers start only when a step needs them (`node scripts/slot-serve.mjs`) | `.claude/commands/take-plan.md` | FLOW | SHARED |
 | `/tune-workflow` | Propose workflow trims from real `/usage` data; applies nothing | `.claude/commands/tune-workflow.md` | UTIL | SHARED |
 
 ## Notes

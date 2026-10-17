@@ -92,15 +92,18 @@ export function isDeferredBlocked(sectionText) {
   )
 }
 
+/** open = `- [ ]`, done = `- [x]`, closed = `- [-]` (dropped or closed without doing it). */
 export function checkboxStats(sectionText) {
   const open = (sectionText.match(/^- \[ \]/gm) || []).length
   const done = (sectionText.match(/^- \[x\]/gim) || []).length
-  return { open, done }
+  const closed = (sectionText.match(/^- \[-\]/gm) || []).length
+  return { open, done, closed }
 }
 
+/** No `[ ]` left and at least one `[x]` or `[-]`: the section can move to the archive. */
 export function isFullyDone(sectionText) {
-  const { open, done } = checkboxStats(sectionText)
-  return open === 0 && done > 0 && !isDeferredBlocked(sectionText)
+  const { open, done, closed } = checkboxStats(sectionText)
+  return open === 0 && done + closed > 0 && !isDeferredBlocked(sectionText)
 }
 
 export function findArchiveCandidates(todoText) {

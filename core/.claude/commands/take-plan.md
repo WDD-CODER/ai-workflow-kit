@@ -1,5 +1,5 @@
 ---
-description: Claim this {{slots.nameFormat}} slot for a plan and start its dev servers (Planner-Worker workflow)
+description: Claim this {{slots.nameFormat}} slot for a plan; dev servers start only when a step needs them (Planner-Worker workflow)
 allowed-tools: Read, Bash
 ---
 
@@ -20,9 +20,10 @@ Triggers: "execute plan NNN", "take plan NNN" (only meaningful inside a {{slots.
    It validates everything that can refuse (plan on `origin/{{git.mainBranch}}`, a readable
    Read-Write Scope, clean tree, free slot, usable ports) before it claims, so a refusal leaves the slot
    untouched. A merged branch from the slot's previous plan is released automatically.
-   The slot's own dev servers keep running across plans (restarted only after an npm
-   install); unrecorded leftovers on its ports are stopped. It runs the optional prepare
-   step and waits until both servers listen.
+   It starts **no** dev servers: it stops whatever this slot still runs (orphaned watchers
+   included) and prints `TAKE_PLAN: servers: off — start them with node scripts/slot-serve.mjs`.
+   The claim is finished once the branch is checked out; an npm install failure after that is
+   only a warning.
 2. **Exit 1** → show the printed `TAKE_PLAN: …` lines and stop. Do not retry automatically.
    Ask the Human how to proceed. Common cases:
    - plan has no readable scope (neither a ```` ```scope ```` block nor a `**Scope:**` list of
@@ -30,14 +31,12 @@ Triggers: "execute plan NNN", "take plan NNN" (only meaningful inside a {{slots.
    - a port is held by a program that is not a dev server → the Human frees it.
    - `… fails the architecture gate` plus `ARCH: …` lines → the plan's `## Architecture Impact`
      misses an invariant or an approval; the Planner fixes it on main. Nothing was claimed.
-   - prepare step or a server failed after the claim → the log tail is printed; fix the cause,
-     then re-run the same command: it resumes the claim instead of refusing "busy".
    - leftover servers to clear by hand → `node scripts/slot-stop.mjs` (never `taskkill /PID`
      from Git Bash: it rewrites `/PID`).
 3. **Exit 0** — the script printed `OK plan=NNN branch=… fe={{slots.fePorts}}+N be={{slots.bePorts}}+N db=shared|{{slots.dbNameFormat}}`
    followed by `scope-check.mjs --drift`'s own line:
    - **`REALITY: clean`** → read the plan (`plans/NNN-*.plan.md`) and start executing its
-     milestones. No reality-check report needed.
+     milestones right away. No reality-check report needed.
    - **`REALITY: drift`** → run the plan's own "Step 0 — Reality Check" against exactly the
      commits listed (nothing more). Print one line per commit: `ok` or `conflict: <what>`. All `ok`
      → start executing, no go needed. **STOP for a go** only on a `conflict` (a symbol, line or
@@ -52,6 +51,13 @@ Triggers: "execute plan NNN", "take plan NNN" (only meaningful inside a {{slots.
      Skip `[auto]` items (agent evidence, not for the Human) and skip the section entirely when
      nothing is left for the Human. Print once, then start executing; the cards are repeated at
      close-out per `docs/agent/job-validation.md`.
+
+**Dev servers on demand.** Start them only when a step needs the running app — a browser check,
+a validation click-list for the Human, `/remote`, preflight — or when the Human says "start servers":
+`node scripts/slot-serve.mjs` (prints `SLOT_SERVE: be=<port> started|kept, fe=<port> started|kept`).
+If it fails, only that step is blocked: show the printed log tail, then carry on with the steps that
+don't need the app. Stop them with `node scripts/slot-stop.mjs`; the merge, `free-merged-slots.mjs` and
+the SessionEnd hook stop them too.
 
 Read anything in the repo; only write inside the plan's `## Read-Write Scope` (enforced by
 `scripts/scope-guard.sh` and, at `/ship` time, `scripts/ship-prep.mjs`). Escalate to the

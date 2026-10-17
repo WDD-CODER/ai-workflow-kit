@@ -44,7 +44,18 @@
           {
             "type": "command",
             "command": "\"{{hooks.shellPath}}\" \"${CLAUDE_PROJECT_DIR}/scripts/session-startup.sh\"",
-            "timeout": 10
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/scripts/slot-stop.mjs\" --if-slot",
+            "timeout": 30
           }
         ]
       }
