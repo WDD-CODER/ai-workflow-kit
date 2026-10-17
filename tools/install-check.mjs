@@ -143,6 +143,21 @@ if (ng) {
   if (bad.status !== 1 || !bad.stderr.includes('needs a non-empty "path" and "reason"')) fail('an override without a reason was not refused')
 }
 
+// Drift check: a fresh install has no drift; editing one managed file makes it exit 1 naming that file;
+// declaring it as an override makes it pass again.
+const core = dirs['core']
+if (core) {
+  const clean = run('drift-check.mjs', ['--target', core])
+  if (clean.status !== 0 || !/KIT_DRIFT: ok — 0 undeclared differences, 0 overrides/.test(clean.stdout)) fail(`drift-check on a fresh install: ${clean.stdout.trim().split('\n').pop()}`)
+  writeFileSync(join(core, '.claude/commands/ship.md'), read(core, '.claude/commands/ship.md') + '\nlocal line\n')
+  const dirty = run('drift-check.mjs', ['--target', core])
+  if (dirty.status !== 1 || !dirty.stdout.includes('drift     .claude/commands/ship.md')) fail('drift-check did not exit 1 naming the edited file')
+  const cfgPath = join(core, 'kit.config.json')
+  writeFileSync(cfgPath, JSON.stringify({ ...JSON.parse(readFileSync(cfgPath, 'utf8')), overrides: [{ path: '.claude/commands/ship.md', reason: 'install-check' }] }))
+  const declared = run('drift-check.mjs', ['--target', core])
+  if (declared.status !== 0 || !/0 undeclared differences, 1 overrides/.test(declared.stdout)) fail(`drift-check with the override: ${declared.stdout.trim().split('\n').pop()}`)
+}
+
 // Required keys: core only with no config must STOP and write nothing.
 const bare = tmp('bare')
 const stop = run('install.mjs', ['--target', bare, '--packs', ''])
@@ -154,4 +169,4 @@ if (problems.length > 0) {
   console.error(`INSTALL_CHECK: FAIL — ${problems.length} problems`)
   process.exit(1)
 }
-console.log(`INSTALL_CHECK: ok — ${fixtures.length} fixtures, re-install no-op, sync dry-run/apply, overrides, 0 problems`)
+console.log(`INSTALL_CHECK: ok — ${fixtures.length} fixtures, re-install no-op, sync dry-run/apply, overrides, drift-check, 0 problems`)

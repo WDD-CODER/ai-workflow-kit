@@ -10,6 +10,7 @@ A copy-distributed Planner-Worker AI workflow (Claude Code, optional Cursor laye
 .\kit-install.ps1 -Target ..\my-app -Packs angular -Cursor        # add -YesChef for the "Yes chef!" gate, -DryRun to preview
 .\kit-sync.ps1    -Target ..\my-app                               # later: what would a newer kit change? (writes nothing)
 .\kit-sync.ps1    -Target ..\my-app -Apply                        # write only new + kit-update files
+.\kit-drift.ps1   -Target ..\my-app                               # do the project's files still match the kit (minus overrides)? read-only
 ```
 
 The `.ps1` files are thin wrappers; the engine is `node tools/install.mjs` / `node tools/sync.mjs` (Node 18+), so the same flags work as `--target --packs --cursor --yes-chef --dry-run --force --allow-unfilled` on any OS.
@@ -40,6 +41,7 @@ The `.ps1` files are thin wrappers; the engine is `node tools/install.mjs` / `no
 | `kit.config.json` | Every key a placeholder can name (42). Conventions: `slots.fePorts/bePorts` are base ports (slot N = base + N); `paths.srcRoot/serverRoot` end with `/`. |
 | `kit.json` | Kit version recorded into each install. |
 | `tools/install.mjs`, `tools/sync.mjs`, `tools/lib/kit.mjs` | Installer, sync and the shared render/plan engine. |
+| `tools/drift-check.mjs` | Drift check: renders every managed file with the project's `kit.config.json` and compares byte for byte; `drift` / `missing` exit 1, `override` is fine. Works before install. Output: `KIT_DRIFT: ok — 0 undeclared differences, N overrides`. |
 | `tools/leak-check.mjs` | Core, layers and templates must not name a framework or a project; packs (`--project-only`) must not name the project. |
 | `tools/pack-check.mjs` | Every pack satisfies the `pack.json` contract. |
 | `tools/install-check.mjs` | Installs three fixtures into temp dirs and checks them (no git needed). |
