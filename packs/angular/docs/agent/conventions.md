@@ -27,7 +27,7 @@
 * Native nesting, `@layer`. No inline styles unless the value is dynamic/runtime.
 * Property order (five-group rhythm): Layout → Dimensions → Content → Structure → Effects.
 * No hardcoded colors/radii/shadows/blur — use `var(--*)` design tokens.
-* Responsive breakpoints via project tokens (`$break-mobile`, `$break-tablet`, `$break-desktop`) — never hardcode pixel breakpoints.
+* Responsive breakpoints via project tokens (`$break-mobile` 768 / `$break-tablet` 900 / `$break-desktop` 1200, declared in `{{paths.hotspots}}`) — never a bare pixel number inside `@media`. Component SCSS cannot import those Sass variables (no `includePaths`), so declare a one-line local mirror with a comment (`$break-tablet: 900px; // mirrors {{paths.hotspots}}`).
 * Before creating or editing any `.scss`/`.css` in `src/`, follow the `cssLayer` skill.
 
 ---

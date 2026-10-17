@@ -43,6 +43,16 @@ Triggers: "execute plan NNN", "take plan NNN" (only meaningful inside a {{slots.
      → start executing, no go needed. **STOP for a go** only on a `conflict` (a symbol, line or
      file the plan names was removed, renamed or rewritten).
 
+4. **Open with a brief, before any work.** Right after reading the plan, print to the Human:
+   - **PLAN BRIEF** — 2–3 plain lines, no more: what the plan changes and why it matters.
+     Not the plan's title restated, not a milestone list, no jargon.
+   - **HOW TO VALIDATE** — only if the plan has Done-when / validation items for the Human
+     (`[human]` or untagged). Print them as the cards from `docs/agent/job-validation.md`
+     ("Format — one card per check"): plain words, WHERE / DO / SEE ✓ / FAIL ✗, same card rules.
+     Skip `[auto]` items (agent evidence, not for the Human) and skip the section entirely when
+     nothing is left for the Human. Print once, then start executing; the cards are repeated at
+     close-out per `docs/agent/job-validation.md`.
+
 Read anything in the repo; only write inside the plan's `## Read-Write Scope` (enforced by
 `scripts/scope-guard.sh` and, at `/ship` time, `scripts/ship-prep.mjs`). Escalate to the
 Human for anything outside scope — see `AGENTS.md`'s Planner-Worker bullet.

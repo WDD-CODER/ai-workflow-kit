@@ -1,6 +1,0 @@
----
-description: Breadcrumb navigator skill
-globs: "src/app/pages/**"
-alwaysApply: false
----
-Follow `.claude/skills/breadcrumb-navigator/SKILL.md` for a new `pages/<x>/` or top-level subtree, or other structural changes — maintains `breadcrumbs.md` files.

@@ -8,10 +8,9 @@
 
 ## Skill triggers
 
-| Before an Angular Pipe or Directive | `.claude/skills/angular-pipe-logic/SKILL.md` |
 | Before any Angular component class | `.claude/skills/angularComponentStructure/SKILL.md` |
 | Auth guards, interceptors, user services, HTTP CRUD | `.claude/skills/auth-and-logging/SKILL.md` |
-| New `pages/<x>/` or top-level subtree; after `update-docs` | `.claude/skills/breadcrumb-navigator/SKILL.md` |
+| New `pages/<x>/` or top-level subtree; files moved/deleted; before a PR that reshaped folders | `.claude/skills/breadcrumbs/SKILL.md` (+ `scripts/breadcrumbs-check.mjs`) |
 | Before any `.scss` / `.css` edit in `src/` | `.claude/skills/cssLayer/SKILL.md` |
 
 ## Standards index
