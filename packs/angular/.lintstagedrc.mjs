@@ -3,7 +3,7 @@ import path from 'path'
 const EXCLUDED = new Set([
   'src/main.ts',
   'src/app/app.config.ts',
-  {{paths.hotspots|quoted}}
+  '{{paths.routesFile}}'
 ])
 
 function normalizeAppPath(f) {

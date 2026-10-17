@@ -180,7 +180,7 @@ once after the initial `git add`.
 
 ---
 
-## The Skill tool's plain-name resolution can pick a {{tools.browser}}-vendored skill over this project's own command of the same name
+## The Skill tool's plain-name resolution can pick a vendored third-party skill over this project's own command of the same name
 
 **Status:** draft — generalized from a project lesson; review before relying on it.
 

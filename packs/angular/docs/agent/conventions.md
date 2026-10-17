@@ -16,18 +16,18 @@
 * Folder structure: `core/` (services, models, guards, pipes, directives), `shared/` (reusable UI), `pages/[name]/` (routed views + local `components/`). Path aliases: `@services/*`, `@models/*`, `@directives/*`.
 * Shared helpers → `util.service.ts` or `core/utils/` — pure functions only.
 * Component class section order: injected services → inputs → outputs → signals/constants → computed → CRDUL methods (Create, Read, Delete, Update, List).
-* Before new UI: scan `src/app/shared/` and `{{paths.hotspots}}` (`.c-*` engines) for something composable.
+* Before new UI: scan `src/app/shared/` and `src/styles.scss` (`.c-*` engines) for something composable.
 
 ---
 
 ## CSS / SCSS
 
-* `.c-*` engine classes live in `{{paths.hotspots}}` only — never in component SCSS.
+* `.c-*` engine classes live in `src/styles.scss` only — never in component SCSS.
 * Logical CSS properties only (`margin-inline`, `padding-block` — not left/right).
 * Native nesting, `@layer`. No inline styles unless the value is dynamic/runtime.
 * Property order (five-group rhythm): Layout → Dimensions → Content → Structure → Effects.
 * No hardcoded colors/radii/shadows/blur — use `var(--*)` design tokens.
-* Responsive breakpoints via project tokens (`$break-mobile` 768 / `$break-tablet` 900 / `$break-desktop` 1200, declared in `{{paths.hotspots}}`) — never a bare pixel number inside `@media`. Component SCSS cannot import those Sass variables (no `includePaths`), so declare a one-line local mirror with a comment (`$break-tablet: 900px; // mirrors {{paths.hotspots}}`).
+* Responsive breakpoints via project tokens (`$break-mobile` 768 / `$break-tablet` 900 / `$break-desktop` 1200, declared in `src/styles.scss`) — never a bare pixel number inside `@media`. Component SCSS cannot import those Sass variables (no `includePaths`), so declare a one-line local mirror with a comment (`$break-tablet: 900px; // mirrors {{paths.hotspots}}`).
 * Before creating or editing any `.scss`/`.css` in `src/`, follow the `cssLayer` skill.
 
 ---

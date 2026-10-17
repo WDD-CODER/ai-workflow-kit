@@ -50,6 +50,24 @@ export function unflatten(flat) {
   return out
 }
 
+/**
+ * Project overrides: kit.config.json `overrides` = [{ "path": "<installed path>", "reason": "<why>" }].
+ * An overridden path belongs to the project for good: install skips it, sync reports it `override` and never writes it.
+ * Exact paths only (no globs), so every kept difference is named on its own line. Returns Map(path -> reason).
+ */
+export function readOverrides(project) {
+  const list = project?.overrides ?? []
+  if (!Array.isArray(list)) throw new Error('kit.config.json "overrides" must be a list of { "path", "reason" }')
+  const map = new Map()
+  for (const o of list) {
+    if (!o || typeof o.path !== 'string' || o.path.trim() === '' || typeof o.reason !== 'string' || o.reason.trim() === '') {
+      throw new Error(`every override needs a non-empty "path" and "reason" (got ${JSON.stringify(o)})`)
+    }
+    map.set(o.path.trim().replace(/\\/g, '/').replace(/^\.\//, ''), o.reason.trim())
+  }
+  return map
+}
+
 export function loadPack(kitRoot, name) {
   const file = join(kitRoot, 'packs', name, 'pack.json')
   if (!existsSync(file)) throw new Error(`unknown pack "${name}" (no packs/${name}/pack.json)`)
@@ -79,7 +97,10 @@ export function resolveConfig({ kitRoot, project, packs, target, platform = proc
   vals['project.name'] = name
   if (isEmpty(vals['slots.fePorts'])) vals['slots.fePorts'] = 4200
   if (isEmpty(vals['slots.bePorts'])) vals['slots.bePorts'] = 3000
-  if (isEmpty(vals['slots.dbNameFormat'])) vals['slots.dbNameFormat'] = `${name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')}_wt\${n}`
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
+  if (isEmpty(vals['slots.dbNameFormat'])) vals['slots.dbNameFormat'] = `${slug}_wt\${n}`
+  if (isEmpty(vals['slots.dbBackupDir'])) vals['slots.dbBackupDir'] = `${slug}-db-backups`
+  if (isEmpty(vals['project.repoName'])) vals['project.repoName'] = basename(resolve(target))
   if (isEmpty(vals['paths.sharedDocs'])) vals['paths.sharedDocs'] = 'docs/project'
   if (isEmpty(vals['hooks.shellPath'])) {
     vals['hooks.shellPath'] = platform === 'win32' && existsSync('C:/Program Files/Git/bin/bash.exe') ? 'C:/Program Files/Git/bin/bash.exe' : 'bash'
@@ -173,9 +194,12 @@ export function planFiles({ kitRoot, packs, cursor, yesChef, vals }) {
     const body = text.replace(/^﻿?# .*\r?\n+/, '')
     raw.set(dest, { kind, source: `${prev.source} + ${source}`, text: `${prev.text.trimEnd()}\n\n---\n\n${body}` })
   }
-  for (const f of walk(join(kitRoot, 'core'))) add(f, 'managed', `core/${f}`)
+  // Brain lessons are a starter set: the project appends its own lessons to these files, so they are
+  // seeds (written once, then the project's) rather than managed files that sync keeps comparing.
+  const kindOf = (f) => (f.startsWith('docs/brain/') ? 'seed' : 'managed')
+  for (const f of walk(join(kitRoot, 'core'))) add(f, kindOf(f), `core/${f}`)
   for (const p of packs) {
-    for (const f of walk(join(kitRoot, 'packs', p))) if (!PACK_SKIP.has(f)) add(f, 'managed', `packs/${p}/${f}`)
+    for (const f of walk(join(kitRoot, 'packs', p))) if (!PACK_SKIP.has(f)) add(f, kindOf(f), `packs/${p}/${f}`)
   }
   if (cursor) for (const f of walk(join(kitRoot, 'layers', 'cursor'))) add(f, 'managed', `layers/cursor/${f}`)
   const tplRoot = join(kitRoot, 'templates')

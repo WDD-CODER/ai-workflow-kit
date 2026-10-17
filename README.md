@@ -10,6 +10,7 @@ A copy-distributed Planner-Worker AI workflow (Claude Code, optional Cursor laye
 .\kit-install.ps1 -Target ..\my-app -Packs angular -Cursor        # add -YesChef for the "Yes chef!" gate, -DryRun to preview
 .\kit-sync.ps1    -Target ..\my-app                               # later: what would a newer kit change? (writes nothing)
 .\kit-sync.ps1    -Target ..\my-app -Apply                        # write only new + kit-update files
+.\kit-drift.ps1   -Target ..\my-app                               # do the project's files still match the kit (minus overrides)? read-only
 ```
 
 The `.ps1` files are thin wrappers; the engine is `node tools/install.mjs` / `node tools/sync.mjs` (Node 18+), so the same flags work as `--target --packs --cursor --yes-chef --dry-run --force --allow-unfilled` on any OS.
@@ -17,8 +18,15 @@ The `.ps1` files are thin wrappers; the engine is `node tools/install.mjs` / `no
 - Config: `-Config <file>`, else `<target>/kit.config.json`, else the kit defaults plus each pack's `configDefaults`. The installer writes the effective config to `<target>/kit.config.json` when absent. Required keys (`project.name`, `commands.build|lint|test`, `hooks.shellPath`) missing -> exit 2, nothing written. Other empty keys render `(not set)` and are listed.
 - Never overwrites an existing file (reported `SKIP-EXISTING`) unless `-Force`.
 - `<target>/.kit/install.json` records what was installed and each file's hash. Commit it; sync reads it.
-- Core, pack and Cursor-layer files are **managed** (sync updates them when you have not edited them). Files from `templates/` are **seeds**: written once, never updated.
-- Sync states: `new`, `kit-update`, `local-only`, `conflict` (never overwritten), `removed-from-kit`, `deleted-locally`.
+- Core, pack and Cursor-layer files are **managed** (sync updates them when you have not edited them). Files from `templates/` and the brain lessons (`docs/brain/**`, which the project keeps appending to) are **seeds**: written once, never updated or drift-checked.
+- Sync states: `new`, `kit-update`, `local-only`, `conflict` (never overwritten), `removed-from-kit`, `deleted-locally`, `override`.
+- **Overrides** — a managed file the project deliberately keeps different, for good (e.g. a CI file with an extra install step). List each one in `<target>/kit.config.json`:
+
+  ```json
+  "overrides": [{ "path": ".github/workflows/ci.yml", "reason": "root npm ci for the schema build" }]
+  ```
+
+  Exact installed paths only (no globs), and every entry needs a `reason`. Install skips them (`SKIP-OVERRIDE`, even with `-Force`); sync reports them as `override` instead of `conflict` and `-Apply` never writes them. An override naming a file the kit does not ship is reported as a `NOTE`.
 - `.claude/settings.json` has no machine paths: only `${CLAUDE_PROJECT_DIR}` and `hooks.shellPath` (default `C:/Program Files/Git/bin/bash.exe` on Windows when present, else `bash`).
 - No raw Playwright MCP is installed anywhere.
 
@@ -30,9 +38,10 @@ The `.ps1` files are thin wrappers; the engine is `node tools/install.mjs` / `no
 | `packs/angular/`, `packs/node-express/` | Stack packs. `pack.json` contract: `standardsDoc`, `skills`, `cursorRules`, `gotchas`, `validation` (npm script names), optional `configDefaults` and `agentsFragment` (rows the installer adds to the `AGENTS.md` skeleton). |
 | `layers/cursor/` | Optional Cursor layer (`.cursor/commands`, rules, `mcp.json` without raw Playwright). |
 | `templates/` | The 17 skeletons: `AGENTS.md`, `CLAUDE.md`, `docs/brain/*`, `docs/project/*` (was `_shared/`), `.gitignore`, `.mcp.json`, `.nvmrc`, `.prettierrc.json`, HLD/PRD templates; `templates/cursor/` only with `-Cursor`. |
-| `kit.config.json` | Every key a placeholder can name (39). Conventions: `slots.fePorts/bePorts` are base ports (slot N = base + N); `paths.srcRoot/serverRoot` end with `/`. |
+| `kit.config.json` | Every key a placeholder can name (42). Conventions: `slots.fePorts/bePorts` are base ports (slot N = base + N); `paths.srcRoot/serverRoot` end with `/`. |
 | `kit.json` | Kit version recorded into each install. |
 | `tools/install.mjs`, `tools/sync.mjs`, `tools/lib/kit.mjs` | Installer, sync and the shared render/plan engine. |
+| `tools/drift-check.mjs` | Drift check: renders every managed file with the project's `kit.config.json` and compares byte for byte; `drift` / `missing` exit 1, `override` is fine. Works before install. Output: `KIT_DRIFT: ok — 0 undeclared differences, N overrides`. |
 | `tools/leak-check.mjs` | Core, layers and templates must not name a framework or a project; packs (`--project-only`) must not name the project. |
 | `tools/pack-check.mjs` | Every pack satisfies the `pack.json` contract. |
 | `tools/install-check.mjs` | Installs three fixtures into temp dirs and checks them (no git needed). |

@@ -5,7 +5,7 @@
 | Role | Where | Job |
 |---|---|---|
 | **Planner** | Main folder, checked out on `main` | Plans. Writes and pushes Plan Contracts (`plans/NNN-slug.plan.md`) + `.claude/todo.md` directly to `main` — the one admin-bypass write, enforced by `scripts/branch-guard.sh` + `.husky/pre-push`. |
-| **Worker** | One of 3 permanent slots — `{{slots.nameFormat}}` ({{slots.fePorts}}+1/{{slots.bePorts}}+1), `{{slots.nameFormat}}` ({{slots.fePorts}}+2/{{slots.bePorts}}+2), `{{slots.nameFormat}}` ({{slots.fePorts}}+3/{{slots.bePorts}}+3) | Claims a plan via "execute plan NNN", executes its milestones on `feat/NNN-<slug>`, may write only inside that plan's `## Read-Write Scope`. |
+| **Worker** | One of {{slots.count}} permanent slots — `{{slots.nameFormat}}` for N = 1..{{slots.count}} (ports {{slots.fePorts}}+N / {{slots.bePorts}}+N) | Claims a plan via "execute plan NNN", executes its milestones on `feat/NNN-<slug>`, may write only inside that plan's `## Read-Write Scope`. |
 | **Reviewer** | `/review-it` (either tool) | Report-only by default. Never silently fixes. |
 | **Human Director (Dandan)** | You | Assigns plans to slots, approves ships/merges, the only `--no-verify` override. |
 
@@ -40,7 +40,7 @@ Rules of thumb:
 - Contractor rules (default + overrides): `.cursor/rules/contractor-role.mdc`
 - Stack: `/_shared/tech-stack.md`
 - Current state capsule: `/_shared/current-state.md`
-- Path-scoped standards: `.claude/rules/{{{stack.name}},security,domain,backend}.md`
+- Path-scoped standards: `.claude/rules/{<stack>,security,domain,backend}.md`
 - Review command: `.claude/commands/review-it.md`
 
 ## What retired

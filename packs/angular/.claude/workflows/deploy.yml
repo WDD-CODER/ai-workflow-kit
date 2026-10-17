@@ -26,7 +26,7 @@ jobs:
         run: npm ci
 
       - name: Build
-        run: npm run build -- --base-href /{{project.name}}/
+        run: npm run build -- --base-href /{{project.repoName}}/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

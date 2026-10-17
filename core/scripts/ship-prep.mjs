@@ -267,6 +267,7 @@ function classify() {
     secretPaths,
     worktreeCount: wtCount,
     overlaps: manifestOverlap.overlaps || [],
+    pruned: manifestOverlap.pruned || [],
     scope: scopeReport ? scopeReport.scope : null,
     scopeFiles: scopeReport ? scopeReport.files : [],
     archWarnings,
@@ -313,7 +314,8 @@ function checkBaselineReport() {
     baselineHead: baseline ? baseline.head : null,
     worktreeCount: wtCount,
     noManifest: manifestOverlap.no_manifest,
-    overlaps: manifestOverlap.overlaps || []
+    overlaps: manifestOverlap.overlaps || [],
+    pruned: manifestOverlap.pruned || []
   }
 }
 
@@ -333,6 +335,9 @@ if (checkBaseline) {
       console.log(`  overlaps: ${report.overlaps.length}`)
       for (const o of report.overlaps) console.log(`    - ${o.branch}: ${o.files.join(', ')}`)
     }
+    if (report.pruned && report.pruned.length) {
+      console.log(`  pruned stale manifests (merged/deleted branch): ${report.pruned.join(', ')}`)
+    }
     if (report.scope) {
       console.log(`  scope: ${report.scope}`)
       for (const f of report.scopeFiles) console.log(`    - ${f}`)
@@ -349,6 +354,9 @@ if (checkBaseline) {
     if (report.overlaps.length) {
       console.log(`  overlaps: ${report.overlaps.length}`)
       for (const o of report.overlaps) console.log(`    - ${o.branch}: ${o.files.join(', ')}`)
+    }
+    if (report.pruned && report.pruned.length) {
+      console.log(`  pruned stale manifests (merged/deleted branch): ${report.pruned.join(', ')}`)
     }
     if (report.scope) {
       console.log(`  scope: ${report.scope}`)
