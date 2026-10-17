@@ -18,7 +18,7 @@ The `.ps1` files are thin wrappers; the engine is `node tools/install.mjs` / `no
 - Config: `-Config <file>`, else `<target>/kit.config.json`, else the kit defaults plus each pack's `configDefaults`. The installer writes the effective config to `<target>/kit.config.json` when absent. Required keys (`project.name`, `commands.build|lint|test`, `hooks.shellPath`) missing -> exit 2, nothing written. Other empty keys render `(not set)` and are listed.
 - Never overwrites an existing file (reported `SKIP-EXISTING`) unless `-Force`.
 - `<target>/.kit/install.json` records what was installed and each file's hash. Commit it; sync reads it.
-- Core, pack and Cursor-layer files are **managed** (sync updates them when you have not edited them). Files from `templates/` are **seeds**: written once, never updated.
+- Core, pack and Cursor-layer files are **managed** (sync updates them when you have not edited them). Files from `templates/` and the brain lessons (`docs/brain/**`, which the project keeps appending to) are **seeds**: written once, never updated or drift-checked.
 - Sync states: `new`, `kit-update`, `local-only`, `conflict` (never overwritten), `removed-from-kit`, `deleted-locally`, `override`.
 - **Overrides** — a managed file the project deliberately keeps different, for good (e.g. a CI file with an extra install step). List each one in `<target>/kit.config.json`:
 

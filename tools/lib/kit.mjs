@@ -194,9 +194,12 @@ export function planFiles({ kitRoot, packs, cursor, yesChef, vals }) {
     const body = text.replace(/^﻿?# .*\r?\n+/, '')
     raw.set(dest, { kind, source: `${prev.source} + ${source}`, text: `${prev.text.trimEnd()}\n\n---\n\n${body}` })
   }
-  for (const f of walk(join(kitRoot, 'core'))) add(f, 'managed', `core/${f}`)
+  // Brain lessons are a starter set: the project appends its own lessons to these files, so they are
+  // seeds (written once, then the project's) rather than managed files that sync keeps comparing.
+  const kindOf = (f) => (f.startsWith('docs/brain/') ? 'seed' : 'managed')
+  for (const f of walk(join(kitRoot, 'core'))) add(f, kindOf(f), `core/${f}`)
   for (const p of packs) {
-    for (const f of walk(join(kitRoot, 'packs', p))) if (!PACK_SKIP.has(f)) add(f, 'managed', `packs/${p}/${f}`)
+    for (const f of walk(join(kitRoot, 'packs', p))) if (!PACK_SKIP.has(f)) add(f, kindOf(f), `packs/${p}/${f}`)
   }
   if (cursor) for (const f of walk(join(kitRoot, 'layers', 'cursor'))) add(f, 'managed', `layers/cursor/${f}`)
   const tplRoot = join(kitRoot, 'templates')
