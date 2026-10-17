@@ -1,6 +1,6 @@
 /**
  * Detaches any {{slots.nameFormat}} slot whose branch has already merged into origin/{{git.mainBranch}} back
- * to detached HEAD @ origin/{{git.mainBranch}} (idle), and clears its .worktree-plan. Run as
+ * to detached HEAD @ origin/{{git.mainBranch}} (idle), stops its dev servers and clears its .worktree-plan. Run as
  * part of the Planner's pull/sync sequence so finished slots don't sit occupied
  * after a Worker's branch merges. See plans/326-planner-worker-workflow.plan.md.
  *
@@ -13,6 +13,7 @@ import { execFileSync } from 'child_process'
 import { resolve, dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import { listSlots } from './lib/slot.mjs'
+import { stopSlotServers } from './lib/slot-procs.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(__dirname, '..')
@@ -78,11 +79,12 @@ function main() {
       console.log(`wt-${s.slot}: branch=${s.branch} not yet merged — left alone`)
       continue
     }
-    // The slot's dev servers stay up: the next take-plan in this slot reuses them (scripts/slot-stop.mjs stops them).
+    // Servers are off unless a session needs them: a freed slot's servers are stopped.
+    const stopped = stopSlotServers({ root: s.path, slotPorts: { fe: {{slots.fePorts}} + s.slot, be: {{slots.bePorts}} + s.slot } })
     git(['checkout', '--detach', 'origin/{{git.mainBranch}}'], s.path)
     const planFile = join(s.path, '.worktree-plan')
     if (existsSync(planFile)) rmSync(planFile)
-    console.log(`wt-${s.slot}: freed (branch=${s.branch} merged) -> idle @ origin/{{git.mainBranch}}`)
+    console.log(`wt-${s.slot}: freed (branch=${s.branch} merged) -> idle @ origin/{{git.mainBranch}}; servers stopped (${stopped.length} action(s))`)
   }
 }
 

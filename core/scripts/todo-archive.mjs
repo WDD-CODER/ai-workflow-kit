@@ -5,7 +5,7 @@
  * `.claude/todo-archive/NNN.md` volumes (max 300 lines each).
  *
  * Usage:
- *   node scripts/todo-archive.mjs              # archive all-[x] from todo.md
+ *   node scripts/todo-archive.mjs              # archive closed sections (no [ ] left; [x] or [-]) from todo.md
  *   node scripts/todo-archive.mjs --dry-run    # report only
  *   node scripts/todo-archive.mjs --migrate    # split legacy todo-archive.md
  *   node scripts/todo-archive.mjs --migrate --dry-run
@@ -244,7 +244,7 @@ function archiveFromTodo({ dryRun: dry }) {
   const candidates = findArchiveCandidates(todoText)
 
   if (!candidates.length) {
-    return { ok: true, message: 'No all-[x] plan sections to archive', moved: [] }
+    return { ok: true, message: 'No closed plan sections (no [ ] left) to archive', moved: [] }
   }
 
   const blocks = candidates.map(c => c.full)
@@ -263,7 +263,7 @@ function archiveFromTodo({ dryRun: dry }) {
     moved: candidates.map((c, i) => ({
       heading: c.heading,
       volume: written[i]?.volume ?? null,
-      items: checkboxStats(c.full).done
+      items: (({ done, closed }) => done + closed)(checkboxStats(c.full))
     }))
   }
 }

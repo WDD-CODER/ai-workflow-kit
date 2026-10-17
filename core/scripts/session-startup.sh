@@ -20,13 +20,25 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # A slot whose branch already merged is freed before the role check, so it starts idle; the
 # Planner folder frees finished slots too. An idle slot skips it (nothing to free). Local refs only:
 # a fetch can outlast the hook's timeout, and the slot merge step already fetched.
+# Freeing a slot also stops its dev servers, so it gets a longer timeout.
 if [[ -f "$REPO_ROOT/.worktree-plan" || ! -f "$REPO_ROOT/.worktree-port" ]]; then
   if command -v timeout >/dev/null 2>&1; then
-    timeout 5 node "$SCRIPT_DIR/free-merged-slots.mjs" --no-fetch >/dev/null 2>&1 || true
+    timeout 10 node "$SCRIPT_DIR/free-merged-slots.mjs" --no-fetch >/dev/null 2>&1 || true
   fi
 fi
 
+# Orphan sweep: kill this folder's idle dev watchers (a `node --watch` with no child, holding no
+# port) left by a session that crashed or closed before its SessionEnd hook. Runs in a slot and in the main
+# folder; a server that holds a port is never touched. Its lines go into the context below.
+SWEEP=""
+if command -v timeout >/dev/null 2>&1; then
+  SWEEP=$(timeout 8 node "$SCRIPT_DIR/orphan-sweep.mjs" --quiet 2>/dev/null | tr '\r\n"\\' '    ' || true)
+fi
+
 DESCRIBE=$(node "$SCRIPT_DIR/lib/slot.mjs" --describe 2>/dev/null)
+if [[ -n "${SWEEP// /}" ]]; then
+  DESCRIBE="$DESCRIBE $SWEEP"
+fi
 
 # The Planner folder stays on {{git.mainBranch}}: every session open in that folder shares its branch.
 PLANNER_BRANCH=$(git -C "$REPO_ROOT" branch --show-current 2>/dev/null)

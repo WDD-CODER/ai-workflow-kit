@@ -276,3 +276,13 @@ only the Bash tool's command text triggers it.
 **Why the obvious fix is wrong:** Widening the glob or approving the path hides the cause, and every later Worker hits the same trap.
 
 **What to do instead:** Put comments on their own `#` line above the glob. Never put them after it.
+
+---
+
+## Windows: stopping a dev server at its port owner leaves `node --watch` idle forever
+
+**What hurt:** Task Manager filled up with `npm run dev:local` → `cmd.exe` → `cross-env` → `node --watch index.js` chains whose watcher had no child and held no port. On 2026-10-06 four of them sat in `wt-1` and main; on 2026-10-17 `wt-3` still had one from the day before.
+
+**Why the obvious fix is wrong:** Killing whatever holds the port (`taskkill /PID <port owner> /T`) kills only `node index.js`. The watcher prints "Failed running 'index.js'. Waiting for file changes before restarting..." and lives on. A second start while the port is taken ends the same way: the new app dies on `EADDRINUSE`, its watcher stays. Cleaning up by port can never find these, because they hold no port.
+
+**What to do instead:** Stop a dev server from the root of its chain (`killChain` / `stopSlotServers` in `scripts/lib/slot-procs.mjs` walk up from the port owner through npm/cmd/cross-env, then `taskkill /T` the root), never start one while its port is held (`startServer`), and find chains by folder (a chain member's command line contains the checkout path), not only by port. `scripts/orphan-sweep.mjs` at session start removes what a crashed session left. Match the folder with a trailing separator, or the main folder also matches every slot folder named after it.

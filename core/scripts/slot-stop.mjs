@@ -1,15 +1,19 @@
 /**
- * Slot stop — stops this slot's dev servers (recorded PIDs plus any leftover dev
- * server on the slot's own ports) and clears .claude/.slot-pids. Safe to run any
- * time; take-plan.mjs and free-merged-slots.mjs call the same logic.
+ * Slot stop — stops this slot's dev servers: recorded chains, any leftover dev server on the slot's own ports,
+ * and every other dev chain whose command line is inside this slot's folder (orphaned `node --watch` watchers
+ * that hold no port included). Each chain is killed from its root, so no watcher is left behind. Clears
+ * .claude/.slot-pids. Safe to run any time; take-plan.mjs and free-merged-slots.mjs use the same logic.
  *
- * Usage: node scripts/slot-stop.mjs
+ * Usage:
+ *   node scripts/slot-stop.mjs            # in a slot; exit 1 elsewhere
+ *   node scripts/slot-stop.mjs --if-slot  # SessionEnd hook: silent no-op (exit 0) outside a slot
  * Cross-platform: use this instead of taskkill/kill by hand (Git Bash rewrites `/PID`).
  */
 import { isSlot } from './lib/slot.mjs'
 import { stopSlotServers } from './lib/slot-procs.mjs'
 
 if (!isSlot()) {
+  if (process.argv.includes('--if-slot')) process.exit(0)
   console.error('SLOT_STOP: not a slot - nothing to stop')
   process.exit(1)
 }
