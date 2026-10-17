@@ -50,6 +50,24 @@ export function unflatten(flat) {
   return out
 }
 
+/**
+ * Project overrides: kit.config.json `overrides` = [{ "path": "<installed path>", "reason": "<why>" }].
+ * An overridden path belongs to the project for good: install skips it, sync reports it `override` and never writes it.
+ * Exact paths only (no globs), so every kept difference is named on its own line. Returns Map(path -> reason).
+ */
+export function readOverrides(project) {
+  const list = project?.overrides ?? []
+  if (!Array.isArray(list)) throw new Error('kit.config.json "overrides" must be a list of { "path", "reason" }')
+  const map = new Map()
+  for (const o of list) {
+    if (!o || typeof o.path !== 'string' || o.path.trim() === '' || typeof o.reason !== 'string' || o.reason.trim() === '') {
+      throw new Error(`every override needs a non-empty "path" and "reason" (got ${JSON.stringify(o)})`)
+    }
+    map.set(o.path.trim().replace(/\\/g, '/').replace(/^\.\//, ''), o.reason.trim())
+  }
+  return map
+}
+
 export function loadPack(kitRoot, name) {
   const file = join(kitRoot, 'packs', name, 'pack.json')
   if (!existsSync(file)) throw new Error(`unknown pack "${name}" (no packs/${name}/pack.json)`)

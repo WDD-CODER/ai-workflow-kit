@@ -18,7 +18,14 @@ The `.ps1` files are thin wrappers; the engine is `node tools/install.mjs` / `no
 - Never overwrites an existing file (reported `SKIP-EXISTING`) unless `-Force`.
 - `<target>/.kit/install.json` records what was installed and each file's hash. Commit it; sync reads it.
 - Core, pack and Cursor-layer files are **managed** (sync updates them when you have not edited them). Files from `templates/` are **seeds**: written once, never updated.
-- Sync states: `new`, `kit-update`, `local-only`, `conflict` (never overwritten), `removed-from-kit`, `deleted-locally`.
+- Sync states: `new`, `kit-update`, `local-only`, `conflict` (never overwritten), `removed-from-kit`, `deleted-locally`, `override`.
+- **Overrides** — a managed file the project deliberately keeps different, for good (e.g. a CI file with an extra install step). List each one in `<target>/kit.config.json`:
+
+  ```json
+  "overrides": [{ "path": ".github/workflows/ci.yml", "reason": "root npm ci for the schema build" }]
+  ```
+
+  Exact installed paths only (no globs), and every entry needs a `reason`. Install skips them (`SKIP-OVERRIDE`, even with `-Force`); sync reports them as `override` instead of `conflict` and `-Apply` never writes them. An override naming a file the kit does not ship is reported as a `NOTE`.
 - `.claude/settings.json` has no machine paths: only `${CLAUDE_PROJECT_DIR}` and `hooks.shellPath` (default `C:/Program Files/Git/bin/bash.exe` on Windows when present, else `bash`).
 - No raw Playwright MCP is installed anywhere.
 

@@ -12,12 +12,13 @@
  *   conflict          both changed (or untracked file differs)            -> kept, resolve by hand
  *   removed-from-kit  installed earlier, no longer shipped                -> kept, delete by hand if unwanted
  *   deleted-locally   installed earlier, missing now                      -> kept missing
+ *   override          listed in kit.config.json `overrides`               -> never written, not a conflict
  * Seed files (templates) are written once and never updated: only `new` applies to them.
  * Exit 0 always for a completed report; 1 on a usage or config error.
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { resolve, join, dirname } from 'path'
-import { KIT_ROOT, readJson, sha256, resolveConfig, planFiles, parseArgs } from './lib/kit.mjs'
+import { KIT_ROOT, readJson, sha256, resolveConfig, planFiles, parseArgs, readOverrides } from './lib/kit.mjs'
 
 let args
 try {
@@ -40,7 +41,9 @@ const inst = readJson(installFile)
 const cfgFile = join(target, 'kit.config.json')
 const project = existsSync(cfgFile) ? readJson(cfgFile) : {}
 let plan
+let overrides
 try {
+  overrides = readOverrides(project)
   const vals = resolveConfig({ kitRoot: KIT_ROOT, project, packs: inst.packs, target })
   plan = planFiles({ kitRoot: KIT_ROOT, packs: inst.packs, cursor: inst.cursor, yesChef: inst.yesChef, vals })
 } catch (e) {
@@ -60,6 +63,10 @@ for (const f of plan.files) {
   const next = f.content
   const nextHash = sha256(next)
   let state
+  if (overrides.has(f.dest)) {
+    rows.push({ dest: f.dest, state: 'override' })
+    continue
+  }
   if (!rec) state = !present ? 'new' : cur === next ? 'same' : 'conflict'
   else if (!present) state = 'deleted-locally'
   else if (cur === next) state = 'same'
@@ -74,11 +81,13 @@ for (const f of plan.files) {
     record[f.dest] = { sha256: nextHash, kind: f.kind, source: f.source }
   } else if (state === 'same') record[f.dest] = { sha256: nextHash, kind: f.kind, source: f.source }
 }
-for (const dest of Object.keys(inst.files)) if (!planned.has(dest)) rows.push({ dest, state: 'removed-from-kit' })
+for (const dest of Object.keys(inst.files)) if (!planned.has(dest) && !overrides.has(dest)) rows.push({ dest, state: 'removed-from-kit' })
+const unknownOverrides = [...overrides.keys()].filter((p) => !planned.has(p))
 
-const order = ['new', 'kit-update', 'conflict', 'local-only', 'deleted-locally', 'removed-from-kit']
+const order = ['new', 'kit-update', 'conflict', 'local-only', 'deleted-locally', 'removed-from-kit', 'override']
 const count = (s) => rows.filter((r) => r.state === s).length
 for (const s of order) for (const r of rows.filter((x) => x.state === s)) console.log(`${s.padEnd(16)} ${r.dest}`)
+for (const p of unknownOverrides) console.log(`NOTE override ${p} is not a file this kit ships — remove it from kit.config.json`)
 if (inst.kit?.version !== readJson(join(KIT_ROOT, 'kit.json')).version) {
   console.log(`NOTE installed from kit ${inst.kit?.version}, this kit is ${readJson(join(KIT_ROOT, 'kit.json')).version}`)
 }
@@ -89,6 +98,6 @@ if (args.apply) {
 }
 console.log(
   `KIT_SYNC: ${args.apply ? 'applied' : 'dry-run'} — ${count('new')} new, ${count('kit-update')} kit-update, ${count('conflict')} conflicts, ` +
-    `${count('local-only')} local-only, ${count('deleted-locally')} deleted-locally, ${count('removed-from-kit')} removed-from-kit` +
+    `${count('local-only')} local-only, ${count('deleted-locally')} deleted-locally, ${count('removed-from-kit')} removed-from-kit, ${count('override')} overrides` +
     (args.apply ? '' : ' (nothing written; re-run with --apply to write new + kit-update)'),
 )

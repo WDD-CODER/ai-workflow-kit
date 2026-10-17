@@ -5,14 +5,15 @@
  *                          [--yes-chef] [--dry-run] [--force] [--allow-unfilled]
  *
  * Config: --config file, else <target>/kit.config.json, else the kit defaults plus the packs' defaults.
- * Never overwrites an existing file unless --force (reported SKIP-EXISTING). Writes <target>/.kit/install.json
+ * Never overwrites an existing file unless --force (reported SKIP-EXISTING). Paths in kit.config.json `overrides`
+ * are never written, even with --force (reported SKIP-OVERRIDE). Writes <target>/.kit/install.json
  * (commit it: kit-sync reads it) and, when absent, <target>/kit.config.json with the effective config.
  * Exit 0 ok, 1 error, 2 required config keys missing (nothing written).
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { spawnSync } from 'child_process'
 import { resolve, join, dirname } from 'path'
-import { KIT_ROOT, REQUIRED, isEmpty, readJson, sha256, resolveConfig, planFiles, parseArgs, unflatten, NOT_SET } from './lib/kit.mjs'
+import { KIT_ROOT, REQUIRED, isEmpty, readJson, sha256, resolveConfig, planFiles, parseArgs, unflatten, NOT_SET, readOverrides } from './lib/kit.mjs'
 
 let args
 try {
@@ -42,7 +43,9 @@ const packs = args.packs ? args.packs.split(',').map((s) => s.trim()).filter(Boo
 
 let vals
 let plan
+let overrides
 try {
+  overrides = readOverrides(projectCfg)
   vals = resolveConfig({ kitRoot: KIT_ROOT, project: projectCfg, packs, target })
   plan = planFiles({ kitRoot: KIT_ROOT, packs, cursor: !!args.cursor, yesChef: !!args['yes-chef'], vals })
 } catch (e) {
@@ -59,8 +62,13 @@ if (missing.length > 0 && !args['allow-unfilled']) {
 
 const prior = existsSync(join(target, '.kit', 'install.json')) ? readJson(join(target, '.kit', 'install.json')) : { files: {} }
 const record = { ...prior.files }
-const counts = { written: 0, same: 0, skipped: 0 }
+const counts = { written: 0, same: 0, skipped: 0, overridden: 0 }
 for (const f of plan.files) {
+  if (overrides.has(f.dest)) {
+    counts.overridden++
+    log(`SKIP-OVERRIDE ${f.dest}`)
+    continue
+  }
   const dest = join(target, f.dest)
   const digest = sha256(f.content)
   if (existsSync(dest)) {
@@ -134,4 +142,4 @@ if (deps.size > 0) {
   } else log(`NOTE the installed scripts need devDependencies — run: npm install -D ${list}  (or re-run with --install-deps)`)
 }
 if (hasHusky) log('NOTE git hooks are inactive until husky is set up — add "prepare": "husky" to package.json scripts, then run: npm run prepare')
-log(`KIT_INSTALL: ok — ${counts.written} ${args['dry-run'] ? 'would be written' : 'written'}, ${counts.same} identical, ${counts.skipped} skipped-existing, packs=[${packs.join(', ')}], cursor=${!!args.cursor}`)
+log(`KIT_INSTALL: ok — ${counts.written} ${args['dry-run'] ? 'would be written' : 'written'}, ${counts.same} identical, ${counts.skipped} skipped-existing, ${counts.overridden} overrides, packs=[${packs.join(', ')}], cursor=${!!args.cursor}`)
