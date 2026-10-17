@@ -17,11 +17,12 @@ Invoking `/ship` authorizes commit of this chat's files after explicit **Y** (un
 |------|----------|
 | `/ship` | Auto-detect lane, run its pipeline; wait for **Y** unless ULTRA-TRIVIAL |
 | `/ship fast` | Collapses Phase 4 + 4.5 into one reply: `Y` = commit + push + PR; merging still needs the word `merge` |
+| `/ship … merge` | The word `merge` anywhere in the `/ship` request (e.g. `/ship fast y merge`) pre-approves commit + push + PR + merge — no second ask |
 | `/ship regular` | Force REGULAR lane |
 | `/ship --yes` | Confirmation block, commit without waiting (review still runs) |
 | `/ship --skip-review "reason"` | Bypass Phase 2; reason required; logs `[review-skipped: {reason}]` |
 
-`fast` (or an auto-FAST/ULTRA-TRIVIAL diff): one reply answers commit + push + PR at once. `Y` stops there — PR open, not merged. Only a reply that contains the literal word `merge` (`merge`, `Y merge`) also merges; `later` / `open-pr-only` / `abort` as usual. Doesn't change lane classification or review depth. Works on any lane. `--yes` and "ship fast y" never imply merge. Chat "ship fast" ≡ `/ship fast`.
+`fast` (or an auto-FAST/ULTRA-TRIVIAL diff): one reply answers commit + push + PR at once. `Y` stops there — PR open, not merged. Only the literal word `merge` also merges — either in the `/ship` request itself (`/ship fast merge`, "ship fast y merge") or in the gate reply (`merge`, `Y merge`); `later` / `open-pr-only` / `abort` as usual. Doesn't change lane classification or review depth. Works on any lane. `--yes` and "ship fast y" without the word `merge` never imply merge. Chat "ship fast" ≡ `/ship fast`.
 
 ---
 
@@ -74,9 +75,10 @@ Before Phase 4: `git fetch origin && git rebase origin/{{git.mainBranch}}`.
 
 - REGULAR, `fast` not passed: one Y here for commit, separate gate at Phase 4.5 for merge.
 - FAST/ULTRA-TRIVIAL, or `fast` passed on any lane: the single reply here also answers Phase 4.5 — merge only if it contains the word `merge`.
+- **`merge` in the `/ship` request** (e.g. `/ship fast merge`, `/ship fast y merge`): `merge` implies `Y` — the request already is the reply. Print the tree as a receipt tagged `[pre-approved: merge]`, then commit, push, PR and merge without stopping. Phase 1 build/ledger failures and Phase 3 STOPs still stop.
 - ULTRA-TRIVIAL: skip the interactive gate — commit + push auto (checkpoint only, never a PR). Print the tree as a receipt, tagged `[auto-approved: ultra-trivial]`. HOW TO VALIDATE becomes the one-line "no user-visible effect" form.
 
-Present this tree, then **wait for explicit "Y"** (unless `--yes` or ULTRA-TRIVIAL):
+Present this tree, then **wait for explicit "Y"** (unless `--yes`, `merge` already in the `/ship` request, or ULTRA-TRIVIAL):
 
 ~~~text
 Branch: [branch-name]
@@ -170,11 +172,13 @@ Then **Phase 4.5 — Merge Gate** (mandatory).
 
 ## Phase 4.5 — Merge Gate (mandatory after successful push)
 
-`fast` passed, or Lane naturally FAST/ULTRA-TRIVIAL: already decided at Phase 4 — merge only if that reply contained the word `merge`; a plain `Y` / `--yes` leaves the PR open (`Merge: deferred`).
+`merge` in the `/ship` request: already approved — merge without asking again (any lane), after writing any brain draft unless `no brain` was said.
+
+`fast` passed, or Lane naturally FAST/ULTRA-TRIVIAL: already decided at Phase 4 — merge only if that reply (or the `/ship` request) contained the word `merge`; a plain `Y` / `--yes` leaves the PR open (`Merge: deferred`).
 
 Otherwise (REGULAR, `fast` not passed): Read `docs/agent/ship-regular.md` → "Phase 4.5 — Merge Gate (REGULAR procedure)" and follow it.
 
-Never merge without the Human's literal word `merge` in the reply to this ship's gate. `Y`, `--yes`, "ship fast y" and approvals given before the gate never count.
+Never merge without the Human's literal word `merge` — in this ship's `/ship` request or in the reply to its gate. `Y`, `--yes`, "ship fast y" without `merge`, and a `merge` from an earlier ship/turn never count.
 
 ---
 

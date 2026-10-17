@@ -76,4 +76,4 @@ Follow `docs/agent/standards-git.md` → **Post-push Merge Gate**. Copy the comb
   - `brain edit …` → revise draft, re-show banner, wait again before writing.
   - Combine freely (e.g. `merge`, `merge, no brain`, `later, brain edit …`).
 
-Never merge without the Human's literal word `merge` in the reply to the gate; `Y` / `--yes` never merge.
+Never merge without the Human's literal word `merge` in the reply to the gate — or in the `/ship` request itself (e.g. `/ship regular y merge`), which counts as that reply: merge without asking again. `Y` / `--yes` alone never merge.

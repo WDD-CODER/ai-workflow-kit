@@ -176,9 +176,12 @@ const hasFrontend = existsSync(envLocalPath) // the per-slot frontend config is 
 function generateEnvironmentSlot(bePort) {
   const localPath = envLocalPath
   const text = readFileSync(localPath, 'utf8')
-  const withApi = text
-    .replace(/apiUrl:\s*'[^']*'/, `apiUrl: 'http://localhost:${bePort}'`)
-    .replace(/authApiUrl:\s*'[^']*'/, `authApiUrl: 'http://localhost:${bePort}'`)
+  // Rewrites only the localhost port on the apiUrl / authApiUrl lines, so the remote-link
+  // branch (e.g. `viaRemote ? '' : <localhost url>`) survives into the slot file.
+  const withApi = text.replace(
+    /^(\s*(?:apiUrl|authApiUrl):[^\n]*?)'http:\/\/localhost:\d+'/gm,
+    (_, lead) => `${lead}'http://localhost:${bePort}'`
+  )
   writeFileSync(join(repoRoot, 'src', 'environments', 'environment.slot.ts'), withApi)
 }
 
