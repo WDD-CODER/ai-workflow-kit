@@ -9,12 +9,12 @@ Loaded from `.claude/commands/ship.md` when Lane = REGULAR, or when any lane's s
 **Lane = REGULAR:**
 1. Invoke `/review` by **reading `.claude/commands/review.md` and executing it inline** — do
    **not** call it via the Skill tool by name (`skill: "review"`). The plain name "review" is
-   ambiguous with a {{tools.browser}}-vendored skill of the same name at `~/.claude/skills/review/`,
+   ambiguous with a vendored third-party skill of the same name at `~/.claude/skills/review/`,
    which is a much heavier multi-agent Review Army (telemetry, onboarding prompts, specialist
    subagent dispatch, Codex integration) — the Skill tool has been observed resolving to that
    one instead of this project's lightweight, judgment-only review, burning many times the
    tokens for no extra safety. Same collision risk applies to any other command name that
-   might shadow a {{tools.browser}} skill (e.g. `browse`) — when a command file says "read X and execute
+   might shadow a vendored third-party skill (e.g. `browse`) — when a command file says "read X and execute
    it," read the file directly, don't route through Skill-tool name resolution.
 2. On `REVIEW: PASS` → continue.
 3. On `ISSUES FOUND` → fix the listed issues → re-run `/review` **exactly once**.

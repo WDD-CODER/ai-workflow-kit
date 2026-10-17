@@ -30,8 +30,8 @@ jobs:
       # --omit=dev: devDependencies are build/dev-server tooling ({{stack.name}} CLI, vite,
       # webpack-dev-server, ...) that never ships to production, so their audit
       # findings are noise for this app's real attack surface — permanent, not a
-      # workaround. --audit-level=critical stays until the {{stack.name}} migration
-      # (tracked in .claude/todo.md) clears the current @{{stack.name}}/* high findings;
+      # workaround. --audit-level=critical stays until a framework major-version upgrade
+      # (tracked in .claude/todo.md) clears the current framework-package high findings;
       # restore --audit-level=high on production deps after that migration lands.
       - name: npm audit (root)
         run: npm audit --omit=dev --audit-level=critical

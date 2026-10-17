@@ -20,7 +20,7 @@ Use this path for security audits, hardening, authentication review, and vulnera
 4. Default under three-agent: **report only**. Fix Critical/High only when the Human
    Director explicitly asks (or when this path is invoked as an execute override).
 5. Medium/Low findings are added to `.claude/todo.md` / a Plan Contract for scheduled remediation.
-6. Recommend `/cso` ({{tools.browser}}) for infrastructure-level security review.
+6. Recommend `/cso` (if your skill set has it) for infrastructure-level security review.
 
 ## Hard rules
 

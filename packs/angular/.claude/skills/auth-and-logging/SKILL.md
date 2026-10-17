@@ -2,7 +2,7 @@
 name: auth-and-logging
 description: Security checklist for {{project.name}}'s auth and logging surface — route guards, `isLoggedIn()` at mutation entry points, sessionStorage-only credentials, no PII in logs, and the `auth-crypto.ts` hashing/token rules. Use when touching routes, guards, interceptors, user/auth services, HTTP CRUD, login/signup, tokens, hashing, `LoggingService` calls or anything that stores user data — and whenever the user mentions auth, login, permissions, security, logging or PII.
 paths:
-  - "{{paths.hotspots}}"
+  - "{{paths.routesFile}}"
   - "src/app/core/guards/**"
   - "src/app/core/interceptors/**"
   - "src/app/core/services/user*.ts"
@@ -20,7 +20,7 @@ The full standard is `docs/agent/standards-security.md` (read it for anything no
 
 ```
 Auth & logging:
-- [ ] Every new/changed protected route in {{paths.hotspots}} has canActivate: [authGuard]
+- [ ] Every new/changed protected route in {{paths.routesFile}} has canActivate: [authGuard]
 - [ ] Every non-route mutation entry (add/edit/delete button, modal, FAB) calls userService.isLoggedIn() first
 - [ ] Session data only in sessionStorage (key loggedInUser); nothing auth-related in localStorage
 - [ ] LoggingService calls carry { event, message, context? } and no password/hash/token/name/email — user._id only

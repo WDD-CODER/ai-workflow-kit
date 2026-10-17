@@ -100,7 +100,7 @@ If there is no impact, write `## Backend Impact — None` explicitly so the deci
 
 Before any destructive data operation (re-import, bulk repair, schema migration), take a full snapshot with the project's backup script (`{{commands.dbBackup}}`) and prove it is usable by restoring it into a named scratch database. A snapshot that has never been restored is not a rollback path.
 
-- Write snapshots OUTSIDE the repo (`../{{project.name}}-db-backups/<target>-<timestamp>/`); a snapshot contains real data and must never be committed.
+- Write snapshots OUTSIDE the repo (`../{{slots.dbBackupDir}}/<target>-<timestamp>/`); a snapshot contains real data and must never be committed.
 - The restore script refuses to run over the source database, refuses a non-empty target, and exits non-zero on any per-collection count mismatch.
 - Drop the scratch database manually when done; the app's DB user may lack drop privileges outside its primary database, so use an admin-scoped connection if needed.
 - Filter out Mongo's internal `system.*` namespaces when snapshotting.

@@ -138,7 +138,7 @@ function withDbName(uri, dbName) {
 function seedIsolatedDbIfEmpty(dbName) {
   if (DB_SCRIPTS.length < 2) return { seeded: false, error: 'commands.dbBackup is not configured; skipping DB seed' }
   const [backupScript, restoreScript] = DB_SCRIPTS
-  const backupDir = join(repoRoot, '..', '{{project.name}}-db-backups', `wt-seed-${dbName}-${Date.now()}`)
+  const backupDir = join(repoRoot, '..', '{{slots.dbBackupDir}}', `wt-seed-${dbName}-${Date.now()}`)
   try {
     execFileSync('node', [backupScript, '--target=local', `--out=${backupDir}`], { cwd: repoRoot, stdio: 'pipe' })
   } catch (e) {

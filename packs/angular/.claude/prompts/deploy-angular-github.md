@@ -1,11 +1,11 @@
 ---
 name: deployAngularToGitHub
 description: Configure this Angular SPA for deployment to GitHub Pages
-argument-hint: Repository name for base-href (e.g. {{project.name}})
+argument-hint: Repository name for base-href (e.g. {{project.repoName}})
 ---
 Help me deploy this {{project.name}} Angular application to GitHub Pages. Follow these standards:
 
-1. **Build configuration**: Use the correct `--base-href` for GitHub Pages (e.g. `/{{project.name}}/` for repo name `{{project.name}}`).
+1. **Build configuration**: Use the correct `--base-href` for GitHub Pages (e.g. `/{{project.repoName}}/` for repo name `{{project.repoName}}`).
 2. **Routing**: Prefer Hash location strategy for GitHub Pages to avoid 404s on refresh, or ensure the server is configured for SPA fallback.
 3. **GitHub Actions**: Use `.github/workflows/deploy.yml` that:
    - Uses Node.js 20.x.

@@ -37,7 +37,7 @@ The `.ps1` files are thin wrappers; the engine is `node tools/install.mjs` / `no
 | `packs/angular/`, `packs/node-express/` | Stack packs. `pack.json` contract: `standardsDoc`, `skills`, `cursorRules`, `gotchas`, `validation` (npm script names), optional `configDefaults` and `agentsFragment` (rows the installer adds to the `AGENTS.md` skeleton). |
 | `layers/cursor/` | Optional Cursor layer (`.cursor/commands`, rules, `mcp.json` without raw Playwright). |
 | `templates/` | The 17 skeletons: `AGENTS.md`, `CLAUDE.md`, `docs/brain/*`, `docs/project/*` (was `_shared/`), `.gitignore`, `.mcp.json`, `.nvmrc`, `.prettierrc.json`, HLD/PRD templates; `templates/cursor/` only with `-Cursor`. |
-| `kit.config.json` | Every key a placeholder can name (39). Conventions: `slots.fePorts/bePorts` are base ports (slot N = base + N); `paths.srcRoot/serverRoot` end with `/`. |
+| `kit.config.json` | Every key a placeholder can name (42). Conventions: `slots.fePorts/bePorts` are base ports (slot N = base + N); `paths.srcRoot/serverRoot` end with `/`. |
 | `kit.json` | Kit version recorded into each install. |
 | `tools/install.mjs`, `tools/sync.mjs`, `tools/lib/kit.mjs` | Installer, sync and the shared render/plan engine. |
 | `tools/leak-check.mjs` | Core, layers and templates must not name a framework or a project; packs (`--project-only`) must not name the project. |

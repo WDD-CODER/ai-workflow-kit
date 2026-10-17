@@ -66,7 +66,7 @@ node scripts/plan-ledger-check.mjs
 - Stage only this-chat dirty paths. Never `-A` unless Human overrode scope. Never stage secrets/`.env`.
 
 Before Phase 4: `git fetch origin && git rebase origin/{{git.mainBranch}}`.
-- Conflict where both sides only *added to* a hotspot (`{{paths.hotspots}}`) → keep both sides (union), `git rebase --continue`.
+- Conflict where both sides only *added to* a hotspot (`{{project.i18nFile}}`, `{{paths.hotspots}}`) → keep both sides (union), `git rebase --continue`.
 - Any other conflict → **STOP**; show the Human; do not resolve unilaterally.
 
 ---

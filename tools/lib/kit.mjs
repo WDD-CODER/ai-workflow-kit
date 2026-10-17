@@ -97,7 +97,10 @@ export function resolveConfig({ kitRoot, project, packs, target, platform = proc
   vals['project.name'] = name
   if (isEmpty(vals['slots.fePorts'])) vals['slots.fePorts'] = 4200
   if (isEmpty(vals['slots.bePorts'])) vals['slots.bePorts'] = 3000
-  if (isEmpty(vals['slots.dbNameFormat'])) vals['slots.dbNameFormat'] = `${name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')}_wt\${n}`
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
+  if (isEmpty(vals['slots.dbNameFormat'])) vals['slots.dbNameFormat'] = `${slug}_wt\${n}`
+  if (isEmpty(vals['slots.dbBackupDir'])) vals['slots.dbBackupDir'] = `${slug}-db-backups`
+  if (isEmpty(vals['project.repoName'])) vals['project.repoName'] = basename(resolve(target))
   if (isEmpty(vals['paths.sharedDocs'])) vals['paths.sharedDocs'] = 'docs/project'
   if (isEmpty(vals['hooks.shellPath'])) {
     vals['hooks.shellPath'] = platform === 'win32' && existsSync('C:/Program Files/Git/bin/bash.exe') ? 'C:/Program Files/Git/bin/bash.exe' : 'bash'

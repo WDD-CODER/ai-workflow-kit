@@ -36,6 +36,7 @@
       "src/styles.scss",
       "src/app/app.routes.ts"
     ],
+    "paths.routesFile": "src/app/app.routes.ts",
     "security.sensitivePaths": [
       "src/app/core/guards/**",
       "src/app/core/interceptors/**"
