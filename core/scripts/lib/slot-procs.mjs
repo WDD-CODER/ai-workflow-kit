@@ -18,10 +18,10 @@
  *
  * Node built-ins only; Windows (netstat/taskkill/PowerShell) and POSIX (lsof/ps/kill).
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, readdirSync, readlinkSync, openSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, readdirSync, readlinkSync, openSync, renameSync, statSync } from 'fs'
 import { execFileSync, spawn } from 'child_process'
 import { createHash } from 'crypto'
-import { resolve, dirname, join } from 'path'
+import { resolve, dirname, join, basename } from 'path'
 import { fileURLToPath } from 'url'
 import { ports } from './slot.mjs'
 
@@ -401,6 +401,13 @@ export function startServer({ label, port, cwd, args, env, logPath, timeoutMs })
   const holder = portOwnerPid(port)
   if (holder) return { ok: false, message: `${label} not started: port ${port} is already held by PID ${holder} (${short(commandLine(holder))}). A second start would leave an idle watcher behind. Run node scripts/slot-stop.mjs if it is a leftover, then re-run.` }
   mkdirSync(dirname(logPath), { recursive: true })
+  // Keep the previous run's log as <dir>/logs/<name>-<YYYYMMDD-HHmmss>.log instead of truncating it
+  if (existsSync(logPath) && statSync(logPath).size > 0) {
+    const stamp = new Date(statSync(logPath).mtimeMs).toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
+    const keepDir = join(dirname(logPath), 'logs')
+    mkdirSync(keepDir, { recursive: true })
+    try { renameSync(logPath, join(keepDir, `${basename(logPath, '.log')}-${stamp}.log`)) } catch { /* still held by a dying server: truncated below */ }
+  }
   const logFd = openSync(logPath, 'w')
   const child = spawnNpm(args, { cwd, env: env || process.env, stdio: ['ignore', logFd, logFd] })
   child.unref()
