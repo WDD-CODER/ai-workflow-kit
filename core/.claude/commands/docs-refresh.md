@@ -25,7 +25,7 @@ Or spawn a general agent with a **path-free** prompt:
 
 ```
 Agent(
-  subagent_type: "generalPurpose",
+  subagent_type: "general-purpose",
   description: "Refresh breadcrumbs and project docs",
   prompt: "Run the breadcrumbs skill from the workspace repo root (cwd). Refresh breadcrumbs.md at major seams, prune stale entries, update key exports. Do not use any hardcoded absolute machine path."
 )

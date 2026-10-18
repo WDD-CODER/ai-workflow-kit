@@ -23,7 +23,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { resolve, join, dirname } from 'path'
 import { resolveSource } from './lib/source.mjs'
-import { KIT_ROOT, readJson, sha256, resolveConfig, planFiles, parseArgs, readOverrides } from './lib/kit.mjs'
+import { KIT_ROOT, readJson, sha256, resolveConfig, planFiles, parseArgs, readOverrides, isHook, markHooksExecutable } from './lib/kit.mjs'
 
 let args
 try {
@@ -69,6 +69,7 @@ try {
 const rows = []
 const record = { ...inst.files }
 const planned = new Set()
+const hooksWritten = []
 for (const f of plan.files) {
   planned.add(f.dest)
   const rec = inst.files[f.dest]
@@ -93,6 +94,7 @@ for (const f of plan.files) {
   if (state === 'new' || state === 'kit-update') {
     mkdirSync(dirname(dest), { recursive: true })
     writeFileSync(dest, next, 'utf8')
+    if (isHook(f.dest)) hooksWritten.push(f.dest)
     record[f.dest] = { sha256: nextHash, kind: f.kind, source: f.source }
   } else if (state === 'same') record[f.dest] = { sha256: nextHash, kind: f.kind, source: f.source }
 }
@@ -110,6 +112,8 @@ const label = (o) => (o.source ? `${o.source}${o.ref ? '@' + o.ref : ''}` : '(no
 if (label(inst) !== label(origin)) console.log(`NOTE source ${label(inst)} -> ${label(origin)}${args.apply ? '' : ' (recorded on --apply)'}`)
 else console.log(`NOTE source ${label(origin)}`)
 if (args.apply) {
+  const hookNote = markHooksExecutable(target, hooksWritten)
+  if (hookNote) console.log(hookNote)
   const kitVersion = readJson(join(kitRoot, 'kit.json')).version
   const sorted = Object.fromEntries(Object.entries(record).sort(([a], [b]) => (a < b ? -1 : 1)))
   const { kit: _kit, source: _source, ref: _ref, commit: _commit, files: _files, ...rest } = inst

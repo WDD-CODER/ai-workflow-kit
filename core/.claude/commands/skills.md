@@ -24,7 +24,6 @@ Show all registered skills with trigger patterns and file locations.
 
 ## Notes
 
-- `copilot-instructions.md` §0 was retired in the three-agent cutover.
 - Slash commands live in `.claude/commands/` — use `/commands`. Skills are separate from commands.
 - When adding/removing a skill, update `AGENTS.md`'s `## Skill triggers` table — not this file.
 - Do not list retired skills (`mp-search`, `nightly-audit`, `worktree-session-end`, `execute-debugging`) even if mentioned in archives.

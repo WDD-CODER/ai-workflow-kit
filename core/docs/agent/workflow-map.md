@@ -8,7 +8,7 @@
 
 ---
 
-## 1. Roles (three-agent workflow)
+## 1. Roles
 
 | Role | Who | Responsibility |
 | --- | --- | --- |
@@ -181,7 +181,7 @@ Claude Code backs this up in `.claude/settings.json`: `permissions.deny` refuses
 | --- | --- | --- |
 | `plans/NNN-slug.plan.md` (+ `plans/1-100/` archive) | save-plan; mid-flight Phase 4 appends | `/review-it`, `/brief`, `/ship` todo sync, Contractor |
 | `.claude/todo.md` | save-plan Phase 1; mid-flight sync; `/ship`/`/done` mark `[x]` | `/brief` retroactive, `/ship`, `/done`, session startup |
-| `.claude/todo-archive.md` | `/ship` (archives fully-complete plan sections) | — |
+| `.claude/todo-archive/NNN.md` (300-line volumes) | `scripts/todo-archive.mjs`, run by the todo-sync workflow after a merge (archives fully-complete plan sections) | `/sweep-stale-todos` |
 | `.claude/sessions/{session-id}/brief.md` | `/brief` | `/ship` Done-when check |
 | `sessions/YYYY-MM-DD.md` | Contractor after each milestone | `/review-it` step 1 (handoff) |
 | `docs/session-state*.md` (target in `.claude/.session-state-path`) | `/ship` Phase 5 | `session-startup.sh` on next session |

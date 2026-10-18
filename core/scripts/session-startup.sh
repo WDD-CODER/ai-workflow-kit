@@ -46,17 +46,15 @@ if [[ "$DESCRIBE" == PLANNER:* && -n "$PLANNER_BRANCH" && "$PLANNER_BRANCH" != "
   DESCRIBE="$DESCRIBE WARNING: the Planner folder is on $PLANNER_BRANCH, not {{git.mainBranch}}, and every session in this folder is on it too. Tell the Human before doing anything else."
 fi
 
-if [[ "$DESCRIBE" == IDLE\ SLOT:* ]]; then
-  cat <<EOF
-{
-  "hookSpecificOutput": {
-    "hookEventName": "SessionStart",
-    "decision": {
-      "additionalContext": "$DESCRIBE"
-    }
-  }
+# The hook output is built in node: JSON.stringify keeps quotes, backslashes and newlines from the
+# session-state file valid. additionalContext sits directly under hookSpecificOutput.
+emit() {
+  KIT_CTX="$1" node -e 'process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: process.env.KIT_CTX } }) + "\n")'
 }
-EOF
+NL=$'\n'
+
+if [[ "$DESCRIBE" == IDLE\ SLOT:* ]]; then
+  emit "$DESCRIBE"
   exit 0
 fi
 # --- end slot role ---
@@ -66,16 +64,7 @@ fi
 RESOLVED=$(node "$SCRIPT_DIR/session-state-path.mjs" 2>/dev/null)
 
 if [ "$RESOLVED" = "NONE" ]; then
-  cat <<EOF
-{
-  "hookSpecificOutput": {
-    "hookEventName": "SessionStart",
-    "decision": {
-      "additionalContext": "IDLE SLOT: ask the Human which plan to execute."
-    }
-  }
-}
-EOF
+  emit "IDLE SLOT: ask the Human which plan to execute."
   exit 0
 fi
 
@@ -106,27 +95,9 @@ if [ -f "$SESSION_STATE" ]; then
     CONTENT=$(printf '%s' "$CONTENT" | head -c 1500)
   fi
 
-  cat <<EOF
-{
-  "hookSpecificOutput": {
-    "hookEventName": "SessionStart",
-    "decision": {
-      "additionalContext": "$DESCRIBE\\n\\nPrevious session state loaded from: $SESSION_STATE\\n$CONTENT\\n\\nFull file: $SESSION_STATE — read only if needed.\\n\\n---\\nSESSION SAVE TARGET: $SAVE_PATH\\nWhen ending this session, write session-state to the path above (not docs/session-state.md directly). The pointer file .claude/.session-state-path is local-only (gitignored)."
-    }
-  }
-}
-EOF
+  emit "$DESCRIBE${NL}${NL}Previous session state loaded from: $SESSION_STATE${NL}$CONTENT${NL}${NL}Full file: $SESSION_STATE — read only if needed.${NL}${NL}---${NL}SESSION SAVE TARGET: $SAVE_PATH${NL}When ending this session, write session-state to the path above (not docs/session-state.md directly). The pointer file .claude/.session-state-path is local-only (gitignored)."
 else
-  cat <<EOF
-{
-  "hookSpecificOutput": {
-    "hookEventName": "SessionStart",
-    "decision": {
-      "additionalContext": "$DESCRIBE\\n\\nNo previous session state found for branch: ${BRANCH}.\\n\\n---\\nSESSION SAVE TARGET: $SAVE_PATH\\nWhen ending this session, write session-state to the path above."
-    }
-  }
-}
-EOF
+  emit "$DESCRIBE${NL}${NL}No previous session state found for branch: ${BRANCH}.${NL}${NL}---${NL}SESSION SAVE TARGET: $SAVE_PATH${NL}When ending this session, write session-state to the path above."
 fi
 
 exit 0
