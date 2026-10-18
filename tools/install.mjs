@@ -1,8 +1,12 @@
 /**
  * kit-install — copy the workflow into a project.
  *
- *   node tools/install.mjs --target <dir> [--config <file>] [--packs angular,node-express] [--cursor]
+ *   node tools/install.mjs --target <dir> [--source github:<owner>/<repo> --ref <tag> | --source <kit folder>]
+ *                          [--config <file>] [--packs angular,node-express] [--cursor]
  *                          [--yes-chef] [--dry-run] [--force] [--allow-unfilled]
+ *
+ * Source: a tagged GitHub release (fetched into a per-user cache, see lib/source.mjs), a local kit folder,
+ * or (no --source) the kit these tools run from. .kit/install.json records source, ref and commit.
  *
  * Config: --config file, else <target>/kit.config.json, else the kit defaults plus the packs' defaults.
  * Never overwrites an existing file unless --force (reported SKIP-EXISTING). Paths in kit.config.json `overrides`
@@ -13,12 +17,13 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { spawnSync } from 'child_process'
 import { resolve, join, dirname } from 'path'
+import { resolveSource } from './lib/source.mjs'
 import { KIT_ROOT, REQUIRED, isEmpty, readJson, sha256, resolveConfig, planFiles, parseArgs, unflatten, NOT_SET, readOverrides } from './lib/kit.mjs'
 
 let args
 try {
   args = parseArgs(process.argv.slice(2), {
-    target: 'value', config: 'value', packs: 'value', cursor: 'bool', 'yes-chef': 'bool',
+    target: 'value', source: 'value', ref: 'value', config: 'value', packs: 'value', cursor: 'bool', 'yes-chef': 'bool',
     'dry-run': 'bool', force: 'bool', 'allow-unfilled': 'bool', 'install-deps': 'bool',
   })
 } catch (e) {
@@ -44,10 +49,13 @@ const packs = args.packs ? args.packs.split(',').map((s) => s.trim()).filter(Boo
 let vals
 let plan
 let overrides
+let kitRoot
+let origin
 try {
+  ;({ kitRoot, record: origin } = resolveSource({ source: args.source, ref: args.ref, fallback: KIT_ROOT, target }))
   overrides = readOverrides(projectCfg)
-  vals = resolveConfig({ kitRoot: KIT_ROOT, project: projectCfg, packs, target })
-  plan = planFiles({ kitRoot: KIT_ROOT, packs, cursor: !!args.cursor, yesChef: !!args['yes-chef'], vals })
+  vals = resolveConfig({ kitRoot, project: projectCfg, packs, target })
+  plan = planFiles({ kitRoot, packs, cursor: !!args.cursor, yesChef: !!args['yes-chef'], vals })
 } catch (e) {
   console.error(`KIT_INSTALL: FAIL — ${e.message}`)
   process.exit(1)
@@ -93,10 +101,10 @@ for (const f of plan.files) {
   record[f.dest] = { sha256: digest, kind: f.kind, source: f.source }
 }
 
-const kitVersion = readJson(join(KIT_ROOT, 'kit.json')).version
+const kitVersion = readJson(join(kitRoot, 'kit.json')).version
 const sorted = Object.fromEntries(Object.entries(record).sort(([a], [b]) => (a < b ? -1 : 1)))
 const installJson = JSON.stringify(
-  { kit: { version: kitVersion }, packs, cursor: !!args.cursor, yesChef: !!args['yes-chef'], files: sorted },
+  { kit: { version: kitVersion }, ...origin, packs, cursor: !!args.cursor, yesChef: !!args['yes-chef'], files: sorted },
   null,
   2,
 ) + '\n'
@@ -142,4 +150,4 @@ if (deps.size > 0) {
   } else log(`NOTE the installed scripts need devDependencies — run: npm install -D ${list}  (or re-run with --install-deps)`)
 }
 if (hasHusky) log('NOTE git hooks are inactive until husky is set up — add "prepare": "husky" to package.json scripts, then run: npm run prepare')
-log(`KIT_INSTALL: ok — ${counts.written} ${args['dry-run'] ? 'would be written' : 'written'}, ${counts.same} identical, ${counts.skipped} skipped-existing, ${counts.overridden} overrides, packs=[${packs.join(', ')}], cursor=${!!args.cursor}`)
+log(`KIT_INSTALL: ok — ${counts.written} ${args['dry-run'] ? 'would be written' : 'written'}, ${counts.same} identical, ${counts.skipped} skipped-existing, ${counts.overridden} overrides, packs=[${packs.join(', ')}], cursor=${!!args.cursor}, source=${origin.source}${origin.ref ? '@' + origin.ref : ''}`)

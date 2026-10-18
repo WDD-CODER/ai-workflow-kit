@@ -1,7 +1,11 @@
 /**
  * kit-sync — show what a newer kit would change in an installed project, then STOP.
  *
- *   node tools/sync.mjs --target <dir> [--apply]
+ *   node tools/sync.mjs --target <dir> [--ref <tag>] [--source github:<owner>/<repo> | --source <kit folder>] [--apply]
+ *
+ * Source: --source, else the source + ref recorded in .kit/install.json, else the kit these tools run from.
+ * --ref <tag> upgrades (or downgrades) a github source; --apply then records the new source/ref/commit.
+ * A ref that does not exist fails before anything is written.
  *
  * Dry-run by default; writes nothing. --apply writes only `new` and `kit-update` files and refreshes
  * .kit/install.json. A `conflict` (local edit AND kit change, or an untracked file in the way) is never overwritten.
@@ -18,11 +22,12 @@
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { resolve, join, dirname } from 'path'
+import { resolveSource } from './lib/source.mjs'
 import { KIT_ROOT, readJson, sha256, resolveConfig, planFiles, parseArgs, readOverrides } from './lib/kit.mjs'
 
 let args
 try {
-  args = parseArgs(process.argv.slice(2), { target: 'value', apply: 'bool' })
+  args = parseArgs(process.argv.slice(2), { target: 'value', source: 'value', ref: 'value', apply: 'bool' })
 } catch (e) {
   console.error(`KIT_SYNC: FAIL — ${e.message}`)
   process.exit(1)
@@ -42,10 +47,20 @@ const cfgFile = join(target, 'kit.config.json')
 const project = existsSync(cfgFile) ? readJson(cfgFile) : {}
 let plan
 let overrides
+let kitRoot
+let origin
 try {
+  const recorded = !args.source && inst.source ? inst.source : null
+  ;({ kitRoot, record: origin } = resolveSource({
+    source: args.source ?? recorded,
+    ref: args.ref ?? (recorded && !args.source ? inst.ref : undefined),
+    fallback: KIT_ROOT,
+    target,
+    baseDir: recorded ? target : process.cwd(),
+  }))
   overrides = readOverrides(project)
-  const vals = resolveConfig({ kitRoot: KIT_ROOT, project, packs: inst.packs, target })
-  plan = planFiles({ kitRoot: KIT_ROOT, packs: inst.packs, cursor: inst.cursor, yesChef: inst.yesChef, vals })
+  const vals = resolveConfig({ kitRoot, project, packs: inst.packs, target })
+  plan = planFiles({ kitRoot, packs: inst.packs, cursor: inst.cursor, yesChef: inst.yesChef, vals })
 } catch (e) {
   console.error(`KIT_SYNC: FAIL — ${e.message}`)
   process.exit(1)
@@ -88,13 +103,17 @@ const order = ['new', 'kit-update', 'conflict', 'local-only', 'deleted-locally',
 const count = (s) => rows.filter((r) => r.state === s).length
 for (const s of order) for (const r of rows.filter((x) => x.state === s)) console.log(`${s.padEnd(16)} ${r.dest}`)
 for (const p of unknownOverrides) console.log(`NOTE override ${p} is not a file this kit ships — remove it from kit.config.json`)
-if (inst.kit?.version !== readJson(join(KIT_ROOT, 'kit.json')).version) {
-  console.log(`NOTE installed from kit ${inst.kit?.version}, this kit is ${readJson(join(KIT_ROOT, 'kit.json')).version}`)
+if (inst.kit?.version !== readJson(join(kitRoot, 'kit.json')).version) {
+  console.log(`NOTE installed from kit ${inst.kit?.version}, this kit is ${readJson(join(kitRoot, 'kit.json')).version}`)
 }
+const label = (o) => (o.source ? `${o.source}${o.ref ? '@' + o.ref : ''}` : '(not recorded)')
+if (label(inst) !== label(origin)) console.log(`NOTE source ${label(inst)} -> ${label(origin)}${args.apply ? '' : ' (recorded on --apply)'}`)
+else console.log(`NOTE source ${label(origin)}`)
 if (args.apply) {
-  const kitVersion = readJson(join(KIT_ROOT, 'kit.json')).version
+  const kitVersion = readJson(join(kitRoot, 'kit.json')).version
   const sorted = Object.fromEntries(Object.entries(record).sort(([a], [b]) => (a < b ? -1 : 1)))
-  writeFileSync(installFile, JSON.stringify({ ...inst, kit: { version: kitVersion }, files: sorted }, null, 2) + '\n', 'utf8')
+  const { kit: _kit, source: _source, ref: _ref, commit: _commit, files: _files, ...rest } = inst
+  writeFileSync(installFile, JSON.stringify({ kit: { version: kitVersion }, ...origin, ...rest, files: sorted }, null, 2) + '\n', 'utf8')
 }
 console.log(
   `KIT_SYNC: ${args.apply ? 'applied' : 'dry-run'} — ${count('new')} new, ${count('kit-update')} kit-update, ${count('conflict')} conflicts, ` +

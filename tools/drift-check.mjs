@@ -1,7 +1,10 @@
 /**
  * kit-drift — does a project's copy of the workflow still match the kit, except for its declared overrides?
  *
- *   node tools/drift-check.mjs --target <dir> [--packs angular,node-express] [--cursor | --no-cursor] [--verbose]
+ *   node tools/drift-check.mjs --target <dir> [--source github:<owner>/<repo> --ref <tag> | --source <kit folder>]
+ *                              [--packs angular,node-express] [--cursor | --no-cursor] [--verbose]
+ *
+ * Source: --source/--ref, else the source + ref recorded in .kit/install.json, else the kit these tools run from.
  *
  * Renders every managed file (core, packs, Cursor layer) with the target's kit.config.json, exactly as
  * install would, and compares it byte for byte with the target's copy. Seeds (templates/) are the project's
@@ -19,6 +22,7 @@
  */
 import { readFileSync, existsSync } from 'fs'
 import { resolve, join } from 'path'
+import { resolveSource } from './lib/source.mjs'
 import { KIT_ROOT, readJson, resolveConfig, planFiles, parseArgs, readOverrides } from './lib/kit.mjs'
 
 const die = (m) => {
@@ -28,7 +32,7 @@ const die = (m) => {
 
 let args
 try {
-  args = parseArgs(process.argv.slice(2), { target: 'value', packs: 'value', cursor: 'bool', 'no-cursor': 'bool', verbose: 'bool' })
+  args = parseArgs(process.argv.slice(2), { target: 'value', source: 'value', ref: 'value', packs: 'value', cursor: 'bool', 'no-cursor': 'bool', verbose: 'bool' })
 } catch (e) {
   die(e.message)
 }
@@ -48,10 +52,20 @@ const cursor = args.cursor ? true : args['no-cursor'] ? false : inst ? !!inst.cu
 
 let plan
 let overrides
+let kitRoot
+let origin
 try {
+  const recorded = !args.source && inst?.source ? inst.source : null
+  ;({ kitRoot, record: origin } = resolveSource({
+    source: args.source ?? recorded,
+    ref: args.ref ?? (recorded ? inst.ref : undefined),
+    fallback: KIT_ROOT,
+    target,
+    baseDir: recorded ? target : process.cwd(),
+  }))
   overrides = readOverrides(project)
-  const vals = resolveConfig({ kitRoot: KIT_ROOT, project, packs, target })
-  plan = planFiles({ kitRoot: KIT_ROOT, packs, cursor, yesChef: !!inst?.yesChef, vals })
+  const vals = resolveConfig({ kitRoot, project, packs, target })
+  plan = planFiles({ kitRoot, packs, cursor, yesChef: !!inst?.yesChef, vals })
 } catch (e) {
   die(e.message)
 }
@@ -77,7 +91,7 @@ if (plan.report.unknown.size > 0) console.log(`NOTE unknown placeholders: ${[...
 
 const n = (s) => rows.filter((r) => r.state === s).length
 const undeclared = n('drift') + n('missing')
-const tail = `packs=[${packs.join(', ')}], cursor=${cursor}, ${managed.length} managed files`
+const tail = `packs=[${packs.join(', ')}], cursor=${cursor}, ${managed.length} managed files, source=${origin.source}${origin.ref ? '@' + origin.ref : ''}`
 if (undeclared > 0) {
   console.log(`KIT_DRIFT: FAIL — ${undeclared} undeclared differences (${n('drift')} drift, ${n('missing')} missing), ${n('override')} overrides; ${tail}`)
   process.exit(1)

@@ -3,12 +3,15 @@
  *
  *   node tools/install-check.mjs
  *
- * Fixtures: core only; angular + Cursor; node-express + Cursor + yes-chef. No git needed.
+ * Fixtures: core only; angular + Cursor; node-express + Cursor + yes-chef.
+ * Sources: local:<path> recorded by a plain install; a GitHub release fetched from a local bare repo standing in
+ * for github.com (needs the git CLI, no network): cache reuse, recorded source/ref/commit, sync and drift-check
+ * defaulting to them, sync --ref upgrade, a missing ref refused with nothing written, a moved tag refused.
  * Also covers: idempotent re-install, SKIP-EXISTING on a local edit, and kit-sync (dry-run writes nothing,
  * local-only kept, conflict never overwritten, --apply updates only new + kit-update, overrides never written).
  * Exit 0 = ok, 1 = problems (one per line).
  */
-import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, readdirSync, statSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, readdirSync, statSync, existsSync, cpSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, relative, resolve } from 'path'
 import { spawnSync } from 'child_process'
@@ -158,15 +161,98 @@ if (core) {
   if (declared.status !== 0 || !/0 undeclared differences, 1 overrides/.test(declared.stdout)) fail(`drift-check with the override: ${declared.stdout.trim().split('\n').pop()}`)
 }
 
+// Sources. A plain install records the kit it ran from as `local:<path>`; an explicit --source folder works too.
+if (core) {
+  const inst = JSON.parse(read(core, '.kit/install.json'))
+  if (!/^local:/.test(inst.source ?? '')) fail(`a plain install must record source local:<path>, got ${inst.source}`)
+  const explicit = tmp('local-src')
+  writeFileSync(join(explicit, 'kit.config.json'), JSON.stringify(CORE_CFG))
+  const r = run('install.mjs', ['--target', explicit, '--source', kit])
+  const src = r.status === 0 ? JSON.parse(read(explicit, '.kit/install.json')).source : null
+  if (r.status !== 0 || !/^local:/.test(src ?? '') || resolve(explicit, src.slice(6)) !== kit) fail(`--source <kit folder> install: exit ${r.status}, source ${src}`)
+  rmSync(explicit, { recursive: true, force: true })
+}
+
+// GitHub source, offline: a bare repo stands in for github.com (AI_WORKFLOW_KIT_GIT_BASE) and the cache is a temp dir.
+// Release v9.9.9 (annotated tag) and v9.9.10 (lightweight tag) of a copy of this kit.
+const ghDirs = []
+const g = (args, cwd) => spawnSync('git', ['-c', 'user.name=kit-check', '-c', 'user.email=kit-check@example.invalid', ...args], { cwd, encoding: 'utf8' })
+if (g(['--version']).status !== 0) fail('git is required for the GitHub-source checks')
+else {
+  const base = tmp('gh-base')
+  const work = tmp('gh-work')
+  const cache = tmp('gh-cache')
+  ghDirs.push(base, work, cache)
+  const remote = join(base, 'acme', 'kit.git')
+  mkdirSync(remote, { recursive: true })
+  g(['init', '-q', '--bare'], remote)
+  for (const p of ['core', 'packs', 'layers', 'templates', 'kit.json', 'kit.config.json', '.gitattributes']) cpSync(join(kit, p), join(work, p), { recursive: true })
+  const setVersion = (v) => writeFileSync(join(work, 'kit.json'), JSON.stringify({ name: 'ai-workflow-kit', version: v }, null, 2) + '\n')
+  setVersion('9.9.9')
+  for (const s of [['init', '-q'], ['add', '-A'], ['commit', '-q', '-m', 'v9.9.9'], ['tag', '-a', 'v9.9.9', '-m', 'v9.9.9']]) g(s, work)
+  setVersion('9.9.10')
+  for (const s of [['commit', '-q', '-am', 'v9.9.10'], ['tag', 'v9.9.10'], ['push', '-q', remote, 'HEAD:refs/heads/main', '--tags']]) g(s, work)
+  const sha = (ref) => g(['rev-parse', `${ref}^{commit}`], work).stdout.trim()
+  const fileUrl = 'file://' + (base.startsWith('/') ? '' : '/') + base.replace(/\\/g, '/')
+  const env = { ...process.env, AI_WORKFLOW_KIT_GIT_BASE: fileUrl, AI_WORKFLOW_KIT_CACHE: cache }
+  const ghRun = (script, args) => spawnSync(process.execPath, [join(kit, 'tools', script), ...args], { encoding: 'utf8', env })
+  const GH = ['--source', 'github:acme/kit']
+  const target = tmp('gh-target')
+  ghDirs.push(target)
+  writeFileSync(join(target, 'kit.config.json'), JSON.stringify({ project: { name: 'gh-app' }, hooks: { shellPath: 'bash' } }))
+
+  const first = ghRun('install.mjs', [...GH, '--ref', 'v9.9.9', '--target', target, '--packs', 'angular'])
+  const instPath = join(target, '.kit/install.json')
+  const inst = first.status === 0 ? JSON.parse(readFileSync(instPath, 'utf8')) : {}
+  if (first.status !== 0) fail(`github install exited ${first.status}: ${(first.stdout + first.stderr).trim().split('\n').pop()}`)
+  else {
+    if (!first.stdout.includes('SOURCE fetched github:acme/kit@v9.9.9')) fail('github install did not report the fetch')
+    if (inst.source !== 'github:acme/kit' || inst.ref !== 'v9.9.9' || inst.commit !== sha('v9.9.9')) fail(`github install recorded ${inst.source} ${inst.ref} ${inst.commit}, expected github:acme/kit v9.9.9 ${sha('v9.9.9')}`)
+    if (inst.kit?.version !== '9.9.9') fail(`github install recorded kit version ${inst.kit?.version}, expected the release's 9.9.9`)
+    if (!existsSync(join(cache, 'acme', 'kit', 'v9.9.9', 'kit.json'))) fail('the release was not cached under <cache>/acme/kit/v9.9.9')
+  }
+  const second = tmp('gh-second')
+  ghDirs.push(second)
+  writeFileSync(join(second, 'kit.config.json'), JSON.stringify(CORE_CFG))
+  const again = ghRun('install.mjs', [...GH, '--ref', 'v9.9.9', '--target', second])
+  if (again.status !== 0 || !again.stdout.includes('SOURCE cached github:acme/kit@v9.9.9')) fail(`a second github install did not reuse the cache: ${again.stdout.trim().split('\n').pop()}`)
+  const noRef = ghRun('install.mjs', [...GH, '--target', second])
+  if (noRef.status !== 1 || !noRef.stderr.includes('--ref <tag> is required')) fail('a github source without --ref was not refused')
+
+  // Sync with no --source uses the recorded source + ref.
+  const sync = ghRun('sync.mjs', ['--target', target])
+  if (sync.status !== 0 || !sync.stdout.includes('NOTE source github:acme/kit@v9.9.9') || !/dry-run — 0 new, 0 kit-update, 0 conflicts/.test(sync.stdout)) fail(`sync from the recorded github source: ${(sync.stdout + sync.stderr).trim().split('\n').slice(-2).join(' | ')}`)
+  // A ref that does not exist: non-zero, the exact message, nothing written.
+  const before = readFileSync(instPath, 'utf8')
+  const missingRef = ghRun('sync.mjs', ['--target', target, '--ref', 'v0.0.404', '--apply'])
+  if (missingRef.status === 0 || !missingRef.stderr.includes('KIT_SYNC: FAIL — ref v0.0.404 not found')) fail(`sync --ref <missing>: exit ${missingRef.status}, ${missingRef.stderr.trim()}`)
+  if (readFileSync(instPath, 'utf8') !== before) fail('sync --ref <missing> wrote install.json')
+  // Upgrade: --ref v9.9.10 dry-run records nothing, --apply records the new ref + commit.
+  const upDry = ghRun('sync.mjs', ['--target', target, '--ref', 'v9.9.10'])
+  if (!upDry.stdout.includes('NOTE source github:acme/kit@v9.9.9 -> github:acme/kit@v9.9.10 (recorded on --apply)') || readFileSync(instPath, 'utf8') !== before) fail('sync --ref dry-run did not report the move or wrote install.json')
+  const up = ghRun('sync.mjs', ['--target', target, '--ref', 'v9.9.10', '--apply'])
+  const upInst = JSON.parse(readFileSync(instPath, 'utf8'))
+  if (up.status !== 0 || upInst.ref !== 'v9.9.10' || upInst.commit !== sha('v9.9.10') || upInst.kit?.version !== '9.9.10' || upInst.source !== 'github:acme/kit') fail(`sync --ref v9.9.10 --apply recorded ${upInst.source} ${upInst.ref} ${upInst.commit} ${upInst.kit?.version}`)
+  if (Object.keys(upInst.files ?? {}).length !== Object.keys(inst.files ?? {}).length) fail('sync --ref --apply changed the recorded file list')
+  // Drift check with no --source uses the recorded release too.
+  const drift = ghRun('drift-check.mjs', ['--target', target])
+  if (drift.status !== 0 || !drift.stdout.includes('source=github:acme/kit@v9.9.10')) fail(`drift-check from the recorded github source: ${drift.stdout.trim().split('\n').pop()}`)
+  // A tag that moved after it was cached is refused, not silently re-fetched.
+  g(['tag', '-f', '-a', 'v9.9.9', '-m', 'moved'], work)
+  g(['push', '-q', '-f', remote, 'refs/tags/v9.9.9'], work)
+  const moved = ghRun('install.mjs', [...GH, '--ref', 'v9.9.9', '--target', second])
+  if (moved.status !== 1 || !moved.stderr.includes('tag v9.9.9 moved')) fail(`a moved tag was not refused: ${moved.stderr.trim()}`)
+}
+
 // Required keys: core only with no config must STOP and write nothing.
 const bare = tmp('bare')
 const stop = run('install.mjs', ['--target', bare, '--packs', ''])
 if (stop.status !== 2 || files(bare).length !== 0) fail(`missing required keys must exit 2 and write nothing (exit ${stop.status}, ${files(bare).length} files)`)
 
-for (const d of [...Object.values(dirs), bare]) rmSync(d, { recursive: true, force: true })
+for (const d of [...Object.values(dirs), bare, ...ghDirs]) rmSync(d, { recursive: true, force: true })
 if (problems.length > 0) {
   console.error(problems.join('\n'))
   console.error(`INSTALL_CHECK: FAIL — ${problems.length} problems`)
   process.exit(1)
 }
-console.log(`INSTALL_CHECK: ok — ${fixtures.length} fixtures, re-install no-op, sync dry-run/apply, overrides, drift-check, 0 problems`)
+console.log(`INSTALL_CHECK: ok — ${fixtures.length} fixtures, re-install no-op, sync dry-run/apply, overrides, drift-check, local + github sources, 0 problems`)
