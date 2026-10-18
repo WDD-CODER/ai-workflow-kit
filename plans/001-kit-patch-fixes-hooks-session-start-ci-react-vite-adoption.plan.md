@@ -83,7 +83,7 @@ Thinking outside the box is expected; writing outside it requires explicit conse
 - [x] P5: Let the Planner push closed plans that moved into range folders — pre-push regex accepts plans/<range>/ — `core/.husky/pre-push`
 - [x] P6: Make todo-sync explain the missing repo setting and clean up its branch — delete branch on failure, ::error line, install output + README first-time setup — `core/.github/workflows/todo-sync.yml`, `tools/install.mjs`, `README.md`
 - [x] P7: Fix stale paths and leftovers from the retired agent personas — security-grep name, todo-archive folder, generic example plans, docs-refresh subagent type, garbled security step — `core/.claude/skills/save-plan/SKILL.md`, `core/docs/agent/workflow-map.md`, `core/.claude/commands/{auto-solve,docs-refresh,security}.md`
-- [ ] P8: Run all kit checks, open the kit PR and release v1.0.5 — leak-check, pack-check, install-check, e2e-check; CHANGELOG; tag after Dandan's go — kit repo
+- [x] P8: Run all kit checks, open the kit PR and release v1.0.5 — leak-check, pack-check, install-check, e2e-check; CHANGELOG; tag after Dandan's go — kit repo
 - [ ] P9: Sync FoodVibe to v1.0.5 and ship it — kit-sync dry-run (0 conflicts), Apply, ng build, kit-owned check, /ship — `../foodVibe1.0/.kit/install.json` + files kit-sync writes
 
 ## Out of Scope
@@ -99,3 +99,4 @@ Planner role change (002); stack-neutral core, CI config keys, dev server by con
   legacy file.
 - Install and sync stage the hooks as executable in the target (`git add --chmod=+x`), because Windows git
   ignores the file mode on disk.
+- P8: PR #23 merged (`95d6c2f`), tagged and released `v1.0.5`; an install from `github:…@v1.0.5` records ref `v1.0.5` and commit `95d6c2f`.
