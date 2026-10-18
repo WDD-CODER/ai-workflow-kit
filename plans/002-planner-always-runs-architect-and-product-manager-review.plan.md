@@ -78,15 +78,104 @@ Thinking outside the box is expected; writing outside it requires explicit conse
 CHANGELOG `[1.1.0]` Added: templates, `paths.planChecks`, review section. "What a project must do: nothing; optional plan-checks file."
 
 ## Atomic Sub-tasks
-- [ ] R0: Check the plan still matches the kit and list every place that says who plans — Step 0 reality check + grep list — `plans/002-planner-always-runs-architect-and-product-manager-review.plan.md`
-- [ ] R1: Make the Planner run an architect and product review on every plan before saving — new review section, role line, Planner protocol first step, Cursor mirror — `core/.claude/commands/plan.md`, `layers/cursor/.cursor/commands/plan.md`
-- [ ] R2: Ship the plan and design templates in the kit so every project has them — generic prd and hld templates, HLD alternatives replaced by why-this-design — `core/.claude/references/{prd,hld}-template.md`
-- [ ] R3: Let each project add its own planning checks without forking the command — paths.planChecks config key, scaffold, parameters doc — `kit.config.json`, `templates/**`, `docs/**`
-- [ ] R4: Describe the current roles instead of the old three-agent setup — workflow-map roles, README_WORKFLOW title and intro, skills.md note — `core/docs/agent/workflow-map.md`, `core/README_WORKFLOW.md`, `core/.claude/commands/skills.md`
-- [ ] R5: Run the kit checks, open the kit PR and release v1.1.0 — leak-check, pack-check, install-check; CHANGELOG; tag after Dandan's go — kit repo
+- [x] R0: Check the plan still matches the kit and list every place that says who plans — Step 0 reality check + grep list — `plans/002-planner-always-runs-architect-and-product-manager-review.plan.md`
+- [x] R1: Make the Planner run an architect and product review on every plan before saving — new review section, role line, Planner protocol first step, Cursor mirror — `core/.claude/commands/plan.md`, `layers/cursor/.cursor/commands/plan.md`
+- [x] R2: Ship the plan and design templates in the kit so every project has them — generic prd and hld templates, HLD alternatives replaced by why-this-design — `core/.claude/references/{prd,hld}-template.md`
+- [x] R3: Let each project add its own planning checks without forking the command — paths.planChecks config key, scaffold, parameters doc — `kit.config.json`, `templates/**`, `docs/**`
+- [x] R4: Describe the current roles instead of the old three-agent setup — workflow-map roles, README_WORKFLOW title and intro, skills.md note — `core/docs/agent/workflow-map.md`, `core/README_WORKFLOW.md`, `core/.claude/commands/skills.md`
+- [x] R5: Run the kit checks, open the kit PR and release v1.1.0 — leak-check, pack-check, install-check; CHANGELOG; tag after Dandan's go — kit repo
 - [ ] R6: Move FoodVibe's own planning checks into a project file before syncing — Hebrew values, Entity contract, icons, RTL, Zod; kit.config paths.planChecks — `../foodVibe1.0/docs/agent/plan-checks.md`, `../foodVibe1.0/kit.config.json`
 - [ ] R7: Sync FoodVibe to v1.1.0 and ship it — dry-run, take kit templates, Apply, ng build, kit-owned check, /ship — `../foodVibe1.0/.kit/install.json` + files kit-sync writes
 - [ ] R8: Try the review on a pasted brief and on a new idea in the Planner — Dandan's two checks from Goals — Planner session
 
 ## Out of Scope
 Restoring agent persona files; forced alternative designs; the React-Vite hand-off work (001, 003–005).
+
+## Execution Notes
+
+Run under plan 006 (autonomous run): branch `feat/002-planner-review` from `main` `14756d0` (after `bf4e45d`,
+v1.0.5). Plan 006 replaces this plan's "Dandan merges / tag after go / release v1.1.0": no tag, no release, no
+`kit.json` bump here; the run releases once as `v1.2.0` after merge point 1. R6–R8 run after that merge
+(plan 006 A7 / A9).
+
+### R0 — Reality check
+- Kit `main` clean at `14756d0`; `v1.0.5` released. Plan still matches the kit, with these differences:
+  - **Overlap with 001:** 001 already removed the `three-agent` heading in `core/docs/agent/workflow-map.md`,
+    "In the three-agent workflow," in `core/.claude/commands/plan.md`, the note in `skills.md` and step 4 of
+    `security.md`. `skills.md` has no who-plans text left, so R4 has nothing to do there.
+  - **The kit already shipped both templates**, as *seeds* in `templates/.claude/references/` (written once,
+    never synced). So "the kit ships neither" was not true; the real gap was that sync never updates them.
+    R2 moved them to `core/.claude/references/` (managed).
+  - `/plan` and `workflow-map.md` loaded `/_shared/tech-stack.md` + `current-state.md`, a folder install never
+    writes (install-check even asserts `_shared/` is not installed). Fixed to `{{paths.sharedDocs}}/…`.
+- Every place that said who plans (before editing):
+  - `core/.claude/commands/plan.md:4` "Architect role (Claude.ai by default; …)", `:16` Invokes "Architect",
+    `:23` flow step 2, `:62` "A Claude.ai Architect only drafts …", Notes "Use Cursor (Contractor)".
+  - `layers/cursor/.cursor/commands/plan.md` (pointer only).
+  - `core/docs/agent/workflow-map.md:16` §1 row "Architect | Claude.ai (default …)", `:46` `/plan` row
+    (`_shared/*`), `:201` flow F1 "Architect (claude.ai) drafts Plan Contract".
+  - `core/README_WORKFLOW.md:1` title "Three-Agent Manual Bridge", `:20` "Architect on Claude.ai (A)",
+    cost-routing pools A/B/C, `/_shared/`, `.claude/rules/`, stale "Old vs new plans" naming.
+  - `core/.claude/skills/brief-detection/SKILL.md:22` Planner route "steps 1–6" (no review).
+  - `core/.claude/commands/feat.md:13` "Architect authors"; `core/.claude/skills/save-plan/SKILL.md:65,77`
+    "an Architect drafting in chat", "SHA the Architect filled in"; `core/.claude/commands/review-it.md:20`
+    "ESCALATE TO ARCHITECT".
+  - `templates/.claude/references/prd-template.md:4` "if the Architect already set it".
+
+### Decisions
+- **Templates are managed core files, not seeds** (Design says "new in kit core"). Consequence for projects
+  found in the dry-run: a project whose copy is still the one recorded at install gets a `kit-update`, **not a
+  `conflict`** (see FoodVibe dry-run below). Written into the CHANGELOG "what a project must do".
+- **PRD generalisation:** kept hotspots / i18n / UI locale placeholders; dropped nothing project-specific
+  because the kit copy was already generic. Added Technical Considerations lines for backend/API, auth and
+  validation, security surface, data/migration and `{{paths.planChecks}}`, plus the concreteness line, so the
+  template asks for what the PM checklist checks.
+- **HLD:** "Alternatives Considered" table → `### Why this design` (one paragraph; another option only when the
+  Human must choose). Translation line was already generic.
+- **`paths.planChecks` default** `docs/project/plan-checks.md` set in `kit.config.json` (plain default, no
+  computed default in `tools/lib/kit.mjs`, so `tools/` stays out of scope). The kit never writes the file (no
+  seed): a seed would land at `{{paths.sharedDocs}}/plan-checks.md` and could disagree with a project's
+  configured path.
+- **"Parameters doc"** = the `kit.config.json` `$comment` scaffold plus the README Layout row for
+  `kit.config.json` (there is no separate parameters doc in `docs/`); the `AGENTS.md` skeleton gets one
+  bullet so new projects see the rule.
+- **Review placement:** Planner protocol **step 0** (before pull/save), so `brief-detection` → Planner protocol
+  runs it first; a plan the Planner wrote and already reviewed in the session just reprints its block.
+- **Extra wording fixes inside scope** (same who-plans theme): `/feat`, `save-plan`, `/review-it` ("ESCALATE TO
+  ARCHITECT (the Planner …)", verdict token unchanged). `/review-it` is a FoodVibe override, so it does not
+  reach FoodVibe.
+- **CHANGELOG heading:** `### 002 — <title>` under `## [Unreleased]`, not `### Plan 002 — …`: leak-check's
+  history rule (`\bplans? \d{3}\b`) fails on "Plan 002" in `CHANGELOG.md`.
+- No scope paths added: every file written is under `core/**`, `layers/cursor/**`, `templates/**`,
+  `kit.config.json`, `README.md`, `CHANGELOG.md` or this plan.
+
+### Evidence (`[auto]` Done-when)
+- `/plan` review section: `grep -n "## Architect + PM review (always)" core/.claude/commands/plan.md` →
+  `41:## Architect + PM review (always)`.
+- `git grep -n -i "three-agent\|Claude.ai by default" -- core layers templates` → no output, exit 1.
+- Templates: `git ls-files core/.claude/references` → `hld-template.md`, `prd-template.md`;
+  `grep -c "Alternatives Considered" core/.claude/references/hld-template.md` → `0`; `node tools/leak-check.mjs`
+  → `LEAK_CHECK: ok — 151 files, 0 leaks`.
+- Load paths: fresh installs (`--cursor --allow-unfilled`) with packs `[]` and `[angular, node-express]`;
+  every path in rendered `/plan` `## Loads` and in the `workflow-map.md` `/plan` row exists
+  (`.claude/references/{prd,hld}-template.md`, `docs/project/{tech-stack,current-state}.md`,
+  `docs/brain/invariants.md`, `docs/agent/`), except `docs/project/plan-checks.md`, which is optional by design
+  ("when the file exists"). Before the change `_shared/` was missing in both installs.
+- Checks: `leak-check` (3 runs), `pack-check`, `install-check`, `e2e-check` all ok (final lines in the PR body).
+- Tag + release `v1.1.0`, FoodVibe sync, `ng build`, kit-owned check: replaced by `v1.2.0` — after merge
+  point 1 (plan 006 A6 / A7).
+- `[human]` R8 checks: after merge point 2 (plan 006 A9).
+
+### FoodVibe dry-run (read-only, local source = the slot)
+`node tools/sync.mjs --target ../foodVibe1.0 --source .` →
+`KIT_SYNC: dry-run — 1 new, 17 kit-update, 0 conflicts, 26 local-only, 0 deleted-locally, 0 removed-from-kit, 20 overrides`.
+- **0 conflicts.** The two templates are `kit-update`, not the expected `conflict`: FoodVibe's
+  `.kit/install.json` recorded them as seeds with the hash of its current copies, and sync treats "unchanged
+  since install" as safe to overwrite. **For A7: do R6 first** — move FoodVibe's own template lines (the
+  `log-query` `[auto]` line, "Hebrew canonical values" Technical Considerations line, Hebrew / dictionary UI
+  notes, "As a chef" story, Signal data-flow and dictionary translation-keys HLD lines) into
+  `docs/agent/plan-checks.md` and set `paths.planChecks` **before** `-Apply`, because Apply overwrites both
+  templates without stopping.
+- Plan 002's own kit-updates in FoodVibe: `.claude/commands/plan.md`, `feat.md`, `.claude/references/*`,
+  `brief-detection`, `save-plan`, `.cursor/commands/plan.md`, `README_WORKFLOW.md`. No CI, hook or dev-server
+  file changes from this plan (the other kit-updates are 1.0.2 → 1.0.5 changes already released).

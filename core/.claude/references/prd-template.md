@@ -1,7 +1,7 @@
 # Plan XXX — [Feature Name]
 
 Status: draft | active | done
-Snapshot: [origin/{{git.mainBranch}} SHA the plan was verified against — leave filled in if the Architect already set it; save-plan only fills this when empty, never overwrites]
+Snapshot: [origin/{{git.mainBranch}} SHA the plan was verified against — leave filled in if the author already set it; save-plan only fills this when empty, never overwrites]
 
 ## Problem Statement
 [What problem does this solve for the user?]
@@ -81,6 +81,14 @@ line or file this plan names was removed, renamed or rewritten).
 - Dependencies: [existing services/components affected]
 - New files needed: [list]
 - Model changes: [any interface/type updates]
+- Backend / API: [new or changed endpoints, server logic — or "none"]
+- Auth and validation: [who may call it, what input is checked — or "none"]
+- Security surface: [new inputs, secrets, permissions — or "none"]
+- Data / migration: [schema or stored-data changes — or "none"]
+- Project checks: [each check in `{{paths.planChecks}}` that applies, when that file exists]
+
+Every Atomic Sub-task names its files and is concrete enough for a Worker to run without asking (no "TBD",
+"handle errors appropriately", "same as the other screen"). `/plan`'s Architect + PM review checks this.
 
 ## Out of Scope
 [Explicitly list what is NOT included]

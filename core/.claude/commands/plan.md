@@ -1,26 +1,31 @@
 # /plan — Planning Path
 
 Use this path for product planning, PRDs, HLDs, and technical design decisions.
-Planning is the **Architect** role (Claude.ai by default;
-Claude Code / Cursor may plan when the Human Director explicitly overrides).
+The **Planner** (Claude Code in the main folder) is the Architect and the Product Manager.
+Claude.ai or another tool may draft a plan; the Planner still runs the review below before saving.
 
 ## Loads
 
 - `.claude/references/prd-template.md` — product requirements / Plan Contract template
-- `.claude/references/hld-template.md` — high-level design template (when present)
-- `/_shared/tech-stack.md` + `/_shared/current-state.md` — stack + capsule
+- `.claude/references/hld-template.md` — high-level design template
+- `{{paths.sharedDocs}}/tech-stack.md` + `{{paths.sharedDocs}}/current-state.md` — stack + capsule
+- `docs/brain/invariants.md` — architecture invariants (Architecture Impact)
+- `{{paths.planChecks}}` — this project's own planning checks (when the file exists)
 - `docs/agent/` — path-scoped standards (loaded when the plan touches matching areas)
 
 ## Invokes
 
-- Architect (Human-directed) — writes / updates a Plan Contract in
+- The Planner, with the Human — writes / updates a Plan Contract in
   `plans/NNN-slug.plan.md` (via `.claude/skills/save-plan/SKILL.md`)
-- Does **not** invoke retired agents
+- Does **not** invoke agent personas: the Architect and PM work is a conversation with the Human,
+  run inline by the Planner
 
 ## Typical flow
 
 1. User describes the problem or feature area.
-2. Architect runs structured scoping (forcing questions, landscape, premise challenge).
+2. The Planner runs structured scoping (forcing questions, landscape, premise challenge), asking only
+   where the decision is the Human's, and writes the plan to the PRD template. Then it runs the
+   **Architect + PM review** below on its own draft and fixes every gap before showing the plan.
    **Architecture step:** read `docs/brain/invariants.md` and fill the plan's
    `## Architecture Impact` — one line per invariant whose `Touches` globs the scope reaches
    (`preserves` / `deviation until …` / `changes — ADR …`), or `INV-none: preserves — <why>`.
@@ -33,12 +38,58 @@ Claude Code / Cursor may plan when the Human Director explicitly overrides).
 4. User approves the plan → save via the Planner protocol below → say "execute plan NNN"
    in a free `{{slots.nameFormat}}` slot to start work (`.claude/commands/take-plan.md`) → `/review-it`.
 
+## Architect + PM review (always)
+
+Runs on **every** plan before it is saved: plans the Planner writes, and briefs or Plan Contracts it
+receives (Claude.ai, Cursor, another agent, a paste). Check against the real codebase on
+`origin/{{git.mainBranch}}`, not against what the draft says exists.
+
+**Architect**
+- `## Architecture Impact` is filled from `docs/brain/invariants.md` (the architecture step above);
+  `node scripts/scope-check.mjs --arch --plan=<path>` reports nothing missing.
+- Every file, symbol, script and service the plan names exists on `origin/{{git.mainBranch}}`, or is
+  marked new.
+- The design follows the project's standards doc (`{{stack.standardsDoc}}`) and the patterns the code
+  already uses; a new pattern is named and justified.
+- `## Read-Write Scope` covers every file the steps write, and nothing more.
+
+**Product Manager**
+- The problem and the success criteria are testable; every Done-when item is tagged `[auto]` or `[human]`.
+- `## Out of Scope` is written.
+- Named, or marked "none": backend / API impact, auth and validation needs, security surface,
+  data / migration impact.
+- The plan is the smallest version that delivers the full value — no forced alternatives, no gold-plating.
+- **Every step names its files and is concrete enough for a Worker to run without asking**: no "TBD",
+  "handle errors appropriately", "same as the other screen".
+- The project's own checks in `{{paths.planChecks}}`, when that file exists.
+
+**Output** — one block, printed before the plan is saved:
+
+```
+ARCHITECT + PM REVIEW
+no gaps
+```
+
+or one line per gap with a proposed fix:
+
+```
+ARCHITECT + PM REVIEW
+- <gap> → <proposed fix>
+```
+
+A received plan is reviewed, not rewritten: the Planner shows the gaps and applies only the fixes the
+Human accepts, plus the obvious mechanical ones (paths, titles, tags), which it lists. A decision that
+belongs to the Human is asked, never assumed.
+
 ## Planner protocol (pushing to `main`)
 
 Only the Planner (main folder, checked out on `main`) runs this. It is the one place code
 review docs allow a direct push to `main` — restricted to `plans/*.plan.md` and
 `.claude/todo.md` by `scripts/branch-guard.sh` and `.husky/pre-push`.
 
+0. Run the **Architect + PM review** above and print its block. Gaps → wait for the Human's answer
+   and apply the accepted fixes before step 4. A plan the Planner wrote and already reviewed in this
+   session is not reviewed twice; print the block it got.
 1. Main must be clean and on `main`: `git status --porcelain` empty, `git branch
    --show-current` = `main`. Otherwise STOP and ask the Human. Then `git pull --ff-only`.
 2. Run `node scripts/todo-query.mjs sync --merged`, then `node scripts/todo-archive.mjs` (the todo-sync
@@ -50,7 +101,7 @@ review docs allow a direct push to `main` — restricted to `plans/*.plan.md` an
    `node scripts/scope-check.mjs --overlap --plan=<path>` — it must report `OVERLAP: none`
    before saving; a real overlap means narrowing the `## Read-Write Scope` first.
 4. Save via `.claude/skills/save-plan/SKILL.md` with `Status: draft`. Leave `Snapshot:` as
-   the Architect wrote it (the SHA they verified the plan against) — only fill it with the
+   the author wrote it (the SHA they verified the plan against) — only fill it with the
    current `origin/{{git.mainBranch}}` SHA if the draft left it empty. Never overwrite an already-filled
    `Snapshot:`; that value is what `scope-check.mjs --drift` diffs against at take-plan time,
    and overwriting it to "now" would hide drift between when the plan was written and when
@@ -59,14 +110,15 @@ review docs allow a direct push to `main` — restricted to `plans/*.plan.md` an
    to `main` directly.
 6. End with: `Plan NNN pushed. Open a free slot and say: execute plan NNN.`
 
-A Claude.ai Architect only drafts the plan body — Claude Code in the main folder is what
-saves it (assigns `NNN`, runs the ledger sync), commits, and pushes.
+A plan drafted outside the main folder (Claude.ai, another tool) is only a draft: the Planner reviews
+it (step 0), saves it (assigns `NNN`, runs the ledger sync), commits, and pushes.
 
 ## Notes
 
 - Planning is read-only against the app. No product-code changes happen in this path.
 - Output of `/plan` is always a Plan Contract (or design doc), never application code.
-- Use Cursor (Contractor) or an explicit execute override to implement after approval.
+- Implementation happens in a Worker slot after approval ("execute plan NNN"), or on the Human's explicit
+  execute override.
 - Live convention is `plans/NNN-slug.plan.md` only (`NNN-R-slug.plan.md` for refactor
   variants). Tooling (`save-plan`, `plan-write-guard.sh`, `plan-name-similarity.mjs`)
   recognizes that form exclusively.

@@ -62,7 +62,7 @@ Reply: rewrite existing | save as new | cancel
 
 A Worker never assigns `NNN` and never touches `.claude/todo.md` (it is Planner-owned; `todo-query.mjs sync --merged` collects the Worker's plan-file changes after merge).
 
-- **Number (save-as-new):** `node scripts/next-plan-number.mjs`. The script's number wins even when the pasted H1 already carries one (an Architect drafting in chat cannot see Workers' open branches) — rename the H1 and tell the Human in the completion line. It fetches, then takes the highest number across local plans, `origin/{{git.mainBranch}}` plans, the main worktree, and every local/remote `<type>/NNN-*` branch — a Worker's open branch whose plan you cannot see yet — plus 1. Never count `plans/` by hand; that is exactly how a number got reused. Re-run right before the write if anything else saved a plan meanwhile.
+- **Number (save-as-new):** `node scripts/next-plan-number.mjs`. The script's number wins even when the pasted H1 already carries one (a plan drafted in chat cannot see Workers' open branches) — rename the H1 and tell the Human in the completion line. It fetches, then takes the highest number across local plans, `origin/{{git.mainBranch}}` plans, the main worktree, and every local/remote `<type>/NNN-*` branch — a Worker's open branch whose plan you cannot see yet — plus 1. Never count `plans/` by hand; that is exactly how a number got reused. Re-run right before the write if anything else saved a plan meanwhile.
 - **Ledger:** don't read `.claude/todo.md` in full. Extract the Atomic Sub-tasks into a temp file and `node scripts/todo-query.mjs append --from <file>` (it inserts under `### Plan NNN — <Title>` before the footers). Then `node scripts/todo-query.mjs open` — unrelated open items get surfaced, not silently buried.
 
 ## Phase 2 — lint the draft (cheap here, expensive in a slot)
@@ -74,7 +74,7 @@ A Worker never assigns `NNN` and never touches `.claude/todo.md` (it is Planner-
 
 ## Phase 3 — write, and (Planner) commit + push + verify
 
-- `Snapshot:` = `git rev-parse origin/{{git.mainBranch}}` when the draft left it empty; never overwrite a SHA the Architect filled in. If `origin/{{git.mainBranch}}` cannot be resolved (no remote, fetch failed), leave it empty and say so — a local `HEAD` SHA is not what the Worker's drift check compares against, and substituting it hides the problem.
+- `Snapshot:` = `git rev-parse origin/{{git.mainBranch}}` when the draft left it empty; never overwrite a SHA the author filled in. If `origin/{{git.mainBranch}}` cannot be resolved (no remote, fetch failed), leave it empty and say so — a local `HEAD` SHA is not what the Worker's drift check compares against, and substituting it hides the problem.
 - Write the file (rewrite → existing path; new → `plans/<NNN>-<slug>.plan.md`, or `plans/design/…` for Track `design`/`split` when that folder is open). Never under `~/.cursor/plans/`.
 - Not in a worktree and the plan changes code → suggest a `feat/` branch for whoever executes it.
 

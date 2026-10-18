@@ -9,6 +9,39 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### 002 — Planner always runs the Architect and Product Manager review
+
+What a project must do: nothing. Optionally write its own planning checks to `paths.planChecks` (default
+`docs/project/plan-checks.md`). A project that edited its copies of `.claude/references/prd-template.md` or
+`hld-template.md` should move its own lines into that file before syncing: the templates are now kit-managed,
+and a copy that is still the one recorded at install is updated without a conflict.
+
+#### Added
+- `/plan` has a `## Architect + PM review (always)` section. It runs on every plan before it is saved — plans
+  the Planner writes and briefs or Plan Contracts it receives — and checks it against the real code:
+  Architecture Impact filled, every named file and symbol exists or is marked new, the standards doc and
+  existing patterns followed, scope exact; testable success criteria with tagged Done-when items, Out of Scope,
+  backend / auth / security / data impact named, smallest full-value version, every step concrete enough to run
+  without asking. It prints one `ARCHITECT + PM REVIEW` block (`no gaps` or one line per gap with a fix); a
+  received plan is reviewed, not rewritten. The Planner protocol runs it as step 0, and `brief-detection`
+  routes a pasted Plan Contract through it.
+- `.claude/references/prd-template.md` and `hld-template.md` are kit-managed core files (they were seeds), so
+  every project gets the files `/plan` loads and sync keeps them current. The PRD template names backend,
+  auth, security, data and project-check lines; the HLD template's "Alternatives Considered" table is replaced
+  by `### Why this design`.
+- Config key `paths.planChecks` (default `docs/project/plan-checks.md`): the project's own planning checklist,
+  which the review adds when the file exists. Documented in `kit.config.json`, the README and the `AGENTS.md`
+  skeleton.
+
+#### Changed
+- Roles: the Planner (Claude Code in the main folder) is the Architect and the Product Manager; Claude.ai or
+  another tool may draft. `/plan` no longer says "Claude.ai by default"; `workflow-map.md` §1 and flow F1,
+  `README_WORKFLOW.md` (title, roles, cost routing, authoritative files), `/feat`, `save-plan` and `/review-it`
+  wording follow.
+- `/plan`, `workflow-map.md` and `README_WORKFLOW.md` point at `{{paths.sharedDocs}}/tech-stack.md` and
+  `current-state.md` instead of a `/_shared/` folder that is not installed, and `README_WORKFLOW.md` names
+  `docs/agent/` instead of a `.claude/rules/` folder that does not exist.
+
 ## [1.0.5] - 2026-10-18
 
 Fixes found installing the kit into a React + Vite project. Sync to pick them up (`kit-sync -Ref v1.0.5 -Apply`);

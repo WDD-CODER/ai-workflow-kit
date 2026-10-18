@@ -10,7 +10,7 @@ Use this path for building new features. Loads {{stack.name}} + domain standards
 
 ## Invokes
 
-- `/plan` — read-only phase: codebase scan → Plan Contract (Architect authors, saved to `plans/`)
+- `/plan` — read-only phase: codebase scan → Plan Contract (the Planner authors it and runs the Architect + PM review, saved to `plans/`)
 - `/review-it` — review phase: Reviewer checks plan-match, conventions, and the Verify gate
 
 ## Typical flow
