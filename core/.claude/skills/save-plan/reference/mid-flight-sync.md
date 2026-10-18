@@ -8,7 +8,7 @@ A brief executed from a plan carries the plan path (e.g. `plans/290-….plan.md`
 
 ## New work appears mid-plan → append first, then do it
 
-Review fail, fallout, or a Human-added stage → add a `[ ]` Atomic Sub-task (and a milestone row if needed) **before** starting the work, so the ledger never lags the code.
+Review fail, fallout, or a Human-added stage → add a `[ ]` Atomic Sub-task (and a milestone row if needed) **before** starting the work, so the ledger never lags the code. It opens with a plain explanatory title, like every sub-task (SKILL.md, Plan rules).
 
 | Who | Where to append |
 | --- | --- |
