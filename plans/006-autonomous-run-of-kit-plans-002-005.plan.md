@@ -100,8 +100,8 @@ reported at the merge point.
 - FoodVibe and agentdesk slots exist and are idle.
 
 ## Atomic Sub-tasks
-- [ ] A0: Check the kit, plans and slots are ready for the run — Step 0, create `../ai-workflow-kit-wt-1` — kit repo
-- [ ] A1: Run plan 002 in the kit slot and open its PR — R0–R5 without the release; FoodVibe dry-run; review pass — `feat/002-planner-review`
+- [x] A0: Check the kit, plans and slots are ready for the run — Step 0, create `../ai-workflow-kit-wt-1` — kit repo
+- [x] A1: Run plan 002 in the kit slot and open its PR — R0–R5 without the release; FoodVibe dry-run; review pass — `feat/002-planner-review`
 - [ ] A2: Run plan 003 on top of 002 and open its PR — N0–N9; FoodVibe safety check N8; review pass — `feat/003-neutral-core-runtime`
 - [ ] A3: Run plan 004 on top of 003 and open its PR — M0–M9; FoodVibe safety check M8; review pass — `feat/004-neutral-core-ci-commands`
 - [ ] A4: Run plan 005 on top of 004 and open its PR — V0–V7 and V10 without the tag; review pass — `feat/005-react-vite-pack`
@@ -114,3 +114,9 @@ reported at the merge point.
 ## Out of Scope
 New work beyond plans 002–005; the guards mod (hand-off I-28); upstream fixes in the friend's repo
 (hand-off Appendix B); porting the Python scripts to node.
+
+## Execution Notes
+- A0: kit slot `../ai-workflow-kit-wt-1` created. agentdesk-wt-1 is busy (`feat/003-workflow-hooks-ci-rules`, not this run); use agentdesk-wt-2 for A8.
+- A1: PR #24 (`feat/002-planner-review`, `96a6f13` + review fixes `1c931af`), CI green; Planner re-ran leak/pack/install/e2e: ok. Review found 8 issues, all fixed; the main one: sync now reports a seed the kit promotes to managed as `conflict` (adopted projects' customised templates were being overwritten). FoodVibe dry-run: exactly the two expected template conflicts.
+- Release number: the kit's semver rule says a release that needs project action is major. 002 (template conflicts) and 005 (`commands.*` change) need action, so the release is likely `v2.0.0`, not `v1.2.0`. Ask Dandan at merge point 1.
+- CHANGELOG subsections are `### 00N — <title>` (leak-check refuses "Plan 00N" in CHANGELOG). `gh pr edit` fails on a Projects-classic deprecation; edit PR bodies with `gh api -X PATCH repos/WDD-CODER/ai-workflow-kit/pulls/<n>`.
