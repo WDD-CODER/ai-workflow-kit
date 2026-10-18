@@ -51,7 +51,7 @@ const skip = (name, reason) => console.log(`SKIP ${name}: ${reason}`)
 
 function httpStatus(port) {
   return new Promise((done) => {
-    const req = http.get({ host: '127.0.0.1', port, path: '/', timeout: TIMEOUT_MS }, (res) => {
+    const req = http.get({ host: 'localhost', port, path: '/', timeout: TIMEOUT_MS }, (res) => {
       res.resume()
       done(res.statusCode)
     })

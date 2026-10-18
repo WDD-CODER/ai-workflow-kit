@@ -28,6 +28,8 @@ node_modules
 .worktree-plan
 .worktree-cleanup
 .claude/.slot-pids
+.claude/.slot-plan-start
+.claude/logs/
 
 # Claude Code local config and runtime state (never commit)
 .claude/settings.local.json

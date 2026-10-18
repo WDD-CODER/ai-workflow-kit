@@ -84,7 +84,7 @@ function mergedPrFor(branch) {
 function isDirty() {
   return tryGit(['status', '--porcelain'])
     .split(/\r?\n/)
-    .filter((l) => l.trim() && !/^\?\? \.claude\/[^/]+\.log$/.test(l.trim()))
+    .filter((l) => l.trim() && !/^\?\? \.claude\/([^/]+\.log|\.slot-plan-start|logs\/)/.test(l.trim()))
     .length > 0
 }
 
@@ -300,7 +300,12 @@ if (!resuming) {
   // The Planner may have saved the plan as "Status: active" already - then there is nothing to commit.
   if (tryGit(['diff', '--cached', '--name-only'])) git(['commit', '-m', `chore(plan ${nnn}): mark active in wt-${n}`])
 }
+const previousPlan = existsSync(worktreePlanPath) ? readFileSync(worktreePlanPath, 'utf8').trim() : ''
 writeFileSync(worktreePlanPath, `${match}\n`)
+// Records when the plan was taken, for log queries "since plan start". A resumed claim of the same plan keeps its original start.
+const planStartPath = join(repoRoot, '.claude', '.slot-plan-start')
+mkdirSync(join(repoRoot, '.claude'), { recursive: true })
+if (previousPlan !== match || !existsSync(planStartPath)) writeFileSync(planStartPath, `${new Date().toISOString()}\n`)
 // The session-state pointer belongs to the previous plan's branch; the next session start writes a fresh one.
 const statePointer = join(repoRoot, '.claude', '.session-state-path')
 if (existsSync(statePointer)) unlinkSync(statePointer)

@@ -69,3 +69,16 @@ else
   echo "[prune-old-sessions] Dry run complete. Would delete: $FOUND, Skipped: $SKIPPED"
   echo "[prune-old-sessions] Run with --confirm to actually delete."
 fi
+
+# Rotated slot server logs (.claude/logs/*.log) older than MAX_AGE_DAYS go too.
+LOGS_DIR="$(git rev-parse --show-toplevel)/.claude/logs"
+if [ -d "$LOGS_DIR" ]; then
+  OLD_LOGS=$(find "$LOGS_DIR" -maxdepth 1 -type f -name '*.log' -mtime +"$MAX_AGE_DAYS" 2>/dev/null)
+  COUNT=$(printf '%s' "$OLD_LOGS" | grep -c . || true)
+  if [ "$CONFIRM" = true ]; then
+    [ -n "$OLD_LOGS" ] && printf '%s\n' "$OLD_LOGS" | while IFS= read -r f; do rm -f "$f"; done
+    echo "[prune-old-sessions] Deleted $COUNT old slot log(s) in .claude/logs"
+  else
+    echo "[prune-old-sessions] Would delete $COUNT old slot log(s) in .claude/logs"
+  fi
+fi
