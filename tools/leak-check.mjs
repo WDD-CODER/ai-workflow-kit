@@ -6,13 +6,17 @@
  *   node tools/leak-check.mjs                          # core/, layers/ and templates/ (all terms)
  *   node tools/leak-check.mjs --root <dir> [--root …]  # explicit roots (all terms)
  *   node tools/leak-check.mjs --root packs --project-only
+ *   node tools/leak-check.mjs --root README.md --root CHANGELOG.md --project-only   # a root may be a file
+ *
+ * KIT_LEAK_TERMS="a,b": extra private terms (names, emails, hosts) checked in every mode. They live in the
+ * caller's environment, never in this public file. Run it before a release with the maintainer's own list.
  *
  * --project-only: stack packs may name their own framework, so only project,
  * machine, port and tool-choice terms are checked there.
  *
  * Node built-ins only. Exit 0 = clean, 1 = leaks (printed as path:line: term).
  */
-import { readFileSync, readdirSync, existsSync } from 'fs'
+import { readFileSync, readdirSync, existsSync, statSync } from 'fs'
 import { resolve, join } from 'path'
 
 const argv = process.argv.slice(2)
@@ -33,7 +37,7 @@ const STACK_TERMS = [
 ]
 const PROJECT_TERMS = [
   ['product', /FoodVibe|\bHebrew\b|dictionary\.json/gi],
-  ['machine', /C:[\\/]+coding projects|\bdanwe\b|C:[\\/]+Program Files[\\/]+Git/gi],
+  ['machine', /C:[\\/]+coding projects|C:[\\/]+Users[\\/]+\w|\/(?:Users|home)\/[a-z]\w*|C:[\\/]+Program Files[\\/]+Git/gi],
   ['ports', /\b420[0-3N]\b|\b300[0-3N]\b/g],
   ['browser', /gstack/gi],
   // Project history and vendors: lessons and comments must be written for any project.
@@ -41,12 +45,19 @@ const PROJECT_TERMS = [
   ['host', /\bmongodb(?:\+srv)?:\/\/|[\w-]+\.mongodb\.net|\bcluster0\b/gi],
   ['vendor', /\bCloudinary\b|\bGemini\b|\bRECIPE_BOOK\w*|\bvenues?\b/gi],
 ]
-const TERMS = projectOnly ? PROJECT_TERMS : [...STACK_TERMS, ...PROJECT_TERMS]
+const escape = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const PRIVATE = (process.env.KIT_LEAK_TERMS ?? '').split(',').map((t) => t.trim()).filter(Boolean)
+const PRIVATE_TERMS = PRIVATE.length ? [['private', new RegExp(PRIVATE.map(escape).join('|'), 'gi')]] : []
+const TERMS = [...(projectOnly ? PROJECT_TERMS : [...STACK_TERMS, ...PROJECT_TERMS]), ...PRIVATE_TERMS]
 
 // Placeholders and PACK markers are allowed to carry anything.
 const strip = (line) => line.replace(/\{\{[\w.]+\}\}/g, '').replace(/<!--\s*\/?PACK(?::[\w-]+)?\s*-->/g, '')
 
 function* walk(dir) {
+  if (!statSync(dir).isDirectory()) {
+    yield dir
+    return
+  }
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     const p = join(dir, e.name)
     if (e.isDirectory()) yield* walk(p)
@@ -65,7 +76,7 @@ for (const root of roots) {
       for (const [name, re] of TERMS) {
         re.lastIndex = 0
         const m = re.exec(s)
-        if (m) leaks.push(`${file.slice(root.length + 1).replace(/\\/g, '/')}:${n + 1}: ${name} "${m[0]}" (${root.replace(/\\/g, '/').split('/').pop()})`)
+        if (m) leaks.push(`${(file === root ? file.split(/[\\/]/).pop() : file.slice(root.length + 1)).replace(/\\/g, '/')}:${n + 1}: ${name} "${m[0]}" (${root.replace(/\\/g, '/').split('/').pop()})`)
       }
     })
   }

@@ -102,7 +102,7 @@ function describe() {
     return
   }
   const plan = activePlanPath()
-  console.log(plan ? `WORKER: plan=${plan}` : 'IDLE SLOT: ask Dandan which plan to execute.')
+  console.log(plan ? `WORKER: plan=${plan}` : 'IDLE SLOT: ask the Human which plan to execute.')
 }
 
 function list() {

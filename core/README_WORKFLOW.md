@@ -7,7 +7,7 @@
 | **Planner** | Main folder, checked out on `main` | Plans. Writes and pushes Plan Contracts (`plans/NNN-slug.plan.md`) + `.claude/todo.md` directly to `main` — the one admin-bypass write, enforced by `scripts/branch-guard.sh` + `.husky/pre-push`. |
 | **Worker** | One of {{slots.count}} permanent slots — `{{slots.nameFormat}}` for N = 1..{{slots.count}} (ports {{slots.fePorts}}+N / {{slots.bePorts}}+N) | Claims a plan via "execute plan NNN", executes its milestones on `feat/NNN-<slug>`, may write only inside that plan's `## Read-Write Scope`. |
 | **Reviewer** | `/review-it` (either tool) | Report-only by default. Never silently fixes. |
-| **Human Director (Dandan)** | You | Assigns plans to slots, approves ships/merges, the only `--no-verify` override. |
+| **Human Director** | You | Assigns plans to slots, approves ships/merges, the only `--no-verify` override. |
 
 ## Role flexibility / cost routing
 
@@ -31,7 +31,7 @@ Rules of thumb:
 1. Plan in the main folder → push (`.claude/commands/plan.md` Planner protocol).
 2. In a free slot, say "execute plan NNN" (`.claude/commands/take-plan.md`).
 3. Worker executes the plan's milestones, then `/review-it`, then `/ship` (PR).
-4. Dandan merges the PR; the slot releases automatically the next time it's taken.
+4. The Human merges the PR; the slot releases automatically the next time it's taken.
 5. Back to the Planner for the next plan.
 
 ## Authoritative files
