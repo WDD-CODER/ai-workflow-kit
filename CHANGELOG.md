@@ -11,22 +11,41 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ### 002 — Planner always runs the Architect and Product Manager review
 
-What a project must do: nothing. Optionally write its own planning checks to `paths.planChecks` (default
-`docs/project/plan-checks.md`). A project that edited its copies of `.claude/references/prd-template.md` or
-`hld-template.md` should move its own lines into that file before syncing: the templates are now kit-managed,
-and a copy that is still the one recorded at install is updated without a conflict.
+What a project must do:
+1. `kit-sync` shows `.claude/references/prd-template.md` and `hld-template.md` as `conflict` whenever the
+   project's copy differs from the kit's (they were seeds and are now kit-managed; sync never overwrites them).
+   For each: move the project-only lines from your copy into the file named by `paths.planChecks` (default
+   `docs/project/plan-checks.md`; set the key in `kit.config.json` to use another path), then take the kit
+   version (copy the rendered kit file over yours) and re-run sync — it reports `same` and records the file as
+   managed. To keep your own copy instead, add an `overrides` entry (`{ "path": ".claude/references/prd-template.md",
+   "reason": "…" }`).
+2. `kit-drift` now compares both templates byte for byte, like every other core file. A kept copy needs the
+   `overrides` entry above, or drift-check exits 1.
+3. Optional: `AGENTS.md` is a seed, so existing projects do not get the new rule. Paste this bullet under
+   `## Hard rules`, after the "Architecture invariants" bullet:
+   ```
+   - **Architect + PM review (Planner):** the Planner is the Architect and the Product Manager. Every plan the Planner saves — written here or received from Claude.ai, Cursor or another agent — gets `/plan`'s `## Architect + PM review (always)` before it is saved, plus this project's own checks in `{{paths.planChecks}}` when that file exists. A received plan is reviewed, not silently rewritten.
+   ```
+   Replace `{{paths.planChecks}}` with your path.
 
 #### Added
-- `/plan` has a `## Architect + PM review (always)` section. It runs on every plan before it is saved — plans
-  the Planner writes and briefs or Plan Contracts it receives — and checks it against the real code:
+- `/plan` has a `## Architect + PM review (always)` section. It runs on every plan the Planner saves — plans
+  it writes and briefs or Plan Contracts it receives — and checks it against the fetched main branch:
   Architecture Impact filled, every named file and symbol exists or is marked new, the standards doc and
   existing patterns followed, scope exact; testable success criteria with tagged Done-when items, Out of Scope,
   backend / auth / security / data impact named, smallest full-value version, every step concrete enough to run
   without asking. It prints one `ARCHITECT + PM REVIEW` block (`no gaps` or one line per gap with a fix); a
-  received plan is reviewed, not rewritten. The Planner protocol runs it as step 0, and `brief-detection`
-  routes a pasted Plan Contract through it.
+  received plan is reviewed, not rewritten, and a gap the Human rejects is noted in the plan's Execution Notes.
+  The Planner protocol runs it as step 0 (after `git fetch`), and `brief-detection` routes a Plan Contract
+  pasted on main through it.
+- `kit-sync`: a file recorded as a seed that the kit now ships as managed is a `conflict` unless it already
+  matches the kit (then `same`, recorded as managed). Its recorded hash is the project's own copy (`--adopt`
+  records whatever is there), so "unchanged since install" no longer lets sync overwrite it.
+- `install-check`: a promoted-seed case (customised copy → `conflict`, `--apply` leaves it), a fourth fixture
+  (angular + node-express + Cursor), and an assertion in every fixture that each path `/plan` and the
+  `workflow-map.md` `/plan` row load exists.
 - `.claude/references/prd-template.md` and `hld-template.md` are kit-managed core files (they were seeds), so
-  every project gets the files `/plan` loads and sync keeps them current. The PRD template names backend,
+  every project gets the files `/plan` loads, sync keeps them current and `kit-drift` compares them. The PRD template names backend,
   auth, security, data and project-check lines; the HLD template's "Alternatives Considered" table is replaced
   by `### Why this design`.
 - Config key `paths.planChecks` (default `docs/project/plan-checks.md`): the project's own planning checklist,
@@ -38,7 +57,7 @@ and a copy that is still the one recorded at install is updated without a confli
   another tool may draft. `/plan` no longer says "Claude.ai by default"; `workflow-map.md` §1 and flow F1,
   `README_WORKFLOW.md` (title, roles, cost routing, authoritative files), `/feat`, `save-plan` and `/review-it`
   wording follow.
-- `/plan`, `workflow-map.md` and `README_WORKFLOW.md` point at `{{paths.sharedDocs}}/tech-stack.md` and
+- `/plan`, `/feat`, `workflow-map.md` and `README_WORKFLOW.md` point at `{{paths.sharedDocs}}/tech-stack.md` and
   `current-state.md` instead of a `/_shared/` folder that is not installed, and `README_WORKFLOW.md` names
   `docs/agent/` instead of a `.claude/rules/` folder that does not exist.
 

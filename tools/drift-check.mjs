@@ -7,8 +7,9 @@
  * Source: --source/--ref, else the source + ref recorded in .kit/install.json, else the kit these tools run from.
  *
  * Renders every managed file (core, packs, Cursor layer) with the target's kit.config.json, exactly as
- * install would, and compares it byte for byte with the target's copy. Seeds (templates/) are the project's
- * own after install and are not compared. Works with or without .kit/install.json, so it also runs on a
+ * install would, and compares it byte for byte with the target's copy. Seeds (templates/ and the brain lessons
+ * under docs/brain/) are the project's own after install and are not compared; every other core file is,
+ * including .claude/references/ (the PRD/HLD templates). Works with or without .kit/install.json, so it also runs on a
  * project that is not kit-installed yet.
  *
  * Packs and Cursor: --packs / --cursor flags, else .kit/install.json, else kit.config.json `stack.packs` and

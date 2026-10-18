@@ -3,4 +3,4 @@ description: Planning path — scope, load standards, run the Architect + PM rev
 ---
 
 Follow `.claude/commands/plan.md` exactly, including its `## Architect + PM review (always)` section: every
-plan, written here or pasted in, gets that review before it is saved.
+plan the Planner saves, drafted here or pasted in, gets that review before it is saved.

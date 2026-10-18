@@ -40,9 +40,10 @@ Claude.ai or another tool may draft a plan; the Planner still runs the review be
 
 ## Architect + PM review (always)
 
-Runs on **every** plan before it is saved: plans the Planner writes, and briefs or Plan Contracts it
-receives (Claude.ai, Cursor, another agent, a paste). Check against the real codebase on
-`origin/{{git.mainBranch}}`, not against what the draft says exists.
+Runs on **every plan the Planner saves**: plans it writes, and briefs or Plan Contracts it receives
+(Claude.ai, Cursor, another agent, a paste). Workers in slots do not author plans; a Plan Contract saved
+mid-brief inside a slot goes through save-plan only. Check against the real codebase on
+`origin/{{git.mainBranch}}` (fetched), not against what the draft says exists.
 
 **Architect**
 - `## Architecture Impact` is filled from `docs/brain/invariants.md` (the architecture step above);
@@ -78,8 +79,9 @@ ARCHITECT + PM REVIEW
 ```
 
 A received plan is reviewed, not rewritten: the Planner shows the gaps and applies only the fixes the
-Human accepts, plus the obvious mechanical ones (paths, titles, tags), which it lists. A decision that
-belongs to the Human is asked, never assumed.
+Human accepts, plus the obvious mechanical ones (paths, titles, tags), which it lists. A gap the Human
+rejects is noted in the plan's `## Execution Notes` (the gap, and "kept as is: Human"); then continue. A
+decision that belongs to the Human is asked, never assumed.
 
 ## Planner protocol (pushing to `main`)
 
@@ -87,8 +89,9 @@ Only the Planner (main folder, checked out on `main`) runs this. It is the one p
 review docs allow a direct push to `main` — restricted to `plans/*.plan.md` and
 `.claude/todo.md` by `scripts/branch-guard.sh` and `.husky/pre-push`.
 
-0. Run the **Architect + PM review** above and print its block. Gaps → wait for the Human's answer
-   and apply the accepted fixes before step 4. A plan the Planner wrote and already reviewed in this
+0. `git fetch origin`, then run the **Architect + PM review** above against the fetched
+   `origin/{{git.mainBranch}}` and print its block. Gaps → wait for the Human's answer and apply the accepted
+   fixes before step 4. A plan the Planner wrote and already reviewed in this
    session is not reviewed twice; print the block it got.
 1. Main must be clean and on `main`: `git status --porcelain` empty, `git branch
    --show-current` = `main`. Otherwise STOP and ask the Human. Then `git pull --ff-only`.

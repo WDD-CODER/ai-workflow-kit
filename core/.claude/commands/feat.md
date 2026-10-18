@@ -6,7 +6,7 @@ Use this path for building new features. Loads {{stack.name}} + domain standards
 
 - `{{stack.standardsDoc}}` — Signals, Components, CSS (Layers), {{stack.name}} conventions
 - `{{docs.domainStandards}}` (skip if unset) — {{project.name}} domain model, data flow, naming conventions
-- `/_shared/tech-stack.md` — stack overrides
+- `{{paths.sharedDocs}}/tech-stack.md` — stack overrides
 
 ## Invokes
 

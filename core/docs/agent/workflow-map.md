@@ -13,7 +13,7 @@
 | Role | Who | Responsibility |
 | --- | --- | --- |
 | Human Director | The user | Approves plans, validates jobs (`done` / ship `Y`), answers gates |
-| Planner (Architect + Product Manager) | Claude Code in the main folder, on `{{git.mainBranch}}` | Scopes with the Human and writes Plan Contracts via `/plan`; runs the Architect + PM review on every plan (its own and received ones) before saving and pushing it. Read-only against the app |
+| Planner (Architect + Product Manager) | Claude Code in the main folder, on `{{git.mainBranch}}` | Scopes with the Human and writes Plan Contracts via `/plan`; runs the Architect + PM review on every plan it saves (its own and received ones) before saving and pushing it. Read-only against the app |
 | Drafting tool (optional) | Claude.ai, Cursor or another agent | May draft a plan or brief; the Planner reviews it before it is saved |
 | Worker (Contractor) | Claude Code or Cursor in a `{{slots.nameFormat}}` slot | Claims a plan ("execute plan NNN"), executes **one milestone at a time** inside its `## Read-Write Scope`, writes `sessions/[date].md`, stops |
 | Reviewer | Claude Code via `/review-it` | Checks milestone vs Plan Contract. Report-only, never fixes, never commits |

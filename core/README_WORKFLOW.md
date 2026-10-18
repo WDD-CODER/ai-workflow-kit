@@ -1,14 +1,14 @@
 # {{project.name}} Workflow — Planner and Workers
 
 One Planner in the main folder plans; Workers in permanent slots build; the Human Director decides and merges.
-The Planner is the Architect and the Product Manager: every plan, its own or one drafted elsewhere, gets the
+The Planner is the Architect and the Product Manager: every plan it saves, its own or one drafted elsewhere, gets the
 Architect + PM review in `.claude/commands/plan.md` before it is saved.
 
 ## Roles (Planner-Worker workflow)
 
 | Role | Where | Job |
 |---|---|---|
-| **Planner** (Architect + Product Manager) | Main folder, checked out on `main` | Scopes with the Human, runs the Architect + PM review on every plan, then writes and pushes Plan Contracts (`plans/NNN-slug.plan.md`) + `.claude/todo.md` directly to `main` — the one admin-bypass write, enforced by `scripts/branch-guard.sh` + `.husky/pre-push`. |
+| **Planner** (Architect + Product Manager) | Main folder, checked out on `main` | Scopes with the Human, runs the Architect + PM review on every plan it saves, then writes and pushes Plan Contracts (`plans/NNN-slug.plan.md`) + `.claude/todo.md` directly to `main` — the one admin-bypass write, enforced by `scripts/branch-guard.sh` + `.husky/pre-push`. |
 | **Worker** | One of {{slots.count}} permanent slots — `{{slots.nameFormat}}` for N = 1..{{slots.count}} (ports {{slots.fePorts}}+N / {{slots.bePorts}}+N) | Claims a plan via "execute plan NNN", executes its milestones on `feat/NNN-<slug>`, may write only inside that plan's `## Read-Write Scope`. |
 | **Reviewer** | `/review-it` (either tool) | Report-only by default. Never silently fixes. |
 | **Human Director** | You | Answers the Planner's questions, assigns plans to slots, approves ships/merges, the only `--no-verify` override. |

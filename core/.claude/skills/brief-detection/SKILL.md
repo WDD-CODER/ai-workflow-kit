@@ -20,7 +20,7 @@ Only the message's own top-level headers count: ignore headers inside fenced blo
 Then check `git branch --show-current`:
 
 - **On `main` (Planner):** say `Detected Plan Contract — routing to the Planner protocol` and hand off to `.claude/commands/plan.md` Planner protocol steps 0–6 (Architect + PM review, pull, todo sync, overlap check, save-plan, commit, push). The review comes first: a received plan is checked against the codebase and its gaps shown before anything is saved. The Planner never starts execution; it ends on step 6's message.
-- **Inside a `{{slots.nameFormat}}` slot (Worker, mid-brief save):** say `Detected Plan Contract — routing to save-plan` and hand off to `.claude/skills/save-plan/SKILL.md` Phase 0.
+- **Inside a `{{slots.nameFormat}}` slot (Worker, mid-brief save):** say `Detected Plan Contract — routing to save-plan` and hand off to `.claude/skills/save-plan/SKILL.md` Phase 0. No Architect + PM review here: that runs on every plan the Planner saves, and Workers do not author plans.
 
 No a/b/c gate for a Plan Contract, and no plan file written here — save-plan does that.
 
