@@ -7,9 +7,12 @@
 .EXAMPLE
   .\kit-sync.ps1 -Target ..\my-app
   .\kit-sync.ps1 -Target ..\my-app -Apply
+  .\kit-sync.ps1 -Target ..\my-app -Ref v0.6.0 -Apply      # upgrade a GitHub install to another release
 #>
 param(
   [Parameter(Mandatory = $true)][string]$Target,
+  [string]$Source,
+  [string]$Ref,
   [switch]$Apply
 )
 $ErrorActionPreference = 'Stop'
@@ -17,6 +20,8 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Write-Error 'node i
 $resolved = [System.IO.Path]::GetFullPath((Join-Path (Get-Location).ProviderPath $Target))
 Write-Host "kit-sync target: $resolved"
 $argsList = @("$PSScriptRoot/tools/sync.mjs", '--target', $resolved)
+if ($Source) { $argsList += @('--source', $Source) }
+if ($Ref) { $argsList += @('--ref', $Ref) }
 if ($Apply) { $argsList += '--apply' }
 & node @argsList
 exit $LASTEXITCODE

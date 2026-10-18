@@ -1,58 +1,155 @@
 # ai-workflow-kit
 
-A copy-distributed Planner-Worker AI workflow (Claude Code, optional Cursor layer): plans, slots, scope guards, `/ship` pipeline and a brain of lessons. Extracted from FoodVibe (ADR 0015, plans 328-332).
+A Planner-Worker AI workflow for Claude Code (optional Cursor layer), copied into a project and kept in
+sync from tagged releases: plans with a read-write scope, parallel worker slots, scope guards, a `/ship`
+pipeline with a merge gate, validation cards, and a brain of lessons.
 
-**Status:** phase 4 of 5 (installer, sync and template skeletons). Local only, no remote. FoodVibe still owns its own workflow files until phase 5.
+**Status:** `v0.x` — in use in one project, API and file layout may still change between minor versions
+(each change is in [CHANGELOG.md](CHANGELOG.md)). `v1.0.0` follows once the source project itself runs on
+kit-sync.
+
+**License:** none. Copyright © the author, all rights reserved. The repository is public so it can be read
+and installed by its author's projects; no permission to copy, modify or redistribute is granted.
+
+## Requirements
+
+Node 18+ and the git CLI. Windows, macOS and Linux. The `.ps1` files are thin PowerShell wrappers; the
+engine is `node tools/*.mjs`, so every flag below also works as `--target --source --ref …` on any OS.
 
 ## Install into a project
 
+Clone the kit once (any folder), then install a tagged release into your project:
+
 ```powershell
-.\kit-install.ps1 -Target ..\my-app -Packs angular -Cursor        # add -YesChef for the "Yes chef!" gate, -DryRun to preview
-.\kit-sync.ps1    -Target ..\my-app                               # later: what would a newer kit change? (writes nothing)
-.\kit-sync.ps1    -Target ..\my-app -Apply                        # write only new + kit-update files
-.\kit-drift.ps1   -Target ..\my-app                               # do the project's files still match the kit (minus overrides)? read-only
+git clone https://github.com/WDD-CODER/ai-workflow-kit.git
+cd ai-workflow-kit
+.\kit-install.ps1 -Target ..\my-app -Source github:WDD-CODER/ai-workflow-kit -Ref v0.5.0 -Packs angular -Cursor
 ```
 
-The `.ps1` files are thin wrappers; the engine is `node tools/install.mjs` / `node tools/sync.mjs` (Node 18+), so the same flags work as `--target --packs --cursor --yes-chef --dry-run --force --allow-unfilled` on any OS.
+- `-Source github:<owner>/<repo> -Ref <tag>` fetches exactly that release (a shallow `git fetch` of the tag)
+  into a per-user cache, `~/.cache/ai-workflow-kit/<owner>/<repo>/<tag>/` (override with
+  `$env:AI_WORKFLOW_KIT_CACHE`), and installs from it. The cache is reused while the tag still points to
+  the same commit; a tag that moved is refused. Offline, a cached release is used with a note.
+- Without `-Source`, the kit you run the script from is installed (kit development). `-Source <folder>`
+  installs from another kit checkout.
+- `-Packs angular,node-express` picks stack packs, `-Cursor` adds the Cursor layer, `-YesChef` the
+  "Yes chef!" gate, `-DryRun` previews, `-Force` overwrites existing files (never overrides).
+- `<project>/.kit/install.json` records what was installed: kit version, `source`, `ref`, `commit`, packs
+  and each file's hash. **Commit it** — sync and drift-check read it.
+- Config: `-Config <file>`, else `<project>/kit.config.json`, else the kit defaults plus each pack's
+  `configDefaults`. The installer writes the effective config to `<project>/kit.config.json` when absent.
+  Required keys (`project.name`, `commands.build|lint|test`, `hooks.shellPath`) missing → exit 2, nothing
+  written. Other empty keys render `(not set)` and are listed.
 
-- Config: `-Config <file>`, else `<target>/kit.config.json`, else the kit defaults plus each pack's `configDefaults`. The installer writes the effective config to `<target>/kit.config.json` when absent. Required keys (`project.name`, `commands.build|lint|test`, `hooks.shellPath`) missing -> exit 2, nothing written. Other empty keys render `(not set)` and are listed.
-- Never overwrites an existing file (reported `SKIP-EXISTING`) unless `-Force`.
-- `<target>/.kit/install.json` records what was installed and each file's hash. Commit it; sync reads it.
-- Core, pack and Cursor-layer files are **managed** (sync updates them when you have not edited them). Files from `templates/` and the brain lessons (`docs/brain/**`, which the project keeps appending to) are **seeds**: written once, never updated or drift-checked.
-- Sync states: `new`, `kit-update`, `local-only`, `conflict` (never overwritten), `removed-from-kit`, `deleted-locally`, `override`.
-- **Overrides** — a managed file the project deliberately keeps different, for good (e.g. a CI file with an extra install step). List each one in `<target>/kit.config.json`:
+## Sync (see what a newer kit changes)
 
-  ```json
-  "overrides": [{ "path": ".github/workflows/ci.yml", "reason": "root npm ci for the schema build" }]
-  ```
+```powershell
+.\kit-sync.ps1  -Target ..\my-app                 # dry-run from the recorded source + ref, writes nothing
+.\kit-sync.ps1  -Target ..\my-app -Apply          # write only new + kit-update files
+```
 
-  Exact installed paths only (no globs), and every entry needs a `reason`. Install skips them (`SKIP-OVERRIDE`, even with `-Force`); sync reports them as `override` instead of `conflict` and `-Apply` never writes them. An override naming a file the kit does not ship is reported as a `NOTE`.
-- `.claude/settings.json` has no machine paths: only `${CLAUDE_PROJECT_DIR}` and `hooks.shellPath` (default `C:/Program Files/Git/bin/bash.exe` on Windows when present, else `bash`).
+States: `new`, `kit-update` (written on `-Apply`), `local-only`, `conflict` (never overwritten — resolve by
+hand), `removed-from-kit`, `deleted-locally`, `override`.
+
+## Upgrade to another release
+
+```powershell
+.\kit-sync.ps1  -Target ..\my-app -Ref v0.6.0          # what would v0.6.0 change? writes nothing
+.\kit-sync.ps1  -Target ..\my-app -Ref v0.6.0 -Apply   # apply it and record ref v0.6.0 in install.json
+```
+
+Read the release's CHANGELOG entry first. A ref that does not exist fails with `ref <tag> not found` and
+writes nothing. To move a local-folder install to GitHub, pass `-Source github:<owner>/<repo> -Ref <tag>`
+once.
+
+## Drift check
+
+```powershell
+.\kit-drift.ps1 -Target ..\my-app                 # do the project's files match the kit, minus overrides?
+```
+
+Read-only. Renders every managed file with the project's `kit.config.json` from the recorded release (or
+`-Source`/`-Ref`) and compares byte for byte: `KIT_DRIFT: ok — 0 undeclared differences, N overrides`.
+Works before install too.
+
+## Overrides
+
+A managed file the project deliberately keeps different, for good (e.g. a CI file with an extra install
+step). List each one in `<project>/kit.config.json`:
+
+```json
+"overrides": [{ "path": ".github/workflows/ci.yml", "reason": "root npm ci for the schema build" }]
+```
+
+Exact installed paths only (no globs), and every entry needs a `reason`. Install skips them
+(`SKIP-OVERRIDE`, even with `-Force`); sync reports them as `override` and `-Apply` never writes them;
+drift-check accepts any content. An override naming a file the kit does not ship is reported as a `NOTE`.
+
+## What gets installed
+
+- Core, pack and Cursor-layer files are **managed**: sync updates them while you have not edited them.
+- `templates/` and the brain lessons (`docs/brain/**`, which the project keeps appending to) are **seeds**:
+  written once, never updated or drift-checked.
+- `.claude/settings.json` has no machine paths: only `${CLAUDE_PROJECT_DIR}` and `hooks.shellPath`
+  (default: Git for Windows' bash when present, else `bash`).
 - No raw Playwright MCP is installed anywhere.
 
 ## Layout
 
 | path | what |
 | --- | --- |
-| `core/` | Stack-neutral workflow files at the paths a target project receives them, plus the transferred and generalized brain lessons. Placeholders look like `{{git.mainBranch}}`. |
-| `packs/angular/`, `packs/node-express/` | Stack packs. `pack.json` contract: `standardsDoc`, `skills`, `cursorRules`, `gotchas`, `validation` (npm script names), optional `configDefaults` and `agentsFragment` (rows the installer adds to the `AGENTS.md` skeleton). |
+| `core/` | Stack-neutral workflow files at the paths a project receives them, plus the generalized brain lessons. Placeholders look like `{{git.mainBranch}}`. |
+| `packs/angular/`, `packs/node-express/` | Stack packs. `pack.json` contract: `standardsDoc`, `skills`, `cursorRules`, `gotchas`, `validation` (npm script names), optional `configDefaults` and `agentsFragment`. |
 | `layers/cursor/` | Optional Cursor layer (`.cursor/commands`, rules, `mcp.json` without raw Playwright). |
-| `templates/` | The 17 skeletons: `AGENTS.md`, `CLAUDE.md`, `docs/brain/*`, `docs/project/*` (was `_shared/`), `.gitignore`, `.mcp.json`, `.nvmrc`, `.prettierrc.json`, HLD/PRD templates; `templates/cursor/` only with `-Cursor`. |
-| `kit.config.json` | Every key a placeholder can name (42). Conventions: `slots.fePorts/bePorts` are base ports (slot N = base + N); `paths.srcRoot/serverRoot` end with `/`. |
-| `kit.json` | Kit version recorded into each install. |
-| `tools/install.mjs`, `tools/sync.mjs`, `tools/lib/kit.mjs` | Installer, sync and the shared render/plan engine. |
-| `tools/drift-check.mjs` | Drift check: renders every managed file with the project's `kit.config.json` and compares byte for byte; `drift` / `missing` exit 1, `override` is fine. Works before install. Output: `KIT_DRIFT: ok — 0 undeclared differences, N overrides`. |
-| `tools/leak-check.mjs` | Core, layers and templates must not name a framework or a project; packs (`--project-only`) must not name the project. |
-| `tools/pack-check.mjs` | Every pack satisfies the `pack.json` contract. |
-| `tools/install-check.mjs` | Installs three fixtures into temp dirs and checks them (no git needed). |
-| `.github/workflows/leak-check.yml` | Runs all four checks on push and PR. |
+| `templates/` | Skeletons: `AGENTS.md`, `CLAUDE.md`, `docs/brain/*`, `docs/project/*`, `.gitignore`, `.mcp.json`, `.nvmrc`, `.prettierrc.json`, HLD/PRD templates; `templates/cursor/` only with `-Cursor`. |
+| `kit.config.json` | Every key a placeholder can name. `slots.fePorts/bePorts` are base ports (slot N = base + N); `paths.srcRoot/serverRoot` end with `/`. |
+| `kit.json` | Kit version (semver), recorded into each install. |
+| `tools/install.mjs`, `tools/sync.mjs`, `tools/drift-check.mjs` | Installer, sync and drift check. |
+| `tools/lib/kit.mjs`, `tools/lib/source.mjs` | Render/plan engine; release fetch + cache. |
+| `tools/leak-check.mjs`, `tools/pack-check.mjs`, `tools/install-check.mjs` | Checks (below). |
+| `.github/workflows/leak-check.yml` | Runs every check on push and pull request. |
 
-Placeholder filters (code contexts): `{{paths.hotspots|quoted}}` -> `'a', 'b'`, `|dquoted`, `|glob` -> `{a,b}`, `|alt` -> `a|b` (regex alternation, metacharacters escaped; used by the shell guards with `{{plans.openDirs|alt}}`).
+Placeholder filters (code contexts): `{{paths.hotspots|quoted}}` → `'a', 'b'`, `|dquoted`, `|glob` →
+`{a,b}`, `|alt` → `a|b` (regex alternation, metacharacters escaped).
 
-A `<!-- PACK:<stack> -->` marker in a core file is a hint for where pack content belongs; the installer does not yet inject pack text there (the pack's own standards doc carries it).
+## Checks
+
+Exit 0 = clean. CI runs all of them.
+
+```
+node tools/leak-check.mjs                                              # core, layers, templates: no framework/project names
+node tools/leak-check.mjs --root packs --project-only                  # packs: no project names
+node tools/leak-check.mjs --root README.md --root CHANGELOG.md --project-only
+node tools/pack-check.mjs                                              # every pack meets the pack.json contract
+node tools/install-check.mjs                                           # installs fixtures; sync, drift, local + GitHub sources (offline)
+```
+
+`KIT_LEAK_TERMS="name,email,host"` adds private terms to any leak-check run without putting them in this
+public repo.
+
+## Releasing
+
+1. All kit work merged to `main`; CI green on `main`.
+2. Private-data sweep: `KIT_LEAK_TERMS="<your names, emails, hosts>" node tools/leak-check.mjs --root core --root packs --root layers --root templates --root tools --root README.md --root CHANGELOG.md --project-only`
+   — only the declared detection lists and generic defaults may show.
+3. On a release branch: bump `kit.json` `version`, move `## [Unreleased]` into `## [X.Y.Z] - <date>` in
+   `CHANGELOG.md` (and the compare links), PR, merge.
+4. Tag the merge commit and publish:
+
+   ```
+   git checkout main
+   git pull --ff-only
+   git tag -a vX.Y.Z -m "vX.Y.Z"
+   git push origin vX.Y.Z
+   gh release create vX.Y.Z --title "vX.Y.Z" --notes-file <the CHANGELOG entry>
+   ```
+
+5. Prove it: install `-Source github:WDD-CODER/ai-workflow-kit -Ref vX.Y.Z` into a scratch folder and check
+   `.kit/install.json` records that ref and the tag's commit.
+
+Never move a published tag: installs that cached it refuse it. Fix forward with a new patch version.
 
 ## Rules
 
 - Core speaks to the stack only through `kit.config.json`, using npm script names, never raw framework commands.
-- Lessons marked `Status: draft` were generalized from FoodVibe lessons and need review before they are relied on.
-- Checks (exit 0 = clean): `node tools/leak-check.mjs`, `node tools/leak-check.mjs --root packs --project-only`, `node tools/pack-check.mjs`, `node tools/install-check.mjs`.
+- Lessons marked `Status: draft` were generalized from the source project's lessons and need review before they are relied on.

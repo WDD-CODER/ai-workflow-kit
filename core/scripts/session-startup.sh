@@ -71,7 +71,7 @@ if [ "$RESOLVED" = "NONE" ]; then
   "hookSpecificOutput": {
     "hookEventName": "SessionStart",
     "decision": {
-      "additionalContext": "IDLE SLOT: ask Dandan which plan to execute."
+      "additionalContext": "IDLE SLOT: ask the Human which plan to execute."
     }
   }
 }

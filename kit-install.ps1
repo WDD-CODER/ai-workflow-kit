@@ -3,11 +3,14 @@
   Install the AI workflow kit into a project (thin wrapper over tools/install.mjs).
 .EXAMPLE
   .\kit-install.ps1 -Target ..\my-app -Packs angular,node-express -Cursor
+  .\kit-install.ps1 -Target ..\my-app -Source github:WDD-CODER/ai-workflow-kit -Ref v0.5.0 -Packs angular
 .NOTES
   Requires Node 18+. Never overwrites existing files unless -Force. Run kit-sync.ps1 later to see kit updates.
 #>
 param(
   [Parameter(Mandatory = $true)][string]$Target,
+  [string]$Source,
+  [string]$Ref,
   [string]$Config,
   [string[]]$Packs,
   [switch]$Cursor,
@@ -22,6 +25,8 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Write-Error 'node i
 $resolved = [System.IO.Path]::GetFullPath((Join-Path (Get-Location).ProviderPath $Target))
 Write-Host "kit-install target: $resolved"
 $argsList = @("$PSScriptRoot/tools/install.mjs", '--target', $resolved)
+if ($Source) { $argsList += @('--source', $Source) }
+if ($Ref) { $argsList += @('--ref', $Ref) }
 if ($Config) { $argsList += @('--config', [System.IO.Path]::GetFullPath((Join-Path (Get-Location).ProviderPath $Config))) }
 if ($Packs) { $argsList += @('--packs', ($Packs -join ',')) }
 if ($Cursor) { $argsList += '--cursor' }
