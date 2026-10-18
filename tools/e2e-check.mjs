@@ -15,7 +15,7 @@
  * close-out, archive and slot release; drift-check ok and a no-op kit-sync afterwards.
  * Exit 0 = every case passed, 1 = failures (one line per case).
  */
-import { writeFileSync, readFileSync, mkdtempSync, mkdirSync, rmSync, existsSync, readdirSync } from 'fs'
+import { writeFileSync, readFileSync, mkdtempSync, mkdirSync, rmSync, existsSync, readdirSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 import { spawnSync } from 'child_process'
@@ -23,7 +23,8 @@ import { fileURLToPath } from 'url'
 
 const kit = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const keep = process.argv.includes('--keep')
-const root = mkdtempSync(join(tmpdir(), 'kit-e2e-'))
+// Long path: on Windows tmpdir() can be an 8.3 short name (RUNNER~1) while git reports the long one.
+const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'kit-e2e-')))
 const proj = join(root, 'e2e-app')
 const slot = join(root, 'e2e-app-wt-1')
 const slot2 = join(root, 'e2e-app-wt-2')
@@ -60,7 +61,7 @@ const hook = (cwd, script, file) => {
 
 function main() {
   // 1. Install the kit into a fresh project, set up hooks, first push to an empty remote.
-  sh('git', ['init', '-q', '--bare', origin], root)
+  sh('git', ['init', '-q', '--bare', '-b', 'main', origin], root)
   sh('git', ['init', '-q', '-b', 'main', proj], root)
   writeFileSync(join(proj, 'package.json'), JSON.stringify({
     name: 'e2e-app', version: '0.0.0', private: true, type: 'module',
@@ -165,7 +166,7 @@ function main() {
   check('Worker commits (hooks run), writes session state and pushes the branch', wc.status === 0 && ss.status === 0 && wp.status === 0, tail(wc.out + ss.out + wp.out))
 
   // 5. Server: merge the PR, then run the todo-sync Action's scripts.
-  sh('git', ['clone', '-q', origin, server], root)
+  sh('git', ['clone', '-q', '-b', 'main', origin, server], root)
   const mg = git(server, 'merge', '-q', '--no-ff', 'origin/feat/001-hello-script', '-m', 'Merge feat/001-hello-script')
   const ms = git(server, 'push', '-q', 'origin', 'main')
   check('server merges the PR', mg.status === 0 && ms.status === 0, tail(mg.out + ms.out))
