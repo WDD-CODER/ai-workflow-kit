@@ -132,7 +132,7 @@ OUT=$(node "$REPO/scripts/scope-check.mjs" --file="$NORM" 2>&1)
 STATUS=$?
 
 if [[ "$STATUS" -eq 0 ]]; then
-  [[ "$KIT_OWNED" -eq 1 ]] && json_allow "SCOPE_GUARD: $NORM is kit-owned but in this plan's scope - allowed. Back-port the change to the workflow kit at /ship."
+  [[ "$KIT_OWNED" -eq 1 ]] && json_allow "SCOPE_GUARD: $NORM is kit-owned but in this plan's scope - allowed. Make the same change in the workflow kit and release it (the kit's docs/CHANGE-LOOP.md), or the next kit-sync reports a conflict."
   json_allow ""
 fi
 

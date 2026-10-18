@@ -4,6 +4,7 @@
  *   node tools/install.mjs --target <dir> [--source github:<owner>/<repo> --ref <tag> | --source <kit folder>]
  *                          [--config <file>] [--packs angular,node-express] [--cursor]
  *                          [--yes-chef] [--dry-run] [--force] [--allow-unfilled]
+ *   node tools/install.mjs --adopt --target <dir> [--source … --ref …] [--cursor | --no-cursor] [--dry-run]
  *
  * Source: a tagged GitHub release (fetched into a per-user cache, see lib/source.mjs), a local kit folder,
  * or (no --source) the kit these tools run from. .kit/install.json records source, ref and commit.
@@ -12,6 +13,11 @@
  * Never overwrites an existing file unless --force (reported SKIP-EXISTING). Paths in kit.config.json `overrides`
  * are never written, even with --force (reported SKIP-OVERRIDE). Writes <target>/.kit/install.json
  * (commit it: kit-sync reads it) and, when absent, <target>/kit.config.json with the effective config.
+ * --adopt: for a project that already carries the workflow (kit.config.json present, no .kit/install.json yet).
+ * Writes only .kit/install.json, recording the hash of every current managed file and every present seed, so
+ * kit-sync can target the project. Refuses (nothing written) unless the drift check is clean: every managed
+ * file outside `overrides` must match the rendered kit byte for byte. Cursor: --cursor/--no-cursor, else
+ * "a .cursor/ folder exists".
  * Exit 0 ok, 1 error, 2 required config keys missing (nothing written).
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
@@ -24,7 +30,7 @@ let args
 try {
   args = parseArgs(process.argv.slice(2), {
     target: 'value', source: 'value', ref: 'value', config: 'value', packs: 'value', cursor: 'bool', 'yes-chef': 'bool',
-    'dry-run': 'bool', force: 'bool', 'allow-unfilled': 'bool', 'install-deps': 'bool',
+    'dry-run': 'bool', force: 'bool', 'allow-unfilled': 'bool', 'install-deps': 'bool', adopt: 'bool', 'no-cursor': 'bool',
   })
 } catch (e) {
   console.error(`KIT_INSTALL: FAIL — ${e.message}`)
@@ -43,6 +49,16 @@ if (existsSync(cfgFile)) projectCfg = readJson(cfgFile)
 else if (args.config) {
   console.error(`KIT_INSTALL: FAIL — config not found: ${cfgFile}`)
   process.exit(1)
+}
+if (args.adopt) {
+  const why = !existsSync(join(target, 'kit.config.json')) ? 'kit.config.json not found in the target'
+    : existsSync(join(target, '.kit', 'install.json')) ? '.kit/install.json already exists; use kit-sync'
+    : args.force || args.config ? '--adopt takes no --force or --config' : null
+  if (why) {
+    console.error(`KIT_INSTALL: FAIL — --adopt: ${why}`)
+    process.exit(1)
+  }
+  args.cursor = args.cursor ? true : args['no-cursor'] ? false : existsSync(join(target, '.cursor'))
 }
 const packs = args.packs ? args.packs.split(',').map((s) => s.trim()).filter(Boolean) : (projectCfg.stack?.packs ?? [])
 
@@ -66,6 +82,40 @@ if (missing.length > 0 && !args['allow-unfilled']) {
   console.error(`KIT_INSTALL: STOP — required config not set: ${missing.join(', ')}`)
   console.error('Add them to kit.config.json (or pick a stack pack with --packs, which fills build/lint/test), then re-run. Nothing was written.')
   process.exit(2)
+}
+
+if (args.adopt) {
+  const record = {}
+  const bad = []
+  let same = 0
+  for (const f of plan.files) {
+    if (overrides.has(f.dest)) continue
+    const dest = join(target, f.dest)
+    const present = existsSync(dest)
+    if (f.kind === 'seed') {
+      if (present) record[f.dest] = { sha256: sha256(readFileSync(dest, 'utf8')), kind: f.kind, source: f.source }
+      continue
+    }
+    if (!present) bad.push(`missing   ${f.dest}`)
+    else if (readFileSync(dest, 'utf8') !== f.content) bad.push(`drift     ${f.dest}`)
+    else {
+      same++
+      record[f.dest] = { sha256: sha256(f.content), kind: f.kind, source: f.source }
+    }
+  }
+  if (bad.length > 0) {
+    console.error(bad.join('\n'))
+    console.error(`KIT_INSTALL: FAIL — --adopt: ${bad.length} undeclared differences; fix them or declare them in kit.config.json overrides (see kit-drift). Nothing was written.`)
+    process.exit(1)
+  }
+  const sorted = Object.fromEntries(Object.entries(record).sort(([a], [b]) => (a < b ? -1 : 1)))
+  const out = { kit: { version: readJson(join(kitRoot, 'kit.json')).version }, ...origin, packs, cursor: !!args.cursor, yesChef: !!args['yes-chef'], files: sorted }
+  if (!args['dry-run']) {
+    mkdirSync(join(target, '.kit'), { recursive: true })
+    writeFileSync(join(target, '.kit', 'install.json'), JSON.stringify(out, null, 2) + '\n', 'utf8')
+  }
+  log(`KIT_INSTALL: adopted${args['dry-run'] ? ' (dry-run, nothing written)' : ''} — ${same} managed files recorded, ${Object.keys(record).length - same} seeds recorded, ${overrides.size} overrides, packs=[${packs.join(', ')}], cursor=${!!args.cursor}, source=${origin.source}${origin.ref ? '@' + origin.ref : ''}`)
+  process.exit(0)
 }
 
 const prior = existsSync(join(target, '.kit', 'install.json')) ? readJson(join(target, '.kit', 'install.json')) : { files: {} }

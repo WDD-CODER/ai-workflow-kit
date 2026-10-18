@@ -6,7 +6,7 @@
  *   node tools/leak-check.mjs                          # core/, layers/ and templates/ (all terms)
  *   node tools/leak-check.mjs --root <dir> [--root …]  # explicit roots (all terms)
  *   node tools/leak-check.mjs --root packs --project-only
- *   node tools/leak-check.mjs --root README.md --root CHANGELOG.md --project-only   # a root may be a file
+ *   node tools/leak-check.mjs --root README.md --root CHANGELOG.md --root docs --project-only   # a root may be a file
  *
  * KIT_LEAK_TERMS="a,b": extra private terms (names, emails, hosts) checked in every mode. They live in the
  * caller's environment, never in this public file. Run it before a release with the maintainer's own list.

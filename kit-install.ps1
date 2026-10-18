@@ -4,6 +4,7 @@
 .EXAMPLE
   .\kit-install.ps1 -Target ..\my-app -Packs angular,node-express -Cursor
   .\kit-install.ps1 -Target ..\my-app -Source github:WDD-CODER/ai-workflow-kit -Ref v0.5.0 -Packs angular
+  .\kit-install.ps1 -Target ..\my-app -Adopt -Source github:WDD-CODER/ai-workflow-kit -Ref v1.0.0   # project already carries the workflow: writes only .kit/install.json
 .NOTES
   Requires Node 18+. Never overwrites existing files unless -Force. Run kit-sync.ps1 later to see kit updates.
 #>
@@ -18,7 +19,9 @@ param(
   [switch]$DryRun,
   [switch]$Force,
   [switch]$AllowUnfilled,
-  [switch]$InstallDeps
+  [switch]$InstallDeps,
+  [switch]$Adopt,
+  [switch]$NoCursor
 )
 $ErrorActionPreference = 'Stop'
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Write-Error 'node is required (Node 18+).'; exit 1 }
@@ -35,5 +38,7 @@ if ($DryRun) { $argsList += '--dry-run' }
 if ($Force) { $argsList += '--force' }
 if ($AllowUnfilled) { $argsList += '--allow-unfilled' }
 if ($InstallDeps) { $argsList += '--install-deps' }
+if ($Adopt) { $argsList += '--adopt' }
+if ($NoCursor) { $argsList += '--no-cursor' }
 & node @argsList
 exit $LASTEXITCODE

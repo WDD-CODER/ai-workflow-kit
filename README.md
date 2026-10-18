@@ -4,9 +4,8 @@ A Planner-Worker AI workflow for Claude Code (optional Cursor layer), copied int
 sync from tagged releases: plans with a read-write scope, parallel worker slots, scope guards, a `/ship`
 pipeline with a merge gate, validation cards, and a brain of lessons.
 
-**Status:** `v0.x` — in use in one project, API and file layout may still change between minor versions
-(each change is in [CHANGELOG.md](CHANGELOG.md)). `v1.0.0` follows once the source project itself runs on
-kit-sync.
+**Status:** `v1` — the source project runs on kit-sync. Releases follow semver: a minor or patch release never
+asks a project to act; a major one says what to do in [CHANGELOG.md](CHANGELOG.md).
 
 **License:** none. Copyright © the author, all rights reserved. The repository is public so it can be read
 and installed by its author's projects; no permission to copy, modify or redistribute is granted.
@@ -23,7 +22,7 @@ Clone the kit once (any folder), then install a tagged release into your project
 ```powershell
 git clone https://github.com/WDD-CODER/ai-workflow-kit.git
 cd ai-workflow-kit
-.\kit-install.ps1 -Target ..\my-app -Source github:WDD-CODER/ai-workflow-kit -Ref v0.5.0 -Packs angular -Cursor
+.\kit-install.ps1 -Target ..\my-app -Source github:WDD-CODER/ai-workflow-kit -Ref v1.0.0 -Packs angular -Cursor
 ```
 
 - `-Source github:<owner>/<repo> -Ref <tag>` fetches exactly that release (a shallow `git fetch` of the tag)
@@ -54,13 +53,31 @@ hand), `removed-from-kit`, `deleted-locally`, `override`.
 ## Upgrade to another release
 
 ```powershell
-.\kit-sync.ps1  -Target ..\my-app -Ref v0.6.0          # what would v0.6.0 change? writes nothing
-.\kit-sync.ps1  -Target ..\my-app -Ref v0.6.0 -Apply   # apply it and record ref v0.6.0 in install.json
+.\kit-sync.ps1  -Target ..\my-app -Ref v1.1.0          # what would v0.6.0 change? writes nothing
+.\kit-sync.ps1  -Target ..\my-app -Ref v1.1.0 -Apply   # apply it and record ref v0.6.0 in install.json
 ```
 
 Read the release's CHANGELOG entry first. A ref that does not exist fails with `ref <tag> not found` and
 writes nothing. To move a local-folder install to GitHub, pass `-Source github:<owner>/<repo> -Ref <tag>`
 once.
+
+How a change travels from the kit into projects (kit PR → release → `kit-sync -Ref`), and what to do with a
+fix found inside a project: [docs/CHANGE-LOOP.md](docs/CHANGE-LOOP.md).
+
+## Adopt a project that already has the workflow
+
+A project that carries the workflow files but has no `.kit/install.json` (copied by hand, or installed before
+the file existed):
+
+```powershell
+.\kit-install.ps1 -Target ..\my-app -Adopt -Source github:WDD-CODER/ai-workflow-kit -Ref v1.0.0
+```
+
+`-Adopt` writes only `.kit/install.json`: the hash of every managed file and every present seed, the declared
+overrides, and the source, ref and commit. It needs `kit.config.json` and refuses (nothing written) while the
+drift check finds any difference outside the overrides, or when `.kit/install.json` already exists. Cursor
+layer: `-Cursor` / `-NoCursor`, else "a `.cursor/` folder exists". Run `kit-sync` right after: it should
+report 0 conflicts.
 
 ## Drift check
 
@@ -119,7 +136,7 @@ Exit 0 = clean. CI runs all of them.
 ```
 node tools/leak-check.mjs                                              # core, layers, templates: no framework/project names
 node tools/leak-check.mjs --root packs --project-only                  # packs: no project names
-node tools/leak-check.mjs --root README.md --root CHANGELOG.md --project-only
+node tools/leak-check.mjs --root README.md --root CHANGELOG.md --root docs --project-only
 node tools/pack-check.mjs                                              # every pack meets the pack.json contract
 node tools/install-check.mjs                                           # installs fixtures; sync, drift, local + GitHub sources (offline)
 ```
@@ -130,7 +147,7 @@ public repo.
 ## Releasing
 
 1. All kit work merged to `main`; CI green on `main`.
-2. Private-data sweep: `KIT_LEAK_TERMS="<your names, emails, hosts>" node tools/leak-check.mjs --root core --root packs --root layers --root templates --root tools --root README.md --root CHANGELOG.md --project-only`
+2. Private-data sweep: `KIT_LEAK_TERMS="<your names, emails, hosts>" node tools/leak-check.mjs --root core --root packs --root layers --root templates --root tools --root README.md --root CHANGELOG.md --root docs --project-only`
    — only the declared detection lists and generic defaults may show.
 3. On a release branch: bump `kit.json` `version`, move `## [Unreleased]` into `## [X.Y.Z] - <date>` in
    `CHANGELOG.md` (and the compare links), PR, merge.

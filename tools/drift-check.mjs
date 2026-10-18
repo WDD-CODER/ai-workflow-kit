@@ -81,10 +81,11 @@ for (const f of managed) {
   rows.push({ dest: f.dest, state })
 }
 
-const shipped = new Set(managed.map((f) => f.dest))
+// Seeds can be overridden too (kit-sync then never writes them), so they count as shipped here.
+const shipped = new Set(plan.files.map((f) => f.dest))
 for (const s of ['drift', 'missing']) for (const r of rows.filter((x) => x.state === s)) console.log(`${s.padEnd(9)} ${r.dest}`)
 if (args.verbose) for (const r of rows.filter((x) => x.state === 'override')) console.log(`override  ${r.dest} — ${overrides.get(r.dest)}`)
-for (const p of overrides.keys()) if (!shipped.has(p)) console.log(`NOTE override ${p} is not a managed kit file — remove it from kit.config.json`)
+for (const p of overrides.keys()) if (!shipped.has(p)) console.log(`NOTE override ${p} is not a file this kit ships — remove it from kit.config.json`)
 const notSet = [...plan.report.notSet].sort()
 if (notSet.length > 0) console.log(`NOTE not set in kit.config.json (rendered "(not set)"): ${notSet.join(', ')}`)
 if (plan.report.unknown.size > 0) console.log(`NOTE unknown placeholders: ${[...plan.report.unknown].sort().join(', ')}`)
