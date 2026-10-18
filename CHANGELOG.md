@@ -9,6 +9,16 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-10-18
+
+Kit tooling only; no installed file changes, nothing for a project to do.
+
+### Added
+- `tools/e2e-check.mjs`: installs the kit into a fresh project and runs one plan through the whole cycle
+  (Planner save, branch and push guards, slot claim, scope guard, ship-prep, push, merge, ledger close-out,
+  slot release, drift and sync). A local bare repository stands in for GitHub. CI runs it on Linux and
+  Windows for every push and PR, so a release cannot ship a broken cycle.
+
 ## [1.0.2] - 2026-10-18
 
 Fixes found by running a fresh project (installed from GitHub) through plan, take-plan and ship. Nothing for a project to do.
@@ -101,7 +111,8 @@ Phases 4 to 6A, never tagged. Projects installed from a local kit folder.
 Phases 1 and 2, before this repository existed: the workflow was extracted from its source project into a
 stack-neutral `core/` with `{{placeholder}}` config keys and a leak check.
 
-[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.3
 [1.0.2]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.2
 [1.0.1]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.1
 [1.0.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.0
