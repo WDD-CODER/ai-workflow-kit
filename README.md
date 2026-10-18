@@ -41,6 +41,19 @@ cd ai-workflow-kit
   Required keys (`project.name`, `commands.build|lint|test`, `hooks.shellPath`) missing → exit 2, nothing
   written. Other empty keys render `(not set)` and are listed.
 
+### First-time setup in the project
+
+- **Git hooks.** The `.husky/*` hooks are plain `sh` scripts with a shebang, so they run with husky
+  (`"prepare": "husky"`, then `npm run prepare`) or without it (`git config core.hooksPath .husky`). The
+  installer stages them as executable (`git add --chmod=+x`); lint-staged runs only when it is installed.
+- **todo-sync needs one repo setting.** Settings → Actions → General → Workflow permissions → tick
+  "Allow GitHub Actions to create and approve pull requests". Without it every merge's todo-sync run fails
+  at `gh pr create`; the run deletes its `chore/todo-sync-*` branch and prints an error naming the setting.
+- **CI secret scan.** The `gitleaks` job in `ci.yml` asks for `contents: read` and `pull-requests: read`
+  and posts no PR comments (`GITLEAKS_ENABLE_COMMENTS: false`), so it works with the default read-only
+  token. A repository owned by an organization (not a personal account) also needs a `GITLEAKS_LICENSE`
+  secret (see the gitleaks-action docs).
+
 ## Sync (see what a newer kit changes)
 
 ```powershell

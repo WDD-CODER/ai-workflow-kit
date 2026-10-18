@@ -1,7 +1,7 @@
 # /plan — Planning Path
 
 Use this path for product planning, PRDs, HLDs, and technical design decisions.
-In the three-agent workflow, planning is the **Architect** role (Claude.ai by default;
+Planning is the **Architect** role (Claude.ai by default;
 Claude Code / Cursor may plan when the Human Director explicitly overrides).
 
 ## Loads

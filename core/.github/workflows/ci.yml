@@ -119,6 +119,10 @@ jobs:
 
   gitleaks:
     runs-on: ubuntu-latest
+    # The default token may be read-only; the action reads the PR's commits and must not post comments.
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -127,6 +131,7 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: false
 
   ci:
     needs: [changes, lint, build, test, server-tests, gitleaks]

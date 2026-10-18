@@ -61,7 +61,13 @@ jobs:
           git add -A .claude/todo.md .claude/todo-archive plans
           git commit -m "chore(todo): sync ledger and close finished plans (${GITHUB_SHA::8})"
           git push origin "$branch"
-          gh pr create --base {{git.mainBranch}} --head "$branch" \
+          # Default repos refuse PRs from GITHUB_TOKEN. Delete the branch so failed runs don't pile up
+          # chore/todo-sync-* branches, and name the setting that fixes it.
+          if ! gh pr create --base {{git.mainBranch}} --head "$branch" \
             --title "chore(todo): sync ledger from merged plan files" \
-            --body "Automatic: copies Worker [x] marks from plans/*.plan.md into .claude/todo.md (todo-sync workflow, triggered by ${GITHUB_SHA::8})."
+            --body "Automatic: copies Worker [x] marks from plans/*.plan.md into .claude/todo.md (todo-sync workflow, triggered by ${GITHUB_SHA::8})."; then
+            git push origin --delete "$branch" || true
+            echo "::error title=todo-sync needs a repo setting::GitHub Actions may not open pull requests in this repo. Settings → Actions → General → Workflow permissions → tick \"Allow GitHub Actions to create and approve pull requests\", then re-run this workflow. The branch $branch was deleted."
+            exit 1
+          fi
           gh pr merge "$branch" --squash --delete-branch

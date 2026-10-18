@@ -9,7 +9,8 @@
  *   templates/       seed      written once, never updated by sync; templates/cursor/** only with the Cursor layer;
  *                              templates/fragments/** are inputs, not files
  */
-import { readFileSync, readdirSync, existsSync, statSync } from 'fs'
+import { readFileSync, readdirSync, existsSync, statSync, chmodSync } from 'fs'
+import { spawnSync } from 'child_process'
 import { createHash } from 'crypto'
 import { resolve, join, dirname, basename, relative, sep } from 'path'
 import { fileURLToPath } from 'url'
@@ -172,10 +173,23 @@ function trimHusky(text, planned) {
     .filter((line) => {
       const script = /^node (scripts\/\S+\.mjs)/.exec(line.trim())
       if (script) return planned.has(script[1])
-      if (/^npx lint-staged\b/.test(line.trim())) return planned.has('.lintstagedrc.mjs')
+      if (/\bnpx lint-staged\b/.test(line)) return planned.has('.lintstagedrc.mjs')
       return true
     })
     .join('\n')
+}
+
+/** Git hooks the kit writes must be executable: on disk, and in the git index (Windows ignores the file mode). */
+export const isHook = (dest) => dest.startsWith('.husky/')
+
+/** chmod 755 each written hook and stage it as 100755 when the target is a git work tree. Returns a log line or null. */
+export function markHooksExecutable(target, dests) {
+  if (dests.length === 0) return null
+  for (const d of dests) chmodSync(join(target, d), 0o755)
+  const inRepo = spawnSync('git', ['rev-parse', '--is-inside-work-tree'], { cwd: target, encoding: 'utf8' }).stdout?.trim() === 'true'
+  if (!inRepo) return null
+  const r = spawnSync('git', ['add', '--chmod=+x', '--', ...dests], { cwd: target, encoding: 'utf8' })
+  return r.status === 0 ? `NOTE staged ${dests.join(', ')} as executable (git add --chmod=+x)` : `NOTE could not stage the hooks as executable; run: git add --chmod=+x ${dests.join(' ')}`
 }
 
 /**

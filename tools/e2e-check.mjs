@@ -12,7 +12,10 @@
  * push to main); pre-push refuses code on main; branch guard denies code on main and allows the plan;
  * slot claim (take-plan, REALITY: clean); a second claim of the same plan is refused; scope guard allows
  * in-scope and denies out-of-scope; ship-prep scope ok; Worker push; server merge; ledger sync, plan
- * close-out, archive and slot release; drift-check ok and a no-op kit-sync afterwards.
+ * close-out, archive and slot release; drift-check ok and a no-op kit-sync afterwards; pre-push accepts a
+ * closed plan in a range folder and refuses code; a project without
+ * husky (core.hooksPath=.husky only) runs the hooks: the first commit passes, a staged fake key is refused;
+ * SessionStart prints valid JSON on each branch (idle slot, worker without and with a session-state file).
  * Exit 0 = every case passed, 1 = failures (one line per case).
  */
 import { writeFileSync, readFileSync, mkdtempSync, mkdirSync, rmSync, existsSync, readdirSync, realpathSync } from 'fs'
@@ -189,6 +192,72 @@ function main() {
   check('drift-check ok after the full cycle', drift.status === 0 && /KIT_DRIFT: ok/.test(drift.out), tail(drift.out))
   const ks = node(proj, join(kit, 'tools', 'sync.mjs'), '--target', proj)
   check('kit-sync dry-run is a no-op', /0 new, 0 kit-update, 0 conflicts/.test(ks.out), tail(ks.out))
+
+  // pre-push accepts a closed plan in a range folder and still refuses code. A plain clone has no
+  // hooks configured, so the commits are made there and the project's hook is run on them directly.
+  const pc = join(root, 'pre-push-clone')
+  sh('git', ['clone', '-q', '-b', 'main', origin, pc], root)
+  const remoteSha = git(pc, 'rev-parse', 'origin/main').out.trim()
+  const prePush = (sha) => sh('sh', [join(proj, '.husky', 'pre-push'), 'origin', origin], pc, `refs/heads/main ${sha} refs/heads/main ${remoteSha}\n`)
+  mkdirSync(join(pc, 'plans', '300-400'), { recursive: true })
+  writeFileSync(join(pc, 'plans', '300-400', 'x.plan.md'), '# Plan 300 — x\n')
+  git(pc, 'add', 'plans')
+  git(pc, 'commit', '-q', '-m', 'plan: close 300')
+  const rangeOk = prePush(git(pc, 'rev-parse', 'HEAD').out.trim())
+  check('pre-push accepts a push touching only plans/300-400/x.plan.md', rangeOk.status === 0, tail(rangeOk.out))
+  mkdirSync(join(pc, 'src'), { recursive: true })
+  writeFileSync(join(pc, 'src', 'x.ts'), 'export {}\n')
+  git(pc, 'add', 'src')
+  git(pc, 'commit', '-q', '-m', 'feat: x')
+  const srcBad = prePush(git(pc, 'rev-parse', 'HEAD').out.trim())
+  check('pre-push still refuses src/x.ts', srcBad.status !== 0 && /src\/x\.ts/.test(srcBad.out), tail(srcBad.out))
+
+  // 7. A project without husky: core.hooksPath=.husky alone must run the hooks (on Windows git needs the shebang).
+  const nh = join(root, 'nohusky-app')
+  sh('git', ['init', '-q', '-b', 'main', nh], root)
+  writeFileSync(join(nh, 'package.json'), JSON.stringify({
+    name: 'nohusky-app', version: '0.0.0', private: true, type: 'module',
+    scripts: { build: 'node -e ""', lint: 'node -e ""', test: 'node -e ""' },
+  }, null, 2) + '\n')
+  writeFileSync(join(nh, 'kit.config.json'), JSON.stringify({
+    project: { name: 'nohusky-app', repoName: 'nohusky-app' },
+    commands: { build: 'build', lint: 'lint', test: 'test' },
+    hooks: { shellPath: 'bash' },
+  }, null, 2) + '\n')
+  const nhInst = node(nh, join(kit, 'tools', 'install.mjs'), '--target', nh, '--source', kit)
+  const modes = git(nh, 'ls-files', '-s', '--', '.husky').out.trim().split(/\r?\n/).filter(Boolean)
+  check('install stages every git hook as 100755', nhInst.status === 0 && modes.length > 0 && modes.every((l) => l.startsWith('100755')), tail(nhInst.out + modes.join(' | ')))
+  git(nh, 'config', 'core.hooksPath', '.husky')
+  git(nh, 'add', '-A')
+  const nc = git(nh, 'commit', '-q', '-m', 'chore: install the workflow kit')
+  check('no husky: the first commit runs the pre-commit hook and passes', nc.status === 0 && !/cannot spawn/.test(nc.out), tail(nc.out))
+  writeFileSync(join(nh, 'config.mjs'), `export const key = '${'AKIA'}${'Q'.repeat(16)}'\n`)
+  git(nh, 'add', 'config.mjs')
+  const nk = git(nh, 'commit', '-q', '-m', 'feat: config')
+  check('no husky: the pre-commit hook refuses a staged fake key', nk.status !== 0 && /secret-scan: blocked config\.mjs/.test(nk.out), tail(nk.out))
+
+  // 8. SessionStart output is valid JSON with additionalContext under hookSpecificOutput, on every branch.
+  // The installed script runs next to stubbed helpers, so each branch can be forced.
+  const ssDir = join(root, 'session-start')
+  mkdirSync(join(ssDir, 'scripts', 'lib'), { recursive: true })
+  writeFileSync(join(ssDir, 'scripts', 'session-startup.sh'), readFileSync(join(proj, 'scripts', 'session-startup.sh'), 'utf8'))
+  writeFileSync(join(ssDir, 'scripts', 'lib', 'slot.mjs'), 'console.log(process.env.STUB_DESCRIBE)\n')
+  writeFileSync(join(ssDir, 'scripts', 'session-state-path.mjs'), 'console.log(process.env.STUB_RESOLVED)\n')
+  writeFileSync(join(ssDir, 'scripts', 'free-merged-slots.mjs'), '')
+  writeFileSync(join(ssDir, 'scripts', 'orphan-sweep.mjs'), '')
+  const nasty = 'quote " backslash \\ backtick ` dollar $HOME\nsecond line'
+  writeFileSync(join(ssDir, 'state.md'), `# State\n\n## Session Summary\n${nasty}\n\n## Next Steps\n- go\n`)
+  const branches = [
+    ['idle slot', { STUB_DESCRIBE: 'IDLE SLOT: wt-1 is idle', STUB_RESOLVED: 'NONE' }, 'IDLE SLOT: wt-1'],
+    ['worker without state', { STUB_DESCRIBE: 'WORKER: plan=001', STUB_RESOLVED: 'missing.md' }, 'No previous session state'],
+    ['worker with a state file', { STUB_DESCRIBE: 'WORKER: plan=001', STUB_RESOLVED: 'state.md' }, nasty],
+  ]
+  for (const [name, stub, expect] of branches) {
+    const r = spawnSync('bash', [join(ssDir, 'scripts', 'session-startup.sh')], { cwd: ssDir, env: { ...env, ...stub }, encoding: 'utf8' })
+    let ctx
+    try { ctx = JSON.parse(r.stdout).hookSpecificOutput.additionalContext } catch (e) { ctx = undefined }
+    check(`SessionStart JSON parses (${name})`, typeof ctx === 'string' && ctx.includes(expect), tail(`${r.stdout}${r.stderr}`))
+  }
 }
 
 try {

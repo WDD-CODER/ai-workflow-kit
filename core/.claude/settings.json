@@ -89,7 +89,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR}/scripts/session-manifest-hook.py\"",
+            "command": "\"{{hooks.shellPath}}\" \"${CLAUDE_PROJECT_DIR}/scripts/run-python.sh\" \"${CLAUDE_PROJECT_DIR}/scripts/session-manifest-hook.py\"",
             "timeout": 5
           }
         ]

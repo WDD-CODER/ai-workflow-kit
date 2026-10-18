@@ -37,7 +37,7 @@ save-plan:
   - Good: `B1: Let the installer pull the kit straight from a GitHub release instead of a local copy — --source/--ref flags, fetch-to-cache helper — tools/install.mjs, tools/lib/source.mjs`.
   - When the Human's pasted plan has raw-action sub-tasks, write the titles yourself while saving (keep their wording in `<details>`); never ask the Human to rewrite them.
 - Every Done-when item starts with `[auto]` or `[human]`. `[auto]` means the expected output is exact — a string, an exit code, `npm run {{commands.build}}` passing, deterministic CLI output. `[human]` is visual/UI judgement, live interaction, product decisions; untagged counts as `[human]`. A UI-touching plan whose only Done-when is `[auto] npm run {{commands.build}}` is under-specified — add a `[human]` item. Only the plan author tags; agents never promote to `[auto]`.
-- Medium/large plan touching auth or storage → a one-line security-surface note; `scripts/pre-commit-security-grep.mjs` is the gate.
+- Medium/large plan touching auth or storage → a one-line security-surface note; `scripts/pre-commit-secret-scan.mjs` (pre-commit) and the CI security workflow are the gates, plus any stack pack's pre-commit checks.
 
 ## Phase 0 — similarity gate (always)
 
@@ -55,7 +55,7 @@ Reply: rewrite existing | save as new | cancel
 ```
 
 - **rewrite existing** → overwrite that path, sync its Atomic Sub-tasks + `.claude/todo.md`, no new `NNN`.
-- **save as new** → continue; before the Write put the relative path in `.claude/.plan-write-ack` (one line, e.g. `plans/291-foo.plan.md`) so the PreToolUse guard allows the create.
+- **save as new** → continue; before the Write put the relative path in `.claude/.plan-write-ack` (one line, e.g. `plans/123-example-feature.plan.md`) so the PreToolUse guard allows the create.
 - **cancel** → stop, write nothing, execute nothing.
 
 ## Phase 1 — number + ledger (Planner only)

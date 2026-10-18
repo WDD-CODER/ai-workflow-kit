@@ -9,6 +9,37 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-10-18
+
+Fixes found installing the kit into a React + Vite project. Sync to pick them up (`kit-sync -Ref v1.0.5 -Apply`);
+nothing else to do.
+
+### Fixed
+- Git hooks: `.husky/pre-commit` had no shebang, so git without the husky wrapper (`core.hooksPath=.husky`)
+  could not run it on Windows and every commit failed. Both hooks now start with `#!/usr/bin/env sh` and
+  `set -e`, lint-staged runs only when it is installed, and install and sync write the hooks as executable
+  (chmod 755 and `git add --chmod=+x`). The install note names both ways to enable the hooks.
+- SessionStart: the context sat under `decision`, where Claude Code ignores it, so the slot role and the
+  resumed session state never reached the session; and quotes or newlines in the session-state file broke
+  the JSON. The output is now built in node, with `additionalContext` directly under `hookSpecificOutput`.
+- CI: the `gitleaks` job asks for `contents: read` and `pull-requests: read` and posts no comments
+  (`GITLEAKS_ENABLE_COMMENTS: false`), so it runs with a read-only default token.
+- Python: the session-manifest hook runs through `scripts/run-python.sh` (first of `python3`, `python`, `py`
+  that works, else a quiet no-op), and `ship-prep` tries the same three and prints a warning instead of
+  silently falling back to the full dirty-file list.
+- pre-push: a push to main that only moves closed plans into a range folder (`plans/300-400/…`) is allowed.
+- todo-sync: when GitHub refuses to let Actions open the PR, the run deletes its `chore/todo-sync-*` branch
+  and prints an error naming the repo setting. Install output and the README's first-time setup list it.
+- Stale references: `save-plan` named a pre-commit script that only one pack ships, `workflow-map.md` named
+  `.claude/todo-archive.md` (it is the folder `.claude/todo-archive/`, written by todo-sync), example plan
+  names came from a real project, `/docs-refresh` used Cursor's subagent type (`general-purpose` in Claude
+  Code), and `/security` had a garbled step and leftover "three-agent" wording.
+
+### Added
+- `tools/e2e-check.mjs` cases: a project without husky runs the hooks (first commit passes, a staged fake key
+  is refused); SessionStart prints valid JSON on each branch; pre-push accepts a range-folder plan and still
+  refuses code.
+
 ## [1.0.4] - 2026-10-18
 
 Security fixes from an automated review. Sync to pick them up (`kit-sync -Ref v1.0.4 -Apply`); nothing else to do.
@@ -125,7 +156,8 @@ Phases 4 to 6A, never tagged. Projects installed from a local kit folder.
 Phases 1 and 2, before this repository existed: the workflow was extracted from its source project into a
 stack-neutral `core/` with `{{placeholder}}` config keys and a leak check.
 
-[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.0.4...HEAD
+[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.0.5...HEAD
+[1.0.5]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.5
 [1.0.4]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.4
 [1.0.3]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.3
 [1.0.2]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.2

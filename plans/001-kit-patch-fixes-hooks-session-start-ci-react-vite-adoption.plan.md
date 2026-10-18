@@ -1,6 +1,6 @@
 # Plan 001 — Kit Patch Fixes for Hooks, Session Start and CI from the React-Vite Adoption
 
-Status: draft
+Status: active
 Snapshot: b0ba42501af952fc23566a1885fab53af57e6686
 
 ## Problem Statement
@@ -75,16 +75,27 @@ Thinking outside the box is expected; writing outside it requires explicit conse
 - CHANGELOG `[1.0.5]`: fixes only, "nothing to do".
 
 ## Atomic Sub-tasks
-- [ ] P0: Check which hand-off fixes are still needed on the current kit — Step 0 reality check, one line per issue — `plans/001-kit-patch-fixes-hooks-session-start-ci-react-vite-adoption.plan.md`
-- [ ] P1: Make git hooks run on Windows without husky installed — shebang, set -e, guarded lint-staged, executable bit in kit and at install, e2e case without husky — `core/.husky/*`, `tools/install.mjs`, `tools/e2e-check.mjs`
-- [ ] P2: Make session start actually deliver the worker and resume text to the session — JSON built in node, additionalContext under hookSpecificOutput, test with quotes and newlines — `core/scripts/session-startup.sh`
-- [ ] P3: Give the secret-scan CI job the permissions it needs — gitleaks permissions + comments off + README CI note — `core/.github/workflows/ci.yml`, `README.md`
-- [ ] P4: Stop the session manifest from silently failing when python3 is missing — run-python.sh fallback for the hook; ship-prep tries python3, python, py and warns — `core/scripts/run-python.sh`, `core/.claude/settings.json`, `core/scripts/ship-prep.mjs`
-- [ ] P5: Let the Planner push closed plans that moved into range folders — pre-push regex accepts plans/<range>/ — `core/.husky/pre-push`
-- [ ] P6: Make todo-sync explain the missing repo setting and clean up its branch — delete branch on failure, ::error line, install output + README first-time setup — `core/.github/workflows/todo-sync.yml`, `tools/install.mjs`, `README.md`
-- [ ] P7: Fix stale paths and leftovers from the retired agent personas — security-grep name, todo-archive folder, generic example plans, docs-refresh subagent type, garbled security step — `core/.claude/skills/save-plan/SKILL.md`, `core/docs/agent/workflow-map.md`, `core/.claude/commands/{auto-solve,docs-refresh,security}.md`
+- [x] P0: Check which hand-off fixes are still needed on the current kit — Step 0 reality check, one line per issue — `plans/001-kit-patch-fixes-hooks-session-start-ci-react-vite-adoption.plan.md`
+- [x] P1: Make git hooks run on Windows without husky installed — shebang, set -e, guarded lint-staged, executable bit in kit and at install, e2e case without husky — `core/.husky/*`, `tools/install.mjs`, `tools/e2e-check.mjs`
+- [x] P2: Make session start actually deliver the worker and resume text to the session — JSON built in node, additionalContext under hookSpecificOutput, test with quotes and newlines — `core/scripts/session-startup.sh`
+- [x] P3: Give the secret-scan CI job the permissions it needs — gitleaks permissions + comments off + README CI note — `core/.github/workflows/ci.yml`, `README.md`
+- [x] P4: Stop the session manifest from silently failing when python3 is missing — run-python.sh fallback for the hook; ship-prep tries python3, python, py and warns — `core/scripts/run-python.sh`, `core/.claude/settings.json`, `core/scripts/ship-prep.mjs`
+- [x] P5: Let the Planner push closed plans that moved into range folders — pre-push regex accepts plans/<range>/ — `core/.husky/pre-push`
+- [x] P6: Make todo-sync explain the missing repo setting and clean up its branch — delete branch on failure, ::error line, install output + README first-time setup — `core/.github/workflows/todo-sync.yml`, `tools/install.mjs`, `README.md`
+- [x] P7: Fix stale paths and leftovers from the retired agent personas — security-grep name, todo-archive folder, generic example plans, docs-refresh subagent type, garbled security step — `core/.claude/skills/save-plan/SKILL.md`, `core/docs/agent/workflow-map.md`, `core/.claude/commands/{auto-solve,docs-refresh,security}.md`
 - [ ] P8: Run all kit checks, open the kit PR and release v1.0.5 — leak-check, pack-check, install-check, e2e-check; CHANGELOG; tag after Dandan's go — kit repo
 - [ ] P9: Sync FoodVibe to v1.0.5 and ship it — kit-sync dry-run (0 conflicts), Apply, ng build, kit-owned check, /ship — `../foodVibe1.0/.kit/install.json` + files kit-sync writes
 
 ## Out of Scope
 Planner role change (002); stack-neutral core, CI config keys, dev server by config (003, 004); React-Vite pack and upstream-owned layer (005); hand-off I-28 (guards mod, tracked under FoodVibe plan 409).
+
+## Execution Notes
+- Step 0 (2026-10-18, kit `main` = `01cabd2`, `v1.0.4` tagged and released that day): I-1, I-3, I-7, I-12, I-13,
+  I-14 and I-17 were all still open; none already fixed. Persona leftovers also still present.
+- The stale-reference grep still finds six lines, all on purpose: `core/.husky/pre-commit` runs
+  `pre-commit-security-grep.mjs`, which the Angular pack ships (install drops the line when the script isn't
+  installed; moving pack checks out of the core hook is I-15, plan 004); `todo-archive.mjs` reads a legacy
+  `.claude/todo-archive.md` for `--migrate`; `auto-solve.md` and `sweep-stale-todos.md` say not to write that
+  legacy file.
+- Install and sync stage the hooks as executable in the target (`git add --chmod=+x`), because Windows git
+  ignores the file mode on disk.

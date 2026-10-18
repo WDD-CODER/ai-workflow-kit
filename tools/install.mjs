@@ -25,7 +25,7 @@ import { spawnSync } from 'child_process'
 import { builtinModules } from 'module'
 import { resolve, join, dirname } from 'path'
 import { resolveSource } from './lib/source.mjs'
-import { KIT_ROOT, REQUIRED, isEmpty, readJson, sha256, resolveConfig, planFiles, parseArgs, unflatten, NOT_SET, readOverrides } from './lib/kit.mjs'
+import { KIT_ROOT, REQUIRED, isEmpty, readJson, sha256, resolveConfig, planFiles, parseArgs, unflatten, NOT_SET, readOverrides, isHook, markHooksExecutable } from './lib/kit.mjs'
 
 let args
 try {
@@ -122,6 +122,7 @@ if (args.adopt) {
 const prior = existsSync(join(target, '.kit', 'install.json')) ? readJson(join(target, '.kit', 'install.json')) : { files: {} }
 const record = { ...prior.files }
 const counts = { written: 0, same: 0, skipped: 0, overridden: 0 }
+const hooksWritten = []
 for (const f of plan.files) {
   if (overrides.has(f.dest)) {
     counts.overridden++
@@ -148,9 +149,13 @@ for (const f of plan.files) {
   if (!args['dry-run']) {
     mkdirSync(dirname(dest), { recursive: true })
     writeFileSync(dest, f.content, 'utf8')
+    if (isHook(f.dest)) hooksWritten.push(f.dest)
   }
   record[f.dest] = { sha256: digest, kind: f.kind, source: f.source }
 }
+
+const hookNote = markHooksExecutable(target, hooksWritten)
+if (hookNote) log(hookNote)
 
 const kitVersion = readJson(join(kitRoot, 'kit.json')).version
 const sorted = Object.fromEntries(Object.entries(record).sort(([a], [b]) => (a < b ? -1 : 1)))
@@ -201,5 +206,8 @@ if (deps.size > 0) {
     log(r.status === 0 ? `NOTE installed devDependencies: ${list}` : `NOTE npm install failed; run: npm install -D ${list}`)
   } else log(`NOTE the installed scripts need devDependencies — run: npm install -D ${list}  (or re-run with --install-deps)`)
 }
-if (hasHusky) log('NOTE git hooks are inactive until husky is set up — add "prepare": "husky" to package.json scripts, then run: npm run prepare')
+if (hasHusky) log('NOTE git hooks are inactive until enabled — either husky ("prepare": "husky" in package.json scripts, then npm run prepare) or: git config core.hooksPath .husky')
+if (plan.files.some((f) => f.dest === '.github/workflows/todo-sync.yml')) {
+  log('NOTE todo-sync needs a repo setting on GitHub: Settings → Actions → General → Workflow permissions → tick "Allow GitHub Actions to create and approve pull requests"')
+}
 log(`KIT_INSTALL: ok — ${counts.written} ${args['dry-run'] ? 'would be written' : 'written'}, ${counts.same} identical, ${counts.skipped} skipped-existing, ${counts.overridden} overrides, packs=[${packs.join(', ')}], cursor=${!!args.cursor}, source=${origin.source}${origin.ref ? '@' + origin.ref : ''}`)
