@@ -139,6 +139,7 @@ node tools/leak-check.mjs --root packs --project-only                  # packs: 
 node tools/leak-check.mjs --root README.md --root CHANGELOG.md --root docs --project-only
 node tools/pack-check.mjs                                              # every pack meets the pack.json contract
 node tools/install-check.mjs                                           # installs fixtures; sync, drift, local + GitHub sources (offline)
+node tools/e2e-check.mjs                                               # a fresh project through plan -> take-plan -> ship -> merge -> close-out
 ```
 
 `KIT_LEAK_TERMS="name,email,host"` adds private terms to any leak-check run without putting them in this
