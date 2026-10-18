@@ -112,6 +112,10 @@ has no PreToolUse hook of its own.
 | `pre-commit` | `lint-staged`, secret-scan, `plan-ledger-check.mjs` (+ stack-pack checks) |
 | `pre-push` | On a push whose remote ref is `refs/heads/{{git.mainBranch}}`: diffs the pushed range and exits 1 unless every file matches `plans/<name>.plan.md` or `.claude/todo.md` — the Planner's admin-bypass shape. Other branches pass untouched. Human-only override: `git push --no-verify`. |
 
+Claude Code backs this up in `.claude/settings.json`: `permissions.deny` refuses the hook bypasses (`--no-verify`,
+`commit -n`, `core.hooksPath`) and force pushes, and `permissions.ask` puts `git reset --hard`, `git clean` and
+`rm -rf` on absolute, home or `.git` paths in front of the Human. The Human runs those with the `!` prefix.
+
 ### Planner-Worker slot model (replaces the retired two-slot system)
 
 3 permanent worktrees, fixed ports, no auto-claim:
