@@ -7,8 +7,9 @@ pipeline with a merge gate, validation cards, and a brain of lessons.
 **Status:** `v1` — the source project runs on kit-sync. Releases follow semver: a minor or patch release never
 asks a project to act; a major one says what to do in [CHANGELOG.md](CHANGELOG.md).
 
-**License:** none. Copyright © the author, all rights reserved. The repository is public so it can be read
-and installed by its author's projects; no permission to copy, modify or redistribute is granted.
+**License:** none. Copyright © the author, all rights reserved. The repository is private; installing from
+`github:` needs git credentials that can read it (the same ones `git clone` uses). No permission to copy,
+modify or redistribute is granted.
 
 ## Requirements
 
@@ -143,7 +144,7 @@ node tools/e2e-check.mjs                                               # a fresh
 ```
 
 `KIT_LEAK_TERMS="name,email,host"` adds private terms to any leak-check run without putting them in this
-public repo.
+repo.
 
 ## Releasing
 
