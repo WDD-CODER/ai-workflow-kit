@@ -42,15 +42,10 @@ Triggers: "execute plan NNN", "take plan NNN" (only meaningful inside a {{slots.
      → start executing, no go needed. **STOP for a go** only on a `conflict` (a symbol, line or
      file the plan names was removed, renamed or rewritten).
 
-4. **Open with a brief, before any work.** Right after reading the plan, print to the Human:
-   - **PLAN BRIEF** — 2–3 plain lines, no more: what the plan changes and why it matters.
-     Not the plan's title restated, not a milestone list, no jargon.
-   - **HOW TO VALIDATE** — only if the plan has Done-when / validation items for the Human
-     (`[human]` or untagged). Print them as the cards from `docs/agent/job-validation.md`
-     ("Format — one card per check"): plain words, WHERE / DO / SEE ✓ / FAIL ✗, same card rules.
-     Skip `[auto]` items (agent evidence, not for the Human) and skip the section entirely when
-     nothing is left for the Human. Print once, then start executing; the cards are repeated at
-     close-out per `docs/agent/job-validation.md`.
+4. **Open with the plan brief, before any work.** Right after reading the plan, print a
+   **PLAN BRIEF** to the Human — 2–3 plain lines, no more: what the plan changes and why it matters.
+   Not the plan's title restated, not a milestone list, no jargon. Then start executing. Validation
+   cards come later, at close-out (`/done`, `/ship`), per `docs/agent/job-validation.md`.
 
 **Dev servers on demand.** Start them only when a step needs the running app — a browser check,
 a validation click-list for the Human, `/remote`, preflight — or when the Human says "start servers":

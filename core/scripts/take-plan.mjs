@@ -20,7 +20,7 @@
  * slot's reserved ports are stopped before the claim; any other program there is refused.
  * Exit 1 + message on every refusal.
  */
-import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { resolve, dirname, join } from 'path'
 import { fileURLToPath } from 'url'
