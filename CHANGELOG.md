@@ -9,6 +9,18 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-10-18
+
+Fixes found by running a fresh project (installed from GitHub) through plan, take-plan and ship. Nothing for a project to do.
+
+### Fixed
+- Scope guard: in a project with no i18n file or hotspots, the hotspot list rendered `''`, picomatch threw, and
+  the guard failed open (every write allowed, `/ship` reported `scope: out`). Empty entries are dropped.
+- `todo-query append` starts `.claude/todo.md` when it does not exist yet, so the first save-plan works.
+- `pre-push`: the first push to an empty remote no longer prints a git error.
+- Slot `npm install` no longer triggers the DEP0190 warning on Windows.
+- `/plan` command text no longer shows `(retired)` placeholders.
+
 ## [1.0.1] - 2026-10-18
 
 Installer fix; no managed file changes, nothing for a project to do.
@@ -89,7 +101,8 @@ Phases 4 to 6A, never tagged. Projects installed from a local kit folder.
 Phases 1 and 2, before this repository existed: the workflow was extracted from its source project into a
 stack-neutral `core/` with `{{placeholder}}` config keys and a leak check.
 
-[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.2
 [1.0.1]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.1
 [1.0.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.0
 [0.5.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v0.5.0

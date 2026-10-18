@@ -19,7 +19,7 @@
  * Node built-ins only; Windows (netstat/taskkill/PowerShell) and POSIX (lsof/ps/kill).
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, readdirSync, readlinkSync, openSync, renameSync, statSync } from 'fs'
-import { execFileSync, spawn } from 'child_process'
+import { execFileSync, execSync, spawn } from 'child_process'
 import { createHash } from 'crypto'
 import { resolve, dirname, join, basename } from 'path'
 import { fileURLToPath } from 'url'
@@ -441,7 +441,9 @@ export function npmInstallIfChanged(dir, hashFileName, root = repoRoot) {
   const oldHash = existsSync(hashPath) ? readFileSync(hashPath, 'utf8').trim() : null
   if (newHash === oldHash) return false
 
-  execFileSync(isWin ? 'npm.cmd' : 'npm', ['install'], { cwd: dir, stdio: 'ignore', shell: isWin })
+  // Windows: npm.cmd needs a shell, and a shell must get one command string, not an args array (DEP0190).
+  if (isWin) execSync('npm install', { cwd: dir, stdio: 'ignore' })
+  else execFileSync('npm', ['install'], { cwd: dir, stdio: 'ignore' })
   mkdirSync(dirname(hashPath), { recursive: true })
   writeFileSync(hashPath, newHash)
   return true

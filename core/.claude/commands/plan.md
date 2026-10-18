@@ -15,7 +15,7 @@ Claude Code / Cursor may plan when the Human Director explicitly overrides).
 
 - Architect (Human-directed) — writes / updates a Plan Contract in
   `plans/NNN-slug.plan.md` (via `.claude/skills/save-plan/SKILL.md`)
-- Does **not** invoke the retired `(retired)` or `(retired)` agents
+- Does **not** invoke retired agents
 
 ## Typical flow
 

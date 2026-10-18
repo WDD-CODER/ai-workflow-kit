@@ -87,6 +87,18 @@ for (const fx of fixtures) {
     if (!read(dir, '.husky/pre-commit').includes('pre-commit-no-semi.mjs')) fail(`${fx.name}: pre-commit lost the angular hook`)
   }
   if (fx.name === 'core') {
+    // A fresh project with no i18n file and no hotspots: the scope guard's list must hold no empty pattern
+    // (picomatch throws on '' and the guard then fails open), and the first save-plan starts the ledger.
+    const hs = read(dir, 'scripts/scope-check.mjs').match(/const HOTSPOTS = (\[[\s\S]*?\](?:\.filter\(Boolean\))?)/)
+    const items = hs ? [...hs[1].matchAll(/'([^']*)'/g)].map((m) => m[1]) : null
+    const list = items && hs[1].endsWith('.filter(Boolean)') ? items.filter(Boolean) : items
+    if (!list || list.some((p) => !p)) fail(`${fx.name}: scope-check HOTSPOTS has an empty pattern: ${hs?.[1]}`)
+    if (existsSync(join(dir, '.claude/todo.md'))) fail(`${fx.name}: a fresh install should have no .claude/todo.md yet`)
+    writeFileSync(join(dir, 'section.tmp.md'), '### Plan 001 — First (`plans/001-first.plan.md`)\n\n- [ ] F1: first task\n')
+    const ap = spawnSync(process.execPath, [join(dir, 'scripts/todo-query.mjs'), 'append', '--from', join(dir, 'section.tmp.md')], { cwd: dir, encoding: 'utf8' })
+    rmSync(join(dir, 'section.tmp.md'))
+    if (ap.status !== 0 || !existsSync(join(dir, '.claude/todo.md')) || !read(dir, '.claude/todo.md').includes('### Plan 001 — First')) fail(`${fx.name}: todo-query append on a fresh project: ${(ap.stdout + ap.stderr).trim()}`)
+    rmSync(join(dir, '.claude/todo.md'))
     if (agents.includes('Signals only')) fail(`${fx.name}: core-only AGENTS.md must not carry angular rules`)
     if (all.some((f) => f.startsWith('.cursor/'))) fail(`${fx.name}: no --cursor, yet .cursor files were installed`)
     const hook = read(dir, '.husky/pre-commit')
