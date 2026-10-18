@@ -9,6 +9,20 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-10-18
+
+Security fixes from an automated review. Sync to pick them up (`kit-sync -Ref v1.0.4 -Apply`); nothing else to do.
+
+### Security
+- `brain-capture-reminder.yml`: the PR title was pasted into the job's shell script and written to
+  `$GITHUB_ENV` under a fixed `EOF` delimiter, so a crafted title could run commands or set variables. PR fields
+  now reach the script only through `env:`, the PR number is checked to be numeric, and every multi-line value
+  uses a random delimiter.
+- `.claude/settings.json`: `Bash(*)` stays allowed, but `permissions.deny` now refuses git-hook bypasses
+  (`--no-verify`, `commit -n`, `core.hooksPath`) and force pushes, and `permissions.ask` asks before
+  `git reset --hard`, `git clean` and `rm -rf` on absolute, home or `.git` paths. These were human-only by rule;
+  now Claude Code enforces it.
+
 ## [1.0.3] - 2026-10-18
 
 Kit tooling only; no installed file changes, nothing for a project to do.
@@ -111,7 +125,8 @@ Phases 4 to 6A, never tagged. Projects installed from a local kit folder.
 Phases 1 and 2, before this repository existed: the workflow was extracted from its source project into a
 stack-neutral `core/` with `{{placeholder}}` config keys and a leak check.
 
-[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.0.3...HEAD
+[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.0.4...HEAD
+[1.0.4]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.4
 [1.0.3]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.3
 [1.0.2]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.2
 [1.0.1]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.1

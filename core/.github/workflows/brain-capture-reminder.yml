@@ -35,30 +35,35 @@ jobs:
       - name: Collect changed files + optional dead-ref findings
         id: prep
         shell: bash
+        # PR fields reach the script only through env: a PR title is attacker-controlled text, never inline it.
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER_RAW: ${{ github.event.pull_request.number }}
+          PR_TITLE_RAW: ${{ github.event.pull_request.title }}
         run: |
           set -euo pipefail
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            BASE="${{ github.event.pull_request.base.sha }}"
-            HEAD="${{ github.event.pull_request.head.sha }}"
-            PR_NUMBER="${{ github.event.pull_request.number }}"
-            PR_TITLE="${{ github.event.pull_request.title }}"
-          else
-            PR_NUMBER="${{ github.event.pull_request.number }}"
-            PR_TITLE="${{ github.event.pull_request.title }}"
-            BASE="${{ github.event.pull_request.base.sha }}"
-            HEAD="${{ github.event.pull_request.head.sha }}"
+          # Random heredoc delimiters so a title, file name or finding cannot end the block early and inject
+          # further variables into $GITHUB_ENV.
+          put_multiline() {
+            local name="$1" value="$2" delim
+            delim="ghadelim_$(openssl rand -hex 16)"
+            {
+              echo "${name}<<${delim}"
+              printf '%s\n' "$value"
+              echo "${delim}"
+            } >> "$GITHUB_ENV"
+          }
+
+          if ! [[ "$PR_NUMBER_RAW" =~ ^[0-9]+$ ]]; then
+            echo "Unexpected PR number: $PR_NUMBER_RAW" >&2
+            exit 1
           fi
 
           FILES="$(git diff --name-only "$BASE" "$HEAD" || true)"
-          {
-            echo "CHANGED_FILES<<EOF"
-            echo "$FILES"
-            echo "EOF"
-            echo "PR_NUMBER=$PR_NUMBER"
-            echo "PR_TITLE<<EOF"
-            echo "$PR_TITLE"
-            echo "EOF"
-          } >> "$GITHUB_ENV"
+          put_multiline CHANGED_FILES "$FILES"
+          echo "PR_NUMBER=$PR_NUMBER_RAW" >> "$GITHUB_ENV"
+          put_multiline PR_TITLE "$PR_TITLE_RAW"
 
           FINDINGS=""
           if [[ -f scripts/brain-review-check.mjs ]]; then
@@ -67,11 +72,7 @@ jobs:
               FINDINGS=""
             fi
           fi
-          {
-            echo "DEAD_REF_FINDINGS<<EOF"
-            echo "$FINDINGS"
-            echo "EOF"
-          } >> "$GITHUB_ENV"
+          put_multiline DEAD_REF_FINDINGS "$FINDINGS"
 
       - name: Build sticky comment body
         shell: bash

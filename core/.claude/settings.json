@@ -12,6 +12,29 @@
       "mcp__ide__getOpenEditors",
       "mcp__ide__getCurrentSelection",
       "mcp__ide__executeCode"
+    ],
+    "deny": [
+      "Bash(git push --no-verify*)",
+      "Bash(git push * --no-verify*)",
+      "Bash(git commit --no-verify*)",
+      "Bash(git commit * --no-verify*)",
+      "Bash(git commit -n*)",
+      "Bash(git commit * -n *)",
+      "Bash(git push --force*)",
+      "Bash(git push * --force*)",
+      "Bash(git push -f*)",
+      "Bash(git push * -f*)",
+      "Bash(git push * +*)",
+      "Bash(git config core.hooksPath*)",
+      "Bash(git config * core.hooksPath*)"
+    ],
+    "ask": [
+      "Bash(git reset --hard*)",
+      "Bash(git clean -f*)",
+      "Bash(git clean -d*)",
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf ~*)",
+      "Bash(rm -rf .git*)"
     ]
   },
   "hooks": {
