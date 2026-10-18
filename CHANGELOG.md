@@ -9,6 +9,15 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-18
+
+Installer fix; no managed file changes, nothing for a project to do.
+
+### Fixed
+- `kit-install` listed the Node built-in `net` as a devDependency (and `--install-deps` installed the
+  unrelated npm package `net`). Built-ins now come from `module.builtinModules`.
+- `--install-deps` no longer triggers Node's DEP0190 warning on Windows.
+
 ## [1.0.0] - 2026-10-18
 
 First stable release: the source project runs on kit-sync.
@@ -80,6 +89,7 @@ Phases 4 to 6A, never tagged. Projects installed from a local kit folder.
 Phases 1 and 2, before this repository existed: the workflow was extracted from its source project into a
 stack-neutral `core/` with `{{placeholder}}` config keys and a leak check.
 
-[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.1
 [1.0.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.0
 [0.5.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v0.5.0

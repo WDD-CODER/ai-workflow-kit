@@ -17,6 +17,7 @@ import { tmpdir } from 'os'
 import { join, relative, resolve } from 'path'
 import { spawnSync } from 'child_process'
 import { fileURLToPath } from 'url'
+import { builtinModules } from 'module'
 
 const kit = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const problems = []
@@ -51,6 +52,9 @@ for (const fx of fixtures) {
     fail(`${fx.name}: install exited ${r.status}: ${(r.stdout + r.stderr).trim().split('\n').pop()}`)
     continue
   }
+  const deps = (r.stdout.match(/npm install -D ([^ (]+(?: [^ (]+)*)/)?.[1] ?? '').split(' ')
+  const builtin = deps.filter((d) => builtinModules.includes(d))
+  if (builtin.length) fail(`${fx.name}: devDependencies list Node built-ins: ${builtin.join(', ')}`)
   const all = files(dir)
   for (const f of all) {
     const text = read(dir, f)

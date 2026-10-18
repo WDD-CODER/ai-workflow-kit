@@ -22,6 +22,7 @@
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { spawnSync } from 'child_process'
+import { builtinModules } from 'module'
 import { resolve, join, dirname } from 'path'
 import { resolveSource } from './lib/source.mjs'
 import { KIT_ROOT, REQUIRED, isEmpty, readJson, sha256, resolveConfig, planFiles, parseArgs, unflatten, NOT_SET, readOverrides } from './lib/kit.mjs'
@@ -180,7 +181,7 @@ if (existsSync(pkgFile)) {
   if (absent.length > 0) log(`NOTE package.json has no script(s): ${absent.join(', ')} — the workflow runs them with npm run`)
 } else log('NOTE no package.json yet — create one with the build/lint/test scripts before the first /ship')
 // devDependencies the installed scripts import (bare specifiers) plus the hook runners.
-const BUILTIN = new Set(['fs', 'path', 'url', 'child_process', 'crypto', 'os', 'util', 'readline', 'http', 'https', 'zlib', 'stream', 'events', 'assert'])
+const BUILTIN = new Set(builtinModules)
 const deps = new Set()
 for (const f of plan.files) {
   if (!f.dest.endsWith('.mjs')) continue
@@ -195,7 +196,8 @@ if (plan.files.some((f) => f.dest === '.lintstagedrc.mjs')) deps.add('lint-stage
 if (deps.size > 0) {
   const list = [...deps].sort().join(' ')
   if (args['install-deps'] && !args['dry-run'] && existsSync(pkgFile)) {
-    const r = spawnSync('npm', ['install', '-D', ...deps], { cwd: target, stdio: 'inherit', shell: process.platform === 'win32' })
+    // One command string: on Windows npm is a .cmd and needs a shell, which must not get an args array (DEP0190).
+    const r = spawnSync(`npm install -D ${list}`, { cwd: target, stdio: 'inherit', shell: true })
     log(r.status === 0 ? `NOTE installed devDependencies: ${list}` : `NOTE npm install failed; run: npm install -D ${list}`)
   } else log(`NOTE the installed scripts need devDependencies — run: npm install -D ${list}  (or re-run with --install-deps)`)
 }
