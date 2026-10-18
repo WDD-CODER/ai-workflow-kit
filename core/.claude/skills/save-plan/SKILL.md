@@ -17,7 +17,7 @@ save-plan:
 - [ ] 0 similarity: node scripts/plan-name-similarity.mjs --name="<Display Name>" → no hits, or Human chose rewrite/new/cancel
 - [ ] 1 number (Planner, save-as-new only): node scripts/next-plan-number.mjs → NNN
 - [ ] 1 ledger (Planner): Atomic Sub-tasks appended to .claude/todo.md via todo-query.mjs append
-- [ ] 2 shape: Read-Write Scope parses, exactly one Status:, Snapshot: present, every Done-when tagged [auto]/[human]
+- [ ] 2 shape: Read-Write Scope parses, exactly one Status:, Snapshot: present, every Done-when tagged [auto]/[human], every Atomic Sub-task opens with a plain explanatory title
 - [ ] 2 arch gate: node scripts/scope-check.mjs --arch --plan=<path> → exit 0
 - [ ] 2 prerequisites (Planner): already true on origin/{{git.mainBranch}}, or split into NNN-1
 - [ ] 3 written to plans/NNN-slug.plan.md (never ~/.cursor/plans/)
@@ -30,7 +30,12 @@ save-plan:
 - Path `plans/<NNN>-<slug>.plan.md`. Open plans live directly in one of the open plan folders ({{plans.openDirs}}); when `plans/design` is one of them, a plan with `Track: design` or `Track: split` (Claude Design work: mostly style and layout) goes to `plans/design/<NNN>-<slug>.plan.md`. Closed plans always go to the range folder `plans/<range>/`, design or not. H1 `# Plan NNN — <Human Title>` (the title drives similarity — make it describe the work). Refactor variant: `NNN-R`.
 - `## Read-Write Scope` in a shape `scripts/lib/plan-scope.mjs` parses: a fenced ```` ```scope ```` block, one glob per line, **or** a `**Scope:**` line followed by bullets whose first token is a `` `backticked` `` glob. A bare `scope` line or un-backticked bullets are not parsed and `take-plan` refuses the plan.
 - Exactly one `Status:` line (`Status: draft` for new; `take-plan` sets `active`; after the merge the todo-sync workflow's `plan-close.mjs` sets `done` and moves the plan into `plans/<range>/`). One `Snapshot:` line (filled in Phase 3).
-- Every Atomic Sub-task is `[ ] <what> — <target file(s)>`.
+- Every Atomic Sub-task is `- [ ] <ID>: <title> — <details> — <target file(s)>` (`<details>` optional). The **title** is the only part the plan panel and progress views show, so it must stand alone:
+  - One plain sentence, at most ~90 characters, that says **what changes and why it matters**, written for someone who has not read the plan.
+  - No backticks, paths, `--flags`, commands or code names in the title. They go in `<details>` / `<target file(s)>`.
+  - Bad: `` `--source github:<owner>/<repo>` + `--ref <tag>` in `tools/install.mjs` `` (raw actions) · `Installed GitHub link` (a label, says nothing).
+  - Good: `B1: Let the installer pull the kit straight from a GitHub release instead of a local copy — --source/--ref flags, fetch-to-cache helper — tools/install.mjs, tools/lib/source.mjs`.
+  - When the Human's pasted plan has raw-action sub-tasks, write the titles yourself while saving (keep their wording in `<details>`); never ask the Human to rewrite them.
 - Every Done-when item starts with `[auto]` or `[human]`. `[auto]` means the expected output is exact — a string, an exit code, `npm run {{commands.build}}` passing, deterministic CLI output. `[human]` is visual/UI judgement, live interaction, product decisions; untagged counts as `[human]`. A UI-touching plan whose only Done-when is `[auto] npm run {{commands.build}}` is under-specified — add a `[human]` item. Only the plan author tags; agents never promote to `[auto]`.
 - Medium/large plan touching auth or storage → a one-line security-surface note; `scripts/pre-commit-security-grep.mjs` is the gate.
 
@@ -62,7 +67,7 @@ A Worker never assigns `NNN` and never touches `.claude/todo.md` (it is Planner-
 
 ## Phase 2 — lint the draft (cheap here, expensive in a slot)
 
-- **Shape:** scope block parses; one `Status:`; a `Snapshot:` line exists (may be empty until Phase 3); Done-when tags present.
+- **Shape:** scope block parses; one `Status:`; a `Snapshot:` line exists (may be empty until Phase 3); Done-when tags present; every Atomic Sub-task has a title per Plan rules (read each title alone: if it does not say what changes and why, rewrite it).
 - **Coverage:** every requirement in the plan has an Atomic Sub-task.
 - **Architecture gate:** `node scripts/scope-check.mjs --arch --plan=<path>` must exit 0 (`ARCH: ok …` or `ARCH: skipped …`). A crash that is environmental (`Cannot find package 'picomatch'` → `node_modules` missing, run `npm ci`) is not a gate result — fix the environment and re-run; do not reason the gate out by hand. It fails when the scope touches an invariant in `docs/brain/invariants.md` with no `## Architecture Impact` line, or a `deviation`/`changes` line lacking `Arch-approved: Human YYYY-MM-DD` or a valid ADR. Fix the draft. Only the Human's literal `approve arch change INV-n` in chat allows an `Arch-approved:` line — never write one on your own.
 - **Prerequisites (Planner):** if the draft has `## Prerequisites`, verify each is already true on `origin/{{git.mainBranch}}` *now*. A tiny Planner-owned fix (a few lines) → land it as its own chore commit first. Anything bigger → save it as its own plan `NNN-1`, sequenced before this one. A Worker must never take a plan with a gate it cannot clear itself.

@@ -14,6 +14,7 @@
         ".claude/todo.md contains a '### Plan' heading for this plan followed by the three [ ] sub-tasks (appended via todo-query.mjs, not by rewriting the file)",
         "node scripts/scope-check.mjs --arch was run (transcript)",
         "The agent did not announce 'Plan NNN pushed' — because no origin exists the push fails and the agent reports the blocker and stops",
+        "Every Atomic Sub-task in the saved file opens with a plain-sentence title (no backticks, paths or flags before the first ' — ') that says what changes and why",
         "No code under src/ was modified (no execution of A1–A3)"
       ]
     }
