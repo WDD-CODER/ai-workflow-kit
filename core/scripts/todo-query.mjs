@@ -65,7 +65,9 @@ const subcommand = argv[0]
 const args = parseArgs(argv.slice(1))
 const asJson = Boolean(args.json)
 
-function readTodo() {
+function readTodo({ create = false } = {}) {
+  // A fresh project has no ledger yet: the first `append` (save-plan) starts it.
+  if (!existsSync(TODO_PATH) && create) writeFileSync(TODO_PATH, '# Active Tasks\n', 'utf8')
   if (!existsSync(TODO_PATH)) fail('missing .claude/todo.md')
   const raw = readFileSync(TODO_PATH, 'utf8')
   const eol = raw.includes('\r\n') ? '\r\n' : '\n'
@@ -255,7 +257,7 @@ function cmdAppend() {
   if (!args.from) fail('append requires --from <file>')
   if (!existsSync(args.from)) fail(`file not found: ${args.from}`)
 
-  const { raw, eol } = readTodo()
+  const { raw, eol } = readTodo({ create: true })
   const lines = raw.split(/\r?\n/)
 
   let footerStart = lines.length
