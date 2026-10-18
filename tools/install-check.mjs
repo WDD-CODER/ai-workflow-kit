@@ -9,6 +9,7 @@
  * defaulting to them, sync --ref upgrade, a missing ref refused with nothing written, a moved tag refused.
  * Also covers: idempotent re-install, SKIP-EXISTING on a local edit, and kit-sync (dry-run writes nothing,
  * local-only kept, conflict never overwritten, --apply updates only new + kit-update, overrides never written).
+ * Adopt: an existing project gets only .kit/install.json and a clean sync; a second adopt or one with drift is refused.
  * Exit 0 = ok, 1 = problems (one per line).
  */
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, readdirSync, statSync, existsSync, cpSync } from 'fs'
@@ -161,6 +162,44 @@ if (core) {
   if (declared.status !== 0 || !/0 undeclared differences, 1 overrides/.test(declared.stdout)) fail(`drift-check with the override: ${declared.stdout.trim().split('\n').pop()}`)
 }
 
+// Adopt: a project that already carries the workflow (an install with .kit/ removed, one managed file and
+// one seed overridden) gets only .kit/install.json; kit-sync then sees nothing to do. A second adopt, or one
+// with drift, is refused. (Some files render the target folder's name, so the fixture is installed in place.)
+{
+  const ad = tmp('adopt')
+  writeFileSync(join(ad, 'kit.config.json'), JSON.stringify(CORE_CFG))
+  run('install.mjs', ['--target', ad])
+  rmSync(join(ad, '.kit'), { recursive: true, force: true })
+  writeFileSync(join(ad, 'docs/project/tech-stack.md'), '# our stack\n') // a seed the project filled in
+  writeFileSync(join(ad, '.claude/commands/ship.md'), '# our ship\n')
+  const overrides = [
+    { path: '.claude/commands/ship.md', reason: 'install-check: an overridden managed file' },
+    { path: 'docs/brain/glossary.md', reason: 'install-check: an overridden seed' },
+  ]
+  writeFileSync(join(ad, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, overrides }))
+  const listed = files(ad).sort()
+  const r = run('install.mjs', ['--adopt', '--target', ad])
+  const added = files(ad).filter((f) => !listed.includes(f))
+  if (r.status !== 0 || !/KIT_INSTALL: adopted — \d+ managed files recorded/.test(r.stdout)) fail(`adopt: exit ${r.status}: ${(r.stdout + r.stderr).trim().replace(/\s*\n\s*/g, ' | ')}`)
+  else if (added.join() !== '.kit/install.json') fail(`adopt must write only .kit/install.json, wrote: ${added.join(', ')}`)
+  else {
+    const inst = JSON.parse(read(ad, '.kit/install.json'))
+    if (inst.files['.claude/commands/ship.md']) fail('adopt recorded an overridden file')
+    if (!inst.files['docs/project/tech-stack.md']) fail('adopt did not record a present seed')
+    const s = run('sync.mjs', ['--target', ad])
+    if (!/dry-run — 0 new, 0 kit-update, 0 conflicts, 1 local-only, 0 deleted-locally, 0 removed-from-kit, 2 overrides/.test(s.stdout)) fail(`sync right after adopt: ${s.stdout.trim().split('\n').pop()}`)
+    const d = run('drift-check.mjs', ['--target', ad])
+    if (d.stdout.includes('is not a file this kit ships')) fail('drift-check called an overridden seed unknown')
+  }
+  const twice = run('install.mjs', ['--adopt', '--target', ad])
+  if (twice.status !== 1 || !twice.stderr.includes('already exists')) fail('a second adopt was not refused')
+  rmSync(join(ad, '.kit'), { recursive: true, force: true })
+  writeFileSync(join(ad, 'scripts/todo-query.mjs'), '// local edit\n')
+  const drifted = run('install.mjs', ['--adopt', '--target', ad])
+  if (drifted.status !== 1 || !drifted.stderr.includes('drift     scripts/todo-query.mjs') || existsSync(join(ad, '.kit'))) fail('adopt with drift was not refused, or it wrote something')
+  rmSync(ad, { recursive: true, force: true })
+}
+
 // Sources. A plain install records the kit it ran from as `local:<path>`; an explicit --source folder works too.
 if (core) {
   const inst = JSON.parse(read(core, '.kit/install.json'))
@@ -255,4 +294,4 @@ if (problems.length > 0) {
   console.error(`INSTALL_CHECK: FAIL — ${problems.length} problems`)
   process.exit(1)
 }
-console.log(`INSTALL_CHECK: ok — ${fixtures.length} fixtures, re-install no-op, sync dry-run/apply, overrides, drift-check, local + github sources, 0 problems`)
+console.log(`INSTALL_CHECK: ok — ${fixtures.length} fixtures, re-install no-op, sync dry-run/apply, overrides, drift-check, adopt, local + github sources, 0 problems`)

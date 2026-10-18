@@ -1,13 +1,32 @@
 # Changelog
 
 All notable changes to the kit. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-Versions follow [semver](https://semver.org/); while the kit is `0.x`, a minor bump may change how
-projects install or sync, and the entry says what to do.
+Versions follow [semver](https://semver.org/): a major release says what a project must do; minor and patch
+releases never need action. (Before 1.0.0, a minor bump could change how projects install or sync.)
 
 Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one with
 `--source github:WDD-CODER/ai-workflow-kit --ref vX.Y.Z` (see the README).
 
 ## [Unreleased]
+
+## [1.0.0] - 2026-10-18
+
+First stable release: the source project runs on kit-sync.
+
+### Added
+- `kit-install --adopt` (`-Adopt`): brings a project that already carries the workflow under kit-sync. It
+  writes only `.kit/install.json` and refuses while the drift check finds an undeclared difference.
+  `--no-cursor` (`-NoCursor`) on install.
+- `docs/CHANGE-LOOP.md`: how a kit change reaches projects (kit PR → release → `kit-sync -Ref`), semver
+  rules for releases, and what to do with a fix found inside a project.
+
+### Changed
+- The scope guard's note for a kit-owned file in a plan's scope now says to make the same change in the kit
+  and release it, so the next kit-sync sees a matching file.
+- Versioning: from `1.0.0`, minor and patch releases never ask a project to act.
+
+### Fixed
+- `drift-check` no longer reports an overridden seed as "not a managed kit file".
 
 ## [0.5.0] - 2026-10-18
 
@@ -61,5 +80,6 @@ Phases 4 to 6A, never tagged. Projects installed from a local kit folder.
 Phases 1 and 2, before this repository existed: the workflow was extracted from its source project into a
 stack-neutral `core/` with `{{placeholder}}` config keys and a leak check.
 
-[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.0
 [0.5.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v0.5.0

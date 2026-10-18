@@ -17,7 +17,7 @@ jobs:
       - name: Packs must not name the project
         run: node tools/leak-check.mjs --root packs --project-only
       - name: README and CHANGELOG must not name the project
-        run: node tools/leak-check.mjs --root README.md --root CHANGELOG.md --project-only
+        run: node tools/leak-check.mjs --root README.md --root CHANGELOG.md --root docs --project-only
       - name: Packs must satisfy the pack contract
         run: node tools/pack-check.mjs
       - name: Installer and sync install a working project (three fixtures)
