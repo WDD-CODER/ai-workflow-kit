@@ -37,7 +37,7 @@ jobs:
         env:
           KIT_REQUIRE_ACTIONLINT: '1'
         run: node tools/install-check.mjs
-      - name: Every path the installed workflow docs name exists (packs [], angular, node-express, both)
+      - name: Every path the installed workflow docs name exists (packs [], angular, node-express, both, react-vite, react-vite + layers)
         run: node tools/workflow-link-check.mjs
 
   e2e:
@@ -55,3 +55,9 @@ jobs:
       - name: End-to-end workflow cycle in a fresh project
         shell: bash
         run: node tools/e2e-check.mjs
+      # Fixture projects (Angular + Express, React-Vite + Supabase, an upstream-owned React-Vite copy): stack detection,
+      # install, link check, drift-check, rendered CI, adoption report, first commit through the hooks, then
+      # e2e-check --project on the two React-Vite fixtures (Vite slot server, /pull-copy, Planner close-out).
+      - name: Acceptance on fixture projects (+ e2e --project)
+        shell: bash
+        run: node tools/acceptance-check.mjs --e2e

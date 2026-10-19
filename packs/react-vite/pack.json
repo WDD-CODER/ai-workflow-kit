@@ -1,0 +1,57 @@
+{
+  "name": "react-vite",
+  "description": "React + Vite + TypeScript stack pack: standards doc, conventions, component / styling / auth skills, gotchas, tech-debt rules and the Vite slot dev server.",
+  "standardsDoc": "docs/agent/standards-react.md",
+  "skills": [
+    "auth-and-logging",
+    "cssLayer",
+    "react-component-structure"
+  ],
+  "cursorRules": [],
+  "gotchas": [
+    "docs/brain/gotchas/react-vite.md"
+  ],
+  "validation": [
+    "build",
+    "lint",
+    "test"
+  ],
+  "agentsFragment": "AGENTS.fragment.md",
+  "fragments": "FRAGMENTS.md",
+  "detect": {
+    "order": 10,
+    "anyOf": [
+      { "deps": ["vite", "react"] }
+    ]
+  },
+  "provides": {
+    "conventionsDoc": "docs/agent/conventions.md",
+    "styleSkill": "cssLayer",
+    "authSkill": "auth-and-logging",
+    "cssSection": "Styling: Tailwind and component primitives",
+    "componentsSection": "Components and hooks"
+  },
+  "techdebtRules": [
+    { "id": "inner-html", "pattern": "dangerouslySetInnerHTML", "ext": ["tsx", "jsx"] },
+    { "id": "banned-state", "pattern": "from\\s+['\"](zustand|redux|@reduxjs/toolkit|mobx|recoil|jotai)['\"/]", "ext": ["ts", "tsx", "js", "jsx"] },
+    { "id": "raw-fetch", "pattern": "(^|[^.\\w])fetch\\s*\\(", "ext": ["ts", "tsx", "js", "jsx"], "exclude": "\\.(spec|test)\\.[jt]sx?$" }
+  ],
+  "configDefaults": {
+    "stack.name": "React + Vite + TypeScript",
+    "stack.stylesheetExt": "css",
+    "stack.stateRules": "server state in the query library (`useQuery` / `useMutation`), auth in one shared session store, UI state in React state or context — no Zustand/Redux",
+    "commands.build": "build",
+    "commands.lint": "lint",
+    "commands.test": "test",
+    "commands.dev": "dev",
+    "slots.fePorts": 5173,
+    "slots.fePortArgs": ["--port", "{port}", "--strictPort"],
+    "slots.feMatcher": "\\bvite(\\.js|\\.cmd)?\\b",
+    "paths.srcRoot": "src/",
+    "paths.serverRoot": "",
+    "paths.routesFile": "src/App.tsx",
+    "paths.hotspots": [
+      "src/App.tsx"
+    ]
+  }
+}

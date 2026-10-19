@@ -136,6 +136,11 @@ if [[ "$STATUS" -eq 0 ]]; then
   json_allow ""
 fi
 
+# An upstream-owned path (ownership.upstreamPaths): another repo owns it; no approval or plan scope makes it ours.
+if printf '%s' "$OUT" | grep -q '^SCOPE: upstream'; then
+  json_deny "SCOPE_GUARD: $NORM is upstream-owned (ownership.upstreamPaths in kit.config.json), not an \"approved:\" decision: the upstream repo owns it and no plan scope covers it. Reading is fine; do not edit it here. An app change goes to the upstream owner as a written brief."
+fi
+
 if printf '%s' "$OUT" | grep -q '^SCOPE: out'; then
   json_deny "SCOPE_GUARD: $NORM is outside this plan's Read-Write Scope. Reading is fine; writing is not. STOP and tell the Human: file, exact change, why it can't be done in-scope. Wait for \"approved: $NORM\", then append the path to the plan's scope block and retry."
 fi

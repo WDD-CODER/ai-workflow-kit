@@ -3,6 +3,19 @@
  * Planner-Worker cycle, the way a project uses it. Run from the kit root:
  *
  *   node tools/e2e-check.mjs [--keep]
+ *   node tools/e2e-check.mjs --project <path> [--keep] [--skip-serve] [--skip-build]
+ *
+ * --project runs the same cycle on a scratch copy of a real installed project (its HEAD), so it proves the workflow as
+ * installed and adapted there; it only reads that checkout. In a temp folder: a bare `origin` (= the project's HEAD),
+ * a bare `upstream` (= its upstream/<main branch>, when it has one), a Planner clone with core.hooksPath=.husky (no husky
+ * needed), and two Worker slots that borrow the project's node_modules (root and scripts/) through directory junctions
+ * (symlinks on POSIX). The junctions are removed with `rmdir` (never their contents) before the temp folder is deleted,
+ * and the run asserts the project's own node_modules are still there. Nothing reaches GitHub; nothing uses --no-verify.
+ * Cases: the plan commit runs the hooks; pre-push refuses code on main; claim, second claim refused, scope guard
+ * (in scope, out of scope, a hotspot, an upstream-owned path); the frontend dev server from config (started, kept,
+ * freed); ship-prep, build gate, Worker push; server merge, ledger sync, plan close-out; a Planner close-out push into
+ * a range folder; /pull-copy (rebase replays our commits, the force-push without --no-verify is refused, a conflict
+ * aborts to the old head) when there is an upstream; drift-check; the maintenance scripts exit 0; SessionStart JSON.
  *
  * A local bare repository stands in for GitHub and a plain clone of it plays the server (it merges the
  * PR and runs the todo-sync Action's scripts). Needs git, bash, python and npm (network for the
@@ -22,14 +35,22 @@
  * SessionStart prints valid JSON on each branch (idle slot, worker without and with a session-state file).
  * Exit 0 = every case passed, 1 = failures (one line per case).
  */
-import { writeFileSync, readFileSync, mkdtempSync, mkdirSync, rmSync, existsSync, readdirSync, realpathSync } from 'fs'
+import { writeFileSync, readFileSync, mkdtempSync, mkdirSync, rmSync, existsSync, readdirSync, realpathSync, symlinkSync, lstatSync } from 'fs'
 import { tmpdir } from 'os'
-import { join, resolve } from 'path'
+import { join, resolve, dirname, basename } from 'path'
 import { spawnSync } from 'child_process'
 import { fileURLToPath } from 'url'
+import { createHash } from 'crypto'
+import { resolveConfig, readJson, globToRegExp } from './lib/kit.mjs'
 
 const kit = resolve(fileURLToPath(new URL('..', import.meta.url)))
-const keep = process.argv.includes('--keep')
+const argv = process.argv.slice(2)
+const keep = argv.includes('--keep')
+const projectArg = argv.includes('--project') ? argv[argv.indexOf('--project') + 1] : null
+if (argv.includes('--project') && !projectArg) {
+  console.error('E2E_CHECK: FAIL — --project <path> needs a path')
+  process.exit(1)
+}
 // Long path: on Windows tmpdir() can be an 8.3 short name (RUNNER~1) while git reports the long one.
 const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'kit-e2e-')))
 const proj = join(root, 'e2e-app')
@@ -106,6 +127,7 @@ function main() {
   // Unusual base ports, so a dev server already running on this machine is never in the way.
   writeFileSync(join(proj, 'kit.config.json'), JSON.stringify({
     project: { name: 'e2e-app', repoName: 'e2e-app' },
+    stack: { packs: [] }, // the stack-neutral core, named explicitly (no stack named = install detects one)
     commands: { build: 'build', lint: 'lint', test: 'test', dev: 'dev' },
     slots: { fePorts: FE_BASE, bePorts: FE_BASE + 100, fePortArgs: ['--port', '{port}', '--strictPort'], feMatcher: 'dev-server\\.mjs' },
     hooks: { shellPath: 'bash' },
@@ -279,6 +301,7 @@ function main() {
   writeFileSync(join(own, '.gitignore'), 'node_modules/\n')
   writeFileSync(join(own, 'kit.config.json'), JSON.stringify({
     project: { name: 'owned-app', repoName: 'owned-app' },
+    stack: { packs: [] }, // the stack-neutral core, named explicitly (no stack named = install detects one)
     commands: { build: 'build', lint: 'lint', test: 'test' },
     hooks: { shellPath: 'bash' },
     overrides: [{ path: '.gitignore', reason: 'e2e: the project keeps its own .gitignore' }],
@@ -327,6 +350,7 @@ function main() {
   }, null, 2) + '\n')
   writeFileSync(join(nh, 'kit.config.json'), JSON.stringify({
     project: { name: 'nohusky-app', repoName: 'nohusky-app' },
+    stack: { packs: [] }, // the stack-neutral core, named explicitly (no stack named = install detects one)
     commands: { build: 'build', lint: 'lint', test: 'test' },
     hooks: { shellPath: 'bash' },
   }, null, 2) + '\n')
@@ -343,10 +367,15 @@ function main() {
   check('no husky: the pre-commit hook refuses a staged fake key', nk.status !== 0 && /secret-scan: blocked config\.mjs/.test(nk.out), tail(nk.out))
 
   // 8. SessionStart output is valid JSON with additionalContext under hookSpecificOutput, on every branch.
-  // The installed script runs next to stubbed helpers, so each branch can be forced.
+  sessionStartCases(join(proj, 'scripts', 'session-startup.sh'))
+}
+
+// The installed SessionStart script runs next to stubbed helpers, so each branch can be forced; each output must be
+// valid JSON with additionalContext (a string) under hookSpecificOutput, also with quotes and newlines in the state file.
+function sessionStartCases(script) {
   const ssDir = join(root, 'session-start')
   mkdirSync(join(ssDir, 'scripts', 'lib'), { recursive: true })
-  writeFileSync(join(ssDir, 'scripts', 'session-startup.sh'), readFileSync(join(proj, 'scripts', 'session-startup.sh'), 'utf8'))
+  writeFileSync(join(ssDir, 'scripts', 'session-startup.sh'), readFileSync(script, 'utf8'))
   writeFileSync(join(ssDir, 'scripts', 'lib', 'slot.mjs'), 'console.log(process.env.STUB_DESCRIBE)\n')
   writeFileSync(join(ssDir, 'scripts', 'session-state-path.mjs'), 'console.log(process.env.STUB_RESOLVED)\n')
   writeFileSync(join(ssDir, 'scripts', 'free-merged-slots.mjs'), '')
@@ -366,17 +395,297 @@ function main() {
   }
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// --project <path>: the cycle on a scratch copy of a real installed project.
+const isWin = process.platform === 'win32'
+const junctions = []
+const P = {} // project-mode folders, for the cleanup
+// A directory junction (Windows) or symlink (POSIX) at `path` pointing at `target`. False when there is no target.
+function link(target, path) {
+  if (!existsSync(target)) return false
+  mkdirSync(dirname(path), { recursive: true })
+  if (isWin) sh('cmd', ['/c', 'mklink', '/J', path, target], root)
+  else symlinkSync(target, path, 'dir')
+  junctions.push(path)
+  return existsSync(path)
+}
+// Remove every junction itself, never what it points at: `rmdir` on Windows, unlink on POSIX. True when all are gone.
+function unlinkAll() {
+  for (const p of junctions.reverse()) {
+    try {
+      if (!lstatSync(p, { throwIfNoEntry: false })) continue
+      if (isWin) sh('cmd', ['/c', 'rmdir', p], root)
+      else rmSync(p)
+    } catch { /* checked below */ }
+  }
+  return junctions.every((p) => !lstatSync(p, { throwIfNoEntry: false }))
+}
+const sha = (file) => createHash('sha256').update(readFileSync(file)).digest('hex')
+
+function projectMain(here) {
+  if (!existsSync(join(here, '.kit', 'install.json')) || git(here, 'rev-parse', 'HEAD').status !== 0) {
+    check('--project is a kit-installed git checkout', false, `${here}: no .kit/install.json or no commit`)
+    return
+  }
+  P.here = here
+  P.had = ['.', 'scripts'].filter((sub) => existsSync(join(here, sub, 'node_modules')))
+  const inst = readJson(join(here, '.kit', 'install.json'))
+  const cfg = existsSync(join(here, 'kit.config.json')) ? readJson(join(here, 'kit.config.json')) : {}
+  const vals = resolveConfig({ kitRoot: kit, project: cfg, packs: inst.packs ?? [], layers: inst.layers ?? [], target: here })
+  const main = vals['git.mainBranch'] || 'main'
+  const repo = vals['project.repoName'] || basename(here)
+  const feBase = Number(vals['slots.fePorts']) || 4200
+  const asList = (v) => (Array.isArray(v) ? v : v ? String(v).split(',').map((s) => s.trim()).filter(Boolean) : [])
+  const hotspot = asList(vals['paths.hotspots']).find((h) => !/[*?]/.test(h) && existsSync(join(here, h)))
+  const upstreamOwned = asList(vals['ownership.upstreamPaths']).find((p) => !/[*?]/.test(p) && !p.endsWith('/') && existsSync(join(here, p)))
+  let pkg = {}
+  try { pkg = readJson(join(here, 'package.json')) } catch { /* no package.json */ }
+  const devScript = vals['commands.dev'] && pkg.scripts?.[vals['commands.dev']]
+  const buildScript = vals['commands.build'] && pkg.scripts?.[vals['commands.build']]
+  const origin = join(root, 'origin.git')
+  const upstream = join(root, 'upstream.git')
+  const proj = P.proj = join(root, repo)
+  const slot = P.slot = join(root, `${repo}-wt-2`)
+  const slot2 = P.slot2 = join(root, `${repo}-wt-3`)
+  const server = join(root, 'server')
+  const friend = join(root, 'friend')
+  delete env.GITHUB_TOKEN // nothing here may reach GitHub
+  delete env.GH_TOKEN
+  // A slot borrows the project's installed dependencies; a recorded lockfile hash tells take-plan not to reinstall.
+  const prepareSlot = (dir, n) => {
+    writeFileSync(join(dir, '.worktree-root'), proj)
+    writeFileSync(join(dir, '.worktree-port'), String(feBase + n))
+    mkdirSync(join(dir, '.claude'), { recursive: true })
+    for (const [sub, hashName] of [['.', '.last-npm-install-hash'], ['scripts', '.last-npm-install-hash-scripts']]) {
+      if (link(join(here, sub, 'node_modules'), join(dir, sub, 'node_modules')) && existsSync(join(dir, sub, 'package-lock.json'))) {
+        writeFileSync(join(dir, '.claude', hashName), sha(join(dir, sub, 'package-lock.json')))
+      }
+    }
+  }
+
+  // 0. Stand-ins for GitHub (origin) and the upstream repo, and the Planner folder.
+  const head = git(here, 'rev-parse', 'HEAD').out.trim()
+  const upRef = git(here, 'rev-parse', '--verify', '-q', `upstream/${main}`).out.trim()
+  for (const [bare, ref] of [[origin, head], ...(upRef ? [[upstream, upRef]] : [])]) {
+    git(root, 'clone', '-q', '--bare', '--no-tags', here, bare)
+    git(bare, 'update-ref', `refs/heads/${main}`, ref)
+    git(bare, 'symbolic-ref', 'HEAD', `refs/heads/${main}`)
+  }
+  const cl = git(root, 'clone', '-q', '-b', main, origin, proj)
+  git(proj, 'config', 'core.hooksPath', '.husky') // hooks on, as in the real Planner folder (husky or not)
+  if (upRef) {
+    git(proj, 'remote', 'add', 'upstream', upstream)
+    git(proj, 'fetch', '-q', 'upstream')
+  }
+  link(join(here, 'scripts', 'node_modules'), join(proj, 'scripts', 'node_modules'))
+  if (!check(`scratch Planner folder = clone of the project HEAD with git hooks on (${repo})`, cl.status === 0 && existsSync(join(proj, '.kit', 'install.json')), tail(cl.out))) return
+
+  // 1. Planner saves a plan the way save-plan does; the plan commit runs the pre-commit hook (no --no-verify).
+  const num = node(proj, 'scripts/next-plan-number.mjs', '--no-fetch').out.trim().split(/\r?\n/).pop()
+  check('next-plan-number gives the next free number', /^\d{3}$/.test(num), num)
+  const sim = node(proj, 'scripts/plan-name-similarity.mjs', '--name=E2E Hello Script')
+  check('plan-name-similarity runs', sim.status === 0, tail(sim.out))
+  const snap = git(proj, 'rev-parse', `origin/${main}`).out.trim()
+  const slug = 'e2e-hello-script'
+  const planRel = `plans/${num}-${slug}.plan.md`
+  const task = '- [ ] H1: Add an e2e hello script — `scripts/e2e/hello.mjs` prints `hello e2e` — `scripts/e2e/hello.mjs`'
+  const plan = [
+    `# Plan ${num} — E2E Hello Script`, '', 'Status: draft', `Snapshot: ${snap}`, '',
+    '## Problem Statement', 'Scratch-only end-to-end proof of the workflow on this project.', '',
+    '## Goals & Success Criteria', '- [auto] `node scripts/e2e/hello.mjs` prints `hello e2e`.', '',
+    '## Read-Write Scope', '', '```scope', 'scripts/e2e/hello.mjs', '```', '',
+    '## Architecture Impact', '', '- INV-none: preserves — a standalone script.', '',
+    '## Atomic Sub-tasks', task, '',
+  ].join('\n')
+  const codePath = hotspot ?? 'src/e2e-probe.ts'
+  const bg = hook(proj, 'branch-guard.sh', codePath)
+  check('branch guard denies code on main in the Planner folder', bg.decision === 'deny', bg.decision)
+  const bgPlan = hook(proj, 'branch-guard.sh', planRel)
+  check('branch guard allows a plan file on main', bgPlan.decision === 'allow', bgPlan.decision)
+  mkdirSync(join(proj, 'plans'), { recursive: true })
+  writeFileSync(join(proj, planRel), plan)
+  const sec = join(root, 'section.md')
+  writeFileSync(sec, `### Plan ${num} — E2E Hello Script (\`${planRel}\`)\n\n${task}\n`)
+  const ap = node(proj, 'scripts/todo-query.mjs', 'append', '--from', sec)
+  check('todo-query append adds the plan section to .claude/todo.md', ap.status === 0 && readFileSync(join(proj, '.claude/todo.md'), 'utf8').includes(planRel), tail(ap.out))
+  const arch = node(proj, 'scripts/scope-check.mjs', '--arch', `--plan=${planRel}`)
+  check('architecture gate passes the plan', arch.status === 0 && /ARCH: (ok|skipped)/.test(arch.out), tail(arch.out))
+  const ledger0 = node(proj, 'scripts/plan-ledger-check.mjs')
+  check('plan-ledger-check passes with the new plan', ledger0.status === 0, tail(ledger0.out))
+  git(proj, 'add', planRel, '.claude/todo.md')
+  const cp = git(proj, 'commit', '-q', '-m', `plan(${num}): e2e hello script`)
+  const pp = git(proj, 'push', '-q', 'origin', main)
+  check('the plan commit runs the hooks (no --no-verify) and pre-push lets the plan reach main',
+    cp.status === 0 && !/cannot spawn/.test(cp.out) && pp.status === 0, tail(cp.out + pp.out))
+
+  // 2. pre-push refuses code on main; main goes back without reset --hard.
+  writeFileSync(join(proj, 'e2e-code.txt'), 'code on main\n')
+  git(proj, 'add', 'e2e-code.txt')
+  git(proj, 'commit', '-q', '-m', 'chore: code on main')
+  const bad = git(proj, 'push', 'origin', main)
+  check('pre-push refuses a code change on main', bad.status !== 0 && /PRE_PUSH: refusing/.test(bad.out), tail(bad.out))
+  git(proj, 'reset', '-q', '--soft', `origin/${main}`)
+  git(proj, 'rm', '-q', '--cached', 'e2e-code.txt')
+  rmSync(join(proj, 'e2e-code.txt'))
+
+  // 3. Worker slot: claim, a second claim refused, the scope guard.
+  git(proj, 'worktree', 'add', '-q', '--detach', slot, `origin/${main}`)
+  prepareSlot(slot, 2)
+  const tp = node(slot, 'scripts/take-plan.mjs', num)
+  const branch = `feat/${num}-${slug}`
+  check(`take-plan ${num} claims wt-2 with REALITY: clean (the claim commit runs the hooks)`, tp.status === 0 && tp.out.includes(`OK plan=${num} branch=${branch}`) && /REALITY: clean/.test(tp.out), tail(tp.out))
+  git(proj, 'worktree', 'add', '-q', '--detach', slot2, `origin/${main}`)
+  prepareSlot(slot2, 3)
+  const tp2 = node(slot2, 'scripts/take-plan.mjs', num)
+  check('a second slot cannot take a plan that is already active', tp2.status !== 0 && git(slot2, 'branch', '--show-current').out.trim() === '', tail(tp2.out))
+  const inScope = hook(slot, 'scope-guard.sh', 'scripts/e2e/hello.mjs')
+  check('scope guard allows a file in the plan scope', inScope.decision === 'allow' && !/check failed/.test(inScope.out), tail(inScope.out))
+  const outScope = hook(slot, 'scope-guard.sh', 'e2e-outside.txt')
+  check('scope guard denies a file outside the plan scope', outScope.decision === 'deny' && /outside this plan's Read-Write Scope/.test(outScope.out), tail(outScope.out))
+  if (hotspot && !asList(vals['ownership.upstreamPaths']).some((g) => globToRegExp(g).test(hotspot))) {
+    const hot = hook(slot, 'scope-guard.sh', hotspot)
+    check(`scope guard allows the append-only hotspot (${hotspot})`, hot.decision === 'allow', tail(hot.out))
+  }
+  if (upstreamOwned) {
+    const up = hook(slot, 'scope-guard.sh', upstreamOwned)
+    check(`scope guard denies an upstream-owned path (${upstreamOwned}), not an approved: decision`, up.decision === 'deny' && /upstream-owned/.test(up.out), tail(up.out))
+  }
+
+  // 4. The slot's frontend dev server, from config (commands.dev + slots.fe*).
+  if (devScript && !argv.includes('--skip-serve')) {
+    const port = feBase + 2
+    const s1 = node(slot, 'scripts/slot-serve.mjs')
+    check(`slot-serve starts the frontend on the slot port (fe=${port} started)`, s1.status === 0 && new RegExp(`fe=${port} started`).test(s1.out), tail(s1.out))
+    const s2 = node(slot, 'scripts/slot-serve.mjs')
+    check(`slot-serve again keeps it (fe=${port} kept)`, s2.status === 0 && new RegExp(`fe=${port} kept`).test(s2.out), tail(s2.out))
+    const st = node(slot, 'scripts/slot-stop.mjs')
+    check('slot-stop stops it and frees the port', st.status === 0 && /SLOT_STOP: ok/.test(st.out) && portFree(port), tail(st.out))
+  }
+
+  // 5. The Worker does the task and ships.
+  mkdirSync(join(slot, 'scripts', 'e2e'), { recursive: true })
+  writeFileSync(join(slot, 'scripts/e2e/hello.mjs'), "console.log('hello e2e')\n")
+  writeFileSync(join(slot, planRel), readFileSync(join(slot, planRel), 'utf8').replace('- [ ] H1:', '- [x] H1:'))
+  const hello = node(slot, 'scripts/e2e/hello.mjs')
+  check('Done-when: the script prints hello e2e', hello.out.trim() === 'hello e2e', hello.out)
+  const prep = node(slot, 'scripts/ship-prep.mjs')
+  check('ship-prep classifies the lane and reports scope: ok', /Lane: /.test(prep.out) && /scope: ok/.test(prep.out), tail(prep.out))
+  const base = node(slot, 'scripts/ship-prep.mjs', '--check-baseline')
+  check('ship-prep --check-baseline OK', /status: OK/.test(base.out), tail(base.out))
+  if (buildScript && !argv.includes('--skip-build')) {
+    const build = npm(slot, `npm run -s ${vals['commands.build']}`)
+    check(`build gate passes in the slot (npm run ${vals['commands.build']})`, build.status === 0, tail(`${build.stdout}${build.stderr}`))
+  }
+  git(slot, 'add', 'scripts/e2e/hello.mjs', planRel)
+  const wc = git(slot, 'commit', '-q', '-m', `feat(${num}): e2e hello script`)
+  const ss = node(slot, 'scripts/write-session-state.mjs', '--summary', 'e2e plan done', '--next', 'none')
+  git(slot, 'add', 'docs')
+  git(slot, 'commit', '-q', '--amend', '--no-edit')
+  const wp = git(slot, 'push', '-q', '-u', 'origin', 'HEAD')
+  check('Worker commits (hooks run), writes session state and pushes its branch', wc.status === 0 && ss.status === 0 && wp.status === 0, tail(wc.out + ss.out + wp.out))
+
+  // 6. "GitHub": merge, then the todo-sync workflow's scripts.
+  git(root, 'clone', '-q', '-b', main, origin, server)
+  const mg = git(server, 'merge', '-q', '--no-ff', `origin/${branch}`, '-m', `Merge ${branch}`)
+  const ms = git(server, 'push', '-q', 'origin', main)
+  check('server merges the PR', mg.status === 0 && ms.status === 0, tail(mg.out + ms.out))
+  const sync = node(server, 'scripts/todo-query.mjs', 'sync', '--merged')
+  const arc = node(server, 'scripts/todo-archive.mjs')
+  const close = node(server, 'scripts/plan-close.mjs')
+  git(server, 'add', '-A', '.claude/todo.md', '.claude/todo-archive', 'plans')
+  git(server, 'commit', '-q', '-m', 'chore(todo): sync ledger and close finished plans')
+  git(server, 'push', '-q', 'origin', main)
+  const closedDir = readdirSync(join(server, 'plans')).find((d) => /^\d+-\d+$/.test(d) && existsSync(join(server, 'plans', d, `${num}-${slug}.plan.md`)))
+  check('after merge: ledger synced, plan closed into its range folder, section archived', sync.status === 0 && arc.status === 0 && !!closedDir && !existsSync(join(server, planRel)), tail(sync.out + arc.out + close.out))
+
+  // 7. Planner pulls; the slot is released; a Planner close-out push into a range folder is accepted.
+  const pl = git(proj, 'pull', '-q', '--ff-only')
+  const free = node(proj, 'scripts/free-merged-slots.mjs')
+  check('Planner pulls and free-merged-slots releases wt-2 to idle', pl.status === 0 && /wt-2: freed/.test(free.out), tail(pl.out + free.out))
+  mkdirSync(join(proj, 'plans', '900-1000'), { recursive: true })
+  writeFileSync(join(proj, 'plans', '900-1000', '999-e2e-closed.plan.md'), '# Plan 999 — E2E Closed\n\nStatus: done\n')
+  git(proj, 'add', 'plans')
+  git(proj, 'commit', '-q', '-m', 'chore(plans): file a closed plan')
+  const mv = git(proj, 'push', 'origin', main)
+  check('pre-push accepts a Planner close-out push into a range folder', mv.status === 0, tail(mv.out))
+
+  // 8. /pull-copy against the scratch upstream: a new upstream commit, our commits replayed on top.
+  if (upRef) {
+    git(root, 'clone', '-q', '-b', main, upstream, friend)
+    writeFileSync(join(friend, 'e2e-upstream-change.txt'), 'upstream change\n')
+    git(friend, 'add', 'e2e-upstream-change.txt')
+    git(friend, 'commit', '-q', '-m', 'upstream: new change')
+    git(friend, 'push', '-q', 'origin', main)
+    git(proj, 'fetch', '-q', 'upstream')
+    const incoming = git(proj, 'rev-list', '--count', `HEAD..upstream/${main}`).out.trim()
+    // A rebase replays commits, not merges: PR merge commits collapse, so count non-merge commits.
+    const ours = git(proj, 'rev-list', '--count', '--no-merges', `upstream/${main}..HEAD`).out.trim()
+    const rb = git(proj, 'rebase', `upstream/${main}`)
+    const onTop = git(proj, 'rev-list', '--count', '--no-merges', `upstream/${main}..HEAD`).out.trim()
+    check('/pull-copy: the rebase onto upstream replays every one of our commits on top', rb.status === 0 && incoming === '1' && onTop === ours && existsSync(join(proj, 'e2e-upstream-change.txt')), `incoming=${incoming} ours=${ours} onTop=${onTop} ${tail(rb.out)}`)
+    const fp = git(proj, 'push', '--force-with-lease', 'origin', main)
+    check('/pull-copy: the force-push without --no-verify is refused by pre-push (the Human runs it)', fp.status !== 0 && /PRE_PUSH: refusing/.test(fp.out), tail(fp.out))
+    // Conflict path: upstream adds a file our commits also add (CLAUDE.md): the rebase stops, --abort restores the head.
+    writeFileSync(join(friend, 'CLAUDE.md'), '# upstream\n')
+    git(friend, 'add', 'CLAUDE.md')
+    git(friend, 'commit', '-q', '-m', 'upstream: add CLAUDE.md')
+    git(friend, 'push', '-q', 'origin', main)
+    const before = git(proj, 'rev-parse', 'HEAD').out.trim()
+    git(proj, 'fetch', '-q', 'upstream')
+    const rb2 = git(proj, 'rebase', `upstream/${main}`)
+    const conflicts = git(proj, 'diff', '--name-only', '--diff-filter=U').out.trim()
+    const ab = git(proj, 'rebase', '--abort')
+    check('/pull-copy conflict path: the rebase stops on CLAUDE.md and --abort restores the old head', rb2.status !== 0 && /CLAUDE\.md/.test(conflicts) && ab.status === 0 && git(proj, 'rev-parse', 'HEAD').out.trim() === before, `conflicts=${conflicts} ${tail(rb2.out)}`)
+  }
+
+  // 9. The scratch project still matches the kit; the maintenance scripts run.
+  const localSource = /^local:/.test(inst.source ?? '')
+  const drift = node(proj, join(kit, 'tools', 'drift-check.mjs'), '--target', proj, ...(localSource || !inst.source ? ['--source', kit] : []))
+  check('drift-check ok after the full cycle', drift.status === 0 && /KIT_DRIFT: ok/.test(drift.out), tail(drift.out))
+  const runs = [
+    ['github-sync-gate', node(proj, 'scripts/github-sync-gate.mjs')],
+    ['orphan-sweep', node(proj, 'scripts/orphan-sweep.mjs')],
+    ['prune-merged-worktrees (dry run)', sh('bash', ['scripts/prune-merged-worktrees.sh'], proj)],
+    ['prune-old-sessions (dry run)', sh('bash', ['scripts/prune-old-sessions.sh'], proj)],
+    ['session-lock claim/release', sh('bash', ['-c', `source scripts/session-lock.sh && claim_lock "${proj.replace(/\\/g, '/')}" && release_lock "${proj.replace(/\\/g, '/')}"`], proj)],
+    ['brain-review-check --scope=full', node(proj, 'scripts/brain-review-check.mjs', '--scope=full')],
+    ['brain-capture-comment', node(proj, 'scripts/brain-capture-comment.mjs')],
+    ['plan-ledger-check', node(proj, 'scripts/plan-ledger-check.mjs')],
+    ['workflow-link-check (the kit tool on the project)', node(proj, join(kit, 'tools', 'workflow-link-check.mjs'), '--target', proj)],
+  ]
+  for (const [name, r] of runs) check(`${name} exits 0`, r.status === 0, tail(r.out))
+
+  // 10. SessionStart JSON from the project's own script.
+  sessionStartCases(join(proj, 'scripts', 'session-startup.sh'))
+}
+
+let rootRemovable = true
 try {
-  main()
+  if (projectArg) projectMain(resolve(projectArg))
+  else main()
 } catch (e) {
   check('e2e run', false, e.stack ?? String(e))
 }
+if (projectArg) {
+  for (const s of [P.slot, P.slot2]) if (s && existsSync(join(s, 'scripts', 'slot-stop.mjs'))) node(s, 'scripts/slot-stop.mjs')
+  // Junctions first, with rmdir: deleting the temp folder must never reach the project's own node_modules.
+  rootRemovable = unlinkAll()
+  if (!rootRemovable) check('every node_modules junction removed before cleanup', false, `still there: ${junctions.join(', ')}`)
+  for (const sub of P.had ?? []) {
+    const dir = join(P.here, sub, 'node_modules')
+    if (!existsSync(dir) || readdirSync(dir).length === 0) check(`the project's ${sub === '.' ? '' : `${sub}/`}node_modules is intact after cleanup`, false, `${dir} is gone or empty — reinstall it`)
+  }
+}
 console.log(results.join('\n'))
 if (keep) console.log(`E2E: kept ${root}`)
+else if (!rootRemovable) console.log(`E2E: left ${root} in place (a junction is still there; remove it with rmdir, then the folder)`)
 else {
-  git(proj, 'worktree', 'remove', '--force', slot)
-  git(proj, 'worktree', 'remove', '--force', slot2)
-  try { rmSync(root, { recursive: true, force: true }) } catch { /* Windows may hold a file briefly */ }
+  const p = projectArg ? P.proj : proj
+  if (p && existsSync(p)) {
+    git(p, 'worktree', 'remove', '--force', projectArg ? P.slot : slot)
+    git(p, 'worktree', 'remove', '--force', projectArg ? P.slot2 : slot2)
+  }
+  try { rmSync(root, { recursive: true, force: true }) } catch { console.log(`E2E: could not delete ${root} (a file is still held) — delete it by hand`) }
 }
 const total = results.length
 console.log(failed ? `E2E_CHECK: FAIL — ${failed} of ${total} cases failed` : `E2E_CHECK: ok — ${total} cases passed`)

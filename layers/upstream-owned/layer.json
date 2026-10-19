@@ -1,0 +1,24 @@
+{
+  "name": "upstream-owned",
+  "description": "Ownership layer for a repo that is a copy of someone else's (an AI app builder's app, a client repo): paths the kit never writes and the scope guard denies, CI defaults for upstream lint debt, advisories and a stale lockfile, and the /pull-copy command.",
+  "gotchas": [
+    "docs/brain/gotchas/upstream-owned.md"
+  ],
+  "agentsFragment": "AGENTS.fragment.md",
+  "detect": {
+    "anyOf": [
+      { "gitRemote": "upstream" }
+    ]
+  },
+  "configDefaults": {
+    "ci.install": "npm install --no-audit --no-fund",
+    "ci.lintScope": "changed",
+    "ci.appAuditMode": "report",
+    "ownership.upstreamPaths": [
+      ".gitignore",
+      "AGENTS.md",
+      "package.json",
+      "package-lock.json"
+    ]
+  }
+}

@@ -15,7 +15,8 @@ kit branch + PR  ->  merge  ->  tag vX.Y.Z + GitHub release  ->  project: kit-sy
   `leak-check` fails on project names, machine paths, ports and project history.
 - Add a line under `## [Unreleased]` in `CHANGELOG.md`: what changed, and what a project must do, if anything.
 - Run the checks (`node tools/leak-check.mjs`, the `--project-only` runs, `pack-check`, `install-check`,
-  `e2e-check`, `workflow-link-check`; the README's **Checks**), open a PR, and merge once CI is green.
+  `e2e-check`, `workflow-link-check`, `acceptance-check --e2e`; the README's **Checks**), open a PR, and merge once CI
+  is green.
 
 ## 2. Cut a release
 
@@ -42,6 +43,8 @@ From the kit folder (or any kit checkout):
   override with a reason. Never edit `.kit/install.json` to make a conflict go away.
 - Then, on a branch in the project, build and run its checks, and `/ship` the result as one commit:
   `chore(kit): sync ai-workflow-kit vX.Y.Z`. `.kit/install.json` is part of that commit.
+- To see the result as the project uses it: `node tools/adoption-report.mjs --target ..\my-app` (each workflow part
+  `ok` / `warn` / `fail`) and `node tools/e2e-check.mjs --project ..\my-app` (the full cycle on a scratch copy).
 
 ## 4. A fix found inside a project
 

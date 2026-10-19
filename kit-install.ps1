@@ -3,10 +3,13 @@
   Install the AI workflow kit into a project (thin wrapper over tools/install.mjs).
 .EXAMPLE
   .\kit-install.ps1 -Target ..\my-app -Packs angular,node-express -Cursor
+  .\kit-install.ps1 -Target ..\my-app -Packs react-vite -Layers supabase,upstream-owned
+  .\kit-install.ps1 -Target ..\my-app -DryRun    # no -Packs and no stack.packs: proposes the detected stack, writes nothing
+  .\kit-install.ps1 -Target ..\my-app -Yes       # installs the detected stack and records it in kit.config.json
   .\kit-install.ps1 -Target ..\my-app -Source github:WDD-CODER/ai-workflow-kit -Ref v0.5.0 -Packs angular
   .\kit-install.ps1 -Target ..\my-app -Adopt -Source github:WDD-CODER/ai-workflow-kit -Ref v1.0.0   # project already carries the workflow: writes only .kit/install.json
 .NOTES
-  Requires Node 18+. Never overwrites existing files unless -Force. Run kit-sync.ps1 later to see kit updates.
+  Requires Node 18+. Never overwrites existing files unless -Force. -Packs '' installs the stack-neutral core only. Run kit-sync.ps1 later to see kit updates.
 #>
 param(
   [Parameter(Mandatory = $true)][string]$Target,
@@ -14,6 +17,8 @@ param(
   [string]$Ref,
   [string]$Config,
   [string[]]$Packs,
+  [string[]]$Layers,
+  [switch]$Yes,
   [switch]$Cursor,
   [switch]$YesChef,
   [switch]$DryRun,
@@ -31,7 +36,9 @@ $argsList = @("$PSScriptRoot/tools/install.mjs", '--target', $resolved)
 if ($Source) { $argsList += @('--source', $Source) }
 if ($Ref) { $argsList += @('--ref', $Ref) }
 if ($Config) { $argsList += @('--config', [System.IO.Path]::GetFullPath((Join-Path (Get-Location).ProviderPath $Config))) }
-if ($Packs) { $argsList += @('--packs', ($Packs -join ',')) }
+if ($PSBoundParameters.ContainsKey('Packs')) { $argsList += "--packs=$($Packs -join ',')" }
+if ($PSBoundParameters.ContainsKey('Layers')) { $argsList += "--layers=$($Layers -join ',')" }
+if ($Yes) { $argsList += '--yes' }
 if ($Cursor) { $argsList += '--cursor' }
 if ($YesChef) { $argsList += '--yes-chef' }
 if ($DryRun) { $argsList += '--dry-run' }

@@ -8,7 +8,10 @@
  * validation entries are npm script names only (no spaces, no raw commands).
  * Optional: provides (the pack contract, tools/lib/kit.mjs CONTRACT: each value must exist in the pack), fragments
  * (a file whose `## <name>` sections each fill a PACK:<name> marker some core file has), seeds (pack files installed
- * as seeds), agentsFragment, configDefaults.
+ * as seeds), agentsFragment, configDefaults, techdebtRules (each pattern a valid regex), detect ({ order, anyOf: [rules] },
+ * each rule with deps / path / gitRemote — the installer's stack detection).
+ * Layers (layers/<name>/ except the Cursor layer) carry layer.json with the same optional fields (name = folder;
+ * a layer has no standards doc, so it provides no `section` key); their provides count as providers.
  *
  * Core side of the contract (core/, layers/, templates/):
  *   - a `{{stack.<key>}}` contract placeholder only inside a `KIT:if stack.<key>` block (a project without the
@@ -88,6 +91,40 @@ for (const dir of packs) {
   for (const v of pack.validation ?? []) {
     if (!/^[\w:.-]+$/.test(v)) problems.push(`${dir}: validation "${v}" must be an npm script name, not a command`)
   }
+  checkOptional(dir, root, pack, typeof pack.standardsDoc === 'string' ? join(root, pack.standardsDoc) : null)
+  // What only this pack ships, which a core file must not name: workflow paths and skill names.
+  const meta = new Set(['pack.json', pack.agentsFragment, pack.fragments].filter(Boolean))
+  for (const f of walk(root)) if (!meta.has(f) && /^(docs|\.claude|scripts)\//.test(f)) packOnly.set(f, dir)
+  for (const s of pack.skills ?? []) packSkills.set(s, dir)
+}
+
+// Layers: the same optional fields in layer.json (the Cursor layer has none and is chosen with --cursor).
+const layersDir = resolve('layers')
+const layerDirs = existsSync(layersDir) ? readdirSync(layersDir).filter((d) => d !== 'cursor' && statSync(join(layersDir, d)).isDirectory()) : []
+let layersChecked = 0
+for (const dir of layerDirs) {
+  const root = join(layersDir, dir)
+  const file = join(root, 'layer.json')
+  if (!existsSync(file)) {
+    problems.push(`layers/${dir}: missing layer.json`)
+    continue
+  }
+  layersChecked++
+  let layer
+  try {
+    layer = JSON.parse(readFileSync(file, 'utf8'))
+  } catch (e) {
+    problems.push(`layers/${dir}: layer.json is not valid JSON (${e.message})`)
+    continue
+  }
+  if (layer.name !== dir) problems.push(`layers/${dir}: name "${layer.name}" must equal the folder name`)
+  for (const g of layer.gotchas ?? []) if (!existsSync(join(root, g))) problems.push(`layers/${dir}: gotchas file not found: ${g}`)
+  checkOptional(`layers/${dir}`, root, layer, null)
+}
+
+/** The optional manifest fields packs and layers share (agentsFragment, configDefaults, provides, fragments, seeds,
+ * techdebtRules, detect). `docPath` = the pack's standards doc (a `section` contract key names one of its headings). */
+function checkOptional(dir, root, pack, docPath) {
   if (pack.agentsFragment != null) {
     const frag = join(root, String(pack.agentsFragment))
     if (!existsSync(frag)) problems.push(`${dir}: agentsFragment not found: ${pack.agentsFragment}`)
@@ -102,7 +139,6 @@ for (const dir of packs) {
     if (!configKeys.has(key)) problems.push(`${dir}: configDefaults key not in kit.config.json: ${key}`)
   }
   // The pack contract: each provided value must exist in the pack.
-  const docPath = typeof pack.standardsDoc === 'string' ? join(root, pack.standardsDoc) : null
   const headings = docPath && existsSync(docPath)
     ? readFileSync(docPath, 'utf8').split(/\r?\n/).filter((l) => l.startsWith('## ')).map((l) => l.slice(3).trim())
     : []
@@ -117,7 +153,7 @@ for (const dir of packs) {
     else if (typeof value !== 'string' || !value) problems.push(`${dir}: provides.${key} must be a non-empty string`)
     else if (kind === 'skill' && !existsSync(join(root, '.claude/skills', value, 'SKILL.md'))) problems.push(`${dir}: provides.${key}: skill not found: ${value}`)
     else if ((kind === 'doc' || kind === 'script') && !existsSync(join(root, value))) problems.push(`${dir}: provides.${key}: file not found: ${value}`)
-    else if (kind === 'section' && !headings.includes(value)) problems.push(`${dir}: provides.${key}: ${pack.standardsDoc} has no "## ${value}" section`)
+    else if (kind === 'section' && !headings.includes(value)) problems.push(`${dir}: provides.${key}: ${docPath ? `${pack.standardsDoc} has no "## ${value}" section` : 'only a pack with a standardsDoc provides a section'}`)
   }
   if (pack.fragments != null) {
     const frag = join(root, String(pack.fragments))
@@ -127,10 +163,30 @@ for (const dir of packs) {
   for (const s of Object.keys(pack.seeds ?? {})) {
     if (!existsSync(join(root, s))) problems.push(`${dir}: seed not found: ${s}`)
   }
-  // What only this pack ships, which a core file must not name: workflow paths and skill names.
-  const meta = new Set(['pack.json', pack.agentsFragment, pack.fragments].filter(Boolean))
-  for (const f of walk(root)) if (!meta.has(f) && /^(docs|\.claude|scripts)\//.test(f)) packOnly.set(f, dir)
-  for (const s of pack.skills ?? []) packSkills.set(s, dir)
+  for (const r of pack.techdebtRules ?? []) {
+    if (!r || typeof r.id !== 'string' || !(typeof r.pattern === 'string' || Number.isInteger(r.lines))) {
+      problems.push(`${dir}: techdebtRules entry needs an id and a pattern (or lines): ${JSON.stringify(r)}`)
+      continue
+    }
+    for (const k of ['pattern', 'exclude']) {
+      try {
+        if (r[k] != null) new RegExp(r[k], k === 'pattern' ? r.flags ?? '' : '')
+      } catch (e) {
+        problems.push(`${dir}: techdebtRules ${r.id}: ${k} is not a valid regex (${e.message})`)
+      }
+    }
+  }
+  if (pack.detect != null) {
+    const rules = pack.detect.anyOf
+    if (!Array.isArray(rules) || rules.length === 0) problems.push(`${dir}: detect.anyOf must be a non-empty list of rules`)
+    for (const rule of Array.isArray(rules) ? rules : []) {
+      const known = ['deps', 'in', 'path', 'gitRemote']
+      const extra = Object.keys(rule ?? {}).filter((k) => !known.includes(k))
+      if (!rule || extra.length || !(Array.isArray(rule.deps) || typeof rule.path === 'string' || typeof rule.gitRemote === 'string')) {
+        problems.push(`${dir}: detect rule needs deps [names], path or gitRemote (only ${known.join(', ')}): ${JSON.stringify(rule)}`)
+      }
+    }
+  }
 }
 
 // Core side: contract placeholders guarded, every used key provided, no literal pack-only reference.
@@ -174,7 +230,7 @@ for (const [dir, name] of fragmentNames) if (!markers.has(name)) problems.push(`
 if (checked === 0 && problems.length === 0) problems.push('no packs found under packs/')
 if (problems.length > 0) {
   console.error(problems.join('\n'))
-  console.error(`PACK_CHECK: FAIL — ${checked} packs checked, ${problems.length} problems`)
+  console.error(`PACK_CHECK: FAIL — ${checked} packs + ${layersChecked} layers checked, ${problems.length} problems`)
   process.exit(1)
 }
-console.log(`PACK_CHECK: ok — ${checked} packs, ${used.size} contract keys used by core (each provided), 0 problems`)
+console.log(`PACK_CHECK: ok — ${checked} packs, ${layersChecked} layers, ${used.size} contract keys used by core (each provided), 0 problems`)

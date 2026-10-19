@@ -2,7 +2,7 @@
  * kit-drift — does a project's copy of the workflow still match the kit, except for its declared overrides?
  *
  *   node tools/drift-check.mjs --target <dir> [--source github:<owner>/<repo> --ref <tag> | --source <kit folder>]
- *                              [--packs angular,node-express] [--cursor | --no-cursor] [--verbose]
+ *                              [--packs angular,node-express] [--layers supabase,upstream-owned] [--cursor | --no-cursor] [--verbose]
  *
  * Source: --source/--ref, else the source + ref recorded in .kit/install.json, else the kit these tools run from.
  *
@@ -12,12 +12,13 @@
  * including .claude/references/ (the PRD/HLD templates). Works with or without .kit/install.json, so it also runs on a
  * project that is not kit-installed yet.
  *
- * Packs and Cursor: --packs / --cursor flags, else .kit/install.json, else kit.config.json `stack.packs` and
+ * Packs, layers and Cursor: --packs / --layers / --cursor flags, else .kit/install.json, else kit.config.json `stack.packs` / `stack.layers` and
  * "a .cursor/ folder exists".
  *
  *   drift      the project's file differs from the rendered kit file      -> exit 1
  *   missing    the kit ships it, the project has no such file             -> exit 1
- *   override   listed in kit.config.json `overrides` (any content)        -> fine
+ *   override   listed in kit.config.json `overrides`, or upstream-owned   -> fine
+ *              (an ownership.upstreamPaths glob matches it; any content)
  *   ignored    missing, and the project's git ignores the path            -> fine (it never reaches a clone)
  *
  * Read-only. Exit 0 = no undeclared differences, 1 = differences or a usage/config error.
@@ -25,7 +26,7 @@
 import { readFileSync, existsSync } from 'fs'
 import { resolve, join } from 'path'
 import { resolveSource } from './lib/source.mjs'
-import { KIT_ROOT, readJson, resolveConfig, planFiles, parseArgs, readOverrides, ownsAgents, ignoredPaths, AGENTS_WORKFLOW } from './lib/kit.mjs'
+import { KIT_ROOT, readJson, resolveConfig, planFiles, parseArgs, readOverrides, ownsAgents, ignoredPaths, AGENTS_WORKFLOW, splitList, withUpstream } from './lib/kit.mjs'
 
 const die = (m) => {
   console.error(`KIT_DRIFT: FAIL — ${m}`)
@@ -34,7 +35,7 @@ const die = (m) => {
 
 let args
 try {
-  args = parseArgs(process.argv.slice(2), { target: 'value', source: 'value', ref: 'value', packs: 'value', cursor: 'bool', 'no-cursor': 'bool', verbose: 'bool' })
+  args = parseArgs(process.argv.slice(2), { target: 'value', source: 'value', ref: 'value', packs: 'value', layers: 'value', cursor: 'bool', 'no-cursor': 'bool', verbose: 'bool' })
 } catch (e) {
   die(e.message)
 }
@@ -47,9 +48,8 @@ const project = existsSync(cfgFile) ? readJson(cfgFile) : {}
 const instFile = join(target, '.kit', 'install.json')
 const inst = existsSync(instFile) ? readJson(instFile) : null
 
-const packs = args.packs != null
-  ? args.packs.split(',').map((s) => s.trim()).filter(Boolean)
-  : inst?.packs ?? project.stack?.packs ?? []
+const packs = args.packs != null ? splitList(args.packs) : inst?.packs ?? project.stack?.packs ?? []
+const layers = args.layers != null ? splitList(args.layers) : inst?.layers ?? project.stack?.layers ?? []
 const cursor = args.cursor ? true : args['no-cursor'] ? false : inst ? !!inst.cursor : existsSync(join(target, '.cursor'))
 
 let plan
@@ -65,11 +65,13 @@ try {
     target,
     baseDir: recorded ? target : process.cwd(),
   }))
-  overrides = readOverrides(project)
-  const vals = resolveConfig({ kitRoot, project, packs, target })
+  const vals = resolveConfig({ kitRoot, project, packs, layers, target })
+  // Upstream-owned paths (ownership.upstreamPaths) count as overrides.
+  overrides = withUpstream(readOverrides(project), vals, ['AGENTS.md'])
   // Without .kit/install.json only an override makes AGENTS.md the project's (a hand-copied AGENTS.md is the kit's).
   const agentsWorkflow = ownsAgents({ target, overrides, recorded: inst ? inst.files ?? {} : null })
-  plan = planFiles({ kitRoot, packs, cursor, yesChef: !!inst?.yesChef, vals, agentsWorkflow })
+  plan = planFiles({ kitRoot, packs, layers, cursor, yesChef: !!inst?.yesChef, vals, agentsWorkflow })
+  overrides = withUpstream(overrides, vals, plan.files.map((f) => f.dest))
 } catch (e) {
   die(e.message)
 }
@@ -100,7 +102,7 @@ if (plan.report.unknown.size > 0) console.log(`NOTE unknown placeholders: ${[...
 
 const n = (s) => rows.filter((r) => r.state === s).length
 const undeclared = n('drift') + n('missing')
-const tail = `${n('ignored') ? `${n('ignored')} ignored, ` : ''}packs=[${packs.join(', ')}], cursor=${cursor}, ${managed.length} managed files, source=${origin.source}${origin.ref ? '@' + origin.ref : ''}`
+const tail = `${n('ignored') ? `${n('ignored')} ignored, ` : ''}packs=[${packs.join(', ')}], layers=[${layers.join(', ')}], cursor=${cursor}, ${managed.length} managed files, source=${origin.source}${origin.ref ? '@' + origin.ref : ''}`
 if (undeclared > 0) {
   console.log(`KIT_DRIFT: FAIL — ${undeclared} undeclared differences (${n('drift')} drift, ${n('missing')} missing), ${n('override')} overrides; ${tail}`)
   process.exit(1)

@@ -6,7 +6,11 @@
  *   core/            managed   every project
  *   packs/<name>/    managed   per selected stack pack (pack.json and its agentsFragment / fragments files are not
  *                              installed; paths in pack.json `seeds` are seeds)
- *   layers/cursor/   managed   with the Cursor layer
+ *   layers/<name>/   managed   per selected layer (--layers / stack.layers): an add-on that is not a stack — a backend
+ *                              service (supabase), an ownership profile (upstream-owned). layer.json has the optional
+ *                              fields of pack.json (provides, configDefaults, fragments, agentsFragment, gotchas, seeds,
+ *                              techdebtRules, detect) and is not installed; layers apply after the packs
+ *   layers/cursor/   managed   with the Cursor layer (--cursor; no layer.json)
  *   templates/       seed      written once, never updated by sync; templates/cursor/** only with the Cursor layer;
  *                              templates/fragments/** are inputs, not files
  *
@@ -111,7 +115,7 @@ export function ownsAgents({ target, overrides, recorded }) {
   return existsSync(join(target, 'AGENTS.md')) && !recorded['AGENTS.md']
 }
 const GOTCHA_FILE = /^docs\/brain\/gotchas\/[^/]+\.md$/
-const PACK_SKIP = new Set(['pack.json', 'AGENTS.fragment.md', 'FRAGMENTS.md'])
+const PACK_SKIP = new Set(['pack.json', 'layer.json', 'AGENTS.fragment.md', 'FRAGMENTS.md'])
 
 /**
  * The pack contract: what a core file may point at that only a stack pack can supply. A pack names its files in
@@ -285,16 +289,151 @@ export function loadPack(kitRoot, name) {
   return readJson(file)
 }
 
+export function loadLayer(kitRoot, name) {
+  if (name === 'cursor') throw new Error('the Cursor layer is chosen with --cursor, not --layers')
+  const file = join(kitRoot, 'layers', name, 'layer.json')
+  if (!existsSync(file)) throw new Error(`unknown layer "${name}" (no layers/${name}/layer.json)`)
+  return readJson(file)
+}
+
+/** Selected packs then layers, in that order: [{ kind, name, dir, manifest }] (dir relative to the kit root). */
+export function selectedUnits(kitRoot, packs, layers = []) {
+  return [
+    ...packs.map((name) => ({ kind: 'pack', name, dir: `packs/${name}`, manifest: loadPack(kitRoot, name) })),
+    ...layers.map((name) => ({ kind: 'layer', name, dir: `layers/${name}`, manifest: loadLayer(kitRoot, name) })),
+  ]
+}
+
+/** A comma list from a flag value ("a, b" -> [a, b]; "" -> []). */
+export const splitList = (s) => String(s ?? '').split(',').map((x) => x.trim()).filter(Boolean)
+
+/**
+ * Stack detection: which packs and layers match the project. Each pack.json / layer.json may carry
+ *   "detect": { "order": <n, packs: lower first>, "anyOf": [ <rule>, … ] }
+ * and a rule matches when every condition in it holds:
+ *   deps: [names]   all of them in a package.json's dependencies / devDependencies / peerDependencies;
+ *                   in: [folders] which package.json files to read ("" = the root; "{paths.serverRoot}" = the
+ *                   project's configured backend folder, skipped when unset); default the root only
+ *   path: "<p>"     the file or folder exists in the project
+ *   gitRemote: "<name>"   the project's git repo has that remote
+ * Returns { packs: [{ name, why }], layers: [{ name, why }] }.
+ */
+export function detectStack({ kitRoot, target, project = {} }) {
+  const pkgCache = new Map()
+  const deps = (folder) => {
+    if (!pkgCache.has(folder)) {
+      let set = null
+      try {
+        const p = readJson(join(target, folder, 'package.json'))
+        set = new Set(['dependencies', 'devDependencies', 'peerDependencies'].flatMap((k) => Object.keys(p[k] ?? {})))
+      } catch { /* no or unreadable package.json */ }
+      pkgCache.set(folder, set)
+    }
+    return pkgCache.get(folder)
+  }
+  let remotes = null
+  const hasRemote = (name) => {
+    if (remotes == null) {
+      const r = spawnSync('git', ['remote'], { cwd: target, encoding: 'utf8' })
+      remotes = new Set(r.status === 0 ? r.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean) : [])
+    }
+    return remotes.has(name)
+  }
+  const serverRoot = flatten(project)['paths.serverRoot']
+  const ruleWhy = (rule) => {
+    const why = []
+    if (rule.deps) {
+      const folders = (rule.in ?? ['']).map((f) => (f === '{paths.serverRoot}' ? (isEmpty(serverRoot) ? null : serverRoot) : f)).filter((f) => f != null)
+      const hit = [...new Set(folders)].find((f) => {
+        const d = deps(f)
+        return d && rule.deps.every((n) => d.has(n))
+      })
+      if (hit == null) return null
+      why.push(`${hit ? `${hit.replace(/\/?$/, '/')}` : ''}package.json has ${rule.deps.join(' + ')}`)
+    }
+    if (rule.path != null) {
+      if (!existsSync(join(target, rule.path))) return null
+      why.push(`${rule.path} exists`)
+    }
+    if (rule.gitRemote != null) {
+      if (!hasRemote(rule.gitRemote)) return null
+      why.push(`git remote "${rule.gitRemote}" exists`)
+    }
+    return why.length ? why.join(', ') : null
+  }
+  const scan = (folder, load) => {
+    const dir = join(kitRoot, folder)
+    if (!existsSync(dir)) return []
+    const out = []
+    for (const name of readdirSync(dir).sort()) {
+      let m
+      try {
+        m = load(kitRoot, name)
+      } catch {
+        continue // not a pack / layer folder (e.g. the Cursor layer)
+      }
+      for (const rule of m.detect?.anyOf ?? []) {
+        const why = ruleWhy(rule)
+        if (why) {
+          out.push({ name, why, order: m.detect.order ?? 50 })
+          break
+        }
+      }
+    }
+    return out.sort((a, b) => a.order - b.order).map(({ name, why }) => ({ name, why }))
+  }
+  return { packs: scan('packs', loadPack), layers: scan('layers', loadLayer) }
+}
+
+// Glob -> RegExp for ownership.upstreamPaths: `**` any depth, `*` within one folder, `?` one character; a trailing
+// slash means everything under the folder.
+export function globToRegExp(glob) {
+  let g = glob.trim().replace(/\\/g, '/').replace(/^\.\//, '')
+  if (g.endsWith('/')) g += '**'
+  let re = ''
+  for (let i = 0; i < g.length; i++) {
+    const c = g[i]
+    if (c === '*' && g[i + 1] === '*') {
+      if (g[i + 2] === '/') {
+        re += '(?:.*/)?'
+        i += 2
+      } else {
+        re += '.*'
+        i += 1
+      }
+    } else if (c === '*') re += '[^/]*'
+    else if (c === '?') re += '[^/]'
+    else re += c.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+  }
+  return new RegExp(`^${re}$`)
+}
+
+/** The project's upstream-owned path globs (ownership.upstreamPaths), as a list. */
+export const upstreamGlobs = (vals) => asList(vals['ownership.upstreamPaths'])
+
+/**
+ * overrides plus every one of `dests` that an ownership.upstreamPaths glob matches (reason "upstream-owned"):
+ * install never writes them, sync and drift-check report them as `override`. A new Map; explicit overrides keep
+ * their own reason.
+ */
+export function withUpstream(overrides, vals, dests) {
+  const res = upstreamGlobs(vals).map(globToRegExp)
+  const out = new Map(overrides)
+  if (res.length === 0) return out
+  for (const d of dests) if (!out.has(d) && res.some((r) => r.test(d))) out.set(d, 'upstream-owned (ownership.upstreamPaths)')
+  return out
+}
+
 /** Effective flat config: project > pack defaults > kit defaults, then computed defaults. */
-export function resolveConfig({ kitRoot, project, packs, target, platform = process.platform, nodeVersion = process.versions.node }) {
+export function resolveConfig({ kitRoot, project, packs, layers = [], target, platform = process.platform, nodeVersion = process.versions.node }) {
   const base = flatten(readJson(join(kitRoot, 'kit.config.json')))
   const packLayer = {}
   const techdebtRules = []
-  for (const name of packs) {
-    const pack = loadPack(kitRoot, name)
+  // Packs first, then layers: a layer adds to the stack (lists add up) and fills what no pack set.
+  for (const { kind, manifest: pack } of selectedUnits(kitRoot, packs, layers)) {
     techdebtRules.push(...(pack.techdebtRules ?? []))
     // The first pack named is the primary stack: its standards doc is the one core files point at.
-    if (isEmpty(packLayer['stack.standardsDoc'])) packLayer['stack.standardsDoc'] = pack.standardsDoc
+    if (kind === 'pack' && isEmpty(packLayer['stack.standardsDoc'])) packLayer['stack.standardsDoc'] = pack.standardsDoc
     // The pack contract: what the pack provides for the core references (first pack that provides a key wins).
     for (const [k, v] of Object.entries(pack.provides ?? {})) if (isEmpty(packLayer[`stack.${k}`])) packLayer[`stack.${k}`] = v
     for (const [k, v] of Object.entries(pack.configDefaults ?? {})) {
@@ -309,6 +448,7 @@ export function resolveConfig({ kitRoot, project, packs, target, platform = proc
     vals[key] = !isEmpty(proj[key]) ? proj[key] : !isEmpty(packLayer[key]) ? packLayer[key] : base[key]
   }
   vals['stack.packs'] = packs
+  vals['stack.layers'] = layers
   const name = isEmpty(vals['project.name']) ? basename(resolve(target)) : vals['project.name']
   vals['project.name'] = name
   if (isEmpty(vals['slots.fePorts'])) vals['slots.fePorts'] = 4200
@@ -429,7 +569,8 @@ export function markHooksExecutable(target, dests) {
  * Plan every file the kit would install: [{ dest, kind, source, content }] (content rendered).
  * `vals` is the output of resolveConfig.
  */
-export function planFiles({ kitRoot, packs, cursor, yesChef, vals, agentsWorkflow = false }) {
+export function planFiles({ kitRoot, packs, layers = [], cursor, yesChef, vals, agentsWorkflow = false }) {
+  const units = selectedUnits(kitRoot, packs, layers)
   const report = { unknown: new Set(), notSet: new Set() }
   const raw = new Map() // dest -> { kind, source, text }
   const add = (dest, kind, source) => {
@@ -447,15 +588,14 @@ export function planFiles({ kitRoot, packs, cursor, yesChef, vals, agentsWorkflo
   for (const f of walk(join(kitRoot, 'core'))) add(f, kindOf(f), `core/${f}`)
   const skipWhen = new Map() // dest -> alternatives (an optional pack seed)
   const fragments = [] // FRAGMENTS.md sections per selected pack, in pack order
-  for (const p of packs) {
-    const pack = loadPack(kitRoot, p)
+  for (const { dir, manifest: pack } of units) {
     const seeds = pack.seeds ?? {}
-    for (const f of walk(join(kitRoot, 'packs', p))) {
+    for (const f of walk(join(kitRoot, dir))) {
       if (PACK_SKIP.has(f) || f === pack.agentsFragment || f === pack.fragments) continue
-      add(f, f in seeds ? 'seed' : kindOf(f), `packs/${p}/${f}`)
+      add(f, f in seeds ? 'seed' : kindOf(f), `${dir}/${f}`)
       if (seeds[f]?.skipWhenPresent?.length) skipWhen.set(f, seeds[f].skipWhenPresent)
     }
-    if (pack.fragments) fragments.push(fragmentSections(readFileSync(join(kitRoot, 'packs', p, pack.fragments), 'utf8')))
+    if (pack.fragments) fragments.push(fragmentSections(readFileSync(join(kitRoot, dir, pack.fragments), 'utf8')))
   }
   if (cursor) for (const f of walk(join(kitRoot, 'layers', 'cursor'))) add(f, 'managed', `layers/cursor/${f}`)
   const tplRoot = join(kitRoot, 'templates')
@@ -479,10 +619,9 @@ export function planFiles({ kitRoot, packs, cursor, yesChef, vals, agentsWorkflo
   // Pack-supplied sections for the seed skeletons.
   const frag = { 'Hard rules': [], 'Skill triggers': [], 'Standards index': [] }
   const gotchaRows = []
-  for (const p of packs) {
-    const pack = loadPack(kitRoot, p)
+  for (const { dir, manifest: pack } of units) {
     if (pack.agentsFragment) {
-      const s = sections(readFileSync(join(kitRoot, 'packs', p, pack.agentsFragment), 'utf8'))
+      const s = sections(readFileSync(join(kitRoot, dir, pack.agentsFragment), 'utf8'))
       for (const k of Object.keys(frag)) frag[k].push(...(s[k] ?? []))
     }
     for (const g of pack.gotchas ?? []) gotchaRows.push(g)
@@ -525,10 +664,14 @@ export function parseArgs(argv, spec) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (!a.startsWith('--')) throw new Error(`unexpected argument: ${a}`)
-    const key = a.slice(2)
+    // --key=value is the same as --key value (and the only way PowerShell 5 passes an empty value: --packs=).
+    const eq = a.indexOf('=')
+    const key = eq > 0 ? a.slice(2, eq) : a.slice(2)
     if (!(key in spec)) throw new Error(`unknown flag: ${a}`)
-    if (spec[key] === 'bool') out[key] = true
-    else out[key] = argv[++i]
+    if (spec[key] === 'bool') {
+      if (eq > 0) throw new Error(`${key} takes no value: ${a}`)
+      out[key] = true
+    } else out[key] = eq > 0 ? a.slice(eq + 1) : argv[++i]
   }
   return out
 }

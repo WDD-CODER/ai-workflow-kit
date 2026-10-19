@@ -9,24 +9,88 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
-### 002 — Planner always runs the Architect and Product Manager review
+## [2.0.0] - 2026-10-19
 
-What a project must do:
-1. `kit-sync` shows `.claude/references/prd-template.md` and `hld-template.md` as `conflict` whenever the
-   project's copy differs from the kit's (they were seeds and are now kit-managed; sync never overwrites them).
-   For each: move the project-only lines from your copy into the file named by `paths.planChecks` (default
-   `docs/project/plan-checks.md`; set the key in `kit.config.json` to use another path), then take the kit
-   version (copy the rendered kit file over yours) and re-run sync — it reports `same` and records the file as
-   managed. To keep your own copy instead, add an `overrides` entry (`{ "path": ".claude/references/prd-template.md",
-   "reason": "…" }`).
-2. `kit-drift` now compares both templates byte for byte, like every other core file. A kept copy needs the
-   `overrides` entry above, or drift-check exits 1.
-3. Optional: `AGENTS.md` is a seed, so existing projects do not get the new rule. Paste this bullet under
-   `## Hard rules`, after the "Architecture invariants" bullet:
-   ```
-   - **Architect + PM review (Planner):** the Planner is the Architect and the Product Manager. Every plan the Planner saves — written here or received from Claude.ai, Cursor or another agent — gets `/plan`'s `## Architect + PM review (always)` before it is saved, plus this project's own checks in `{{paths.planChecks}}` when that file exists. A received plan is reviewed, not silently rewritten.
-   ```
-   Replace `{{paths.planChecks}}` with your path.
+The core no longer assumes a stack: "core + stack pack + layers". The frontend dev server, CI jobs, style rules,
+tech-debt rules and the references core commands make come from the packs and from config, a project without a
+backend gets no backend job, and a new **React + Vite** pack, a **Supabase** layer and an **upstream-owned** layer (for
+a repo that is a copy of someone else's) join the Angular and Node/Express packs. The installer detects the stack when
+none is named. The Planner always runs an Architect + Product Manager review before it saves a plan. New checks
+prove an install on fixture projects end to end. Major: several changes need a step in existing projects (below).
+
+### What a project must do
+
+Run `kit-sync -Ref v2.0.0` (dry-run) first; it lists every change. Then:
+
+1. **`commands.*` are npm script names.** Every `commands.*` value in `kit.config.json` must be a script name
+   (`"build"`, `"dev"`), not a command (`"npm run build"`, which rendered as `npm run npm run build`). Install and sync
+   stop with exit 2 and name the value to use. `commands.lintStaged` stays a full command.
+2. **Name the stack for a core-only install.** With no `--packs` and no `stack.packs`, install now detects the packs and
+   layers, prints them with the reason for each and installs them only after `--yes`; when nothing matches it stops
+   (exit 2) instead of installing the core alone. For the stack-neutral core only, pass `--packs ""` (PowerShell
+   `-Packs ''`) or set `"stack": { "packs": [] }`. Installed projects are not affected: sync uses the recorded packs.
+3. **PRD and HLD templates.** `kit-sync` shows `.claude/references/prd-template.md` and `hld-template.md` as `conflict`
+   whenever the project's copy differs from the kit's (they were seeds and are now kit-managed; sync never overwrites
+   them). For each: move the project-only lines into the file named by `paths.planChecks` (default
+   `docs/project/plan-checks.md`), then take the kit version (copy the rendered kit file over yours) and re-run sync —
+   it reports `same` and records the file as managed. To keep your own copy, add an `overrides` entry instead; drift-check
+   now compares both templates byte for byte, so a kept copy needs it.
+4. **Workflow script dependencies.** After the sync, run `npm install` inside `scripts/` once in the main folder and
+   commit `scripts/package-lock.json` (not `npm install --prefix scripts`: npm 10 then runs the root package's
+   lifecycle scripts). The dependency (`picomatch`) lives in the kit-managed `scripts/package.json`; until the lockfile
+   exists the scripts still find it in the root `node_modules` when it is there. Slots reinstall it when the lockfile
+   changes; CI installs it inside `scripts/` and audits it report-only once the lockfile is committed; a later
+   `kit-sync --apply` that changes `scripts/package.json` refreshes the lockfile (commit it with the sync, or run the
+   command sync prints when that install fails).
+5. **A project that keeps its own `AGENTS.md`** (an `overrides` entry, or `ownership.upstreamPaths`) gets
+   `AGENTS.workflow.md` as a `new` file: add the line `@AGENTS.workflow.md` under `@AGENTS.md` in `CLAUDE.md` (a seed,
+   so sync does not change it).
+6. **Slot frontend dev server.** It comes from `commands.dev` + `slots.fe*`. With the angular pack nothing changes (the
+   pack supplies `npm exec -- ng serve -c slot --port <port>` and the env file); the react-vite pack supplies
+   `npm run dev -- --port <port> --strictPort`. Any other project whose slot frontend started only because
+   `src/environments/environment.local.ts` existed: set `commands.dev` (and, as needed, `slots.feExec`,
+   `slots.fePortArgs`, `slots.feMatcher`, `slots.feEnvFile`). A backend-only project whose `kit.config.json` still says
+   `commands.dev: "dev"` (older node-express installs copied it): set it to `""`. Install and sync print a `NOTE` while
+   `commands.dev` is set and every `slots.fe*` value is the default; the default `--port {port}` is right only for a
+   server that fails on a busy port.
+7. **Backend.** A project that has a backend must set `paths.serverRoot` (e.g. `"server/"`, which the node-express pack
+   sets): with it empty, `ci.yml` and `security.yml` render no server job or step. Install and sync print a `NOTE` when
+   `server/package.json` exists and the key is empty.
+8. **CI for code the project does not own** (an upstream copy, a stale lockfile, a legacy codebase): set `ci.install`,
+   `ci.lintScope: "changed"` (ESLint on the project's own changed files; needs ESLint in the root `node_modules`) and/or
+   `ci.appAuditMode: "report"` — or use the `upstream-owned` layer, which sets all three. Install and sync refuse (exit 2)
+   any other value of the two modes. An `overrides` entry for `ci.yml` or `security.yml` kept only for this, or only to
+   drop the backend job, can go.
+9. **React + Vite projects that forked kit files.** Add the stack with `kit-sync --packs react-vite --layers
+   supabase[,upstream-owned]` (dry-run, then `--apply` records it; a project-owned `AGENTS.md` is a seed, so copy the
+   pack's hard rules and skill triggers in from a scratch install). Move `.gitignore`, `AGENTS.md`, `package.json` (and
+   any other upstream-owned file) from `overrides` to `ownership.upstreamPaths` — the `upstream-owned` layer's default
+   already lists `.gitignore`, `AGENTS.md`, `package.json` and `package-lock.json`. Then these overrides can be dropped,
+   because the kit now covers what they were forked for (drop the entry, sync, check the rendered file; keep an
+   override only for a real project difference): `scripts/slot-serve.mjs`, `scripts/take-plan.mjs`,
+   `scripts/lib/slot-procs.mjs`, `.claude/skills/worktree-setup/SKILL.md` (Vite slot server, `scripts/package.json`,
+   local excludes); `.husky/pre-commit`, `.husky/pre-push` (shebang, optional lint-staged, closed plans in range
+   folders); `.github/workflows/ci.yml`, `security.yml` (no backend job, `ci.*` keys), `brain-capture-reminder.yml`
+   (title injection), `todo-sync.yml` (the repo-setting error); `.claude/settings.json`, `scripts/ship-prep.mjs`,
+   `scripts/session-startup.sh` (Python fallback, SessionStart JSON); `scripts/techdebt-report.mjs`,
+   `.claude/skills/techdebt/SKILL.md` (`scan`, `.tsx`, pack rules); `.claude/commands/feat.md`, `fix.md`, `refactor.md`,
+   `security.md`, `docs-refresh.md`, `commands.md` (Angular style rules, breadcrumbs); `.claude/skills/save-plan/SKILL.md`,
+   `docs/agent/workflow-map.md` (stale paths, pack skill rows). An override for `.vscode/settings.json` that upstream's
+   `.gitignore` ignores is not needed either (`ignored`). A tech-debt baseline written with other rule names: re-run
+   `node scripts/techdebt-report.mjs scan --write-baseline`.
+10. Optional: record a tech-debt baseline once (`node scripts/techdebt-report.mjs scan --write-baseline`, commit
+    `<paths.sharedDocs>/techdebt-baseline.json`) so the `techdebt` skill reports `NEW_DEBT: yes|no` against it.
+11. Optional: `AGENTS.md` is a seed, so existing projects do not get the Planner review rule. Paste this bullet under
+    `## Hard rules`, after the "Architecture invariants" bullet, with your `paths.planChecks` path:
+    ```
+    - **Architect + PM review (Planner):** the Planner is the Architect and the Product Manager. Every plan the Planner saves — written here or received from Claude.ai, Cursor or another agent — gets `/plan`'s `## Architect + PM review (always)` before it is saved, plus this project's own checks in `{{paths.planChecks}}` when that file exists. A received plan is reviewed, not silently rewritten.
+    ```
+12. Optional: a project without the angular pack keeps the `.prettierrc.json` it got as a seed (sync never deletes
+    seeds); delete it if its code style differs. The `.gitignore` skeleton (a seed) lists three more runtime paths
+    (`.claude/*.log`, `.claude/.last-npm-install-hash-scripts`, `scripts/node_modules/`); `take-plan` already adds the
+    whole list to `.git/info/exclude`.
+
+### 002 — Planner always runs the Architect and Product Manager review
 
 #### Added
 - `/plan` has a `## Architect + PM review (always)` section. It runs on every plan the Planner saves — plans
@@ -62,31 +126,6 @@ What a project must do:
   `docs/agent/` instead of a `.claude/rules/` folder that does not exist.
 
 ### 003 — Stack-neutral core, part 1: install, slots and runtime files
-
-What a project must do:
-1. Every `commands.*` value in `kit.config.json` must be an npm **script name** (`"build"`), not a command
-   (`"npm run build"`, which rendered as `npm run npm run build`). Install and sync now stop with exit 2 and name
-   the value to use; change it, then re-run. `commands.lintStaged` stays a full command.
-2. After the sync, run `npm install` inside `scripts/` once in the main folder and commit
-   `scripts/package-lock.json`. The workflow scripts' dependency (`picomatch`) now lives in the kit-managed
-   `scripts/package.json`; slots reinstall it when that lockfile changes. Until the lockfile exists, the scripts
-   still find `picomatch` in the root `node_modules` when it is there. A CI job that runs the workflow scripts
-   from a clean checkout without the root install needs that install too. (Not `npm install --prefix scripts`: npm 10 then runs the root
-   package's lifecycle scripts, e.g. a `prepare: husky` that is not installed yet.)
-3. A project that keeps its own `AGENTS.md` (an `overrides` entry) gets `AGENTS.workflow.md` as a `new` file:
-   add the line `@AGENTS.workflow.md` under `@AGENTS.md` in `CLAUDE.md` (a seed, so sync does not change it).
-4. A project without the angular pack whose slot frontend started only because
-   `src/environments/environment.local.ts` existed: set `commands.dev` (and, as needed, `slots.feExec`,
-   `slots.fePortArgs`, `slots.feMatcher`, `slots.feEnvFile`) in `kit.config.json`. With the angular pack nothing
-   changes: it supplies today's command (`npm exec -- ng serve -c slot --port <port>`) and env file.
-5. A node-express project without a root frontend whose `kit.config.json` still says `commands.dev: "dev"` (older
-   installs copied that pack default into the written config): set `commands.dev` to `""`, or slots would start
-   `npm run dev -- --port <port>` as a frontend. Install and sync print a `NOTE` while `commands.dev` is set and every
-   `slots.fe*` value is the kit default. A real frontend with the default `slots.fePortArgs` (`--port {port}`) must
-   fail on a busy port; add its strict-port flag if it would move to another port.
-6. Optional: the `.gitignore` skeleton (a seed) lists three more runtime paths (`.claude/*.log`,
-   `.claude/.last-npm-install-hash-scripts`, `scripts/node_modules/`). Copy them into your `.gitignore` if you
-   like; `take-plan` already adds the whole list to `.git/info/exclude`.
 
 #### Added
 - `scripts/local-excludes.mjs`: the single list of runtime files (slot markers, logs, install hashes, session
@@ -136,34 +175,8 @@ What a project must do:
 
 ### 004 — Stack-neutral core, part 2: CI, commands, tech debt and rules by pack
 
-What a project must do:
-1. Nothing, for a project on the angular (and node-express) pack: its CI keeps the `server-tests` job, the full
-   `npm run <commands.lint>` and the enforced critical audit, and its commands keep the same Angular rules (they now
-   come from the pack). Sync shows the changed managed files as `kit-update`.
-2. A project whose CI can't be green for code or dependencies it does not own (an upstream copy, a stale lockfile, a
-   legacy codebase): set `ci.install` (e.g. `"npm install --no-audit --no-fund"`), `ci.lintScope: "changed"` (ESLint on
-   the project's own changed files only — kit-managed files are left out; needs ESLint in the root `node_modules`)
-   and/or `ci.appAuditMode: "report"` in `kit.config.json`, then sync. Install and sync refuse (exit 2) any other value
-   of the two modes. An `overrides` entry for `.github/workflows/ci.yml` or `security.yml` kept only for that, or only
-   to drop the backend job, can go: sync, check the rendered file, remove the override.
-3. A project with no backend leaves `paths.serverRoot` empty: `ci.yml` and `security.yml` then render no server job
-   or step (no more `npm ci --prefix ` with nothing after it, no `working-directory: server`). **A project that has a
-   backend must set `paths.serverRoot`** (e.g. `"server/"`, which the node-express pack sets): with it empty, CI runs no
-   server tests and no server audit. Install and sync print a `NOTE` when `server/package.json` exists and the key is
-   empty.
-4. The workflow scripts' dependencies (`scripts/package.json`, kit-managed): `ci.yml` installs them inside `scripts/`
-   before `npm run test:scripts`, and `security.yml` audits them **report-only** (job summary + warning, never a
-   failed job: a kit release fixes them, not the project) — both only once `scripts/package-lock.json` is committed
-   (003, item 2). `kit-sync --apply` that updates `scripts/package.json` now runs `npm install` inside `scripts/` when
-   that lockfile exists, so the lockfile follows the kit; commit it with the sync. If that install fails, sync prints
-   the command to run.
-5. Optional: record a tech-debt baseline once — `node scripts/techdebt-report.mjs scan --write-baseline`, commit
-   `<paths.sharedDocs>/techdebt-baseline.json` — so the `techdebt` skill reports `NEW_DEBT: yes|no` against it
-   instead of the whole legacy count. A project that overrides `.claude/skills/techdebt/SKILL.md` can add the `scan`
-   step to its copy.
-6. A project without the angular pack keeps the `.prettierrc.json` it got as a seed (sync never deletes seeds);
-   delete it if its code style differs. New installs get it only with the angular pack, and not when the project
-   already has a prettier config.
+A project on the angular (and node-express) pack keeps its CI (`server-tests`, the full `npm run <commands.lint>`, the
+enforced critical audit) and the same Angular rules, now from the pack; sync shows the changed files as `kit-update`.
 
 #### Added
 - Config keys `ci.install` (default `npm ci`), `ci.lintScope` (`all` default | `changed`) and `ci.appAuditMode`
@@ -217,6 +230,55 @@ What a project must do:
 - `.prettierrc.json` moved from `templates/` to the angular pack (a seed).
 - `ci.yml`: `server-tests` runs inside `paths.serverRoot` (`working-directory`) instead of `npm --prefix`; the gate's
   `needs` is a block list; the docs-only path filter drops three patterns `*.md` already covered (shellcheck SC2221).
+
+### 005 — React-Vite pack, upstream-owned layer and adoption checks
+
+#### Added
+- `packs/react-vite/`: React + Vite + TypeScript standards (`standards-react.md`: server state in the query library,
+  caller-scoped query keys, one session source, typed data access, realtime cleanup, lazy routes that reload once on a
+  missing chunk, Tailwind tokens, right-to-left-safe utilities) and conventions; the `react-component-structure`,
+  `cssLayer` and `auth-and-logging` skills; Vite gotchas; the pack contract (`conventionsDoc`, `styleSkill`, `authSkill`,
+  `cssSection`, `componentsSection`; no docs-map skill, so `/docs-refresh` takes its fallback); fragments for
+  `/refactor`, `/security`, the `techdebt` skill and the `workflow-map.md` skill rows; tech-debt rules `inner-html`,
+  `banned-state`, `raw-fetch`; config defaults: `commands.dev: "dev"`, `slots.fePortArgs` with `--strictPort`, the Vite
+  process matcher, base port 5173, `paths.routesFile` and the `src/App.tsx` hotspot, no backend.
+- Layers beyond Cursor: `layers/<name>/layer.json` takes the optional fields of `pack.json` and applies after the packs;
+  `--layers` on install, sync and drift-check, `stack.layers` in the config, `layers` in `.kit/install.json`.
+  `layers/supabase/`: Supabase backend standards (`standards-supabase.md`, the `backendDoc` contract key), gotchas,
+  sensitive paths, the `ui-table-call` tech-debt rule. `layers/upstream-owned/`: `ownership.upstreamPaths`, CI defaults
+  (`ci.install: npm install --no-audit --no-fund`, `ci.lintScope: changed`, `ci.appAuditMode: report`), the `/pull-copy`
+  command (rebase on `upstream/main`, never resolve a conflict, the force-push left to the Human), gotchas and a hard
+  rule.
+- Config key `ownership.upstreamPaths` (globs): matching kit files are never written by install and count as
+  `override` in sync and drift-check; a matching `AGENTS.md` sends the rules to `AGENTS.workflow.md`; a matching
+  `package.json` gets no devDependencies; in a slot `scope-check` prints `SCOPE: upstream <path>` and the scope guard
+  denies it ("upstream-owned, not an `approved:`"), even when the plan lists it; `ship-prep`'s scope check names it.
+- Stack detection: `pack.json` / `layer.json` `detect` rules (`deps` in the root or backend `package.json`, a `path`, a
+  `gitRemote`). With no `--packs` and no `stack.packs`, install prints `KIT_INSTALL: detected packs=[…] layers=[…]` with a
+  reason per entry, writes nothing until `--yes`, then records the stack in `kit.config.json`.
+- `kit-sync --packs / --layers` add a pack or layer to an installed project (`--apply` records them); `kit-install.ps1
+  -Layers -Yes`, `kit-sync.ps1 -Packs -Layers`. Every tool flag also takes `--flag=value` (PowerShell 5 drops an empty
+  argument, so the wrappers pass `--packs=`).
+- `tools/e2e-check.mjs --project <path>`: the e2e cycle on a scratch copy of a real installed project — slots borrow its
+  `node_modules` through junctions (removed with `rmdir`, the source checked intact afterwards); the plan commit runs the
+  hooks; claim, guards (hotspot, upstream-owned path), the slot dev server, ship, merge, close-out, a Planner close-out
+  push into a range folder, `/pull-copy` (replay, refused force-push, conflict abort) with an upstream, drift-check, the
+  maintenance scripts and SessionStart JSON.
+- `tools/adoption-report.mjs --target <dir> [--markdown <file>]`: one row per workflow part (install record, managed
+  files, stack vs detection, each Claude Code hook and git hook, hooks enabled, scripts dependencies, runtime ignores,
+  kit rules loaded, npm scripts, frontend dev server, doc links, CI) with `ok` / `warn` / `fail`.
+- `tools/acceptance-check.mjs [--e2e]` and `tools/fixtures/make-fixture.mjs`: Angular + Express, React-Vite + Supabase and
+  an upstream-owned React-Vite copy (double quotes and semicolons, no husky, an `upstream` remote). Each: detection, install,
+  link check, drift-check with no hand-written override, rendered CI, adoption report, the first commit through the hooks;
+  `--e2e` then runs `e2e-check --project` on the two React-Vite fixtures. Kit CI runs it on Linux and Windows.
+- install-check: a React-Vite + Supabase fixture, the React tech-debt rules, stack detection (proposal, `--yes`, nothing
+  matching, explicit packs win) and the upstream-owned layer; workflow-link-check covers react-vite and both layers.
+- `pack-check` checks layers too, plus `detect` rules and `techdebtRules` patterns.
+
+#### Changed
+- `install` with no `--packs`, no `stack.packs` and no recorded packs detects the stack and stops until `--yes` (exit 2),
+  instead of installing the core alone (what-to-do item 2).
+- `workflow-map.md` §4 has a `PACK:workflow-map:skills` marker for the pack's skill rows (no pack section = no line).
 
 ## [1.0.5] - 2026-10-18
 
@@ -365,7 +427,8 @@ Phases 4 to 6A, never tagged. Projects installed from a local kit folder.
 Phases 1 and 2, before this repository existed: the workflow was extracted from its source project into a
 stack-neutral `core/` with `{{placeholder}}` config keys and a leak check.
 
-[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.0.5...HEAD
+[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v2.0.0
 [1.0.5]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.5
 [1.0.4]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.4
 [1.0.3]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.3

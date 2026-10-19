@@ -1,11 +1,14 @@
 /**
  * kit-sync — show what a newer kit would change in an installed project, then STOP.
  *
- *   node tools/sync.mjs --target <dir> [--ref <tag>] [--source github:<owner>/<repo> | --source <kit folder>] [--apply]
+ *   node tools/sync.mjs --target <dir> [--ref <tag>] [--source github:<owner>/<repo> | --source <kit folder>]
+ *                       [--packs a,b] [--layers a,b] [--apply]
  *
  * Source: --source, else the source + ref recorded in .kit/install.json, else the kit these tools run from.
  * --ref <tag> upgrades (or downgrades) a github source; --apply then records the new source/ref/commit.
  * A ref that does not exist fails before anything is written.
+ * Packs and layers: the ones .kit/install.json recorded; --packs / --layers change them (a stack pack or a layer added
+ * to an installed project) and --apply records the new lists.
  *
  * Dry-run by default; writes nothing. --apply writes only `new` and `kit-update` files and refreshes
  * .kit/install.json. A `conflict` (local edit AND kit change, or an untracked file in the way) is never overwritten.
@@ -16,7 +19,8 @@
  *   conflict          both changed (or untracked file differs)            -> kept, resolve by hand
  *   removed-from-kit  installed earlier, no longer shipped                -> kept, delete by hand if unwanted
  *   deleted-locally   installed earlier, missing now                      -> kept missing
- *   override          listed in kit.config.json `overrides`               -> never written, not a conflict
+ *   override          listed in kit.config.json `overrides`, or matched   -> never written, not a conflict
+ *                     by an ownership.upstreamPaths glob (upstream-owned)
  * Seed files (templates) are written once and never updated: only `new` applies to them. An optional pack seed is not
  * written at all while the project has its own equivalent (a NOTE).
  * A file recorded as a seed that the kit now ships as managed is `conflict` unless it already matches the kit
@@ -35,12 +39,12 @@ import { resolve, join, dirname } from 'path'
 import { resolveSource } from './lib/source.mjs'
 import {
   KIT_ROOT, readJson, sha256, resolveConfig, planFiles, parseArgs, readOverrides, isHook, markHooksExecutable, commandProblems,
-  ownsAgents, ignoredPaths, AGENTS_WORKFLOW, frontendNote, presentAlternative, backendNote,
+  ownsAgents, ignoredPaths, AGENTS_WORKFLOW, frontendNote, presentAlternative, backendNote, withUpstream, splitList,
 } from './lib/kit.mjs'
 
 let args
 try {
-  args = parseArgs(process.argv.slice(2), { target: 'value', source: 'value', ref: 'value', apply: 'bool' })
+  args = parseArgs(process.argv.slice(2), { target: 'value', source: 'value', ref: 'value', packs: 'value', layers: 'value', apply: 'bool' })
 } catch (e) {
   console.error(`KIT_SYNC: FAIL — ${e.message}`)
   process.exit(1)
@@ -58,6 +62,8 @@ if (!existsSync(installFile)) {
 const inst = readJson(installFile)
 const cfgFile = join(target, 'kit.config.json')
 const project = existsSync(cfgFile) ? readJson(cfgFile) : {}
+const packs = args.packs != null ? splitList(args.packs) : inst.packs ?? []
+const layers = args.layers != null ? splitList(args.layers) : inst.layers ?? []
 let plan
 let feNote
 let beNote
@@ -73,8 +79,9 @@ try {
     target,
     baseDir: recorded ? target : process.cwd(),
   }))
-  overrides = readOverrides(project)
-  const vals = resolveConfig({ kitRoot, project, packs: inst.packs, target })
+  const vals = resolveConfig({ kitRoot, project, packs, layers, target })
+  // Upstream-owned paths (ownership.upstreamPaths) count as overrides.
+  overrides = withUpstream(readOverrides(project), vals, ['AGENTS.md'])
   const bad = commandProblems(vals)
   if (bad.length > 0) {
     for (const m of bad) console.error(`KIT_SYNC: STOP — ${m}`)
@@ -84,7 +91,8 @@ try {
   feNote = frontendNote(vals)
   beNote = backendNote(vals, target)
   const agentsWorkflow = ownsAgents({ target, overrides, recorded: inst.files ?? {} })
-  plan = planFiles({ kitRoot, packs: inst.packs, cursor: inst.cursor, yesChef: inst.yesChef, vals, agentsWorkflow })
+  plan = planFiles({ kitRoot, packs, layers, cursor: inst.cursor, yesChef: inst.yesChef, vals, agentsWorkflow })
+  overrides = withUpstream(overrides, vals, plan.files.map((f) => f.dest))
 } catch (e) {
   console.error(`KIT_SYNC: FAIL — ${e.message}`)
   process.exit(1)
@@ -153,6 +161,9 @@ if (beNote) console.log(beNote)
 if (inst.kit?.version !== readJson(join(kitRoot, 'kit.json')).version) {
   console.log(`NOTE installed from kit ${inst.kit?.version}, this kit is ${readJson(join(kitRoot, 'kit.json')).version}`)
 }
+const stackOf = (p, l) => `packs=[${p.join(', ')}] layers=[${l.join(', ')}]`
+const recordedStack = stackOf(inst.packs ?? [], inst.layers ?? [])
+if (stackOf(packs, layers) !== recordedStack) console.log(`NOTE stack ${recordedStack} -> ${stackOf(packs, layers)}${args.apply ? '' : ' (recorded on --apply)'}`)
 const label = (o) => (o.source ? `${o.source}${o.ref ? '@' + o.ref : ''}` : '(not recorded)')
 if (label(inst) !== label(origin)) console.log(`NOTE source ${label(inst)} -> ${label(origin)}${args.apply ? '' : ' (recorded on --apply)'}`)
 else console.log(`NOTE source ${label(origin)}`)
@@ -162,7 +173,9 @@ if (args.apply) {
   const kitVersion = readJson(join(kitRoot, 'kit.json')).version
   const sorted = Object.fromEntries(Object.entries(record).sort(([a], [b]) => (a < b ? -1 : 1)))
   const { kit: _kit, source: _source, ref: _ref, commit: _commit, files: _files, ...rest } = inst
-  writeFileSync(installFile, JSON.stringify({ kit: { version: kitVersion }, ...origin, ...rest, files: sorted }, null, 2) + '\n', 'utf8')
+  // The stack as synced (--packs / --layers may have changed it); `layers` only once a project has one.
+  const stack = { packs, ...(layers.length || 'layers' in inst ? { layers } : {}) }
+  writeFileSync(installFile, JSON.stringify({ kit: { version: kitVersion }, ...origin, ...rest, ...stack, files: sorted }, null, 2) + '\n', 'utf8')
   // scripts/package.json is the kit's, scripts/package-lock.json the project's: refresh the lockfile with the new
   // dependencies, or `npm ci` inside scripts/ (CI, slots) fails on the sync PR. Inside scripts/, never --prefix (npm 10).
   if (scriptsPkgWritten && existsSync(join(target, 'scripts', 'package-lock.json'))) {

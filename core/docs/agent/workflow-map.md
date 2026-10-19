@@ -83,6 +83,7 @@ Redirect stubs for palette discoverability ship with the optional `layer:cursor`
 | `preflight` | before dev server / browser / DB workflows | `scripts/preflight.mjs` | `preflight-must-use-skill` |
 | `techdebt` | before PR / audit | `scripts/techdebt-report.mjs` (rolling 7 reports + trend) | `techdebt-must-use-skill` |
 | `worktree-setup` | "setup worktree" (explicit only) | — | `worktree-setup-must-use-skill` |
+<!-- PACK:workflow-map:skills -->
 
 <!-- PACK:stack — stack skill rows (component structure, auth, styling layer, breadcrumbs) come from the stack pack -->
 
