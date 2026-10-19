@@ -15,7 +15,15 @@ The design system lives in `src/styles.scss`: the token block at the top (`/* De
 - **`.c-*` engine classes are defined only in `src/styles.scss`.** Angular view encapsulation rewrites selectors inside a component stylesheet, so a `.c-*` defined there is scoped to that component and silently stops being reusable. Use an engine by adding its class to the host element in the template, not by copying its properties.
 - **No hardcoded design values.** Colors, shadows, radii, blur and easing come from `var(--*)` tokens. A literal `#fff`, `rgba(0,0,0,.1)`, `8px` radius or `blur(16px)` is a theme fork: it will not follow the theme when a token changes. If no token fits, that is a signal the value doesn't belong in the design — ask before inventing one.
 - **Breakpoints.** `$break-mobile` (768) / `$break-tablet` (900) / `$break-desktop` (1200) are declared in `src/styles.scss`, and Sass variables there are *not* reachable from a component stylesheet (no `stylePreprocessorOptions.includePaths`). Until a shared `_breakpoints.scss` partial exists, declare a local mirror at the top of the component file with a comment naming the global it mirrors — `$break-tablet: 900px; // mirrors src/styles.scss` — and use that in `@media`. Never a bare number inside `@media`.
+<!-- KIT:if project.uiDirection=rtl -->
+<!-- KIT:if project.uiLocale -->
+- **Logical properties only** (`padding-inline`, `margin-block`, `inset-inline-start`). The UI is {{project.uiLocale}}; physical `left`/`right` breaks mirroring.
+<!-- KIT:else -->
+- **Logical properties only** (`padding-inline`, `margin-block`, `inset-inline-start`). The UI is right-to-left; physical `left`/`right` breaks mirroring.
+<!-- KIT:end -->
+<!-- KIT:else -->
 - **Logical properties only** (`padding-inline`, `margin-block`, `inset-inline-start`). Physical `left`/`right` break mirroring when the UI runs right-to-left.
+<!-- KIT:end -->
 - **No inline styles** unless the value is runtime-dynamic.
 - **Native CSS nesting**, breakpoint blocks *after* the base styles of the selector.
 

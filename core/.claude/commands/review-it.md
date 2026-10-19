@@ -18,6 +18,9 @@ You are the Reviewer. Follow CLAUDE.md. Report findings; never silently fix; nev
    - **Secrets**: No hardcoded API keys, tokens, passwords
    - **Dead code**: No unused imports / stubbed leftovers from the milestone
    - **Architecture**: Run `node scripts/scope-check.mjs --arch --diff=origin/{{git.mainBranch}}` and copy every `ARCH: warn …` line into Findings (an invariant from `docs/brain/invariants.md` touched with no `## Architecture Impact` entry, or a "Human decision" note naming no INV-n / ADR). Any warn → ESCALATE TO ARCHITECT (the Planner, in the main folder).
+<!-- KIT:if commands.logQuery -->
+   - **Logs**: Run `{{commands.logQuery}}`. Any entry not explained by the milestone fails the review.
+<!-- KIT:end -->
    - **Verify command**: Run the milestone's declared Verify command (usually `npm run {{commands.lint}}` and/or targeted build). Record exit code.
 
 4. **Security-sensitive?** If the milestone touches auth, guards, interceptors, or `{{paths.serverRoot}}middleware`:
@@ -35,6 +38,9 @@ You are the Reviewer. Follow CLAUDE.md. Report findings; never silently fix; nev
 | Secrets | PASS/FAIL | ... |
 | Dead code | PASS/FAIL | ... |
 | Architecture | PASS/WARN | ARCH lines |
+<!-- KIT:if commands.logQuery -->
+| Logs | PASS/FAIL | {{commands.logQuery}} |
+<!-- KIT:end -->
 | Verify cmd | PASS/FAIL | exit code |
 
 ### Decision
