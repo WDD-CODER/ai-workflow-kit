@@ -178,3 +178,10 @@ confirms at merge point 1), not the 1.2.0 the Goals name. V8 and V9 run after me
   `.vscode/settings.json` identical; the other 23 Appendix-A overrides differ only as older forks of what the kit now
   does → drop, sync, review. Care: `docs-refresh.md` (custom procedure), `ci.yml` (its own link-check step), the
   tech-debt baseline (old rule names: rewrite with `scan --write-baseline`).
+
+### CI (PR #27)
+- First run: Linux e2e failed in `e2e --project` on the react-vite fixture (the borrowed `node_modules` is a symlink there,
+  and a `node_modules/` ignore rule matches directories only → take-plan saw a dirty slot). Fixed in `55ee0d7` (the
+  scratch clone excludes the link paths). Then green: leak-check (`actionlint on 24 rendered workflows`, link check
+  6 fixtures), e2e ubuntu-latest and windows-latest (`E2E_CHECK: ok — 42 cases passed`, `ACCEPTANCE_CHECK: ok — 118 checks
+  passed (angular, react-vite, upstream-owned, e2e --project)` on both).
