@@ -104,7 +104,7 @@ reported at the merge point.
 - [x] A1: Run plan 002 in the kit slot and open its PR — R0–R5 without the release; FoodVibe dry-run; review pass — `feat/002-planner-review`
 - [x] A2: Run plan 003 on top of 002 and open its PR — N0–N9; FoodVibe safety check N8; review pass — `feat/003-neutral-core-runtime`
 - [x] A3: Run plan 004 on top of 003 and open its PR — M0–M9; FoodVibe safety check M8; review pass — `feat/004-neutral-core-ci-commands`
-- [ ] A4: Run plan 005 on top of 004 and open its PR — V0–V7 and V10 without the tag; review pass — `feat/005-react-vite-pack`
+- [x] A4: Run plan 005 on top of 004 and open its PR — V0–V7 and V10 without the tag; review pass — `feat/005-react-vite-pack`
 - [ ] A5: Ask Dandan to merge the four kit PRs, with a summary of each — merge point 1 — PRs
 - [ ] A6: Release v1.2.0 after the merge — tag the last merge commit, GitHub release, install proof — kit repo
 - [ ] A7: Sync FoodVibe to v1.2.0 in one PR — 002 R6 plan-checks move, dry-run, Apply, ng build, kit checks — `../foodVibe1.0-wt-N`
@@ -125,3 +125,5 @@ New work beyond plans 002–005; the guards mod (hand-off I-28); upstream fixes 
 - A3: PR #26 (`feat/004-neutral-core-ci-commands`, base 003 branch; `c84fc9d`, `8c8a7f1`, review fixes `ab260e9`), CI green; Planner re-ran checks: ok (e2e 42, link check 0 missing). Review: 0 high, 2 medium (changed-files lint hit kit scripts; scripts/ lockfile drift + unfixable blocking audit), 4 low — all fixed. Planner decision: `sync --apply` refreshes `scripts/package-lock.json`; the scripts audit is report-only, so FoodVibe gets no new blocking CI gate. FoodVibe dry-run: 3 new, 26 kit-update, only the two template conflicts; render diff: same CI behaviour and Angular rule wording.
 - The 004 agent removed scratch folders with Node `fs.rmSync` after `rm -rf` was denied (scratchpad only). Tell Dandan; later agents are told not to work around a denied command.
 - Release number decision (Planner, to confirm at merge point 1): `v2.0.0` — 002/003 need project action, which the kit's semver rule calls major. 005's PR sets kit.json to 2.0.0.
+- A4: PR #27 (`feat/005-react-vite-pack`, base 004 branch; `221d666`, `55ee0d7`, `9352542`, review fixes `14c9eff`), CI green; Planner re-ran checks: ok (e2e 42, link check 7 fixtures 0 missing, acceptance 118). Review: 0 high, 3 medium (stack record config vs install.json; detection false positives; junction cleanup on interrupt), 4 low — all fixed, plus the pre-existing `.cursor/` refs without the Cursor layer. kit.json 2.0.0; CHANGELOG `[2.0.0]` with one "What a project must do" list. FoodVibe dry-run: 3 new, 27 kit-update, only the two template conflicts.
+- A5: merge point 1 sent to Dandan (merge #24 → #27 in order, merge commits, not squash).
