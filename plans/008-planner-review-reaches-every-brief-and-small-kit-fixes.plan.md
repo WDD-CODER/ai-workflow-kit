@@ -86,13 +86,13 @@ Thinking outside the box is expected; writing outside it requires explicit conse
 - **link check:** load the target's `.gitignore` (the kit's own glob subset, or `git check-ignore` when the target is a repo); matched paths are `runtime`, counted but not failing.
 
 ## Atomic Sub-tasks
-- [ ] P0: Check the prerequisites, find why plan-name-similarity missed the existing plans, and confirm each gap — Step 0 — this plan file
-- [ ] P1: Let a prose feature request reach the review — prose rule, gate text, option a runs the review, option b hands to /plan and a slot; fixture check — `core/.claude/skills/brief-detection/SKILL.md`, `core/.claude/commands/plan.md`, `.cursor` copies in `layers/cursor/**` if they exist, `tools/**`
-- [ ] P2: Make /plan, the PRD template and save-plan describe one plan shape — milestones vs sub-tasks, Verify, Execution Notes section, the Q&A reference — `core/.claude/commands/plan.md`, `core/.claude/references/prd-template.md`, `core/.claude/skills/save-plan/SKILL.md`
-- [ ] P3: Show what the review fixed, and check overlap with other plans every time — output block, overlap step, plan-name-similarity fix — `core/.claude/commands/plan.md`, `core/scripts/plan-name-similarity.mjs`, `tools/**`
-- [ ] P4: Accept an absolute folder in the PowerShell wrappers — three .ps1 files, install-check case — `kit-sync.ps1`, `kit-install.ps1`, `kit-drift.ps1`, `tools/install-check.mjs`
-- [ ] P5: Make the project end-to-end check explain missing dependencies and env files — pre-flight, env-file handling, messages — `tools/e2e-check.mjs`
-- [ ] P6: Stop the link check failing on gitignored runtime files — runtime state, fixture — `tools/workflow-link-check.mjs`, `tools/lib/**`
+- [x] P0: Check the prerequisites, find why plan-name-similarity missed the existing plans, and confirm each gap — Step 0 — this plan file
+- [x] P1: Let a prose feature request reach the review — prose rule, gate text, option a runs the review, option b hands to /plan and a slot; fixture check — `core/.claude/skills/brief-detection/SKILL.md`, `core/.claude/commands/plan.md`, `.cursor` copies in `layers/cursor/**` if they exist, `tools/**`
+- [x] P2: Make /plan, the PRD template and save-plan describe one plan shape — milestones vs sub-tasks, Verify, Execution Notes section, the Q&A reference — `core/.claude/commands/plan.md`, `core/.claude/references/prd-template.md`, `core/.claude/skills/save-plan/SKILL.md`
+- [x] P3: Show what the review fixed, and check overlap with other plans every time — output block, overlap step, plan-name-similarity fix — `core/.claude/commands/plan.md`, `core/scripts/plan-name-similarity.mjs`, `tools/**`
+- [x] P4: Accept an absolute folder in the PowerShell wrappers — three .ps1 files, install-check case — `kit-sync.ps1`, `kit-install.ps1`, `kit-drift.ps1`, `tools/install-check.mjs`
+- [x] P5: Make the project end-to-end check explain missing dependencies and env files — pre-flight, env-file handling, messages — `tools/e2e-check.mjs`
+- [x] P6: Stop the link check failing on gitignored runtime files — runtime state, fixture — `tools/workflow-link-check.mjs`, `tools/lib/**`
 - [ ] P7: Document and release v1.3.1 — CHANGELOG, README, checks, kit PR, independent review, merge after Dandan's review, tag after his go — kit repo
 - [ ] S1: Sync FoodVibe to v1.3.1 — dry-run, Apply, checks, /ship — `../foodVibe1.0` slot
 - [ ] S2: Sync agentdesk to v1.3.1 — dry-run, Apply, checks, /ship — `../agentdesk` slot
@@ -103,3 +103,93 @@ Thinking outside the box is expected; writing outside it requires explicit conse
 - The last two FoodVibe angular overrides (translation line): waiting on Dandan's choice.
 
 ## Execution Notes
+
+Run by a Worker in the kit slot `ai-workflow-kit-wt-1`, branch `feat/008-planner-review-entry` from `origin/main`
+`543e56e`. P0–P6 done; P7's kit part done (CHANGELOG `[1.3.1]` dated 2026-10-19, `kit.json` 1.3.1, README, checks,
+PR). P7's merge/tag and S1/S2 wait for Dandan.
+
+### P0 — Reality check
+- Kit `main` = `543e56e` (after Snapshot `76a46e5`). FoodVibe `a426f19a` and agentdesk `8efb192de` record
+  `github:WDD-CODER/ai-workflow-kit@v1.3.0`. Every instruction gap in the Problem Statement was still in `core/`
+  (brief-detection §2/§3, plan.md lines 27–36 and 67–83, prd-template.md line 97, no `## Execution Notes`).
+- **Why plan-name-similarity missed the A9 cases** (FoodVibe copy: `plans/` 422 plan files + `.claude/todo-archive`,
+  FoodVibe's own script, identical to the kit's): the scan scope was fine (it recurses into the range folders). It
+  compares **titles only, word for word, at score ≥ 0.8 with ≥ 2 shared words**:
+  - "favourite recipes filter" → `PLAN_SIMILARITY: no similar plans`. Plan 263 is titled "Favorites Button on
+    Recipe-Book List": `favourite`≠`favorites`, `recipes`≠`recipe`, `filter` only in its body → 0 shared words.
+  - "export ingredient list as shopping list" → `no similar plans`. The export plans (077 "Excel Export Feature",
+    093, 099, 100) share at most 2 of 5 title words (`list`, `shopping`: score 0.4 < 0.8; `as` was not a stop word);
+    "shopping list export" is in their bodies.
+- Slot setup (`worktree-setup` §2.4): the only gitignored file copied into a slot is `<paths.serverRoot>.env`
+  (FoodVibe `server/.env`, ignored by `.gitignore:81`). `environment.local.ts` is tracked in FoodVibe.
+- Baseline `e2e-check --project ../foodVibe1.0` (v1.3.0 tools): `E2E_CHECK: FAIL — 2 of 40 cases failed`, both
+  slot-serve (`"msg":"no db connection"`: no `server/.env` in the scratch slot). The A9 link-check fail is gone since
+  FoodVibe PR #426.
+
+### Decisions
+- **brief-detection (P1):** the prose rule applies in the main folder only (a Worker's messages are about its plan;
+  gating them would fire on most Worker messages). Three tests: asks to build/add/change/fix/remove something; longer
+  than one sentence; no closing `?`. An explicit never-list (question, slash command, `execute plan NNN`,
+  run/check/explain/review request, an answer, any message in a slot) and "when unsure, do not gate". Five example rows
+  (2 feature, 3 none), generic wording. Gate text, as designed:
+  `Looks like a feature request: {one-line goal}.` / `a. refine it with a review (default) · b. /plan it · c. just discuss`.
+  The structured-brief gate keeps its header with the same three choices. Option a = `/plan`'s review on the brief,
+  block printed, `open:` questions asked, nothing saved, then offer b. Option b = `/plan` → save-plan → a Worker claims
+  it with `take-plan`; in a slot it adds tasks to the slot's own plan (mid-flight sync) or says it needs a plan.
+- **One plan shape (P2):** dropped "numbered milestones and a Verify command per milestone" from `/plan`; the PRD
+  template's Atomic Sub-tasks are the milestones and each `[auto]` criterion names its check. Why: FoodVibe's 13
+  plans numbered 4xx all use `## Atomic Sub-tasks`, none has a `Verify:` line, and save-plan / take-plan / the ledger
+  parse sub-tasks; a new field would leave every existing plan non-conforming. Template: `## Execution Notes` added;
+  `## Critical Questions` now states its own `- Q: … A: …` format (the form FoodVibe plans 403/405/406 already use).
+- **Review output (P3):** `fixed: <gap> → <what you changed>` / `open: <gap> — <question for the Human>`;
+  `no gaps` only when both are empty. A received plan gets only mechanical `fixed:` lines.
+- **Overlap (P3):** one command, `plan-name-similarity --name=… --related --scope=…`. Stems (`-our`→`-or`, plurals,
+  `-ing`/`-ed`, doubled consonant, final `e`) on both sides; `--related` scores plan text by inverse document frequency
+  (rare words decide; coverage ≥ 0.75, ≥ 2 shared words) and prints the 5 closest; `--scope` (or `--file`'s scope
+  block) matches open plans' scope globs (dependency-free glob compare). Without the new flags the output lines are
+  unchanged, so `plan-write-guard.sh` (greps `no similar plans`) and save-plan behave as before, except that titles
+  now match by stem. The scope search covers draft and active open plans (`scope-check --overlap` stays active-only).
+- **Wrappers (P4):** `Resolve-KitPath` in all three (`IsPathRooted` → `GetFullPath`, else `Join-Path`); files stay ASCII.
+- **e2e (P5):** copy `<paths.serverRoot>.env` into the scratch slots (what a real slot gets); `SKIP` the slot-serve
+  cases only when that file is absent in the source. Pre-flight stops when `node_modules` is missing or lacks more than
+  half of the declared packages; fewer missing is a NOTE (FoodVibe's main folder lacks `html2canvas`,
+  `html2canvas-pro` and still passes 40/40). The agentdesk main folder has a broken `node_modules` (26 entries; 102 of
+  104 declared packages missing): that is why the first A9 run there failed on `vite`. Acceptance fixtures (no network
+  installs) get a stub folder per declared package before their e2e run.
+- **Link check (P6):** `git check-ignore` via the existing `ignoredPaths` helper; `runtime` lines on `--target`;
+  `linkProblems()` unchanged for its callers (install-check, acceptance-check, adoption-report). The fixture uses
+  `.claude/tunnel-state.json` (the kit's `.gitignore` skeleton already ignores `*.log`).
+- **Not changed (a render change outside the allowed Planner files — STOP, for Dandan):**
+  `layers/cursor/.cursor/rules/brief-detection-must-use-skill.mdc` (description and body still say "3+ H2 markers", so
+  Cursor would not load the skill for a prose request) and `core/docs/agent/workflow-map.md` lines 87 and 311 (trigger
+  "3+ structured H2 markers", "routes to `/feat` (option b) or discussion"). Wording-only fixes, proposed in the PR.
+
+### Evidence
+- FoodVibe copy, new script: `--name="favourite recipes filter" --related` → `PLAN_RELATED: 12 plan(s) … (the 5
+  closest below)`, first `plans/200-300/263-favorites-recipe-book.plan.md (closed)` (`text has favorit, recip,
+  filter (coverage 1)`); `--name="export ingredient list as shopping list" --related` → `PLAN_RELATED: 13 plan(s)`,
+  top 5 = 102, 120, 108, 077, 100 (077 "Excel Export Feature" overview: "… shopping list by category …").
+  `--scope="…,server/**,…"` lists open plans 407, 412 and design 372/373 (`server/** ~ server/routes/generic.js`, …).
+- install-check against the pre-fix Planner files, similarity script and wrappers (scratch clone, new tools) →
+  `INSTALL_CHECK: FAIL — 92 problems` (every new Planner-doc check, the four similarity cases, the three wrappers with
+  `NotSupportedException`).
+- Link check on FoodVibe at `77550e79` (before PR #426): v1.3.0 tool `docs/agent/remote-port.md:21: path
+  .claude/remote.log does not exist` / `WORKFLOW_LINK_CHECK: FAIL — 1 missing`; this branch `runtime
+  docs/agent/remote-port.md:21: .claude/remote.log is gitignored (written at run time)` / `WORKFLOW_LINK_CHECK: ok —
+  0 missing, 1 runtime (gitignored)`.
+- `e2e-check --project ../foodVibe1.0`: `E2E: copying server/.env … into the scratch slots` → `E2E_CHECK: ok — 40
+  cases passed` (was 38/40). `--project ../agentdesk-wt-1`: `E2E_CHECK: ok — 44 cases passed`. `--project ../agentdesk`
+  (main folder): `FAIL dependencies installed in …\agentdesk — install dependencies in …\agentdesk first (npm ci): …
+  102 of 104 declared packages missing` (stops before cloning). A clone without `node_modules`: `.` and `scripts`
+  both named, `E2E_CHECK: FAIL — 2 of 2 cases failed`, nothing cloned.
+- Sync dry-runs, this branch as source (nothing written): FoodVibe `KIT_SYNC: dry-run — 0 new, 5 kit-update, 0
+  conflicts, 26 local-only, 0 deleted-locally, 0 removed-from-kit, 17 overrides`; agentdesk `KIT_SYNC: dry-run — 0 new,
+  5 kit-update, 0 conflicts, 9 local-only, 0 deleted-locally, 0 removed-from-kit, 8 overrides`. The 5 rows in both:
+  `.claude/commands/plan.md`, `.claude/references/prd-template.md`, `.claude/skills/brief-detection/SKILL.md`,
+  `.claude/skills/save-plan/SKILL.md`, `scripts/plan-name-similarity.mjs`.
+- Final checks (local, Windows): `LEAK_CHECK: ok — 161 files, 0 leaks` / `47 files, 0 leaks` / `3 files, 0 leaks`;
+  `PACK_CHECK: ok — 3 packs, 2 layers, 8 contract keys used by core (each provided), 0 problems`;
+  `INSTALL_CHECK: ok — 5 fixtures, actionlint not installed (skipped), …, Planner docs, plan-name-similarity (stems,
+  --related, --scope), PowerShell wrappers (relative + absolute paths), …, 0 problems`; `E2E_CHECK: ok — 42 cases
+  passed`; `WORKFLOW_LINK_CHECK: ok — 8 fixtures (…, a gitignored runtime path), 0 missing`;
+  `ACCEPTANCE_CHECK: ok — 122 checks passed (angular, react-vite, upstream-owned, e2e --project)`.
