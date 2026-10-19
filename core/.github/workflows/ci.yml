@@ -141,6 +141,7 @@ jobs:
         run: {{ci.install}}
       - name: Build
         run: npm run {{commands.build}}
+# KIT:if ci.testMode!=skip
 
   test:
     needs: changes
@@ -156,7 +157,12 @@ jobs:
       - name: Install
         run: {{ci.install}}
       - name: Unit tests
+# KIT:if ci.testMode=if-present
+        run: npm run --if-present {{commands.test}}
+# KIT:else
         run: npm run {{commands.test}}
+# KIT:end
+# KIT:end
 # KIT:if paths.serverRoot
 
   # The backend's own tests: only when the project has one (paths.serverRoot).
@@ -201,7 +207,9 @@ jobs:
       - changes
       - lint
       - build
+# KIT:if ci.testMode!=skip
       - test
+# KIT:end
 # KIT:if paths.serverRoot
       - server-tests
 # KIT:end
@@ -230,10 +238,12 @@ jobs:
               echo "build failed: ${{ needs.build.result }}"
               exit 1
             fi
+# KIT:if ci.testMode!=skip
             if [[ "${{ needs.test.result }}" != "success" ]]; then
               echo "test failed: ${{ needs.test.result }}"
               exit 1
             fi
+# KIT:end
 # KIT:if paths.serverRoot
             if [[ "${{ needs.server-tests.result }}" != "success" ]]; then
               echo "server-tests failed: ${{ needs.server-tests.result }}"

@@ -47,8 +47,8 @@ export function commandProblems(vals) {
     const m = /^\s*npm\s+(?:run(?:-script)?\s+)?(\S.*)$/.exec(v)
     if (m) out.push(`${key} is "${v}" — commands.* take npm script names, not commands: set it to "${m[1].trim()}"`)
   }
-  // ci.* modes: a value outside the set would silently render the default branch of the workflow.
-  for (const [key, allowed] of Object.entries(CI_MODES)) {
+  // ci.* modes and other enums: a value outside the set would silently render the default branch of a file.
+  for (const [key, allowed] of Object.entries(ENUMS)) {
     const v = vals[key]
     if (!isEmpty(v) && !allowed.includes(v)) out.push(`${key} is "${v}" — allowed: ${allowed.map((a) => `"${a}"`).join(', ')}`)
   }
@@ -68,7 +68,12 @@ export function globProblem(g) {
   if (/^!/.test(g)) return 'negation (!) is not supported'
   return null
 }
-const CI_MODES = { 'ci.lintScope': ['all', 'changed'], 'ci.appAuditMode': ['enforce', 'report'] }
+const ENUMS = {
+  'ci.lintScope': ['all', 'changed'],
+  'ci.appAuditMode': ['enforce', 'report'],
+  'ci.testMode': ['run', 'if-present', 'skip'],
+  'project.uiDirection': ['rtl', 'ltr'],
+}
 
 /**
  * A NOTE when the project has a backend package (server/package.json) but paths.serverRoot is empty: CI then renders

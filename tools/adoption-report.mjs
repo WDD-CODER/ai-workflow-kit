@@ -13,9 +13,11 @@
  *   scripts dependencies  scripts/package.json installed inside scripts/ (each dependency present), lockfile committed
  *   runtime ignores       scripts/local-excludes.mjs --check (slot runtime files never show as changes)
  *   kit rules loaded      CLAUDE.md imports AGENTS.md (and AGENTS.workflow.md when the project owns AGENTS.md)
- *   npm scripts           commands.build / lint / test (and commands.dev for the slot frontend) are package.json scripts
+ *   npm scripts           commands.build / lint / test are package.json scripts (test: only with ci.testMode run)
+ *   frontend dev server   commands.dev is a package.json script; the command a slot starts it with (slots.fe*), {port} as is
  *   workflow doc links    every path, `node scripts/…` and `npm run …` the installed docs name exists
- *   CI workflows          ci.yml present, no `--prefix` with nothing after it, a server job only with paths.serverRoot
+ *   CI workflows          ci.yml present, no `--prefix` with nothing after it, a server job only with paths.serverRoot,
+ *                         a test job unless ci.testMode is skip
  *   todo-sync setting     the GitHub repo setting todo-sync needs (manual: the report cannot see it)
  * Status: ok | warn (works, but needs a step) | fail (broken) | manual | n/a. Node built-ins only.
  * Exit 0 = no fail rows, 1 = a fail row or a usage error. --markdown also writes the table to that file.
@@ -27,6 +29,8 @@ import {
   KIT_ROOT, readJson, resolveConfig, planFiles, parseArgs, readOverrides, ownsAgents, ignoredPaths, withUpstream, detectStack, isEmpty,
 } from './lib/kit.mjs'
 import { linkProblems } from './workflow-link-check.mjs'
+// The slot frontend command: the same builder the installed scripts/lib/slot-procs.mjs starts the server with.
+import { frontendCommand } from '../core/scripts/lib/fe-command.mjs'
 
 let args
 try {
@@ -170,13 +174,14 @@ row('kit rules loaded', !claude ? 'fail' : lacking.length ? 'fail' : 'ok', !clau
 
 // npm scripts the workflow runs
 const scripts = pkg?.scripts ?? null
-const named = ['commands.build', 'commands.lint', 'commands.test'].map((k) => [k, vals[k]]).filter(([, v]) => !isEmpty(v))
+// ci.testMode if-present / skip: CI needs no test script (the workflow docs still name commands.test).
+const named = ['commands.build', 'commands.lint', ...(vals['ci.testMode'] === 'run' ? ['commands.test'] : [])].map((k) => [k, vals[k]]).filter(([, v]) => !isEmpty(v))
 const absentScripts = scripts ? named.filter(([, v]) => !(v in scripts)) : named
 row('npm scripts', !scripts ? 'warn' : absentScripts.length ? 'warn' : 'ok', !scripts ? 'no package.json'
   : absentScripts.length ? `package.json has no ${absentScripts.map(([k, v]) => `${v} (${k})`).join(', ')}` : named.map(([, v]) => `npm run ${v}`).join(', '))
 const dev = vals['commands.dev']
 row('frontend dev server', isEmpty(dev) ? 'n/a' : scripts && dev in scripts ? 'ok' : 'fail', isEmpty(dev) ? 'commands.dev not set: slots start no frontend'
-  : scripts && dev in scripts ? `npm run ${dev} -- ${[].concat(vals['slots.fePortArgs'] ?? []).join(' ')}` : `commands.dev "${dev}" is not a package.json script`)
+  : scripts && dev in scripts ? `npm ${frontendCommand({ script: dev, exec: vals['slots.feExec'], portArgs: vals['slots.fePortArgs'], port: '{port}' }).join(' ')}` : `commands.dev "${dev}" is not a package.json script`)
 
 // workflow doc links
 const links = linkProblems(target)
@@ -188,7 +193,9 @@ if (has('.github/workflows/ci.yml')) {
   const problems = []
   if (/--prefix\s*$/m.test(ci)) problems.push('"--prefix" with nothing after it')
   if (/^ {2}server-tests:\s*$/m.test(ci) !== !isEmpty(vals['paths.serverRoot'])) problems.push(`server-tests job ${isEmpty(vals['paths.serverRoot']) ? 'without' : 'missing with'} paths.serverRoot`)
-  row('CI workflows', problems.length ? 'fail' : 'ok', problems.length ? problems.join('; ') : `ci.yml: install "${vals['ci.install']}", lint ${vals['ci.lintScope']}, app audit ${vals['ci.appAuditMode']}`)
+  // An overridden ci.yml is the project's: its test job is its own choice.
+  if (!overrides.has('.github/workflows/ci.yml') && /^ {2}test:\s*$/m.test(ci) === (vals['ci.testMode'] === 'skip')) problems.push(`test job ${vals['ci.testMode'] === 'skip' ? 'present with' : 'missing without'} ci.testMode skip`)
+  row('CI workflows', problems.length ? 'fail' : 'ok', problems.length ? problems.join('; ') : `ci.yml: install "${vals['ci.install']}", lint ${vals['ci.lintScope']}, app audit ${vals['ci.appAuditMode']}, tests ${vals['ci.testMode']}`)
 } else row('CI workflows', overrides.has('.github/workflows/ci.yml') ? 'n/a' : 'fail', overrides.has('.github/workflows/ci.yml') ? 'ci.yml is an override' : '.github/workflows/ci.yml not found')
 
 row('todo-sync setting', 'manual', 'GitHub: Settings → Actions → General → Workflow permissions → "Allow GitHub Actions to create and approve pull requests"')
