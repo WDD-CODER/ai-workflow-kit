@@ -473,6 +473,11 @@ function projectMain(here) {
   }
   const cl = git(root, 'clone', '-q', '-b', main, origin, proj)
   git(proj, 'config', 'core.hooksPath', '.husky') // hooks on, as in the real Planner folder (husky or not)
+  // On POSIX the borrowed node_modules are symlinks, which a `node_modules/` ignore rule (directories only) does not
+  // match: exclude the link paths themselves, for this scratch clone and its slots (shared git dir).
+  const exclude = resolve(proj, git(proj, 'rev-parse', '--git-common-dir').out.trim(), 'info', 'exclude')
+  mkdirSync(dirname(exclude), { recursive: true })
+  writeFileSync(exclude, `${existsSync(exclude) ? readFileSync(exclude, 'utf8') : ''}\n/node_modules\n/scripts/node_modules\n`)
   if (upRef) {
     git(proj, 'remote', 'add', 'upstream', upstream)
     git(proj, 'fetch', '-q', 'upstream')
