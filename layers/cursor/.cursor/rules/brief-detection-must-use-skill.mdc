@@ -1,8 +1,9 @@
 ---
-description: Detect a pasted Plan Contract / structured brief (3+ H2 markers) in the user's first message and route it before executing anything
+description: Detect a pasted Plan Contract, a structured brief, or a feature request written in prose, and route it before executing anything
 alwaysApply: false
 ---
-Follow `.claude/skills/brief-detection/SKILL.md` when the user's first message has 3+ structured
-H2 markers (Goal, Milestones, Atomic Sub-tasks, etc.) — this usually means a Plan Contract was
-pasted and must go through `save-plan` before any milestone work starts, not straight into
-execution. See `docs/agent/workflow-map.md` §9 for the known race between this gate and save-plan.
+Follow `.claude/skills/brief-detection/SKILL.md` when the user's message has structured H2 markers
+(Goal, Milestones, Atomic Sub-tasks, etc.), or, in the main folder, asks in a few sentences to build,
+add, change, fix or remove something in the product. A pasted Plan Contract must go through
+`save-plan` before any work starts, not straight into execution; a brief or a feature request gets
+the skill's a/b/c gate (a: the Architect + PM review, b: `/plan`, c: discussion). See `docs/agent/workflow-map.md` §9 for the known race between this gate and save-plan.

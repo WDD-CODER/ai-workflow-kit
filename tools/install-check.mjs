@@ -144,6 +144,15 @@ function plannerDocProblems(dir) {
   need(prd, '\n## Atomic Sub-tasks\n', 'no ## Atomic Sub-tasks section')
   never(prd, /Q&A format per the `brief-detection` skill/, 'dead Q&A reference')
   need('.claude/skills/save-plan/SKILL.md', 'Its `## Atomic Sub-tasks` are the milestones', 'save-plan: one plan shape')
+  // The workflow map and the Cursor rule describe the same trigger and routes as the skill.
+  const wm = 'docs/agent/workflow-map.md'
+  never(wm, /3\+ structured H2|routes to `\/feat` \(option b\)|--routes--> \/feat/, 'workflow map: old brief-detection trigger or option b → /feat')
+  need(wm, 'a feature request in prose in the main folder', 'workflow map: brief-detection row names the prose rule')
+  const rule = '.cursor/rules/brief-detection-must-use-skill.mdc'
+  if (existsSync(join(dir, rule))) {
+    never(rule, /3\+ (structured )?H2|3\+ H2 markers/, 'Cursor rule: still loads the skill only on 3+ H2 markers')
+    need(rule, 'asks in a few sentences to build,', 'Cursor rule: loads the skill for a prose feature request')
+  }
   return out
 }
 

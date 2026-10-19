@@ -57,6 +57,10 @@ CHANGELOG.md
 kit.json
 README.md
 .github/workflows/**
+# approved: layers/cursor/.cursor/rules/brief-detection-must-use-skill.mdc — Planner, under Dandan's "merge it", 2026-10-19
+layers/cursor/.cursor/rules/brief-detection-must-use-skill.mdc
+# approved: core/docs/agent/workflow-map.md — Planner, under Dandan's "merge it", 2026-10-19
+core/docs/agent/workflow-map.md
 ```
 
 **Outside this repo:** the two project syncs (S1, S2), each on a branch in that project's `wt-N` slot: `.kit/**`, `kit.config.json`, the kit-managed files `kit-sync -Apply` writes, and (FoodVibe) `docs/workflow-kit/**` if the manifest needs a new entry. Kit GitHub repo: PR, tag, release.
@@ -163,6 +167,15 @@ PR). P7's merge/tag and S1/S2 wait for Dandan.
   `layers/cursor/.cursor/rules/brief-detection-must-use-skill.mdc` (description and body still say "3+ H2 markers", so
   Cursor would not load the skill for a prose request) and `core/docs/agent/workflow-map.md` lines 87 and 311 (trigger
   "3+ structured H2 markers", "routes to `/feat` (option b) or discussion"). Wording-only fixes, proposed in the PR.
+  → Approved by the Planner under Dandan's "merge it" (paths appended to the scope block): both now name the prose rule
+  and the a/b/c routes (b = `/plan` → save-plan → `take-plan`); install-check fails on the old "3+ H2" / "option b →
+  /feat" wording (it matched both old files). FoodVibe overrides `docs/agent/workflow-map.md` ("FoodVibe map with its
+  own plan history"), so its lines 103 and 324 keep the old wording: fix them by hand in S1. agentdesk has no Cursor
+  layer, so the `.mdc` does not reach it.
+  Dry-runs after: FoodVibe `KIT_SYNC: dry-run — 0 new, 6 kit-update, 0 conflicts, 26 local-only, 0 deleted-locally, 0
+  removed-from-kit, 17 overrides` (+ `.cursor/rules/brief-detection-must-use-skill.mdc`); agentdesk `KIT_SYNC: dry-run
+  — 0 new, 6 kit-update, 0 conflicts, 9 local-only, 0 deleted-locally, 0 removed-from-kit, 8 overrides`
+  (+ `docs/agent/workflow-map.md`).
 
 ### Evidence
 - FoodVibe copy, new script: `--name="favourite recipes filter" --related` → `PLAN_RELATED: 12 plan(s) … (the 5

@@ -18,16 +18,19 @@ PowerShell wrappers take an absolute folder, `e2e-check --project` explains miss
 
 ### What a project must do
 
-Nothing. Sync (`kit-sync -Ref v1.3.1`, then `-Apply`) and commit. Five rendered files change (`kit-update`):
+Nothing. Sync (`kit-sync -Ref v1.3.1`, then `-Apply`) and commit. Rendered files that change (`kit-update`):
 `.claude/skills/brief-detection/SKILL.md`, `.claude/commands/plan.md`, `.claude/references/prd-template.md`,
-`.claude/skills/save-plan/SKILL.md` and `scripts/plan-name-similarity.mjs`. No config key is new.
+`.claude/skills/save-plan/SKILL.md`, `scripts/plan-name-similarity.mjs`, `docs/agent/workflow-map.md` (the
+`brief-detection` row and diagram line) and, with the Cursor layer, `.cursor/rules/brief-detection-must-use-skill.mdc`.
+No config key is new. A project that overrides `docs/agent/workflow-map.md` can update its `brief-detection` row and
+diagram line by hand to the new trigger and routes.
 
 ### Changed
 - `brief-detection`: in the main folder, a feature request in prose (asks to build, add, change, fix or remove
   something; longer than one sentence; not a question) gets a short gate:
   `a. refine it with a review (default) · b. /plan it · c. just discuss`. A question, a slash command, a request to
   run or explain something, an answer, or any message in a slot gets no gate. The structured-brief gate has the same
-  choices.
+  choices. The workflow map's `brief-detection` row and the Cursor rule say the same.
 - Option **a** (the default) runs `/plan`'s Architect + PM review on the brief and saves nothing (it used to skip the
   review). Option **b** hands to `/plan` → save-plan → a Worker claims the plan in a slot with `take-plan`; it no
   longer says to run a milestone, which the Planner never does.
