@@ -103,7 +103,7 @@ reported at the merge point.
 - [x] A0: Check the kit, plans and slots are ready for the run — Step 0, create `../ai-workflow-kit-wt-1` — kit repo
 - [x] A1: Run plan 002 in the kit slot and open its PR — R0–R5 without the release; FoodVibe dry-run; review pass — `feat/002-planner-review`
 - [x] A2: Run plan 003 on top of 002 and open its PR — N0–N9; FoodVibe safety check N8; review pass — `feat/003-neutral-core-runtime`
-- [ ] A3: Run plan 004 on top of 003 and open its PR — M0–M9; FoodVibe safety check M8; review pass — `feat/004-neutral-core-ci-commands`
+- [x] A3: Run plan 004 on top of 003 and open its PR — M0–M9; FoodVibe safety check M8; review pass — `feat/004-neutral-core-ci-commands`
 - [ ] A4: Run plan 005 on top of 004 and open its PR — V0–V7 and V10 without the tag; review pass — `feat/005-react-vite-pack`
 - [ ] A5: Ask Dandan to merge the four kit PRs, with a summary of each — merge point 1 — PRs
 - [ ] A6: Release v1.2.0 after the merge — tag the last merge commit, GitHub release, install proof — kit repo
@@ -122,3 +122,6 @@ New work beyond plans 002–005; the guards mod (hand-off I-28); upstream fixes 
 - CHANGELOG subsections are `### 00N — <title>` (leak-check refuses "Plan 00N" in CHANGELOG). `gh pr edit` fails on a Projects-classic deprecation; edit PR bodies with `gh api -X PATCH repos/WDD-CODER/ai-workflow-kit/pulls/<n>`.
 - A2: PR #25 (`feat/003-neutral-core-runtime`, base 002 branch; `705caca`, `029f234`, `36bec95`, review fixes `8517efb`), CI green; Planner re-ran checks: ok (e2e 42 cases). Review: 0 high, 2 medium (AGENTS.workflow.md drift on fresh install; phantom frontend from old `commands.dev: "dev"`), 4 low — all fixed. FoodVibe dry-run: 3 new, 20 kit-update, only the two template conflicts; dev command byte-identical (scratch-clone slot-serve: started/kept/freed).
 - Projects must act for 003: full `commands.*` values → script names; `npm install` inside `scripts/` + commit its lockfile; `@AGENTS.workflow.md` in CLAUDE.md when AGENTS.md is overridden; backend-only node-express sets `commands.dev: ""`.
+- A3: PR #26 (`feat/004-neutral-core-ci-commands`, base 003 branch; `c84fc9d`, `8c8a7f1`, review fixes `ab260e9`), CI green; Planner re-ran checks: ok (e2e 42, link check 0 missing). Review: 0 high, 2 medium (changed-files lint hit kit scripts; scripts/ lockfile drift + unfixable blocking audit), 4 low — all fixed. Planner decision: `sync --apply` refreshes `scripts/package-lock.json`; the scripts audit is report-only, so FoodVibe gets no new blocking CI gate. FoodVibe dry-run: 3 new, 26 kit-update, only the two template conflicts; render diff: same CI behaviour and Angular rule wording.
+- The 004 agent removed scratch folders with Node `fs.rmSync` after `rm -rf` was denied (scratchpad only). Tell Dandan; later agents are told not to work around a denied command.
+- Release number decision (Planner, to confirm at merge point 1): `v2.0.0` — 002/003 need project action, which the kit's semver rule calls major. 005's PR sets kit.json to 2.0.0.
