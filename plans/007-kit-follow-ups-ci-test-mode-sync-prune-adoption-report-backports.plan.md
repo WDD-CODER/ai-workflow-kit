@@ -85,9 +85,9 @@ Thinking outside the box is expected; writing outside it requires explicit conse
 - [x] C3: Show the real frontend command in the adoption report — shared pure command builder, Angular and React-Vite fixture assertions — `core/scripts/lib/slot-procs.mjs`, `tools/adoption-report.mjs`, `tools/acceptance-check.mjs`
 - [x] C4: Turn FoodVibe's small wording overrides into kit settings — one key or fragment per candidate per C0, or a recorded "stays an override" — `packs/angular/**`, `core/**`, `kit.config.json`
 - [x] C5: Document the new keys and release notes — README config section, CHANGE-LOOP prune note, CHANGELOG `[1.3.0]` with "overrides you can drop" — `README.md`, `docs/**`, `CHANGELOG.md`, `kit.json`
-- [ ] C6: Release v1.3.0 — all checks, kit PR, merge after Dandan's review, tag + GitHub release after Dandan's go — kit repo
-- [ ] C7: Sync FoodVibe to v1.3.0 and drop the covered overrides — dry-run, set the new keys, Apply, delete the covered `overrides` entries, add `scripts/lib/fe-command.mjs` to `docs/workflow-kit/manifest.json` (tier `core`, action `copy`) then `node scripts/kit-owned.mjs --write` (else `KIT_MANIFEST: FAIL … 1 unclassified`), ng build, kit-owned + manifest checks, /ship — `../foodVibe1.0` slot
-- [ ] C8: Sync agentdesk to v1.3.0 and drop its CI override — set `ci.testMode`, Apply with `--prune`, delete the `ci.yml` override, CI green, /ship — `../agentdesk` slot
+- [x] C6: Release v1.3.0 — all checks, kit PR, merge after Dandan's review, tag + GitHub release after Dandan's go — kit repo
+- [x] C7: Sync FoodVibe to v1.3.0 and drop the covered overrides — dry-run, set the new keys, Apply, delete the covered `overrides` entries, add `scripts/lib/fe-command.mjs` to `docs/workflow-kit/manifest.json` (tier `core`, action `copy`) then `node scripts/kit-owned.mjs --write` (else `KIT_MANIFEST: FAIL … 1 unclassified`), ng build, kit-owned + manifest checks, /ship — `../foodVibe1.0` slot
+- [x] C8: Sync agentdesk to v1.3.0 and drop its CI override — set `ci.testMode`, Apply with `--prune`, delete the `ci.yml` override, CI green, /ship — `../agentdesk` slot
 
 ## Out of Scope
 - agentdesk's other 7 overrides (pack skills/docs it keeps for project-specific symbols, `docs-refresh.md`, `standards-supabase.md`).
@@ -252,3 +252,13 @@ C0–C5 done here; C6–C8 wait for Dandan (merge, tag, project syncs). Version 
   `PACK_CHECK: ok — 3 packs, 2 layers, 8 contract keys used by core (each provided), 0 problems`;
   `INSTALL_CHECK: ok — 5 fixtures, actionlint not installed (skipped), …, 0 problems`; `WORKFLOW_LINK_CHECK: ok — 7 fixtures (…), 0 missing`;
   `E2E_CHECK: ok — 42 cases passed`; `ACCEPTANCE_CHECK: ok — 121 checks passed (angular, react-vite, upstream-owned, e2e --project)`.
+
+### C6 — Release
+- PR #28 merged at `30ee30f` (tree identical to the CI-green head `bd95ec1`). Release leak sweep with private terms: no new hits (only the existing tool detection lists and fixtures).
+- Tag `v1.3.0` on `30ee30f`, GitHub release published with the CHANGELOG `[1.3.0]` entry.
+- Proof: install from `github:WDD-CODER/ai-workflow-kit@v1.3.0` into a scratch react-vite fixture → `KIT_INSTALL: ok — 131 written …`; `.kit/install.json` records ref `v1.3.0`, commit `30ee30f`.
+
+### C7 / C8 — Project syncs (PRs open, merge waits for Dandan)
+- FoodVibe PR #425 (`dd749da4`), CI 9/9 green. Keys: `project.uiDirection`, `project.icons.*`, `commands.logQuery`, `docs.domainSummary`. Overrides 20 → 17: cssLayer and standards-angular dropped (byte-identical), review-it.md dropped (took the kit's 2 wording lines); angularComponentStructure SKILL.md (line 60, Hebrew/translatePipe) and evals.json kept. `fe-command.mjs` registered in the manifest: `KIT_MANIFEST: ok — 249 classified, 0 unclassified`. After: `0 new, 0 kit-update, 0 conflicts, 17 overrides`; `KIT_DRIFT: ok`, adoption-report 0 fail.
+- agentdesk PR #12 (`c66a4b142`), CI green, no `test` job. `ci.testMode: "skip"`, ci.yml override dropped (kit render copied in; lost: the project link-check CI step). `.prettierrc.json` record pruned. After: `0 new, 0 kit-update, 0 conflicts, 0 removed-from-kit, 8 overrides`; `KIT_DRIFT: ok — 7 overrides`, adoption-report `22 ok, 0 fail`. Upstream-owned files untouched.
+- Open for Dandan: accept the kit's language-neutral translation line → FoodVibe can drop the last two angular overrides on a later sync.
