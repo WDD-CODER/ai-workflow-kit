@@ -15,6 +15,10 @@
  * holds a node_modules link (PowerShell 5 Remove-Item -Recurse follows junctions). The slot dev server writes its
  * dependency cache (Vite: node_modules/.vite) through the link into the project's node_modules, the same cache the
  * project's own dev server uses; --skip-serve avoids it. Nothing reaches GitHub; nothing uses --no-verify.
+ * Before anything is cloned, the run stops with "install dependencies in <path> first" when the project (or its
+ * scripts/) declares dependencies but has no node_modules: the slots could not start anything. The backend's env file
+ * (<paths.serverRoot>.env, untracked) is copied into each scratch slot, as the slot setup (worktree-setup) does for a
+ * real slot; when the project has none, the slot dev server cases are reported SKIP with the reason, not FAIL.
  * Cases: the plan commit runs the hooks; pre-push refuses code on main; claim, second claim refused, scope guard
  * (in scope, out of scope, a hotspot, an upstream-owned path); the frontend dev server from config (started, kept,
  * freed); ship-prep, build gate, Worker push; server merge, ledger sync, plan close-out; a Planner close-out push into
@@ -39,7 +43,7 @@
  * SessionStart prints valid JSON on each branch (idle slot, worker without and with a session-state file).
  * Exit 0 = every case passed, 1 = failures (one line per case).
  */
-import { writeFileSync, readFileSync, mkdtempSync, mkdirSync, rmSync, existsSync, readdirSync, realpathSync, symlinkSync, lstatSync } from 'fs'
+import { writeFileSync, readFileSync, mkdtempSync, mkdirSync, rmSync, existsSync, readdirSync, realpathSync, symlinkSync, lstatSync, copyFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve, dirname, basename } from 'path'
 import { spawnSync } from 'child_process'
@@ -90,6 +94,7 @@ if (!args.includes('--serve')) {
 const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
 const results = []
 let failed = 0
+let skipped = 0
 const sh = (cmd, args, cwd, input) => {
   const r = spawnSync(cmd, args, { cwd, env, input, encoding: 'utf8', shell: false })
   return { status: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}${r.error ? r.error.message : ''}` }
@@ -111,6 +116,11 @@ function check(name, ok, evidence) {
   results.push(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : ` — ${evidence}`}`)
   if (!ok) failed++
   return ok
+}
+// A case this environment cannot run (not a workflow failure): reported with the reason, not counted as failed.
+function skip(name, reason) {
+  results.push(`SKIP  ${name} — ${reason}`)
+  skipped++
 }
 // A PreToolUse hook call, as Claude Code makes it: JSON on stdin, decision JSON on stdout.
 const hook = (cwd, script, file) => {
@@ -450,6 +460,22 @@ function projectMain(here) {
   }
   P.here = here
   P.had = ['.', 'scripts'].filter((sub) => existsSync(join(here, sub, 'node_modules')))
+  // Pre-flight: the slots borrow the project's node_modules, so a folder that declares dependencies needs them
+  // installed first (else the slot dev server fails with "'vite' is not recognized" or the like).
+  const declares = (sub) => {
+    try {
+      const pj = readJson(join(here, sub, 'package.json'))
+      return Object.keys({ ...pj.dependencies, ...pj.devDependencies }).length > 0
+    } catch { return false }
+  }
+  const noDeps = ['.', 'scripts'].filter((sub) => declares(sub) && !existsSync(join(here, sub, 'node_modules')))
+  if (noDeps.length) {
+    for (const sub of noDeps) {
+      const at = sub === '.' ? here : join(here, sub)
+      check(`dependencies installed in ${at}`, false, `install dependencies in ${at} first (npm ci): the scratch slots borrow its node_modules`)
+    }
+    return
+  }
   console.log(`E2E: scratch folder ${root} — its slots LINK to ${here}'s node_modules. While this run is alive or if it was ` +
     'killed, do NOT delete that folder recursively (Remove-Item -Recurse / rm -rf follow the links): remove each ' +
     'node_modules link with rmdir first. The run removes them itself when it ends or is interrupted.')
@@ -475,11 +501,19 @@ function projectMain(here) {
   const friend = join(root, 'friend')
   delete env.GITHUB_TOKEN // nothing here may reach GitHub
   delete env.GH_TOKEN
+  // The backend env file the slot setup copies into every real slot (worktree-setup): untracked, so the clone lacks it.
+  const serverRoot = String(vals['paths.serverRoot'] ?? '').replace(/\\/g, '/')
+  const envFiles = serverRoot && existsSync(join(here, serverRoot, 'package.json')) ? [`${serverRoot}.env`] : []
+  const untracked = envFiles.filter((f) => git(here, 'ls-files', '--error-unmatch', f).status !== 0)
+  const envCopy = untracked.filter((f) => existsSync(join(here, f)))
+  const envMissing = untracked.filter((f) => !existsSync(join(here, f)))
+  if (envCopy.length) console.log(`E2E: copying ${envCopy.join(', ')} from ${here} into the scratch slots, as the slot setup does for a real slot${keep ? ' (--keep leaves the copies in the scratch folder)' : ''}.`)
   // A slot borrows the project's installed dependencies; a recorded lockfile hash tells take-plan not to reinstall.
   const prepareSlot = (dir, n) => {
     writeFileSync(join(dir, '.worktree-root'), proj)
     writeFileSync(join(dir, '.worktree-port'), String(feBase + n))
     mkdirSync(join(dir, '.claude'), { recursive: true })
+    for (const f of envCopy) copyFileSync(join(here, f), join(dir, f))
     for (const [sub, hashName] of [['.', '.last-npm-install-hash'], ['scripts', '.last-npm-install-hash-scripts']]) {
       if (link(join(here, sub, 'node_modules'), join(dir, sub, 'node_modules')) && existsSync(join(dir, sub, 'package-lock.json'))) {
         writeFileSync(join(dir, '.claude', hashName), sha(join(dir, sub, 'package-lock.json')))
@@ -583,7 +617,9 @@ function projectMain(here) {
   }
 
   // 4. The slot's frontend dev server, from config (commands.dev + slots.fe*).
-  if (devScript && !argv.includes('--skip-serve')) {
+  if (devScript && !argv.includes('--skip-serve') && envMissing.length) {
+    skip('slot-serve starts, keeps and stops the slot dev servers', `${envMissing.map((f) => join(here, f)).join(', ')} is missing: the slot setup copies it into every slot and the backend cannot start without it`)
+  } else if (devScript && !argv.includes('--skip-serve')) {
     const port = feBase + 2
     const s1 = node(slot, 'scripts/slot-serve.mjs')
     check(`slot-serve starts the frontend on the slot port (fe=${port} started)`, s1.status === 0 && new RegExp(`fe=${port} started`).test(s1.out), tail(s1.out))
@@ -718,6 +754,7 @@ else {
   }
   try { rmSync(root, { recursive: true, force: true }) } catch { console.log(`E2E: could not delete ${root} (a file is still held) — delete it by hand`) }
 }
-const total = results.length
-console.log(failed ? `E2E_CHECK: FAIL — ${failed} of ${total} cases failed` : `E2E_CHECK: ok — ${total} cases passed`)
+const total = results.length - skipped
+const skipNote = skipped ? `, ${skipped} skipped` : ''
+console.log(failed ? `E2E_CHECK: FAIL — ${failed} of ${total} cases failed${skipNote}` : `E2E_CHECK: ok — ${total} cases passed${skipNote}`)
 process.exit(failed ? 1 : 0)
