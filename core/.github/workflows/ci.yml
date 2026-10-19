@@ -38,7 +38,7 @@ jobs:
           run_gates=false
           for f in "${FILES[@]}"; do
             case "$f" in
-              docs/*|plans/*|sessions/*|notes/*|bugs/*|archive/*|.claude/*|.cursor/*|*.md|AGENTS.md|agent.md|CLAUDE.md)
+              docs/*|plans/*|sessions/*|notes/*|bugs/*|archive/*|.claude/*|.cursor/*|*.md)
                 ;;
               *)
                 run_gates=true
@@ -58,14 +58,71 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+# KIT:if ci.lintScope=changed
+        with:
+          fetch-depth: 0
+# KIT:end
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
       - name: Install
-        run: npm ci
+        run: {{ci.install}}
+# KIT:if ci.lintScope=changed
+      # ci.lintScope "changed": lint only the files this change touches, so lint debt the project does not
+      # own (e.g. upstream code) cannot keep CI red. A PR compares its merge commit with the base side
+      # (HEAD^1); a push with the commit before it (a new branch: the parent commit); nothing to compare
+      # with = nothing to lint. Kit-managed files (.kit/install.json) are the kit's, not the project's lint.
+      - name: ESLint (changed files)
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            BASE="$(git rev-parse --verify 'HEAD^1')"
+          else
+            BASE="$PUSH_BEFORE"
+            if [[ -z "$BASE" || "$BASE" =~ ^0+$ ]] || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+              BASE="$(git rev-parse -q --verify 'HEAD~1' || true)"
+            fi
+          fi
+          if [[ -z "$BASE" ]]; then
+            echo "No commit to compare with: nothing to lint"
+            exit 0
+          fi
+          # A file, so a failing git diff fails the step (a process substitution would hide its exit status).
+          LIST="$RUNNER_TEMP/changed-files"
+          git -c core.quotePath=false diff -z --name-only --diff-filter=d "$BASE" HEAD -- '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' > "$LIST"
+          KIT_FILES=""
+          if [[ -f .kit/install.json ]]; then
+            KIT_FILES="$(node -p "Object.keys(require('./.kit/install.json').files || {}).join('\n')")"
+          fi
+          declare -A KIT=()
+          while IFS= read -r p; do
+            [[ -n "$p" ]] && KIT["$p"]=1
+          done <<< "$KIT_FILES"
+          FILES=()
+          while IFS= read -r -d '' f; do
+            [[ -n "${KIT[$f]:-}" ]] || FILES+=("$f")
+          done < "$LIST"
+          if [[ ${#FILES[@]} -eq 0 ]]; then
+            echo "No changed .ts/.tsx/.js/.jsx/.mjs/.cjs files of the project's own: nothing to lint"
+            exit 0
+          fi
+          printf 'Linting %s\n' "${FILES[@]}"
+          npx --no-install eslint --no-error-on-unmatched-pattern "${FILES[@]}"
+# KIT:else
       - name: ESLint
         run: npm run {{commands.lint}}
+# KIT:end
+      # The workflow scripts' own dependencies live in scripts/package.json (kit-managed); install them
+      # inside scripts/ (not with --prefix) before anything runs those scripts.
+      - name: Install workflow script dependencies
+        if: hashFiles('scripts/package-lock.json') != ''
+        working-directory: scripts
+        run: npm ci --no-audit --no-fund
       - name: Workflow script tests
         run: npm run test:scripts --if-present
 
@@ -81,7 +138,7 @@ jobs:
           cache: npm
       # <!-- PACK:stack — build cache step (framework cache dir) comes from the stack pack -->
       - name: Install
-        run: npm ci
+        run: {{ci.install}}
       - name: Build
         run: npm run {{commands.build}}
 
@@ -97,14 +154,19 @@ jobs:
           cache: npm
       # <!-- PACK:stack — build cache step (framework cache dir) comes from the stack pack -->
       - name: Install
-        run: npm ci
+        run: {{ci.install}}
       - name: Unit tests
         run: npm run {{commands.test}}
+# KIT:if paths.serverRoot
 
+  # The backend's own tests: only when the project has one (paths.serverRoot).
   server-tests:
     needs: changes
     if: needs.changes.outputs.run-gates == 'true'
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: {{paths.serverRoot}}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -113,9 +175,10 @@ jobs:
           cache: npm
           cache-dependency-path: {{paths.serverRoot}}package-lock.json
       - name: Install
-        run: npm ci --prefix {{paths.serverRoot}}
+        run: {{ci.install}}
       - name: Server tests
-        run: npm test --prefix {{paths.serverRoot}}
+        run: npm test
+# KIT:end
 
   gitleaks:
     runs-on: ubuntu-latest
@@ -134,7 +197,15 @@ jobs:
           GITLEAKS_ENABLE_COMMENTS: false
 
   ci:
-    needs: [changes, lint, build, test, server-tests, gitleaks]
+    needs:
+      - changes
+      - lint
+      - build
+      - test
+# KIT:if paths.serverRoot
+      - server-tests
+# KIT:end
+      - gitleaks
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -163,10 +234,12 @@ jobs:
               echo "test failed: ${{ needs.test.result }}"
               exit 1
             fi
+# KIT:if paths.serverRoot
             if [[ "${{ needs.server-tests.result }}" != "success" ]]; then
               echo "server-tests failed: ${{ needs.server-tests.result }}"
               exit 1
             fi
+# KIT:end
             echo "All quality gates passed"
           else
             echo "Docs-only PR: lint/build/test skipped; gitleaks passed"

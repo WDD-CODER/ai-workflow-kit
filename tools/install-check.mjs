@@ -16,14 +16,20 @@
  * `npm run`; a project-owned AGENTS.md gets AGENTS.workflow.md and a CLAUDE.md that imports both; an ignored path
  * is SKIP-IGNORED / `ignored`; the .gitignore skeleton and .git/info/exclude carry the runtime list; ship-prep's
  * sensitive paths, the frontend dev server values, an i18n folder hotspot and the browser line follow the config.
+ * CI and packs: the rendered ci.yml / security.yml with and without paths.serverRoot and in every ci.* mode (actionlint
+ * on each rendered workflow when installed: ACTIONLINT=<path> or on PATH; KIT_REQUIRE_ACTIONLINT=1 makes it required),
+ * workflow-link-check on every fixture, no KIT:/PACK: directive left, style rules / prettier seed / pre-commit hooks only
+ * from the angular pack, an optional pack seed skipped next to the project's own, and the tech-debt scan + baseline.
  * Exit 0 = ok, 1 = problems (one per line).
  */
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, readdirSync, statSync, existsSync, cpSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, relative, resolve } from 'path'
 import { spawnSync } from 'child_process'
+import { createHash } from 'crypto'
 import { fileURLToPath } from 'url'
 import { builtinModules } from 'module'
+import { linkProblems } from './workflow-link-check.mjs'
 
 const kit = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const problems = []
@@ -44,8 +50,9 @@ const tmp = (name) => mkdtempSync(join(tmpdir(), `kit-${name}-`))
 const HOSTILE_RE = 'a`b\'c"d${e}\\w'
 const CORE_CFG = { project: { name: 'core-only' }, commands: { build: 'build', lint: 'lint', test: 'test' }, hooks: { shellPath: 'bash' } }
 const fixtures = [
-  // core: an i18n folder (every file under it is a hotspot) and a sensitive-path regex that replaces the default.
-  { name: 'core', args: [], cfg: { ...CORE_CFG, project: { name: 'core-only', i18nFile: 'src/locales/' }, security: { sensitivePaths: 'only-this' } } },
+  // core: an i18n folder (every file under it is a hotspot), a sensitive-path regex that replaces the default, and the CI
+  // keys of a project whose lockfile, lint debt and dependency advisories are not its own to fix (no backend).
+  { name: 'core', args: [], cfg: { ...CORE_CFG, project: { name: 'core-only', i18nFile: 'src/locales/' }, security: { sensitivePaths: 'only-this' }, ci: { install: 'npm install --no-audit --no-fund', lintScope: 'changed', appAuditMode: 'report' } } },
   { name: 'angular-cursor', args: ['--packs', 'angular', '--cursor'], cfg: { project: { name: 'ng-app' } } },
   // express: an old backend-only `commands.dev: "dev"` with the kit's default slots.fe* values (install must NOTE it).
   { name: 'express-cursor-chef', args: ['--packs', 'node-express', '--cursor', '--yes-chef'], cfg: { project: { name: 'api-app' }, commands: { build: 'build', lint: 'lint', dev: 'dev' } } },
@@ -86,6 +93,57 @@ function loadPathProblems(dir) {
   return out
 }
 
+// actionlint (pinned in kit CI, which sets KIT_REQUIRE_ACTIONLINT=1) lints every rendered workflow when available.
+const actionlint = process.env.ACTIONLINT || 'actionlint'
+const haveActionlint = spawnSync(actionlint, ['-version'], { encoding: 'utf8' }).status === 0
+if (!haveActionlint && process.env.KIT_REQUIRE_ACTIONLINT === '1') fail(`actionlint not found (${actionlint}); kit CI must install it`)
+let actionlinted = 0
+
+// The rendered CI: backend job and steps only with paths.serverRoot; ci.install / ci.lintScope / ci.appAuditMode as set.
+function ciProblems(dir, fx) {
+  const out = []
+  const ci = read(dir, '.github/workflows/ci.yml').replace(/\r\n/g, '\n')
+  const sec = read(dir, '.github/workflows/security.yml').replace(/\r\n/g, '\n')
+  const has = (text, ...lines) => text.includes(lines.join('\n'))
+  const backend = fx.args.join(' ').includes('node-express')
+  const lintJob = ci.split('\n  lint:\n')[1]?.split('\n  build:\n')[0] ?? ''
+  if (/--prefix\s*$/m.test(ci + sec)) out.push('a workflow renders "--prefix" with nothing after it')
+  if (backend !== /^ {2}server-tests:$/m.test(ci) || backend !== /^ {6}- server-tests$/m.test(ci) || backend !== ci.includes('needs.server-tests.result')) {
+    out.push(`ci.yml server-tests job, gate needs and gate check must all be ${backend ? 'present' : 'absent'} (paths.serverRoot ${backend ? 'set' : 'empty'})`)
+  }
+  if (!backend && /Install server|npm audit \(server\)|working-directory: server/.test(sec)) out.push('security.yml has a server step without paths.serverRoot')
+  if (backend && !has(sec, '      - name: Install server', '        run: npm ci', '        working-directory: server/')) out.push('security.yml lost the server install step')
+  if (backend && !has(sec, '      - name: npm audit (server)', '        run: npm audit --omit=dev --audit-level=critical', '        working-directory: server/')) out.push('security.yml lost the server audit')
+  const install = fx.cfg.ci?.install ?? 'npm ci'
+  if (ci.split(`        run: ${install}\n`).length - 1 < 3 || !sec.includes(`        run: ${install}\n`)) out.push(`ci.yml / security.yml do not install with ci.install "${install}"`)
+  if (fx.cfg.ci?.lintScope === 'changed') {
+    const ok = lintJob.includes('name: ESLint (changed files)') && !lintJob.includes('run: npm run lint') && lintJob.includes('fetch-depth: 0') &&
+      lintJob.includes("git -c core.quotePath=false diff -z --name-only --diff-filter=d \"$BASE\" HEAD -- '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' > \"$LIST\"") &&
+      lintJob.includes("BASE=\"$(git rev-parse --verify 'HEAD^1')\"") && lintJob.includes('PUSH_BEFORE: ${{ github.event.before }}') &&
+      lintJob.includes("git rev-parse -q --verify 'HEAD~1'") && lintJob.includes('nothing to lint') &&
+      lintJob.includes("Object.keys(require('./.kit/install.json').files || {})")
+    if (!ok) out.push('ci.yml lintScope changed: lint must be ESLint on the changed files (PR HEAD^1, push before, HEAD~1 fallback, none = pass, kit files left out)')
+  } else if (!has(lintJob, '      - name: ESLint', '        run: npm run lint') || lintJob.includes('changed files')) out.push('ci.yml lintScope all: lint must run npm run <commands.lint> on the whole repo')
+  const cut = sec.indexOf('npm audit (workflow scripts')
+  const audits = cut < 0 ? sec : sec.slice(0, cut)
+  const scriptsAudit = cut < 0 ? '' : sec.slice(cut + 'npm audit (workflow scripts'.length)
+  if (fx.cfg.ci?.appAuditMode === 'report') {
+    if (!audits.includes('set +e') || !audits.includes('>> "$GITHUB_STEP_SUMMARY"') || !audits.includes('::warning') || audits.includes('--audit-level')) out.push('security.yml report mode: set +e, job summary and a warning, no enforced app audit')
+  } else if (!has(audits, '      - name: npm audit (root)', '        run: npm audit --omit=dev --audit-level=critical') || audits.includes('set +e')) out.push('security.yml enforce mode must keep the critical production audit')
+  // The kit-managed scripts/ dependencies: a kit release fixes them, so their audit only reports.
+  const scriptsStep = scriptsAudit.split('Semgrep')[0]
+  if (!scriptsAudit.startsWith(', report only)') || !scriptsStep.includes("if: hashFiles('scripts/package-lock.json') != ''") || !scriptsStep.includes('working-directory: scripts') ||
+    !scriptsStep.includes('set +e') || !scriptsStep.includes('>> "$GITHUB_STEP_SUMMARY"') || !scriptsStep.includes('exit 0') || scriptsStep.includes('--audit-level')) out.push('security.yml: the scripts/ dependency audit must be report-only (set +e, summary, warning, exit 0)')
+  if (!has(lintJob, '      - name: Install workflow script dependencies', "        if: hashFiles('scripts/package-lock.json') != ''", '        working-directory: scripts')) out.push('ci.yml must install the scripts/ dependencies inside scripts/ before the workflow script tests')
+  if (haveActionlint) {
+    const wf = readdirSync(join(dir, '.github/workflows')).filter((x) => /\.ya?ml$/.test(x)).map((x) => join(dir, '.github/workflows', x))
+    const r = spawnSync(actionlint, ['-no-color', ...wf], { encoding: 'utf8' })
+    actionlinted += wf.length
+    if (r.status !== 0) out.push(`actionlint: ${(r.stdout + r.stderr).trim().split('\n').slice(0, 6).join(' | ')}`)
+  }
+  return out
+}
+
 const dirs = {}
 for (const fx of fixtures) {
   const dir = tmp(fx.name)
@@ -123,6 +181,20 @@ for (const fx of fixtures) {
   if (!all.includes('docs/project/tech-stack.md')) fail(`${fx.name}: docs/project/tech-stack.md missing`)
   if (all.some((f) => f.startsWith('_shared/'))) fail(`${fx.name}: _shared/ must not be installed`)
   for (const p of loadPathProblems(dir)) fail(`${fx.name}: ${p}`)
+  for (const p of ciProblems(dir, fx)) fail(`${fx.name}: ${p}`)
+  // Every path, `node scripts/…` and `npm run …` the workflow docs name exists (packs [] too: no dangling pack file).
+  for (const p of linkProblems(dir)) fail(`${fx.name}: link check: ${p.file}:${p.line}: ${p.what}`)
+  // No KIT:if/else/end or PACK:<name> directive line survives a render (a `PACK:stack — …` note may: it is prose).
+  const directive = /^[ \t]*(?:#|<!--)[ \t]*(?:KIT:(?:if|else|end)\b|PACK:[\w:.-]+[ \t]*(?:-->)?[ \t]*$)/m
+  for (const f of all) if (directive.test(read(dir, f))) fail(`${fx.name}: ${f} keeps a KIT:/PACK: directive line`)
+  // Style rules come from the pack; core only says to match the file's style.
+  const feat = read(dir, '.claude/commands/feat.md')
+  const angular = fx.args.join(' ').includes('angular')
+  if (!feat.includes('Match the file\'s existing style; never reformat untouched lines.')) fail(`${fx.name}: /feat lost the match-existing-style rule`)
+  if (angular !== feat.includes('- No semicolons in `.ts` files. Single quotes in TS, double quotes in HTML.')) fail(`${fx.name}: the /feat style rules must come from the angular pack, and only from it`)
+  if (angular !== all.includes('.prettierrc.json')) fail(`${fx.name}: .prettierrc.json must be an angular pack seed only`)
+  const preCommit = read(dir, '.husky/pre-commit')
+  if (angular !== preCommit.includes('node scripts/pre-commit-no-semi.mjs\nnode scripts/pre-commit-secret-scan.mjs\nnode scripts/pre-commit-security-grep.mjs\n')) fail(`${fx.name}: the angular pre-commit hooks (no-semi before the secret scan, security grep after) are wrong`)
   // commands.* are script names: no render may double the npm run.
   for (const f of all) if (read(dir, f).includes('npm run npm run')) fail(`${fx.name}: ${f} renders "npm run npm run"`)
   // The .gitignore skeleton carries the runtime list from scripts/local-excludes.mjs; scripts/ has its own package.
@@ -460,6 +532,95 @@ for (const mode of ['present', 'override', 'no-config']) {
   rmSync(ig, { recursive: true, force: true })
 }
 
+// An optional pack seed is not written next to the project's own equivalent: the angular .prettierrc.json is
+// SKIP-PRESENT when the project has a prettier.config.js (install) and a NOTE, never `new`, in sync.
+{
+  const pr = tmp('prettier')
+  writeFileSync(join(pr, 'kit.config.json'), JSON.stringify({ project: { name: 'styled-app' }, hooks: { shellPath: 'bash' } }))
+  writeFileSync(join(pr, 'prettier.config.js'), 'module.exports = { semi: true }\n')
+  const r = run('install.mjs', ['--target', pr, '--packs', 'angular'])
+  if (r.status !== 0 || !r.stdout.includes('SKIP-PRESENT .prettierrc.json (the project has prettier.config.js)') || existsSync(join(pr, '.prettierrc.json'))) fail(`install next to a prettier.config.js: ${(r.stdout + r.stderr).trim().split('\n').pop()}`)
+  const s = run('sync.mjs', ['--target', pr])
+  if (!s.stdout.includes('NOTE .prettierrc.json not written: the project has prettier.config.js') || !/dry-run — 0 new, 0 kit-update, 0 conflicts/.test(s.stdout)) fail(`sync next to a prettier.config.js: ${s.stdout.trim().split('\n').pop()}`)
+  rmSync(pr, { recursive: true, force: true })
+}
+
+// Tech-debt scan: core rules on .ts/.tsx/.jsx/.html/.css, the angular pack's rules on top, kit-managed files left out,
+// a baseline, NEW_DEBT yes|no and --strict.
+for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']]]) {
+  const td = tmp(`techdebt-${name}`)
+  writeFileSync(join(td, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, project: { name: `td-${name}` } }))
+  run('install.mjs', ['--target', td, ...packArgs])
+  mkdirSync(join(td, 'src', 'app'), { recursive: true })
+  writeFileSync(join(td, 'src/app/a.component.ts'), 'export class A {\n  @Input() x: any;\n  s = new BehaviorSubject(1)\n}\n')
+  writeFileSync(join(td, 'src/app/b.tsx'), 'export const B = () => { console.log(1) } // TODO tidy\n')
+  writeFileSync(join(td, 'src/app/c.jsx'), '// eslint-disable-next-line\n' + 'export const c = 1\n'.repeat(301))
+  writeFileSync(join(td, 'src/app/d.html'), '<!-- FIXME -->\n')
+  writeFileSync(join(td, 'src/app/e.css'), '/* TODO */\n')
+  const scan = (...a) => spawnSync(process.execPath, [join(td, 'scripts/techdebt-report.mjs'), 'scan', ...a], { cwd: td, encoding: 'utf8' })
+  const count = (out, id) => Number(new RegExp(`^\\| ${id} \\| [^|]+ \\| (\\d+) \\|`, 'm').exec(out)?.[1] ?? -1)
+  const first = scan()
+  const want = { any: 1, 'console-log': 1, todo: 3, 'eslint-disable': 1, 'big-file': 1, ...(name === 'angular' ? { 'legacy-decorator': 1, 'behavior-subject': 1, semicolon: 1 } : {}) }
+  const got = Object.fromEntries(Object.keys(want).map((id) => [id, count(first.stdout, id)]))
+  if (JSON.stringify(got) !== JSON.stringify(want) || !first.stdout.includes('SCAN: 5 source files') || !first.stdout.includes('NEW_DEBT: unknown')) fail(`techdebt scan (${name}): ${JSON.stringify(got)} vs ${JSON.stringify(want)}: ${first.stdout.trim().split('\n')[0]} / ${first.stderr.trim()}`)
+  if (name === 'core' && /legacy-decorator|behavior-subject|semicolon/.test(first.stdout)) fail('techdebt scan (core): angular rules without the angular pack')
+  const base = scan('--write-baseline')
+  if (!base.stdout.includes('BASELINE: written docs/project/techdebt-baseline.json') || !existsSync(join(td, 'docs/project/techdebt-baseline.json'))) fail(`techdebt scan --write-baseline (${name}): ${base.stdout.trim().split('\n').pop()}`)
+  const same = scan('--strict')
+  if (same.status !== 0 || !same.stdout.includes('NEW_DEBT: no')) fail(`techdebt scan against an unchanged baseline (${name}): ${same.stdout.trim().split('\n').pop()}`)
+  writeFileSync(join(td, 'src/app/f.ts'), 'let y: any = 2\n')
+  const worse = scan('--strict')
+  if (worse.status !== 1 || !worse.stdout.includes('NEW_DEBT: yes (any +1)')) fail(`techdebt scan with new debt (${name}): exit ${worse.status}, ${worse.stdout.trim().split('\n').pop()}`)
+  rmSync(td, { recursive: true, force: true })
+}
+
+// ci.* modes outside the allowed set are refused like a full command (exit 2, nothing written); a server/package.json
+// with an empty paths.serverRoot gets a NOTE (CI would render no server step).
+{
+  const cm = tmp('ci-modes')
+  writeFileSync(join(cm, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, ci: { lintScope: 'changed-only', appAuditMode: 'warn' } }))
+  const r = run('install.mjs', ['--target', cm])
+  if (r.status !== 2 || !r.stderr.includes('ci.lintScope is "changed-only" — allowed: "all", "changed"') || !r.stderr.includes('ci.appAuditMode is "warn" — allowed: "enforce", "report"') || files(cm).length !== 1) fail(`install with bad ci.* modes: exit ${r.status}, ${r.stderr.trim().split('\n')[0]}`)
+  writeFileSync(join(cm, 'kit.config.json'), JSON.stringify(CORE_CFG))
+  mkdirSync(join(cm, 'server'))
+  writeFileSync(join(cm, 'server/package.json'), '{ "name": "api" }\n')
+  const ok = run('install.mjs', ['--target', cm])
+  if (ok.status !== 0 || !ok.stdout.includes('NOTE server/package.json exists but paths.serverRoot is empty')) fail(`install with server/ and no paths.serverRoot: no NOTE: ${ok.stdout.trim().split('\n').pop()}`)
+  writeFileSync(join(cm, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, ci: { appAuditMode: 'off' } }))
+  const s = run('sync.mjs', ['--target', cm, '--apply'])
+  if (s.status !== 2 || !s.stderr.includes('KIT_SYNC: STOP — ci.appAuditMode is "off"')) fail(`sync with a bad ci.appAuditMode: exit ${s.status}, ${s.stderr.trim().split('\n')[0]}`)
+  rmSync(cm, { recursive: true, force: true })
+}
+
+// sync --apply that updates the kit-managed scripts/package.json refreshes the project's scripts/package-lock.json
+// (npm install inside scripts/). Offline with an empty npm cache the install fails: sync names the command to run.
+// Without a lockfile, sync runs nothing.
+{
+  const lk = tmp('scripts-lock')
+  const cache = tmp('npm-cache')
+  writeFileSync(join(lk, 'kit.config.json'), JSON.stringify(CORE_CFG))
+  run('install.mjs', ['--target', lk])
+  const instPath = join(lk, '.kit/install.json')
+  const older = '{ "name": "workflow-scripts", "private": true, "dependencies": {} }\n'
+  const asOlderKit = () => {
+    writeFileSync(join(lk, 'scripts/package.json'), older)
+    const inst = JSON.parse(readFileSync(instPath, 'utf8'))
+    inst.files['scripts/package.json'].sha256 = createHash('sha256').update(older).digest('hex')
+    writeFileSync(instPath, JSON.stringify(inst, null, 2))
+  }
+  const env = { ...process.env, npm_config_offline: 'true', npm_config_cache: cache, npm_config_update_notifier: 'false' }
+  const sync = () => spawnSync(process.execPath, [join(kit, 'tools', 'sync.mjs'), '--target', lk, '--apply'], { encoding: 'utf8', env })
+  asOlderKit()
+  const none = sync()
+  if (/npm install inside scripts/.test(none.stdout) || read(lk, 'scripts/package.json') === older) fail(`sync without scripts/package-lock.json: ${none.stdout.trim().split('\n').pop()}`)
+  asOlderKit()
+  writeFileSync(join(lk, 'scripts/package-lock.json'), JSON.stringify({ name: 'workflow-scripts', lockfileVersion: 3, requires: true, packages: { '': { name: 'workflow-scripts', dependencies: {} } } }, null, 2))
+  const s = sync()
+  if (read(lk, 'scripts/package.json') === older || !s.stdout.includes('NOTE scripts/package.json changed but npm install inside scripts/ failed') || !s.stdout.includes('cd scripts && npm install --no-audit --no-fund')) fail(`sync --apply with scripts/package-lock.json did not try npm install inside scripts/ (or did not name the command): ${s.stdout.trim().split('\n').slice(-3).join(' | ')}`)
+  rmSync(lk, { recursive: true, force: true })
+  rmSync(cache, { recursive: true, force: true })
+}
+
 // Required keys: core only with no config must STOP and write nothing.
 const bare = tmp('bare')
 const stop = run('install.mjs', ['--target', bare, '--packs', ''])
@@ -471,4 +632,4 @@ if (problems.length > 0) {
   console.error(`INSTALL_CHECK: FAIL — ${problems.length} problems`)
   process.exit(1)
 }
-console.log(`INSTALL_CHECK: ok — ${fixtures.length} fixtures, re-install no-op, sync dry-run/apply, overrides, drift-check, adopt, promoted seeds, /plan load paths, local + github sources, 0 problems`)
+console.log(`INSTALL_CHECK: ok — ${fixtures.length} fixtures, ${haveActionlint ? `actionlint on ${actionlinted} rendered workflows` : 'actionlint not installed (skipped)'}, CI renders, link check, re-install no-op, sync dry-run/apply, overrides, drift-check, adopt, promoted seeds, /plan load paths, local + github sources, 0 problems`)

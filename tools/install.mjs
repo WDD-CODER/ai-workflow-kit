@@ -18,7 +18,8 @@
  * kit-sync can target the project. Refuses (nothing written) unless the drift check is clean: every managed
  * file outside `overrides` must match the rendered kit byte for byte. Cursor: --cursor/--no-cursor, else
  * "a .cursor/ folder exists".
- * A path the target's git ignores is not written (SKIP-IGNORED). When the project owns AGENTS.md (an override,
+ * A path the target's git ignores is not written (SKIP-IGNORED), nor an optional pack seed when the project has its own
+ * equivalent (SKIP-PRESENT, e.g. .prettierrc.json next to a prettier.config.js). When the project owns AGENTS.md (an override,
  * or present and not kit-installed), the kit's rules go to AGENTS.workflow.md (managed) and CLAUDE.md imports both.
  * The workflow scripts' dependencies are in scripts/package.json: --install-deps runs npm install inside scripts/ (not
  * `npm install --prefix scripts`: npm 10 then runs the root package's lifecycle scripts, e.g. a husky prepare).
@@ -32,7 +33,7 @@ import { resolve, join, dirname } from 'path'
 import { resolveSource } from './lib/source.mjs'
 import {
   KIT_ROOT, REQUIRED, isEmpty, readJson, sha256, resolveConfig, planFiles, parseArgs, unflatten, NOT_SET, readOverrides, isHook,
-  markHooksExecutable, commandProblems, ownsAgents, ignoredPaths, AGENTS_WORKFLOW, frontendNote,
+  markHooksExecutable, commandProblems, ownsAgents, ignoredPaths, AGENTS_WORKFLOW, frontendNote, presentAlternative, backendNote,
 } from './lib/kit.mjs'
 
 let args
@@ -155,6 +156,12 @@ for (const f of plan.files) {
   }
   const dest = join(target, f.dest)
   const digest = sha256(f.content)
+  // An optional pack seed (e.g. a formatter config) is not written next to the project's own.
+  const alt = !existsSync(dest) && presentAlternative(target, f.skipWhenPresent)
+  if (alt) {
+    log(`SKIP-PRESENT ${f.dest} (the project has ${alt})`)
+    continue
+  }
   if (existsSync(dest)) {
     const cur = readFileSync(dest, 'utf8')
     if (cur === f.content) {
@@ -249,6 +256,8 @@ if (plan.files.some((f) => f.dest === '.github/workflows/todo-sync.yml')) {
 }
 const feNote = frontendNote(vals)
 if (feNote) log(feNote)
+const beNote = backendNote(vals, target)
+if (beNote) log(beNote)
 if (agentsWorkflow) {
   const claude = join(target, 'CLAUDE.md')
   const imports = existsSync(claude) && readFileSync(claude, 'utf8').includes(`@${AGENTS_WORKFLOW}`)

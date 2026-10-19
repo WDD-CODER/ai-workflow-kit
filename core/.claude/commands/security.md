@@ -5,7 +5,7 @@ Use this path for security audits, hardening, authentication review, and vulnera
 ## Loads
 
 - `docs/agent/standards-security.md` — OWASP top 10, auth patterns, API security, input validation
-- `auth-and-logging` skill — authentication guards, mutation logging, auth audit checklist, and the `auth-crypto.ts` hashing/token rules
+<!-- PACK:loads:security -->
 
 ## Invokes
 
@@ -28,8 +28,13 @@ Use this path for security audits, hardening, authentication review, and vulnera
 
 - Critical findings block APPROVE / session close — must be fixed (or explicitly deferred by Human) before merge.
 - Never log secrets, tokens, or PII — even in debug output.
-- All auth changes must pass the `auth-and-logging` audit checklist before commit.
-- No semicolons in any `.ts` file touched.
+<!-- KIT:if stack.authSkill -->
+- All auth changes must pass the `{{stack.authSkill}}` audit checklist before commit.
+<!-- KIT:else -->
+- All auth changes must be checked against `docs/agent/standards-security.md` before commit.
+<!-- KIT:end -->
+- Match the file's existing style; never reformat untouched lines.
+<!-- PACK:style:security -->
 - Human commits by default (`git-agent` prep only).
 
 ## Related commands

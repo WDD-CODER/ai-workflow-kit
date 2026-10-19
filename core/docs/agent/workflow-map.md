@@ -139,7 +139,11 @@ Claude Code backs this up in `.claude/settings.json`: `permissions.deny` refuses
   plan's Step 0 reality check before starting milestones. It starts **no** servers.
 - **Slot dev servers are on demand.** `scripts/slot-serve.mjs` starts them when a step needs the app
   (browser check, validation cards, `/remote`, preflight, or the Human's "start servers"): frontend on
+<!-- KIT:if commands.devLocal -->
   {{slots.fePorts}}+N, backend `npm run {{commands.devLocal}}` with `PORT={{slots.bePorts}}+N`/`ALLOWED_ORIGIN`. It never
+<!-- KIT:else -->
+  {{slots.fePorts}}+N (no backend dev script: `commands.devLocal` is not set). It never
+<!-- KIT:end -->
   spawns while a port is held. `scripts/slot-stop.mjs` stops them — every chain from its root, orphaned
   `node --watch` watchers included — and runs at the slot merge, in `free-merged-slots.mjs` and as the
   `SessionEnd` hook. `scripts/orphan-sweep.mjs` (session start, slot and main folder) kills only idle

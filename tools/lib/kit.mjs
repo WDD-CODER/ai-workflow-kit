@@ -4,10 +4,18 @@
  *
  * Layers (first wins on a path clash is an error, never silent):
  *   core/            managed   every project
- *   packs/<name>/    managed   per selected stack pack (pack.json, AGENTS.fragment.md are not installed)
+ *   packs/<name>/    managed   per selected stack pack (pack.json and its agentsFragment / fragments files are not
+ *                              installed; paths in pack.json `seeds` are seeds)
  *   layers/cursor/   managed   with the Cursor layer
  *   templates/       seed      written once, never updated by sync; templates/cursor/** only with the Cursor layer;
  *                              templates/fragments/** are inputs, not files
+ *
+ * Text a file gets from the config, before placeholders are rendered:
+ *   <!-- PACK:<name> -->  or  # PACK:<name>   (a line of its own) -> the `## <name>` section of every selected pack's
+ *                                               pack.json `fragments` file, in pack order; no pack has it = the line is dropped
+ *   <!-- KIT:if <cond> --> … <!-- KIT:else --> … <!-- KIT:end -->  (or `# KIT:if <cond>` … `# KIT:end`)
+ *                                            -> lines kept or dropped by a config value; <cond> = key | !key |
+ *                                               key=value | key!=value (a key is set when it is not empty)
  */
 import { readFileSync, readdirSync, existsSync, statSync, chmodSync } from 'fs'
 import { spawnSync } from 'child_process'
@@ -35,7 +43,23 @@ export function commandProblems(vals) {
     const m = /^\s*npm\s+(?:run(?:-script)?\s+)?(\S.*)$/.exec(v)
     if (m) out.push(`${key} is "${v}" — commands.* take npm script names, not commands: set it to "${m[1].trim()}"`)
   }
+  // ci.* modes: a value outside the set would silently render the default branch of the workflow.
+  for (const [key, allowed] of Object.entries(CI_MODES)) {
+    const v = vals[key]
+    if (!isEmpty(v) && !allowed.includes(v)) out.push(`${key} is "${v}" — allowed: ${allowed.map((a) => `"${a}"`).join(', ')}`)
+  }
   return out
+}
+const CI_MODES = { 'ci.lintScope': ['all', 'changed'], 'ci.appAuditMode': ['enforce', 'report'] }
+
+/**
+ * A NOTE when the project has a backend package (server/package.json) but paths.serverRoot is empty: CI then renders
+ * no server tests, install or audit. Else null.
+ */
+export function backendNote(vals, target) {
+  if (!isEmpty(vals['paths.serverRoot']) || !existsSync(join(target, 'server', 'package.json'))) return null
+  return 'NOTE server/package.json exists but paths.serverRoot is empty: ci.yml and security.yml render no server tests, install or audit. ' +
+    'Set paths.serverRoot to "server/" if that is the project backend.'
 }
 
 /**
@@ -87,13 +111,129 @@ export function ownsAgents({ target, overrides, recorded }) {
   return existsSync(join(target, 'AGENTS.md')) && !recorded['AGENTS.md']
 }
 const GOTCHA_FILE = /^docs\/brain\/gotchas\/[^/]+\.md$/
-const PACK_SKIP = new Set(['pack.json', 'AGENTS.fragment.md'])
+const PACK_SKIP = new Set(['pack.json', 'AGENTS.fragment.md', 'FRAGMENTS.md'])
+
+/**
+ * The pack contract: what a core file may point at that only a stack pack can supply. A pack names its files in
+ * pack.json `provides` ({ "<key>": "<path, skill name or heading>" }); the value becomes the config key
+ * `stack.<key>` (first pack that provides it wins; a project may set the key itself). Core uses each key only inside
+ * a `KIT:if stack.<key>` block with a fallback, so a project with no pack never gets a dangling path.
+ *   kind doc     a file the pack ships        kind skill   .claude/skills/<name>/SKILL.md in the pack
+ *   kind script  a file the pack ships        kind section a `## ` heading of the pack's standardsDoc
+ */
+export const CONTRACT = {
+  conventionsDoc: 'doc', // conventions for components, templates and styles
+  backendDoc: 'doc', // backend / persistence standards (no provider = the project has no backend standards)
+  styleSkill: 'skill', // the styling skill to run before a stylesheet edit
+  authSkill: 'skill', // the auth + logging skill (guards, interceptors, audit checklist)
+  docsMapSkill: 'skill', // optional: the skill that refreshes the folder maps
+  docsMapCheck: 'script', // optional: the script that skill runs first
+  cssSection: 'section', // the standards-doc section /fix loads for a styling bug
+  componentsSection: 'section', // the standards-doc section /fix loads for a UI bug
+}
+
+/** `## <name>` sections of a pack's FRAGMENTS.md: name -> lines (inner blank lines kept, outer ones trimmed). */
+export function fragmentSections(text) {
+  const out = {}
+  let cur = null
+  for (const line of text.replace(/\r\n/g, '\n').split('\n')) {
+    const m = /^## (\S+)\s*$/.exec(line)
+    if (m) cur = out[m[1]] = []
+    else if (cur) cur.push(line)
+  }
+  for (const k of Object.keys(out)) {
+    const l = out[k]
+    while (l.length && !l[0].trim()) l.shift()
+    while (l.length && !l.at(-1).trim()) l.pop()
+  }
+  return out
+}
+
+const PACK_MARKER = /^[ \t]*(?:<!--[ \t]*PACK:([\w:.-]+)[ \t]*-->|#[ \t]*PACK:([\w:.-]+))[ \t]*$/
+/** The PACK:<name> marker on a line, or null. */
+export const packMarker = (line) => {
+  const m = PACK_MARKER.exec(line.replace(/\r$/, ''))
+  return m ? m[1] ?? m[2] : null
+}
+
+const COND_LINE = /^[ \t]*(?:#|<!--)[ \t]*KIT:(if|else|end)\b[ \t]*(.*?)[ \t]*(?:-->)?[ \t]*$/
+/** The KIT:if / KIT:else / KIT:end directive on a line: { op, arg } or null. */
+export const condLine = (line) => {
+  const m = COND_LINE.exec(line.replace(/\r$/, ''))
+  return m ? { op: m[1], arg: m[2] } : null
+}
+
+function evalCond(expr, vals, where) {
+  const m = /^(!?)([a-zA-Z][\w.]*)(?:[ \t]*(!?=)[ \t]*(.*))?$/.exec(expr)
+  if (!m) throw new Error(`${where}: bad KIT:if condition "${expr}"`)
+  const [, neg, key, op, value] = m
+  if (!(key in vals)) throw new Error(`${where}: KIT:if names a key kit.config.json does not have: ${key}`)
+  let on = op ? String(vals[key] ?? '') === value.trim() : !isEmpty(vals[key])
+  if (op === '!=') on = !on
+  return neg ? !on : on
+}
+
+/** Keep or drop the lines between KIT:if / KIT:else / KIT:end by the config (directive lines are removed). */
+export function applyConditionals(text, vals, where = 'file') {
+  if (!/KIT:(if|else|end)\b/.test(text)) return text
+  const out = []
+  const stack = []
+  const lines = text.split('\n')
+  lines.forEach((line, i) => {
+    const d = condLine(line)
+    if (!d) {
+      if (stack.every((s) => s.on)) out.push(line)
+      return
+    }
+    const at = `${where}:${i + 1}`
+    if (d.op === 'if') stack.push({ on: evalCond(d.arg, vals, at), sawElse: false })
+    else if (d.op === 'else') {
+      const top = stack.at(-1)
+      if (!top || top.sawElse) throw new Error(`${at}: KIT:else without a matching KIT:if`)
+      top.on = !top.on
+      top.sawElse = true
+    } else if (!stack.pop()) throw new Error(`${at}: KIT:end without a matching KIT:if`)
+  })
+  if (stack.length) throw new Error(`${where}: KIT:if without KIT:end`)
+  return out.join('\n')
+}
+
+/** Fill every PACK:<name> marker line from the packs' FRAGMENTS.md sections (none = the line is dropped). */
+function fillPackMarkers(text, fragments) {
+  if (!/PACK:/.test(text)) return text
+  const out = []
+  for (const line of text.split('\n')) {
+    const name = packMarker(line)
+    if (name == null) out.push(line)
+    else {
+      // Fragment lines take the marker's indentation (a marker inside an indented YAML or list block).
+      const indent = /^[ \t]*/.exec(line)[0]
+      for (const f of fragments) out.push(...(f[name] ?? []).map((l) => (l.trim() ? indent + l : l)))
+    }
+  }
+  return out.join('\n')
+}
+
+// A seed a pack marks as optional: not written when the project already has one of these (a path, or
+// `package.json#<key>` for a key of package.json).
+export function presentAlternative(target, alternatives) {
+  for (const alt of alternatives ?? []) {
+    const [file, key] = alt.split('#')
+    const p = join(target, file)
+    if (!existsSync(p)) continue
+    if (!key) return alt
+    try {
+      if (readJson(p)[key] != null) return alt
+    } catch { /* unreadable: not a style config */ }
+  }
+  return null
+}
 export const AGENTS_WORKFLOW = 'AGENTS.workflow.md'
 const AGENTS_WORKFLOW_NOTE = '> Kit-managed (ai-workflow-kit): the workflow\'s hard rules and skill triggers, rendered from the kit\'s ' +
   '`AGENTS.md` skeleton because this project keeps its own `AGENTS.md`. `kit-sync` updates this file; change it in ' +
   'the kit, not here. The project\'s own rules stay in `AGENTS.md`; `CLAUDE.md` imports both.'
 // A rule that points at a skill is installed only when that skill is.
-const REQUIRES = { '.cursor/rules/auth-and-logging-must-use-skill.mdc': '.claude/skills/auth-and-logging/SKILL.md' }
+export const REQUIRES = { '.cursor/rules/auth-and-logging-must-use-skill.mdc': '.claude/skills/auth-and-logging/SKILL.md' }
 
 export const readJson = (file) => JSON.parse(readFileSync(file, 'utf8').replace(/^\uFEFF/, ''))
 export const sha256 = (data) => createHash('sha256').update(data).digest('hex')
@@ -149,10 +289,14 @@ export function loadPack(kitRoot, name) {
 export function resolveConfig({ kitRoot, project, packs, target, platform = process.platform, nodeVersion = process.versions.node }) {
   const base = flatten(readJson(join(kitRoot, 'kit.config.json')))
   const packLayer = {}
+  const techdebtRules = []
   for (const name of packs) {
     const pack = loadPack(kitRoot, name)
+    techdebtRules.push(...(pack.techdebtRules ?? []))
     // The first pack named is the primary stack: its standards doc is the one core files point at.
     if (isEmpty(packLayer['stack.standardsDoc'])) packLayer['stack.standardsDoc'] = pack.standardsDoc
+    // The pack contract: what the pack provides for the core references (first pack that provides a key wins).
+    for (const [k, v] of Object.entries(pack.provides ?? {})) if (isEmpty(packLayer[`stack.${k}`])) packLayer[`stack.${k}`] = v
     for (const [k, v] of Object.entries(pack.configDefaults ?? {})) {
       // Lists add up across packs (hotspots, sensitive paths), except slots.* argument lists: the first pack's wins.
       if (Array.isArray(v) && !k.startsWith('slots.')) packLayer[k] = [...new Set([...(packLayer[k] ?? []), ...v])]
@@ -181,6 +325,8 @@ export function resolveConfig({ kitRoot, project, packs, target, platform = proc
   vals['kit.mcpCommand'] = platform === 'win32' ? 'cmd' : 'npx'
   vals['kit.mcpArgs'] = platform === 'win32' ? '"/c", "npx", ' : ''
   vals['kit.nodeVersion'] = nodeVersion
+  // The stack packs' tech-debt scan rules (pack.json techdebtRules), in pack order.
+  vals['kit.techdebtRules'] = techdebtRules
   // tools.browser equal to the kit default (unset, or copied into the effective config install writes): the
   // AGENTS.md skeleton then leaves the tool name out. Compared by value, so install, sync and drift agree.
   vals['kit.browserSet'] = !isEmpty(vals['tools.browser']) && vals['tools.browser'] !== base['tools.browser']
@@ -299,8 +445,17 @@ export function planFiles({ kitRoot, packs, cursor, yesChef, vals, agentsWorkflo
   // seeds (written once, then the project's) rather than managed files that sync keeps comparing.
   const kindOf = (f) => (f.startsWith('docs/brain/') ? 'seed' : 'managed')
   for (const f of walk(join(kitRoot, 'core'))) add(f, kindOf(f), `core/${f}`)
+  const skipWhen = new Map() // dest -> alternatives (an optional pack seed)
+  const fragments = [] // FRAGMENTS.md sections per selected pack, in pack order
   for (const p of packs) {
-    for (const f of walk(join(kitRoot, 'packs', p))) if (!PACK_SKIP.has(f)) add(f, kindOf(f), `packs/${p}/${f}`)
+    const pack = loadPack(kitRoot, p)
+    const seeds = pack.seeds ?? {}
+    for (const f of walk(join(kitRoot, 'packs', p))) {
+      if (PACK_SKIP.has(f) || f === pack.agentsFragment || f === pack.fragments) continue
+      add(f, f in seeds ? 'seed' : kindOf(f), `packs/${p}/${f}`)
+      if (seeds[f]?.skipWhenPresent?.length) skipWhen.set(f, seeds[f].skipWhenPresent)
+    }
+    if (pack.fragments) fragments.push(fragmentSections(readFileSync(join(kitRoot, 'packs', p, pack.fragments), 'utf8')))
   }
   if (cursor) for (const f of walk(join(kitRoot, 'layers', 'cursor'))) add(f, 'managed', `layers/cursor/${f}`)
   const tplRoot = join(kitRoot, 'templates')
@@ -354,10 +509,12 @@ export function planFiles({ kitRoot, packs, cursor, yesChef, vals, agentsWorkflo
         .filter((g) => !body.includes(`./gotchas/${basename(g)}`))
         .map((g) => `| [${basename(g, '.md')}](./gotchas/${basename(g)}) | Stack pack gotchas |`)
       body = fillMarker(body, 'KIT:gotcha-rows', rows)
-    } else if (dest.startsWith('.husky/')) {
-      body = trimHusky(body, planned)
     }
-    files.push({ dest, kind, source, content: render(body, vals, report).text })
+    body = applyConditionals(fillPackMarkers(body, fragments), vals, source)
+    if (dest.startsWith('.husky/')) body = trimHusky(body, planned)
+    const file = { dest, kind, source, content: render(body, vals, report).text }
+    if (skipWhen.has(dest)) file.skipWhenPresent = skipWhen.get(dest)
+    files.push(file)
   }
   files.sort((a, b) => (a.dest < b.dest ? -1 : 1))
   return { files, report }

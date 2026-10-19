@@ -51,7 +51,11 @@ Classify each failure into exactly one bucket:
 ESLint / prettier errors in the `lint` job (step **ESLint**).
 
 - Auto-fixable: `npx eslint --fix` on the reported files.
-- Hand-fix remaining violations per project conventions (`AGENTS.md`, `docs/agent/conventions.md`).
+<!-- KIT:if stack.conventionsDoc -->
+- Hand-fix remaining violations per project conventions (`AGENTS.md`, `{{stack.conventionsDoc}}`).
+<!-- KIT:else -->
+- Hand-fix remaining violations per project conventions (`AGENTS.md`).
+<!-- KIT:end -->
 - Do **not** change ESLint config to silence rules.
 
 ### `[build]`

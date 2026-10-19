@@ -68,6 +68,14 @@ cd ai-workflow-kit
 - **todo-sync needs one repo setting.** Settings → Actions → General → Workflow permissions → tick
   "Allow GitHub Actions to create and approve pull requests". Without it every merge's todo-sync run fails
   at `gh pr create`; the run deletes its `chore/todo-sync-*` branch and prints an error naming the setting.
+- **CI for code the project does not own.** `ci.lintScope: "changed"` lints only the changed
+  `*.ts *.tsx *.js *.jsx *.mjs *.cjs` files (PR base; a push: the commit before it), `ci.appAuditMode: "report"` writes
+  the app's `npm audit` to the job summary and a warning instead of failing, and `ci.install` replaces `npm ci`
+  (e.g. `npm install --no-audit --no-fund` for a lockfile the project can't fix). The workflow scripts' own
+  dependencies (kit-managed) are audited report-only, and `kit-sync --apply` refreshes `scripts/package-lock.json` when it
+  updates them. Kit-managed files are never linted by the changed-files lint. No backend
+  (`paths.serverRoot` empty) = no `server-tests` job and no server step; install and sync print a `NOTE` when
+  `server/package.json` exists while the key is empty.
 - **CI secret scan.** The `gitleaks` job in `ci.yml` asks for `contents: read` and `pull-requests: read`
   and posts no PR comments (`GITLEAKS_ENABLE_COMMENTS: false`), so it works with the default read-only
   token. A repository owned by an organization (not a personal account) also needs a `GITLEAKS_LICENSE`
@@ -150,19 +158,25 @@ drift-check accepts any content. An override naming a file the kit does not ship
 | path | what |
 | --- | --- |
 | `core/` | Stack-neutral workflow files at the paths a project receives them (including the PRD/HLD templates in `.claude/references/`), plus the generalized brain lessons. Placeholders look like `{{git.mainBranch}}`. |
-| `packs/angular/`, `packs/node-express/` | Stack packs. `pack.json` contract: `standardsDoc`, `skills`, `cursorRules`, `gotchas`, `validation` (npm script names), optional `configDefaults` and `agentsFragment`. |
+| `packs/angular/`, `packs/node-express/` | Stack packs. `pack.json` contract: `standardsDoc`, `skills`, `cursorRules`, `gotchas`, `validation` (npm script names), optional `configDefaults`, `agentsFragment`, `provides` (what the pack supplies for core references: `conventionsDoc`, `backendDoc`, `styleSkill`, `authSkill`, `docsMapSkill`, `docsMapCheck`, `cssSection`, `componentsSection`, read as `stack.<key>`), `fragments` (a `FRAGMENTS.md` whose `## <name>` sections fill core `PACK:<name>` markers: style rules, pre-commit hooks, tech-debt greps), `seeds` (pack files written once; `skipWhenPresent` skips one when the project has an equivalent) and `techdebtRules` (rules for `techdebt-report.mjs scan`). |
 | `layers/cursor/` | Optional Cursor layer (`.cursor/commands`, rules, `mcp.json` without raw Playwright). |
-| `templates/` | Skeletons: `AGENTS.md`, `CLAUDE.md`, `docs/brain/*`, `docs/project/*`, `.gitignore`, `.mcp.json`, `.nvmrc`, `.prettierrc.json`; `templates/cursor/` only with `-Cursor`. |
-| `kit.config.json` | Every key a placeholder can name. `slots.fePorts/bePorts` are base ports (slot N = base + N); `paths.srcRoot/serverRoot` end with `/`; `paths.planChecks` (default `docs/project/plan-checks.md`) is the project's own planning checklist, which `/plan`'s Architect + PM review adds when the file exists — optional, never written by the kit. `commands.*` are npm script names; `commands.dev` + `slots.feExec`, `slots.fePortArgs`, `slots.feMatcher`, `slots.feEnvFile` describe the slot frontend dev server (filled by a stack pack); `project.i18nFile` may be a file, glob or folder (`src/locales/`); `security.sensitivePaths` as a regex string replaces `ship-prep`'s built-in sensitive paths, as a list of globs adds to them; `tools.browser` left at its default is not named in `AGENTS.md`. The `$comment` scaffold documents every key. |
+| `templates/` | Skeletons: `AGENTS.md`, `CLAUDE.md`, `docs/brain/*`, `docs/project/*`, `.gitignore`, `.mcp.json`, `.nvmrc`; `templates/cursor/` only with `-Cursor`. |
+| `kit.config.json` | Every key a placeholder can name. `slots.fePorts/bePorts` are base ports (slot N = base + N); `paths.srcRoot/serverRoot` end with `/`; `paths.planChecks` (default `docs/project/plan-checks.md`) is the project's own planning checklist, which `/plan`'s Architect + PM review adds when the file exists — optional, never written by the kit. `commands.*` are npm script names; `commands.dev` + `slots.feExec`, `slots.fePortArgs`, `slots.feMatcher`, `slots.feEnvFile` describe the slot frontend dev server (filled by a stack pack); `project.i18nFile` may be a file, glob or folder (`src/locales/`); `security.sensitivePaths` as a regex string replaces `ship-prep`'s built-in sensitive paths, as a list of globs adds to them; `tools.browser` left at its default is not named in `AGENTS.md`; `ci.install` (default `npm ci`), `ci.lintScope` (`all` / `changed`) and `ci.appAuditMode` (`enforce` / `report`) shape the CI workflows, and an empty `paths.serverRoot` renders no backend job or step. The `$comment` scaffold documents every key. |
 | `kit.json` | Kit version (semver), recorded into each install. |
 | `tools/install.mjs`, `tools/sync.mjs`, `tools/drift-check.mjs` | Installer, sync and drift check. |
 | `tools/lib/kit.mjs`, `tools/lib/source.mjs` | Render/plan engine; release fetch + cache. |
-| `tools/leak-check.mjs`, `tools/pack-check.mjs`, `tools/install-check.mjs` | Checks (below). |
+| `tools/leak-check.mjs`, `tools/pack-check.mjs`, `tools/install-check.mjs`, `tools/e2e-check.mjs`, `tools/workflow-link-check.mjs` | Checks (below). |
 | `.github/workflows/leak-check.yml` | Runs every check on push and pull request. |
 
 Placeholder filters (code contexts): `{{paths.hotspots|quoted}}` → `'a', 'b'`, `|dquoted`, `|glob` →
 `{a,b}`, `|alt` → `a|b` (regex alternation, metacharacters escaped), `|json` → the value as a JS/JSON literal
 (a string stays a string, a list a list).
+
+Line directives, applied before placeholders (each on a line of its own, as `# …` or `<!-- … -->`):
+`KIT:if <key>` / `KIT:else` / `KIT:end` keep or drop lines by the config (`key`, `!key`, `key=value`, `key!=value`;
+set = not empty), and `PACK:<name>` is replaced by the `## <name>` section of each selected pack's `FRAGMENTS.md`
+(none = the line is dropped). Core uses a pack contract key (`{{stack.styleSkill}}` …) only inside
+`KIT:if stack.<key>` with a fallback; `pack-check` enforces it.
 
 ## Checks
 
@@ -175,7 +189,12 @@ node tools/leak-check.mjs --root README.md --root CHANGELOG.md --root docs --pro
 node tools/pack-check.mjs                                              # every pack meets the pack.json contract
 node tools/install-check.mjs                                           # installs fixtures; sync, drift, local + GitHub sources (offline)
 node tools/e2e-check.mjs                                               # a fresh project through plan -> take-plan -> ship -> merge -> close-out
+node tools/workflow-link-check.mjs                                     # every path the installed workflow docs name exists (packs [], angular, node-express, both)
 ```
+
+`install-check` also runs `actionlint` on every workflow it renders when `actionlint` is on the PATH (or `ACTIONLINT`
+names it); kit CI installs a pinned, checksum-verified release and sets `KIT_REQUIRE_ACTIONLINT=1`.
+`node tools/workflow-link-check.mjs --target ..my-app` checks an installed project.
 
 `KIT_LEAK_TERMS="name,email,host"` adds private terms to any leak-check run without putting them in this
 repo.

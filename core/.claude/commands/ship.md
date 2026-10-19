@@ -166,6 +166,10 @@ REGULAR, or the PR path is reached → Read `docs/agent/ship-regular.md` → "Co
 
 **Hard rule (every lane):** Never open a PR without (a) the brief's Done-when fully met, or (b) explicit user instruction.
 
+Every `gh` call names the repo `origin` points at: `gh pr create -R <owner>/<repo> …` (from `git remote get-url origin`;
+in a fork `gh` otherwise targets the parent). A failing `gh pr edit` → `gh api -X PATCH repos/<owner>/<repo>/pulls/<n>
+-F body=@<file>`. Both: `docs/agent/standards-git.md` → "`gh` in a fork, and when `gh pr edit` fails".
+
 Then **Phase 4.5 — Merge Gate** (mandatory).
 
 ---

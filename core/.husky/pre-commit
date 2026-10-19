@@ -2,7 +2,7 @@
 # pre-commit — runs with or without husky installed (core.hooksPath=.husky works on its own).
 set -e
 if [ -e node_modules/.bin/lint-staged ]; then npx lint-staged; fi
-node scripts/pre-commit-no-semi.mjs
+# PACK:pre-commit:fix
 node scripts/pre-commit-secret-scan.mjs
-node scripts/pre-commit-security-grep.mjs
+# PACK:pre-commit:check
 node scripts/plan-ledger-check.mjs

@@ -23,10 +23,35 @@ jobs:
           node-version: '22'
           cache: npm
       - name: Install root
-        run: npm ci
+        run: {{ci.install}}
+# KIT:if paths.serverRoot
       - name: Install server
-        run: npm ci
-        working-directory: server
+        run: {{ci.install}}
+        working-directory: {{paths.serverRoot}}
+# KIT:end
+# KIT:if ci.appAuditMode=report
+      # ci.appAuditMode "report": advisories in dependencies the project cannot fix (e.g. an upstream
+      # lockfile) go to the job summary and a warning; this step never fails the workflow.
+      - name: npm audit (report only)
+        shell: bash
+        run: |
+          # GitHub runs bash with -e: without set +e the first finding would end the step before the summary.
+          set +e
+          for dir in . {{paths.serverRoot}}; do
+            out="$(cd "$dir" && npm audit --omit=dev 2>&1)"
+            code=$?
+            if [[ $code -ne 0 ]]; then
+              echo "::warning title=npm audit (${dir})::production advisories found (report only, ci.appAuditMode=report); see the job summary"
+            fi
+            {
+              echo "### npm audit (${dir}) — report only, exit ${code}"
+              echo '```'
+              echo "$out" | tail -n 80
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          done
+          exit 0
+# KIT:else
       # --omit=dev: devDependencies are build/dev-server tooling ({{stack.name}} CLI, vite,
       # webpack-dev-server, ...) that never ships to production, so their audit
       # findings are noise for this app's real attack surface — permanent, not a
@@ -35,9 +60,33 @@ jobs:
       # restore --audit-level=high on production deps after that migration lands.
       - name: npm audit (root)
         run: npm audit --omit=dev --audit-level=critical
+# KIT:if paths.serverRoot
       - name: npm audit (server)
         run: npm audit --omit=dev --audit-level=critical
-        working-directory: server
+        working-directory: {{paths.serverRoot}}
+# KIT:end
+# KIT:end
+      # The workflow scripts' own dependencies (scripts/package.json) are kit-managed: a kit release fixes
+      # them, not the project, so their audit is reported (job summary + warning) and never fails the job.
+      - name: npm audit (workflow scripts, report only)
+        if: hashFiles('scripts/package-lock.json') != ''
+        shell: bash
+        working-directory: scripts
+        run: |
+          # GitHub runs bash with -e: without set +e the first finding would end the step before the summary.
+          set +e
+          out="$(npm audit --omit=dev 2>&1)"
+          code=$?
+          if [[ $code -ne 0 ]]; then
+            echo "::warning title=npm audit (workflow scripts)::advisories in the kit-managed scripts/ dependencies; a kit release fixes them (kit-sync), see the job summary"
+          fi
+          {
+            echo "### npm audit (scripts/, kit-managed) — report only, exit ${code}"
+            echo '```'
+            echo "$out" | tail -n 80
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
       - name: Semgrep OWASP Top Ten
         uses: semgrep/semgrep-action@v1
         with:

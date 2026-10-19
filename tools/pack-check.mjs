@@ -6,10 +6,20 @@
  *
  * Contract keys: name, standardsDoc, skills[], cursorRules[], gotchas[], validation[].
  * validation entries are npm script names only (no spaces, no raw commands).
+ * Optional: provides (the pack contract, tools/lib/kit.mjs CONTRACT: each value must exist in the pack), fragments
+ * (a file whose `## <name>` sections each fill a PACK:<name> marker some core file has), seeds (pack files installed
+ * as seeds), agentsFragment, configDefaults.
+ *
+ * Core side of the contract (core/, layers/, templates/):
+ *   - a `{{stack.<key>}}` contract placeholder only inside a `KIT:if stack.<key>` block (a project without the
+ *     pack gets the fallback, never a dangling path), and some pack must provide every key core uses;
+ *   - no literal reference to a workflow file or skill only a pack ships (`docs/agent/conventions.md`, a backticked
+ *     skill name): it dangles with packs []. Use the contract key or a PACK: fragment instead.
  * Node built-ins only. Exit 0 = ok, 1 = problems (one per line).
  */
 import { readFileSync, readdirSync, existsSync, statSync } from 'fs'
-import { resolve, join } from 'path'
+import { resolve, join, relative } from 'path'
+import { CONTRACT, REQUIRES, fragmentSections, packMarker, condLine } from './lib/kit.mjs'
 
 const packsDir = resolve('packs')
 const problems = []
@@ -25,6 +35,21 @@ const collectKeys = (obj, prefix) => {
   }
 }
 collectKeys(JSON.parse(readFileSync(resolve('kit.config.json'), 'utf8')), '')
+
+function walk(dir, base = dir, out = []) {
+  if (!existsSync(dir)) return out
+  for (const e of readdirSync(dir)) {
+    const p = join(dir, e)
+    if (statSync(p).isDirectory()) walk(p, base, out)
+    else out.push(relative(base, p).replace(/\\/g, '/'))
+  }
+  return out
+}
+
+const providers = {} // contract key -> packs that provide it
+const fragmentNames = [] // [pack, section name]
+const packOnly = new Map() // installed workflow path -> pack
+const packSkills = new Map() // skill name -> pack
 
 const packs = existsSync(packsDir)
   ? readdirSync(packsDir).filter((d) => statSync(join(packsDir, d)).isDirectory())
@@ -76,7 +101,75 @@ for (const dir of packs) {
   for (const key of Object.keys(pack.configDefaults ?? {})) {
     if (!configKeys.has(key)) problems.push(`${dir}: configDefaults key not in kit.config.json: ${key}`)
   }
+  // The pack contract: each provided value must exist in the pack.
+  const docPath = typeof pack.standardsDoc === 'string' ? join(root, pack.standardsDoc) : null
+  const headings = docPath && existsSync(docPath)
+    ? readFileSync(docPath, 'utf8').split(/\r?\n/).filter((l) => l.startsWith('## ')).map((l) => l.slice(3).trim())
+    : []
+  for (const [key, value] of Object.entries(pack.provides ?? {})) {
+    const kind = CONTRACT[key]
+    if (!kind) {
+      problems.push(`${dir}: provides "${key}" is not a contract key (${Object.keys(CONTRACT).join(', ')})`)
+      continue
+    }
+    providers[key] = [...(providers[key] ?? []), dir]
+    if (!configKeys.has(`stack.${key}`)) problems.push(`${dir}: contract key stack.${key} is missing from kit.config.json`)
+    else if (typeof value !== 'string' || !value) problems.push(`${dir}: provides.${key} must be a non-empty string`)
+    else if (kind === 'skill' && !existsSync(join(root, '.claude/skills', value, 'SKILL.md'))) problems.push(`${dir}: provides.${key}: skill not found: ${value}`)
+    else if ((kind === 'doc' || kind === 'script') && !existsSync(join(root, value))) problems.push(`${dir}: provides.${key}: file not found: ${value}`)
+    else if (kind === 'section' && !headings.includes(value)) problems.push(`${dir}: provides.${key}: ${pack.standardsDoc} has no "## ${value}" section`)
+  }
+  if (pack.fragments != null) {
+    const frag = join(root, String(pack.fragments))
+    if (!existsSync(frag)) problems.push(`${dir}: fragments file not found: ${pack.fragments}`)
+    else for (const name of Object.keys(fragmentSections(readFileSync(frag, 'utf8')))) fragmentNames.push([dir, name])
+  }
+  for (const s of Object.keys(pack.seeds ?? {})) {
+    if (!existsSync(join(root, s))) problems.push(`${dir}: seed not found: ${s}`)
+  }
+  // What only this pack ships, which a core file must not name: workflow paths and skill names.
+  const meta = new Set(['pack.json', pack.agentsFragment, pack.fragments].filter(Boolean))
+  for (const f of walk(root)) if (!meta.has(f) && /^(docs|\.claude|scripts)\//.test(f)) packOnly.set(f, dir)
+  for (const s of pack.skills ?? []) packSkills.set(s, dir)
 }
+
+// Core side: contract placeholders guarded, every used key provided, no literal pack-only reference.
+const coreFiles = ['core', 'layers', 'templates'].flatMap((d) => walk(resolve(d)).map((f) => `${d}/${f}`))
+const coreShips = new Set(walk(resolve('core')))
+// A template rule that is installed only together with the pack skill it points at (kit.mjs REQUIRES).
+const requiresOk = new Set(Object.keys(REQUIRES).map((dest) => `templates/cursor/${dest}`))
+const markers = new Set()
+const used = new Set()
+const tick = '`'
+for (const file of coreFiles) {
+  const stack = []
+  readFileSync(resolve(file), 'utf8').split(/\r?\n/).forEach((line, i) => {
+    const at = `${file}:${i + 1}`
+    const d = condLine(line)
+    if (d) {
+      if (d.op === 'if') stack.push({ cond: d.arg.trim(), inElse: false })
+      else if (d.op === 'else' && stack.length) stack.at(-1).inElse = true
+      else if (d.op === 'end') stack.pop()
+      return
+    }
+    const marker = packMarker(line)
+    if (marker) markers.add(marker)
+    for (const [, key] of line.matchAll(/\{\{stack\.(\w+)(?:\|\w+)?\}\}/g)) {
+      if (!(key in CONTRACT)) continue
+      used.add(key)
+      if (!stack.some((s) => s.cond === `stack.${key}` && !s.inElse)) problems.push(`${at}: {{stack.${key}}} outside a "KIT:if stack.${key}" block (no pack = a dangling reference)`)
+    }
+    if (requiresOk.has(file)) return
+    for (const [p, pk] of packOnly) {
+      if (!coreShips.has(p) && line.includes(p)) problems.push(`${at}: names ${p}, which only pack ${pk} ships — use a pack contract key (stack.*) or a PACK: fragment`)
+    }
+    for (const [s, pk] of packSkills) {
+      if (line.includes(`${tick}${s}${tick}`) || line.includes(`.claude/skills/${s}/`)) problems.push(`${at}: names the skill ${s}, which only pack ${pk} ships — use a pack contract key (stack.*) or a PACK: fragment`)
+    }
+  })
+}
+for (const key of used) if (!providers[key]) problems.push(`core uses {{stack.${key}}}, but no pack provides "${key}" (pack.json provides)`)
+for (const [dir, name] of fragmentNames) if (!markers.has(name)) problems.push(`${dir}: fragments section "${name}" fills no PACK:${name} marker in core, layers or templates`)
 
 if (checked === 0 && problems.length === 0) problems.push('no packs found under packs/')
 if (problems.length > 0) {
@@ -84,4 +177,4 @@ if (problems.length > 0) {
   console.error(`PACK_CHECK: FAIL — ${checked} packs checked, ${problems.length} problems`)
   process.exit(1)
 }
-console.log(`PACK_CHECK: ok — ${checked} packs, 0 problems`)
+console.log(`PACK_CHECK: ok — ${checked} packs, ${used.size} contract keys used by core (each provided), 0 problems`)
