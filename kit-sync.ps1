@@ -5,7 +5,8 @@
   Dry-run by default: prints new / kit-update / conflict / local-only files and stops.
   -Apply writes only new and kit-update files; conflicts are never overwritten.
   -Prune (with -Apply) deletes the files the kit stopped shipping that are unchanged since install; an edited one or a
-  seed is kept and stops being kit-managed. Records of files already deleted are dropped on every -Apply.
+  seed is kept and stops being kit-managed (released). Overrides and upstream-owned paths are never touched. Records of
+  files already deleted are dropped on every -Apply.
 .EXAMPLE
   .\kit-sync.ps1 -Target ..\my-app
   .\kit-sync.ps1 -Target ..\my-app -Apply

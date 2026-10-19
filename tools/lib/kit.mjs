@@ -47,6 +47,9 @@ export function commandProblems(vals) {
     const m = /^\s*npm\s+(?:run(?:-script)?\s+)?(\S.*)$/.exec(v)
     if (m) out.push(`${key} is "${v}" — commands.* take npm script names, not commands: set it to "${m[1].trim()}"`)
   }
+  // commands.logQuery is rendered inside a Markdown table cell and an inline code span: no `|`, no backtick.
+  const lq = vals['commands.logQuery']
+  if (typeof lq === 'string' && /[|`]/.test(lq)) out.push(`commands.logQuery is "${lq}" — it cannot contain "|" or a backtick (it is shown in a Markdown table and a code span): wrap the command in a script`)
   // ci.* modes and other enums: a value outside the set would silently render the default branch of a file.
   for (const [key, allowed] of Object.entries(ENUMS)) {
     const v = vals[key]

@@ -385,8 +385,10 @@ if (ng) {
 }
 
 // Files the kit stopped shipping (records with no planned file). A missing one's record is dropped on every --apply; the
-// rest stay `removed-from-kit` and on disk until --prune: an unchanged managed file is deleted, an edited one and a seed
-// are kept with their records dropped (local-only), an override is never touched. Dry-runs print what --prune would do.
+// rest stay `removed-from-kit` and on disk until --prune: an unchanged managed file is deleted (a CRLF checkout of it
+// too), an edited one and a seed are kept with their records dropped (`released`). Never touched: an override, an
+// upstream-owned path (ownership.upstreamPaths), a record outside the project, and a case-only rename of a shipped file
+// (its record is dropped, the file stays). Dry-runs print what --prune would do.
 {
   const pr = tmp('prune')
   writeFileSync(join(pr, 'kit.config.json'), JSON.stringify(CORE_CFG))
@@ -394,34 +396,58 @@ if (ng) {
   const instPath = join(pr, '.kit/install.json')
   const inst = JSON.parse(readFileSync(instPath, 'utf8'))
   const sha = (t) => createHash('sha256').update(t).digest('hex')
-  const old = { unchanged: 'old/unchanged.md', edited: 'old/edited.md', seed: 'old/seed.md', override: 'old/override.md', missing: 'old/missing.md' }
+  const old = { unchanged: 'old/unchanged.md', edited: 'old/edited.md', seed: 'old/seed.md', override: 'old/override.md', missing: 'old/missing.md', crlf: 'old/crlf.md', upstream: 'old/upstream.md' }
   mkdirSync(join(pr, 'old'))
-  for (const k of ['unchanged', 'edited', 'seed', 'override']) writeFileSync(join(pr, old[k]), `# ${k}\n`)
+  for (const k of ['unchanged', 'edited', 'seed', 'override', 'upstream']) writeFileSync(join(pr, old[k]), `# ${k}\n`)
+  writeFileSync(join(pr, old.crlf), '# crlf\r\nline two\r\n') // the kit wrote LF; a CRLF checkout of it is still unchanged
   inst.files[old.unchanged] = { sha256: sha('# unchanged\n'), kind: 'managed', source: `core/${old.unchanged}` }
   inst.files[old.edited] = { sha256: sha('# as the kit shipped it\n'), kind: 'managed', source: `core/${old.edited}` }
   inst.files[old.seed] = { sha256: sha('# seed\n'), kind: 'seed', source: `templates/${old.seed}` }
   inst.files[old.override] = { sha256: sha('# override\n'), kind: 'managed', source: `core/${old.override}` }
   inst.files[old.missing] = { sha256: sha('# gone\n'), kind: 'managed', source: `core/${old.missing}` }
+  inst.files[old.crlf] = { sha256: sha('# crlf\nline two\n'), kind: 'managed', source: `core/${old.crlf}` }
+  inst.files[old.upstream] = { sha256: sha('# upstream\n'), kind: 'managed', source: `core/${old.upstream}` }
+  // Outside the project: an unchanged file next to the target, recorded as ../<name>.
+  const outsideName = `${pr.split(/[\\/]/).pop()}-outside.md`
+  const outsideFile = join(pr, '..', outsideName)
+  writeFileSync(outsideFile, '# outside\n')
+  inst.files[`../${outsideName}`] = { sha256: sha('# outside\n'), kind: 'managed', source: 'core/x.md' }
+  // A case-only rename: the kit ships scripts/todo-query.mjs, the record says Scripts/Todo-Query.mjs with the same content.
+  // On a case-insensitive file system that name IS the shipped file; it must never be deleted.
+  const shipped = 'scripts/todo-query.mjs'
+  const shippedText = read(pr, shipped)
+  inst.files['Scripts/Todo-Query.mjs'] = { sha256: sha(shippedText), kind: 'managed', source: 'core/Scripts/Todo-Query.mjs' }
   writeFileSync(instPath, JSON.stringify(inst, null, 2))
-  writeFileSync(join(pr, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, overrides: [{ path: old.override, reason: 'install-check: kept by the project' }] }))
-  const recorded = () => Object.keys(JSON.parse(readFileSync(instPath, 'utf8')).files).filter((f) => f.startsWith('old/')).sort().join(',')
+  writeFileSync(join(pr, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, overrides: [{ path: old.override, reason: 'install-check: kept by the project' }], ownership: { upstreamPaths: [old.upstream] } }))
+  const files = () => JSON.parse(readFileSync(instPath, 'utf8')).files
+  const recorded = () => Object.keys(files()).filter((f) => f.startsWith('old/')).sort().join(',')
   const onDisk = () => readdirSync(join(pr, 'old')).sort().join(',')
-  const lines = (r) => r.stdout.trim().split('\n').filter((l) => l.includes('old/') || l.startsWith('KIT_SYNC')).join(' | ')
+  const lines = (r) => r.stdout.trim().split('\n').filter((l) => /old\/|outside|Todo-Query|KIT_SYNC/.test(l)).join(' | ')
+  const outsideNote = `NOTE ../${outsideName} is recorded in .kit/install.json but lies outside the project: left alone`
   const dry = run('sync.mjs', ['--target', pr])
   if (!dry.stdout.includes(`pruned           ${old.missing} — already deleted: record dropped (on --apply)`) || !dry.stdout.includes(`removed-from-kit ${old.unchanged}`) ||
     !dry.stdout.includes(`NOTE --prune would delete ${old.unchanged}: deleted (unchanged since install)`) || !dry.stdout.includes(`NOTE --prune would keep ${old.edited}: kept, record dropped (edited`) ||
-    !dry.stdout.includes(`NOTE --prune would keep ${old.seed}: kept, record dropped (a seed`) || dry.stdout.includes(`${old.override} —`) || !/ 3 removed-from-kit, 0 overrides, 1 pruned \(nothing written/.test(dry.stdout) ||
-    recorded() !== Object.values(old).sort().join(',')) fail(`sync dry-run with files the kit stopped shipping: ${lines(dry)}`)
+    !dry.stdout.includes(`NOTE --prune would keep ${old.seed}: kept, record dropped (a seed`) || !dry.stdout.includes(`NOTE --prune would delete ${old.crlf}: deleted (unchanged since install)`) ||
+    !dry.stdout.includes(`pruned           Scripts/Todo-Query.mjs — case-only rename of ${shipped}: record dropped, file left alone (on --apply)`) ||
+    !dry.stdout.includes(outsideNote) || /old\/(override|upstream)\.md —|would \w+ old\/(override|upstream)/.test(dry.stdout) ||
+    !/ 4 removed-from-kit, 0 overrides, 2 pruned \(nothing written/.test(dry.stdout) || recorded() !== Object.values(old).sort().join(',')) fail(`sync dry-run with files the kit stopped shipping: ${lines(dry)}`)
   const ap = run('sync.mjs', ['--target', pr, '--apply'])
-  if (recorded() !== [old.edited, old.override, old.seed, old.unchanged].sort().join(',') || onDisk() !== 'edited.md,override.md,seed.md,unchanged.md' || !/applied — .* 3 removed-from-kit, 0 overrides, 1 pruned$/m.test(ap.stdout)) fail(`sync --apply without --prune must drop only the missing file's record and delete nothing: recorded ${recorded()}, on disk ${onDisk()}: ${lines(ap)}`)
+  const keptAll = 'crlf.md,edited.md,override.md,seed.md,unchanged.md,upstream.md'
+  if (recorded() !== [old.crlf, old.edited, old.override, old.seed, old.unchanged, old.upstream].sort().join(',') || onDisk() !== keptAll || files()['Scripts/Todo-Query.mjs'] ||
+    !/applied — .* 4 removed-from-kit, 0 overrides, 2 pruned$/m.test(ap.stdout)) fail(`sync --apply without --prune must drop only the missing and renamed records and delete nothing: recorded ${recorded()}, on disk ${onDisk()}: ${lines(ap)}`)
+  if (!existsSync(join(pr, shipped)) || read(pr, shipped) !== shippedText) fail('sync --apply deleted or changed a shipped file behind a case-only rename record')
   const pdry = run('sync.mjs', ['--target', pr, '--prune'])
-  if (!pdry.stdout.includes(`pruned           ${old.unchanged} — deleted (unchanged since install) (on --apply)`) || !pdry.stdout.includes(`local-only       ${old.edited} — kept, record dropped (edited`) ||
-    !pdry.stdout.includes(`local-only       ${old.seed} — kept, record dropped (a seed`) || onDisk() !== 'edited.md,override.md,seed.md,unchanged.md' || recorded().split(',').length !== 4) fail(`sync --prune dry-run: ${lines(pdry)}`)
+  if (!pdry.stdout.includes(`pruned           ${old.unchanged} — deleted (unchanged since install) (on --apply)`) || !pdry.stdout.includes(`pruned           ${old.crlf} — deleted (unchanged since install) (on --apply)`) ||
+    !pdry.stdout.includes(`released         ${old.edited} — kept, record dropped (edited`) || !pdry.stdout.includes(`released         ${old.seed} — kept, record dropped (a seed`) ||
+    !/ 0 removed-from-kit, 0 overrides, 2 pruned, 2 released \(nothing written/.test(pdry.stdout) || onDisk() !== keptAll || recorded().split(',').length !== 6) fail(`sync --prune dry-run: ${lines(pdry)}`)
   const pap = run('sync.mjs', ['--target', pr, '--prune', '--apply'])
-  if (recorded() !== old.override || onDisk() !== 'edited.md,override.md,seed.md' || read(pr, old.edited) !== '# edited\n' || read(pr, old.override) !== '# override\n' || !/applied — .* 0 removed-from-kit, 0 overrides, 1 pruned$/m.test(pap.stdout)) fail(`sync --prune --apply: recorded ${recorded()}, on disk ${onDisk()}: ${lines(pap)}`)
+  if (recorded() !== [old.override, old.upstream].join(',') || onDisk() !== 'edited.md,override.md,seed.md,upstream.md' || read(pr, old.edited) !== '# edited\n' || read(pr, old.override) !== '# override\n' ||
+    read(pr, old.upstream) !== '# upstream\n' || !existsSync(outsideFile) || !files()[`../${outsideName}`] || !pap.stdout.includes(outsideNote) ||
+    !/applied — .* 0 removed-from-kit, 0 overrides, 2 pruned, 2 released$/m.test(pap.stdout)) fail(`sync --prune --apply: recorded ${recorded()}, on disk ${onDisk()}, outside kept ${existsSync(outsideFile)}: ${lines(pap)}`)
   const after = run('sync.mjs', ['--target', pr])
-  if (!/dry-run — 0 new, 0 kit-update, 0 conflicts, 0 local-only, 0 deleted-locally, 0 removed-from-kit, 0 overrides \(nothing written/.test(after.stdout)) fail(`sync after --prune: ${lines(after)}`)
+  if (!/dry-run — 0 new, 0 kit-update, 0 conflicts, 0 local-only, 0 deleted-locally, 0 removed-from-kit, 0 overrides \(nothing written/.test(after.stdout) || /NOTE override old\/upstream/.test(after.stdout)) fail(`sync after --prune: ${lines(after)}`)
   rmSync(pr, { recursive: true, force: true })
+  rmSync(outsideFile, { force: true })
 }
 
 // Drift check: a fresh install has no drift; editing one managed file makes it exit 1 naming that file;
@@ -716,6 +742,12 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   writeFileSync(join(cm, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, ci: { testMode: 'never' } }))
   const t = run('sync.mjs', ['--target', cm, '--apply'])
   if (t.status !== 2 || !t.stderr.includes('KIT_SYNC: STOP — ci.testMode is "never"')) fail(`sync with a bad ci.testMode: exit ${t.status}, ${t.stderr.trim().split('\n')[0]}`)
+  // commands.logQuery is shown in a Markdown table cell and a code span: a pipe or a backtick is refused.
+  for (const lq of ['node logs.mjs | grep error', 'node `which logs`']) {
+    writeFileSync(join(cm, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, commands: { ...CORE_CFG.commands, logQuery: lq } }))
+    const q = run('sync.mjs', ['--target', cm])
+    if (q.status !== 2 || !q.stderr.includes(`KIT_SYNC: STOP — commands.logQuery is "${lq}" — it cannot contain "|" or a backtick`)) fail(`sync with commands.logQuery ${JSON.stringify(lq)}: exit ${q.status}, ${q.stderr.trim().split('\n')[0]}`)
+  }
   rmSync(cm, { recursive: true, force: true })
 }
 
