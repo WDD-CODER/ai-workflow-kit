@@ -44,7 +44,9 @@ Rules of thumb:
 
 - Planning (roles, review, Planner protocol): `.claude/commands/plan.md`
 - Reviewer rules (default + overrides): `CLAUDE.md`
+<!-- KIT:if kit.cursor -->
 - Contractor rules (Cursor layer, default + overrides): `.cursor/rules/contractor-role.mdc`
+<!-- KIT:end -->
 - Stack: `{{paths.sharedDocs}}/tech-stack.md`
 - Current state capsule: `{{paths.sharedDocs}}/current-state.md`
 - Path-scoped standards: `docs/agent/`

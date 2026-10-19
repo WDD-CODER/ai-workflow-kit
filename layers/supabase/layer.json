@@ -1,0 +1,28 @@
+{
+  "name": "supabase",
+  "description": "Supabase backend layer (Postgres + row-level security + edge functions): backend standards, gotchas, sensitive paths and a tech-debt rule. Opt-in, so a React project without Supabase does not get it.",
+  "gotchas": [
+    "docs/brain/gotchas/supabase.md"
+  ],
+  "agentsFragment": "AGENTS.fragment.md",
+  "detect": {
+    "anyOf": [
+      { "path": "supabase/" },
+      { "deps": ["@supabase/supabase-js"] }
+    ]
+  },
+  "provides": {
+    "backendDoc": "docs/agent/standards-supabase.md"
+  },
+  "techdebtRules": [
+    { "id": "ui-table-call", "pattern": "\\bsupabase\\s*\\.\\s*from\\s*\\(", "ext": ["ts", "tsx", "js", "jsx"], "exclude": "^(?!(.*/)?(pages|components)/)|\\.(spec|test)\\.[jt]sx?$" }
+  ],
+  "configDefaults": {
+    "stack.backend": "Supabase (Postgres + row-level security + edge functions)",
+    "security.sensitivePaths": [
+      "supabase/config.toml",
+      "supabase/functions/_shared/**",
+      "supabase/migrations/**"
+    ]
+  }
+}

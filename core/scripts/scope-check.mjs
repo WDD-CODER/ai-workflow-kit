@@ -11,6 +11,8 @@
  *   node scripts/scope-check.mjs --arch --plan=<path>                   (BLOCK)
  *   node scripts/scope-check.mjs --arch --diff=<base> [--plan=<path>]   (WARN, exit 0)
  *
+ * A path matching ownership.upstreamPaths (kit.config.json) is never in scope: --file prints "SCOPE: upstream <path>".
+ *
  * --plan defaults to the active slot's .worktree-plan. Exit 1 on a missing
  * plan / scope block, on --file/--diff finding an out-of-scope file, on
  * --overlap finding a shared glob with another active plan, or on --drift
@@ -57,6 +59,12 @@ const GENERATED = [
   'docs/workflow-kit/manifest.json',
   'docs/workflow-kit/manifest.md'
 ]
+
+// Upstream-owned paths (ownership.upstreamPaths, the upstream-owned layer): another repo owns them, so no plan may
+// write them, even one that lists them. A list of globs (a string = one glob); empty = none.
+const UPSTREAM = [].concat({{ownership.upstreamPaths|json}}).filter(Boolean)
+  .map((p) => (p.endsWith('/') ? `${p}**` : p))
+const isUpstream = UPSTREAM.length ? picomatch(UPSTREAM, { dot: true }) : () => false
 
 // Shared files most plans append to: a commit there is not drift for this plan.
 const DRIFT_NOISE = [...HOTSPOTS, ...GENERATED, 'AGENTS.md', 'CHANGELOG.md', 'docs/brain/index.md']
@@ -155,6 +163,10 @@ function cmdFile(args) {
   const raw = normalize(args.file)
   const file = isAbsolute(raw) ? normalize(relative(repoRoot, raw)) : raw
 
+  if (isUpstream(file)) {
+    console.error(`SCOPE: upstream ${file}`)
+    process.exit(1)
+  }
   if (isMatch(file)) {
     console.log(`SCOPE: ok ${file}`)
     process.exit(0)
@@ -166,14 +178,14 @@ function cmdFile(args) {
 function cmdDiff(args) {
   const planPath = resolvePlanPath(args)
   const { isMatch } = buildMatcher(planPath)
-  const out = changedFiles(args.diff).filter(f => !isMatch(f))
+  const out = changedFiles(args.diff).filter(f => isUpstream(f) || !isMatch(f))
 
   if (!out.length) {
     console.log('SCOPE: ok')
     return
   }
   console.log('SCOPE: out')
-  for (const f of out) console.log(`  ${f}`)
+  for (const f of out) console.log(`  ${f}${isUpstream(f) ? ' (upstream-owned: ownership.upstreamPaths)' : ''}`)
   process.exit(1)
 }
 

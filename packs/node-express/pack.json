@@ -7,6 +7,12 @@
   "gotchas": ["docs/brain/gotchas/backend.md"],
   "validation": ["test"],
   "agentsFragment": "AGENTS.fragment.md",
+  "detect": {
+    "order": 20,
+    "anyOf": [
+      { "deps": ["express"], "in": ["{paths.serverRoot}", "server/"] }
+    ]
+  },
   "provides": { "backendDoc": "docs/agent/standards-backend.md" },
   "configDefaults": {
     "stack.backend": "Node / Express / MongoDB",

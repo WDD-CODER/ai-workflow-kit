@@ -2,8 +2,10 @@
  * Workflow link check — every path the installed workflow docs point at must exist. Run from the kit root:
  *
  *   node tools/workflow-link-check.mjs                   # installs the fixtures (packs [], angular, node-express,
- *                                                         # angular + node-express, each with the Cursor layer) into
- *                                                         # temp folders and checks each
+ *                                                         # angular + node-express, react-vite, react-vite + layers
+ *                                                         # supabase and upstream-owned; each with the Cursor layer,
+ *                                                         # plus angular without it)
+ *                                                         # into temp folders and checks each
  *   node tools/workflow-link-check.mjs --target <dir>    # checks an installed project
  *
  * Scanned: .claude/commands, .claude/skills, .claude/agents, docs/agent, .cursor/commands, .cursor/rules (*.md, *.mdc)
@@ -69,7 +71,7 @@ export function linkProblems(dir) {
   try {
     project = readJson(join(dir, 'kit.config.json'))
   } catch { /* no config: kit defaults */ }
-  const vals = resolveConfig({ kitRoot: kit, project, packs: inst?.packs ?? project.stack?.packs ?? [], target: dir })
+  const vals = resolveConfig({ kitRoot: kit, project, packs: inst?.packs ?? project.stack?.packs ?? [], layers: inst?.layers ?? project.stack?.layers ?? [], target: dir })
   let scripts = null
   try {
     scripts = Object.keys(readJson(join(dir, 'package.json')).scripts ?? {})
@@ -111,8 +113,11 @@ export function linkProblems(dir) {
 const FIXTURES = [
   { name: 'packs-none', packs: '' },
   { name: 'angular', packs: 'angular' },
+  { name: 'angular-no-cursor', packs: 'angular', noCursor: true }, // the pack ships .cursor/rules without the layer
   { name: 'node-express', packs: 'node-express' },
   { name: 'angular-node-express', packs: 'angular,node-express' },
+  { name: 'react-vite', packs: 'react-vite' },
+  { name: 'react-vite-supabase-upstream', packs: 'react-vite', layers: 'supabase,upstream-owned' },
 ]
 
 function main() {
@@ -129,19 +134,19 @@ function main() {
   for (const fx of FIXTURES) {
     const dir = mkdtempSync(join(tmpdir(), `kit-links-${fx.name}-`))
     writeFileSync(join(dir, 'kit.config.json'), JSON.stringify({ project: { name: `links-${fx.name}` }, commands: { build: 'build', lint: 'lint', test: 'test' }, hooks: { shellPath: 'bash' } }))
-    const r = spawnSync(process.execPath, [join(kit, 'tools', 'install.mjs'), '--target', dir, '--cursor', ...(fx.packs ? ['--packs', fx.packs] : [])], { encoding: 'utf8' })
+    const r = spawnSync(process.execPath, [join(kit, 'tools', 'install.mjs'), '--target', dir, ...(fx.noCursor ? [] : ['--cursor']), '--packs', fx.packs, ...(fx.layers ? ['--layers', fx.layers] : [])], { encoding: 'utf8' })
     if (r.status !== 0) {
       console.error(`${fx.name}: install exited ${r.status}: ${(r.stdout + r.stderr).trim().split('\n').pop()}`)
       total++
     } else {
       const probs = linkProblems(dir)
       for (const p of probs) console.error(`${fx.name}: ${p.file}:${p.line}: ${p.what}`)
-      console.log(`${fx.name.padEnd(22)} ${probs.length} missing`)
+      console.log(`${fx.name.padEnd(30)} ${probs.length} missing`)
       total += probs.length
     }
     rmSync(dir, { recursive: true, force: true })
   }
-  console.log(`WORKFLOW_LINK_CHECK: ${total ? 'FAIL' : 'ok'} — ${FIXTURES.length} fixtures (packs [], angular, node-express, angular + node-express), ${total} missing`)
+  console.log(`WORKFLOW_LINK_CHECK: ${total ? 'FAIL' : 'ok'} — ${FIXTURES.length} fixtures (packs [], angular, angular without Cursor, node-express, angular + node-express, react-vite, react-vite + supabase + upstream-owned), ${total} missing`)
   process.exit(total ? 1 : 0)
 }
 

@@ -48,7 +48,8 @@ const read = (dir, f) => readFileSync(join(dir, f), 'utf8')
 const tmp = (name) => mkdtempSync(join(tmpdir(), `kit-${name}-`))
 
 const HOSTILE_RE = 'a`b\'c"d${e}\\w'
-const CORE_CFG = { project: { name: 'core-only' }, commands: { build: 'build', lint: 'lint', test: 'test' }, hooks: { shellPath: 'bash' } }
+// stack.packs [] names the stack-neutral core explicitly (no stack named at all = install detects one and asks).
+const CORE_CFG = { project: { name: 'core-only' }, stack: { packs: [] }, commands: { build: 'build', lint: 'lint', test: 'test' }, hooks: { shellPath: 'bash' } }
 const fixtures = [
   // core: an i18n folder (every file under it is a hotspot), a sensitive-path regex that replaces the default, and the CI
   // keys of a project whose lockfile, lint debt and dependency advisories are not its own to fix (no backend).
@@ -58,6 +59,8 @@ const fixtures = [
   { name: 'express-cursor-chef', args: ['--packs', 'node-express', '--cursor', '--yes-chef'], cfg: { project: { name: 'api-app' }, commands: { build: 'build', lint: 'lint', dev: 'dev' } } },
   // full: a frontend matcher full of characters that would break a quoted render (quotes, backtick, `${`, backslash).
   { name: 'angular-express-cursor', args: ['--packs', 'angular,node-express', '--cursor'], cfg: { project: { name: 'full-app' }, tools: { browser: 'acme-browser' }, slots: { feMatcher: HOSTILE_RE } } },
+  // react: the React-Vite pack with the Supabase layer (no backend folder: no server job).
+  { name: 'react-vite-supabase', args: ['--packs', 'react-vite', '--layers', 'supabase'], cfg: { project: { name: 'rv-app' } } },
 ]
 
 // Evaluate a block of a rendered script (from the line starting with `from` up to and including the line
@@ -114,9 +117,9 @@ function ciProblems(dir, fx) {
   if (!backend && /Install server|npm audit \(server\)|working-directory: server/.test(sec)) out.push('security.yml has a server step without paths.serverRoot')
   if (backend && !has(sec, '      - name: Install server', '        run: npm ci', '        working-directory: server/')) out.push('security.yml lost the server install step')
   if (backend && !has(sec, '      - name: npm audit (server)', '        run: npm audit --omit=dev --audit-level=critical', '        working-directory: server/')) out.push('security.yml lost the server audit')
-  const install = fx.cfg.ci?.install ?? 'npm ci'
+  const install = (fx.ci ?? fx.cfg.ci)?.install ?? 'npm ci'
   if (ci.split(`        run: ${install}\n`).length - 1 < 3 || !sec.includes(`        run: ${install}\n`)) out.push(`ci.yml / security.yml do not install with ci.install "${install}"`)
-  if (fx.cfg.ci?.lintScope === 'changed') {
+  if ((fx.ci ?? fx.cfg.ci)?.lintScope === 'changed') {
     const ok = lintJob.includes('name: ESLint (changed files)') && !lintJob.includes('run: npm run lint') && lintJob.includes('fetch-depth: 0') &&
       lintJob.includes("git -c core.quotePath=false diff -z --name-only --diff-filter=d \"$BASE\" HEAD -- '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' > \"$LIST\"") &&
       lintJob.includes("BASE=\"$(git rev-parse --verify 'HEAD^1')\"") && lintJob.includes('PUSH_BEFORE: ${{ github.event.before }}') &&
@@ -127,7 +130,7 @@ function ciProblems(dir, fx) {
   const cut = sec.indexOf('npm audit (workflow scripts')
   const audits = cut < 0 ? sec : sec.slice(0, cut)
   const scriptsAudit = cut < 0 ? '' : sec.slice(cut + 'npm audit (workflow scripts'.length)
-  if (fx.cfg.ci?.appAuditMode === 'report') {
+  if ((fx.ci ?? fx.cfg.ci)?.appAuditMode === 'report') {
     if (!audits.includes('set +e') || !audits.includes('>> "$GITHUB_STEP_SUMMARY"') || !audits.includes('::warning') || audits.includes('--audit-level')) out.push('security.yml report mode: set +e, job summary and a warning, no enforced app audit')
   } else if (!has(audits, '      - name: npm audit (root)', '        run: npm audit --omit=dev --audit-level=critical') || audits.includes('set +e')) out.push('security.yml enforce mode must keep the critical production audit')
   // The kit-managed scripts/ dependencies: a kit release fixes them, so their audit only reports.
@@ -216,6 +219,11 @@ for (const fx of fixtures) {
       if (!sens('src/app/core/guards/auth.guard.ts') || !sens('src/app/core/interceptors/a/b.ts') || !sens('package.json') || sens('src/app/feature/list.ts')) fail(`${fx.name}: pack sensitive-path globs must add to the built-in ones`)
       if (fe.FE_SCRIPT !== 'start' || fe.FE_EXEC.join(' ') !== 'ng serve' || fe.FE_PORT_ARGS.join(' ') !== '-c slot --port {port}' || !fe.FE_MATCHER.test('node "/x/node_modules/@angular/cli/bin/ng.js" serve -c slot') || !fe.FE_ENV_FILE) fail(`${fx.name}: frontend values do not come from the pack: ${JSON.stringify(fe)}`)
     }
+    if (fx.name === 'react-vite-supabase') {
+      // Vite: npm run dev -- --port N --strictPort (a taken port is an error, never the next free port).
+      if (fe.FE_SCRIPT !== 'dev' || fe.FE_EXEC.length || fe.FE_PORT_ARGS.join(' ') !== '--port {port} --strictPort' || !fe.FE_MATCHER.test('node /x/node_modules/vite/bin/vite.js --port 5174 --strictPort') || fe.FE_MATCHER.test('node server.js') || fe.FE_ENV_FILE) fail(`${fx.name}: frontend values do not come from the react-vite pack: ${JSON.stringify(fe)}`)
+      if (!sens('supabase/functions/_shared/cors.ts') || !sens('supabase/config.toml') || sens('src/pages/Home.tsx')) fail(`${fx.name}: the supabase layer's sensitive-path globs must add to the built-in ones`)
+    }
   } catch (e) {
     fail(`${fx.name}: could not evaluate the rendered config constants: ${e.message}`)
   }
@@ -230,6 +238,24 @@ for (const fx of fixtures) {
     if (!read(dir, '.cursor/rules/security.mdc').includes('src/app/core/guards/**')) fail(`${fx.name}: security.mdc globs not filled from the pack`)
     if (!read(dir, '.husky/pre-commit').includes('pre-commit-no-semi.mjs')) fail(`${fx.name}: pre-commit lost the angular hook`)
   }
+  // React-Vite pack + Supabase layer: their rules, skills, contract keys, fragments and tech-debt rules, and nothing of
+  // the angular or node-express packs.
+  if (fx.name === 'react-vite-supabase') {
+    const want = ['docs/agent/standards-react.md', 'docs/agent/conventions.md', 'docs/agent/standards-supabase.md', '.claude/skills/react-component-structure/SKILL.md',
+      '.claude/skills/cssLayer/SKILL.md', '.claude/skills/auth-and-logging/SKILL.md', 'docs/brain/gotchas/react-vite.md', 'docs/brain/gotchas/supabase.md']
+    for (const f of want) if (!all.includes(f)) fail(`${fx.name}: ${f} not installed`)
+    for (const f of all) if (/standards-angular|angularComponentStructure|breadcrumbs|standards-backend\.md|pull-copy|layer\.json|pack\.json|FRAGMENTS\.md/.test(f)) fail(`${fx.name}: ${f} must not be installed`)
+    if (!agents.includes('Server state through the query library') || !agents.includes('row-level security is the access control') || !agents.includes('react-component-structure/SKILL.md')) fail(`${fx.name}: AGENTS.md lacks the react-vite / supabase hard rules or skill triggers`)
+    if (agents.includes('Signals only')) fail(`${fx.name}: AGENTS.md carries angular rules`)
+    const fix = read(dir, '.claude/commands/fix.md')
+    if (!fix.includes('| `css` | `docs/agent/standards-react.md` (Styling: Tailwind and component primitives section) + `cssLayer` skill |') ||
+      !fix.includes('`docs/agent/standards-supabase.md`')) fail(`${fx.name}: /fix does not load the react-vite styling section and the supabase backend doc`)
+    if (!read(dir, '.claude/commands/refactor.md').includes('- `react-component-structure` skill')) fail(`${fx.name}: /refactor lacks the react-vite loads fragment`)
+    if (!read(dir, 'docs/agent/workflow-map.md').includes('| `react-component-structure` | creating or reviewing')) fail(`${fx.name}: workflow-map.md lacks the react-vite skill rows`)
+    if (!read(dir, '.claude/skills/techdebt/SKILL.md').includes('`inner-html`')) fail(`${fx.name}: the techdebt skill lacks the react-vite fragment`)
+    if (!read(dir, '.claude/skills/auth-and-logging/SKILL.md').includes('Server side (access rules, server functions): `docs/agent/standards-supabase.md`.')) fail(`${fx.name}: auth-and-logging does not point at the supabase backend doc`)
+    if (!read(dir, '.claude/commands/docs-refresh.md').includes('No stack pack in this project ships a docs-map skill')) fail(`${fx.name}: /docs-refresh must fall back without a docs-map skill`)
+  } else if (all.some((f) => /standards-react|react-component-structure|standards-supabase|pull-copy/.test(f))) fail(`${fx.name}: react-vite / layer files installed without --packs react-vite / --layers`)
   if (fx.name === 'core') {
     // A fresh project with no i18n file and no hotspots: the scope guard's list must hold no empty pattern
     // (picomatch throws on '' and the guard then fails open), and the first save-plan starts the ledger.
@@ -547,7 +573,7 @@ for (const mode of ['present', 'override', 'no-config']) {
 
 // Tech-debt scan: core rules on .ts/.tsx/.jsx/.html/.css, the angular pack's rules on top, kit-managed files left out,
 // a baseline, NEW_DEBT yes|no and --strict.
-for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']]]) {
+for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']], ['react', ['--packs', 'react-vite', '--layers', 'supabase']]]) {
   const td = tmp(`techdebt-${name}`)
   writeFileSync(join(td, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, project: { name: `td-${name}` } }))
   run('install.mjs', ['--target', td, ...packArgs])
@@ -557,13 +583,22 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   writeFileSync(join(td, 'src/app/c.jsx'), '// eslint-disable-next-line\n' + 'export const c = 1\n'.repeat(301))
   writeFileSync(join(td, 'src/app/d.html'), '<!-- FIXME -->\n')
   writeFileSync(join(td, 'src/app/e.css'), '/* TODO */\n')
+  // React-Vite + Supabase rules: a page with each; supabase.from( outside pages/components is not a ui-table-call.
+  if (name === 'react') {
+    mkdirSync(join(td, 'src/app/pages'), { recursive: true })
+    mkdirSync(join(td, 'src/app/lib'), { recursive: true })
+    writeFileSync(join(td, 'src/app/pages/g.tsx'), "import { create } from 'zustand'\nexport const G = () => <div dangerouslySetInnerHTML={{ __html: h }} />\nconst r = fetch(url)\nconst q = supabase.from('t')\n")
+    writeFileSync(join(td, 'src/app/lib/h.ts'), "export const q = supabase.from('t')\nexport const r = api.fetch(1)\n")
+  }
   const scan = (...a) => spawnSync(process.execPath, [join(td, 'scripts/techdebt-report.mjs'), 'scan', ...a], { cwd: td, encoding: 'utf8' })
   const count = (out, id) => Number(new RegExp(`^\\| ${id} \\| [^|]+ \\| (\\d+) \\|`, 'm').exec(out)?.[1] ?? -1)
   const first = scan()
-  const want = { any: 1, 'console-log': 1, todo: 3, 'eslint-disable': 1, 'big-file': 1, ...(name === 'angular' ? { 'legacy-decorator': 1, 'behavior-subject': 1, semicolon: 1 } : {}) }
+  const want = { any: 1, 'console-log': 1, todo: 3, 'eslint-disable': 1, 'big-file': 1, ...(name === 'angular' ? { 'legacy-decorator': 1, 'behavior-subject': 1, semicolon: 1 } : {}),
+    ...(name === 'react' ? { 'inner-html': 1, 'banned-state': 1, 'raw-fetch': 1, 'ui-table-call': 1 } : {}) }
   const got = Object.fromEntries(Object.keys(want).map((id) => [id, count(first.stdout, id)]))
-  if (JSON.stringify(got) !== JSON.stringify(want) || !first.stdout.includes('SCAN: 5 source files') || !first.stdout.includes('NEW_DEBT: unknown')) fail(`techdebt scan (${name}): ${JSON.stringify(got)} vs ${JSON.stringify(want)}: ${first.stdout.trim().split('\n')[0]} / ${first.stderr.trim()}`)
-  if (name === 'core' && /legacy-decorator|behavior-subject|semicolon/.test(first.stdout)) fail('techdebt scan (core): angular rules without the angular pack')
+  if (JSON.stringify(got) !== JSON.stringify(want) || !first.stdout.includes(`SCAN: ${name === 'react' ? 7 : 5} source files`) || !first.stdout.includes('NEW_DEBT: unknown')) fail(`techdebt scan (${name}): ${JSON.stringify(got)} vs ${JSON.stringify(want)}: ${first.stdout.trim().split('\n')[0]} / ${first.stderr.trim()}`)
+  if (name !== 'angular' && /legacy-decorator|behavior-subject|semicolon/.test(first.stdout)) fail(`techdebt scan (${name}): angular rules without the angular pack`)
+  if (name !== 'react' && /inner-html|banned-state|raw-fetch|ui-table-call/.test(first.stdout)) fail(`techdebt scan (${name}): react-vite / supabase rules without them`)
   const base = scan('--write-baseline')
   if (!base.stdout.includes('BASELINE: written docs/project/techdebt-baseline.json') || !existsSync(join(td, 'docs/project/techdebt-baseline.json'))) fail(`techdebt scan --write-baseline (${name}): ${base.stdout.trim().split('\n').pop()}`)
   const same = scan('--strict')
@@ -621,6 +656,136 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   rmSync(cache, { recursive: true, force: true })
 }
 
+// Stack detection: with no --packs and no stack.packs, install proposes the packs and layers from the project (with a
+// reason each) and writes nothing until --yes; --yes installs only the matching packs and records them; nothing matching
+// is refused; an explicit --packs or stack.packs is never second-guessed.
+{
+  const det = (name, files, remote) => {
+    const d = tmp(`detect-${name}`)
+    for (const [f, text] of Object.entries(files)) {
+      mkdirSync(join(d, f, '..'), { recursive: true })
+      writeFileSync(join(d, f), typeof text === 'string' ? text : JSON.stringify(text))
+    }
+    if (remote) {
+      g(['init', '-q'], d)
+      g(['remote', 'add', 'upstream', 'https://example.invalid/upstream.git'], d)
+    }
+    return d
+  }
+  const cfg = { project: { name: 'detected-app' }, hooks: { shellPath: 'bash' } }
+  const ngApp = det('ng', { 'kit.config.json': cfg, 'package.json': { dependencies: { '@angular/core': '19.0.0' } }, 'server/package.json': { dependencies: { express: '4.0.0' } } })
+  const rvApp = det('rv', { 'kit.config.json': cfg, 'package.json': { dependencies: { react: '18.3.1' }, devDependencies: { vite: '5.4.0' } }, 'supabase/config.toml': '' })
+  const upApp = det('up', { 'package.json': { dependencies: { react: '18.3.1', vite: '5.4.0' } } }, true)
+  // An Angular SSR app lists express in the root package.json: that is no backend (no node-express pack).
+  const ssrApp = det('ssr', { 'kit.config.json': cfg, 'package.json': { dependencies: { '@angular/core': '19.0.0', express: '4.0.0' } } })
+  const none = det('none', { 'kit.config.json': cfg, 'package.json': { dependencies: { lodash: '4.0.0' } } })
+  const count = (d) => files(d).filter((f) => !f.startsWith('.git/')).length
+  const cases = [
+    [ngApp, 'KIT_INSTALL: detected packs=[angular, node-express] layers=[]', ['angular — package.json has @angular/core', 'node-express — server/package.json has express']],
+    [rvApp, 'KIT_INSTALL: detected packs=[react-vite] layers=[supabase]', ['react-vite — package.json has vite + react', 'supabase — supabase/ exists']],
+    // An `upstream` remote (every fork clone has one) only suggests the upstream-owned layer.
+    [upApp, 'KIT_INSTALL: detected packs=[react-vite] layers=[]', ['suggested layer upstream-owned — git remote "upstream" exists; not included: if it applies, add --layers upstream-owned']],
+    [ssrApp, 'KIT_INSTALL: detected packs=[angular] layers=[]', ['angular — package.json has @angular/core']],
+  ]
+  for (const [d, line, whys] of cases) {
+    const before = count(d)
+    const dry = run('install.mjs', ['--target', d, '--dry-run'])
+    if (dry.status !== 2 || !dry.stdout.includes(line) || whys.some((w) => !dry.stdout.includes(w)) || !dry.stderr.includes('re-run with --yes') || count(d) !== before) fail(`detection dry-run: exit ${dry.status}, wrote ${count(d) - before} files: ${(dry.stdout + dry.stderr).trim().replace(/\s*\n\s*/g, ' | ')}`)
+    const plain = run('install.mjs', ['--target', d])
+    if (plain.status !== 2 || count(d) !== before) fail(`detection without --yes must write nothing: exit ${plain.status}, wrote ${count(d) - before} files`)
+  }
+  const ngYes = run('install.mjs', ['--target', ngApp, '--yes'])
+  const ngFiles = files(ngApp)
+  const ngCfg = JSON.parse(read(ngApp, 'kit.config.json'))
+  if (ngYes.status !== 0 || JSON.stringify(ngCfg.stack?.packs) !== '["angular","node-express"]' || JSON.stringify(ngCfg.stack?.layers) !== '[]') fail(`detection --yes (angular): exit ${ngYes.status}, stack ${JSON.stringify(ngCfg.stack)}: ${ngYes.stdout.trim().split('\n').pop()}`)
+  if (!ngFiles.includes('docs/agent/standards-angular.md') || ngFiles.some((f) => /standards-react|react-component-structure|standards-supabase|pull-copy/.test(f))) fail('an angular install must contain no react-vite or layer file')
+  if (ngCfg.project?.name !== 'detected-app') fail('recording the detected stack lost the project config')
+  const again = run('install.mjs', ['--target', ngApp, '--dry-run'])
+  if (again.status !== 0 || again.stdout.includes('detected')) fail(`after --yes, stack.packs is explicit: no detection again (${again.stdout.trim().split('\n').pop()})`)
+  const rvYes = run('install.mjs', ['--target', rvApp, '--yes'])
+  const rvFiles = files(rvApp)
+  if (rvYes.status !== 0 || !rvFiles.includes('docs/agent/standards-react.md') || !rvFiles.includes('docs/agent/standards-supabase.md') || rvFiles.some((f) => /standards-angular|angularComponentStructure|breadcrumbs|standards-backend\.md|pull-copy/.test(f))) fail(`detection --yes (react): exit ${rvYes.status}; a react-vite install must contain no angular / node-express file`)
+  if (JSON.stringify(JSON.parse(read(rvApp, 'kit.config.json')).stack) !== '{"packs":["react-vite"],"layers":["supabase"]}') fail(`detection --yes (react) recorded ${read(rvApp, 'kit.config.json')}`)
+  if (JSON.stringify(JSON.parse(read(rvApp, '.kit/install.json')).layers) !== '["supabase"]') fail('install.json does not record the layers')
+  const noMatch = run('install.mjs', ['--target', none, '--yes'])
+  if (noMatch.status !== 2 || !noMatch.stderr.includes('no stack pack matches this project') || files(none).length !== 2) fail(`nothing detected must exit 2 and write nothing: exit ${noMatch.status}, ${files(none).length} files`)
+  const explicit = run('install.mjs', ['--target', none, '--packs', '', '--allow-unfilled', '--dry-run'])
+  if (explicit.status !== 0 || explicit.stdout.includes('detected')) fail(`--packs "" (core only) must not detect: exit ${explicit.status}`)
+  const wins = det('wins', { 'kit.config.json': { ...cfg, stack: { packs: ['node-express'] } }, 'package.json': { dependencies: { react: '18.3.1', vite: '5.4.0' } } })
+  const w = run('install.mjs', ['--target', wins, '--dry-run', '--allow-unfilled'])
+  if (w.status !== 0 || w.stdout.includes('detected') || !/packs=\[node-express\]/.test(w.stdout)) fail(`stack.packs must win over detection: ${w.stdout.trim().split('\n').pop()}`)
+  const flag = run('install.mjs', ['--target', rvApp, '--packs', 'angular', '--dry-run'])
+  if (flag.stdout.includes('detected') || !/packs=\[angular\]/.test(flag.stdout)) fail(`--packs must win over detection: ${flag.stdout.trim().split('\n').pop()}`)
+  // A pack and a layer added to an installed core-only project: sync --packs / --layers (dry-run, then recorded by --apply).
+  writeFileSync(join(none, 'kit.config.json'), JSON.stringify(CORE_CFG))
+  run('install.mjs', ['--target', none])
+  const addDry = run('sync.mjs', ['--target', none, '--packs', 'react-vite', '--layers', 'supabase'])
+  if (!addDry.stdout.includes('NOTE stack packs=[] layers=[] -> packs=[react-vite] layers=[supabase] (recorded on --apply)') || !addDry.stdout.includes('new              docs/agent/standards-react.md') || existsSync(join(none, 'docs/agent/standards-react.md'))) fail(`sync --packs dry-run: ${addDry.stdout.trim().split('\n').pop()}`)
+  run('sync.mjs', ['--target', none, '--packs', 'react-vite', '--layers', 'supabase', '--apply'])
+  const added = JSON.parse(read(none, '.kit/install.json'))
+  if (JSON.stringify(JSON.parse(read(none, 'kit.config.json')).stack) !== '{"packs":["react-vite"],"layers":["supabase"]}') fail(`sync --packs --apply must record the stack in kit.config.json too: ${read(none, 'kit.config.json')}`)
+  const reinstall = run('install.mjs', ['--target', none, '--dry-run'])
+  if (reinstall.status !== 0 || !reinstall.stdout.includes('packs=[react-vite], layers=[supabase]')) fail(`a re-install after sync --packs keeps the stack: ${(reinstall.stdout + reinstall.stderr).trim().split('\n').pop()}`)
+  const addDrift = run('drift-check.mjs', ['--target', none])
+  if (JSON.stringify([added.packs, added.layers]) !== '[["react-vite"],["supabase"]]' || !existsSync(join(none, 'docs/agent/standards-supabase.md')) || addDrift.status !== 0) fail(`sync --packs --apply: recorded ${JSON.stringify([added.packs, added.layers])}, drift ${addDrift.stdout.trim().split('\n').pop()}`)
+  // --yes installs the detected stack only: the suggested upstream-owned layer stays out until named.
+  writeFileSync(join(upApp, 'kit.config.json'), JSON.stringify(cfg))
+  const upYes = run('install.mjs', ['--target', upApp, '--yes'])
+  if (upYes.status !== 0 || JSON.stringify(JSON.parse(read(upApp, 'kit.config.json')).stack) !== '{"packs":["react-vite"],"layers":[]}' || existsSync(join(upApp, '.claude/commands/pull-copy.md'))) fail(`detection --yes must not include a suggested layer: ${upYes.stdout.trim().split('\n').pop()}`)
+  // The config and the install record disagree (a hand-edited stack.packs): install stops, nothing written.
+  const ssrYes = run('install.mjs', ['--target', ssrApp, '--yes'])
+  if (ssrYes.status !== 0 || files(ssrApp).some((f) => /standards-backend\.md/.test(f))) fail(`an Angular app with express in the root package.json must not get node-express: ${ssrYes.stdout.trim().split('\n').pop()}`)
+  const ssrCfg = JSON.parse(read(ssrApp, 'kit.config.json'))
+  writeFileSync(join(ssrApp, 'kit.config.json'), JSON.stringify({ ...ssrCfg, stack: { ...ssrCfg.stack, packs: [] } }))
+  const before = read(ssrApp, '.kit/install.json')
+  const mism = run('install.mjs', ['--target', ssrApp])
+  if (mism.status !== 2 || !mism.stderr.includes('kit.config.json stack.packs [] and .kit/install.json packs [angular] disagree') || read(ssrApp, '.kit/install.json') !== before) fail(`config / record stack mismatch must stop: exit ${mism.status}, ${mism.stderr.trim().split('\n')[0]}`)
+  const rep = spawnSync(process.execPath, [join(kit, 'tools', 'adoption-report.mjs'), '--target', ssrApp], { encoding: 'utf8' })
+  if (!/^stack record\s+warn\s+kit\.config\.json stack\.packs \[\] ≠ \.kit\/install\.json packs \[angular\]/m.test(rep.stdout)) fail(`adoption-report must flag the stack mismatch: ${rep.stdout.split('\n').find((l) => l.startsWith('stack record'))}`)
+  // ownership.upstreamPaths outside the shared glob subset is refused (the kit and the scope guard would disagree).
+  writeFileSync(join(ssrApp, 'kit.config.json'), JSON.stringify({ ...ssrCfg, ownership: { upstreamPaths: ['src/**/*.{ts,tsx}'] } }))
+  const brace = run('install.mjs', ['--target', ssrApp, '--dry-run'])
+  if (brace.status !== 2 || !brace.stderr.includes('ownership.upstreamPaths "src/**/*.{ts,tsx}" — brace lists')) fail(`a brace glob in ownership.upstreamPaths must be refused: exit ${brace.status}`)
+  for (const d of [ngApp, rvApp, upApp, none, wins, ssrApp]) rmSync(d, { recursive: true, force: true })
+}
+
+// The upstream-owned layer: the project keeps .gitignore, package.json and AGENTS.md (ownership.upstreamPaths, the layer's
+// default list), so install writes none of them, the kit rules go to AGENTS.workflow.md, /pull-copy is installed, CI
+// lints changed files and reports app advisories, the rendered scope guard knows the paths, and sync / drift-check see
+// no undeclared difference with an empty `overrides` list.
+{
+  const up = tmp('upstream-owned')
+  const own = { '.gitignore': 'node_modules/\ndist/\n', 'AGENTS.md': '# AGENTS.md — the upstream owner\'s rules\n', 'package.json': '{ "name": "copy-app", "scripts": { "build": "vite build", "lint": "eslint .", "test": "vitest run", "dev": "vite" } }\n' }
+  for (const [f, text] of Object.entries(own)) writeFileSync(join(up, f), text)
+  writeFileSync(join(up, 'kit.config.json'), JSON.stringify({ project: { name: 'copy-app' }, hooks: { shellPath: 'bash' } }))
+  const r = run('install.mjs', ['--target', up, '--packs', 'react-vite', '--layers', 'supabase,upstream-owned'])
+  if (r.status !== 0 || !r.stdout.includes('SKIP-OVERRIDE .gitignore')) fail(`upstream-owned install: exit ${r.status}: ${(r.stdout + r.stderr).trim().split('\n').pop()}`)
+  for (const [f, text] of Object.entries(own)) if (read(up, f) !== text) fail(`upstream-owned install wrote the upstream-owned ${f}`)
+  const wf = existsSync(join(up, 'AGENTS.workflow.md')) ? read(up, 'AGENTS.workflow.md') : ''
+  if (!wf.includes('Never edit an upstream-owned path') || !/^@AGENTS\.workflow\.md$/m.test(read(up, 'CLAUDE.md'))) fail('upstream-owned: AGENTS.workflow.md lacks the layer rule, or CLAUDE.md does not import it')
+  if (!existsSync(join(up, '.claude/commands/pull-copy.md'))) fail('upstream-owned: /pull-copy not installed')
+  for (const p of ciProblems(up, { args: ['--packs', 'react-vite'], cfg: {}, ci: { install: 'npm install --no-audit --no-fund', lintScope: 'changed', appAuditMode: 'report' } })) fail(`upstream-owned: ${p}`)
+  for (const p of linkProblems(up)) fail(`upstream-owned: link check: ${p.file}:${p.line}: ${p.what}`)
+  try {
+    const ups = evalBlock(read(up, 'scripts/scope-check.mjs'), 'const UPSTREAM = ', '  .map((p) =>', 'UPSTREAM')
+    if (JSON.stringify(ups) !== '[".gitignore","AGENTS.md","package.json","package-lock.json"]') fail(`upstream-owned: scope-check UPSTREAM is ${JSON.stringify(ups)}`)
+  } catch (e) {
+    fail(`upstream-owned: could not evaluate scope-check UPSTREAM: ${e.message}`)
+  }
+  const s = run('sync.mjs', ['--target', up])
+  if (!/dry-run — 0 new, 0 kit-update, 0 conflicts/.test(s.stdout) || /NOTE override .* is not a file this kit ships/.test(s.stdout)) fail(`upstream-owned: sync right after install: ${s.stdout.trim().split('\n').pop()}`)
+  const d = run('drift-check.mjs', ['--target', up, '--verbose'])
+  const ovRows = d.stdout.split('\n').filter((l) => l.startsWith('override '))
+  if (d.status !== 0 || ovRows.some((l) => !l.includes('upstream-owned (ownership.upstreamPaths)')) || JSON.parse(read(up, 'kit.config.json')).overrides?.length) fail(`upstream-owned: drift-check must be ok with only upstream-owned overrides: ${d.stdout.trim().split('\n').pop()}`)
+  // A project list replaces the layer default; a kit file it names becomes an override (never written).
+  const cfgPath = join(up, 'kit.config.json')
+  writeFileSync(cfgPath, JSON.stringify({ ...JSON.parse(read(up, 'kit.config.json')), ownership: { upstreamPaths: ['.gitignore', 'AGENTS.md', 'package.json', '.vscode/'] } }))
+  run('sync.mjs', ['--target', up, '--apply']) // the scope guard renders the new list
+  const v = run('drift-check.mjs', ['--target', up, '--verbose'])
+  if (v.status !== 0 || !v.stdout.includes('override  .vscode/settings.json — upstream-owned (ownership.upstreamPaths)')) fail(`upstream-owned: a folder glob in ownership.upstreamPaths must make its kit files overrides: ${v.stdout.trim().split('\n').slice(-2).join(' | ')}`)
+  rmSync(up, { recursive: true, force: true })
+}
+
 // Required keys: core only with no config must STOP and write nothing.
 const bare = tmp('bare')
 const stop = run('install.mjs', ['--target', bare, '--packs', ''])
@@ -632,4 +797,4 @@ if (problems.length > 0) {
   console.error(`INSTALL_CHECK: FAIL — ${problems.length} problems`)
   process.exit(1)
 }
-console.log(`INSTALL_CHECK: ok — ${fixtures.length} fixtures, ${haveActionlint ? `actionlint on ${actionlinted} rendered workflows` : 'actionlint not installed (skipped)'}, CI renders, link check, re-install no-op, sync dry-run/apply, overrides, drift-check, adopt, promoted seeds, /plan load paths, local + github sources, 0 problems`)
+console.log(`INSTALL_CHECK: ok — ${fixtures.length} fixtures, ${haveActionlint ? `actionlint on ${actionlinted} rendered workflows` : 'actionlint not installed (skipped)'}, CI renders, link check, re-install no-op, sync dry-run/apply, overrides, drift-check, adopt, promoted seeds, /plan load paths, local + github sources, stack detection, upstream-owned layer, 0 problems`)

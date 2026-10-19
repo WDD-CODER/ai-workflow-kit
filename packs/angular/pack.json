@@ -24,6 +24,12 @@
   ],
   "agentsFragment": "AGENTS.fragment.md",
   "fragments": "FRAGMENTS.md",
+  "detect": {
+    "order": 10,
+    "anyOf": [
+      { "deps": ["@angular/core"] }
+    ]
+  },
   "provides": {
     "conventionsDoc": "docs/agent/conventions.md",
     "styleSkill": "cssLayer",

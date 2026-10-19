@@ -8,11 +8,14 @@
   .\kit-sync.ps1 -Target ..\my-app
   .\kit-sync.ps1 -Target ..\my-app -Apply
   .\kit-sync.ps1 -Target ..\my-app -Ref v1.1.0 -Apply      # upgrade a GitHub install to another release
+  .\kit-sync.ps1 -Target ..\my-app -Packs react-vite -Layers supabase -Apply   # add a stack pack or a layer
 #>
 param(
   [Parameter(Mandatory = $true)][string]$Target,
   [string]$Source,
   [string]$Ref,
+  [string[]]$Packs,
+  [string[]]$Layers,
   [switch]$Apply
 )
 $ErrorActionPreference = 'Stop'
@@ -22,6 +25,8 @@ Write-Host "kit-sync target: $resolved"
 $argsList = @("$PSScriptRoot/tools/sync.mjs", '--target', $resolved)
 if ($Source) { $argsList += @('--source', $Source) }
 if ($Ref) { $argsList += @('--ref', $Ref) }
+if ($PSBoundParameters.ContainsKey('Packs')) { $argsList += "--packs=$($Packs -join ',')" }
+if ($PSBoundParameters.ContainsKey('Layers')) { $argsList += "--layers=$($Layers -join ',')" }
 if ($Apply) { $argsList += '--apply' }
 & node @argsList
 exit $LASTEXITCODE

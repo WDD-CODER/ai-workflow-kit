@@ -67,9 +67,15 @@ Cursor rule files ship with the optional `layer:cursor`; the stack pack adds sta
 | `/auto-solve` | autonomous solve loop (browse-based verification) |
 | `/skills`, `/commands` | listings |
 
+<!-- KIT:if kit.cursor -->
 ### Commands — Cursor (`.cursor/commands/`)
 
 Redirect stubs for palette discoverability ship with the optional `layer:cursor`.
+<!-- KIT:else -->
+### Commands — Cursor
+
+Redirect stubs for palette discoverability ship with the optional Cursor layer (not installed here).
+<!-- KIT:end -->
 
 ---
 
@@ -83,6 +89,7 @@ Redirect stubs for palette discoverability ship with the optional `layer:cursor`
 | `preflight` | before dev server / browser / DB workflows | `scripts/preflight.mjs` | `preflight-must-use-skill` |
 | `techdebt` | before PR / audit | `scripts/techdebt-report.mjs` (rolling 7 reports + trend) | `techdebt-must-use-skill` |
 | `worktree-setup` | "setup worktree" (explicit only) | — | `worktree-setup-must-use-skill` |
+<!-- PACK:workflow-map:skills -->
 
 <!-- PACK:stack — stack skill rows (component structure, auth, styling layer, breadcrumbs) come from the stack pack -->
 
