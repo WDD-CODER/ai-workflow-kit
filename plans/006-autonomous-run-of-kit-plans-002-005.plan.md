@@ -108,7 +108,7 @@ reported at the merge point.
 - [x] A5: Ask Dandan to merge the four kit PRs, with a summary of each — merge point 1 — PRs
 - [x] A6: Release v1.2.0 after the merge — tag the last merge commit, GitHub release, install proof — kit repo
 - [x] A7: Sync FoodVibe to v1.2.0 in one PR — 002 R6 plan-checks move, dry-run, Apply, ng build, kit checks — `../foodVibe1.0-wt-N`
-- [ ] A8: Sync agentdesk to v1.2.0 and drop the overrides the kit now covers — 005 V9, port anything left — `../agentdesk-wt-N`
+- [x] A8: Sync agentdesk to v1.2.0 and drop the overrides the kit now covers — 005 V9, port anything left — `../agentdesk-wt-N`
 - [ ] A9: Ask Dandan to merge the project PRs and run the human checks — merge point 2, one list — PRs
 
 ## Out of Scope
@@ -131,3 +131,5 @@ New work beyond plans 002–005; the guards mod (hand-off I-28); upstream fixes 
 - A6: CI on `main` green at `85294d6`; tagged `v1.2.0`, GitHub release published; install from `github:…@v1.2.0` records ref `v1.2.0`, commit `85294d6`.
 - Leftovers: merged remote branches `feat/002…005` and their local branches still exist (the delete command was denied; not worked around). The kit slot `../ai-workflow-kit-wt-1` is still on `feat/005-react-vite-pack`.
 - A7: FoodVibe PR #424 (`3987dc66`): v1.0.2 → v1.2.0, template lines moved to `docs/agent/plan-checks.md`, `scripts/package-lock.json` committed, 0 overrides dropped (5 backport candidates listed in the PR). Planner re-check: sync 0/0/0, drift ok, 9/9 CI green. Dandan said `merge`: merged as `ccf06865`; FoodVibe main pulled, `npm ci` in `scripts/`; wt-1 detached idle, branch deleted. Kit follow-up: adoption-report shows the Angular frontend command as `npm run start -- -c slot --port {port}` instead of the real `ng serve` args (display only).
+- A8: agentdesk PR #11 on `WDD-CODER/agent-desk-flow-clone` (`87b343154`): v1.0.3 → v1.2.0, packs `[react-vite]`, layers `[supabase, upstream-owned]`, overrides 26 → 8, no upstream-owned file in the diff. Planner re-check: sync 0 conflicts, drift ok, 8/8 CI green. `/pull-copy` is now tracked (the kit version); the Human's ignored copy in the agentdesk main folder was backed up to the scratchpad (`agentdesk-pull-copy.backup.md`) because a pull would replace it. Kit follow-ups: no way to skip/soften the CI test job when there is no `test` script (agentdesk keeps a `ci.yml` override for it); sync never removes stale records (`.prettierrc.json`); adoption-report shows the Angular frontend command wrong.
+- A9: merge point 2 sent.
