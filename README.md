@@ -23,7 +23,7 @@ Clone the kit once (any folder), then install a tagged release into your project
 ```powershell
 git clone https://github.com/WDD-CODER/ai-workflow-kit.git
 cd ai-workflow-kit
-.\kit-install.ps1 -Target ..\my-app -Source github:WDD-CODER/ai-workflow-kit -Ref v2.0.0 -Packs angular -Cursor
+.\kit-install.ps1 -Target ..\my-app -Source github:WDD-CODER/ai-workflow-kit -Ref v1.2.0 -Packs angular -Cursor
 ```
 
 Not sure which packs fit? Leave `-Packs` out: the installer detects the stack (see [Packs and layers](#packs-and-layers)),
@@ -135,8 +135,8 @@ it: never written). Drift-check reports such a file as `ignored`, not `missing`.
 ## Upgrade to another release
 
 ```powershell
-.\kit-sync.ps1  -Target ..\my-app -Ref v2.0.0          # what would v2.0.0 change? writes nothing
-.\kit-sync.ps1  -Target ..\my-app -Ref v2.0.0 -Apply   # apply it and record ref v2.0.0 in install.json
+.\kit-sync.ps1  -Target ..\my-app -Ref v1.2.0          # what would v1.2.0 change? writes nothing
+.\kit-sync.ps1  -Target ..\my-app -Ref v1.2.0 -Apply   # apply it and record ref v1.2.0 in install.json
 ```
 
 Read the release's CHANGELOG entry first. A ref that does not exist fails with `ref <tag> not found` and
@@ -152,7 +152,7 @@ A project that carries the workflow files but has no `.kit/install.json` (copied
 the file existed):
 
 ```powershell
-.\kit-install.ps1 -Target ..\my-app -Adopt -Source github:WDD-CODER/ai-workflow-kit -Ref v2.0.0
+.\kit-install.ps1 -Target ..\my-app -Adopt -Source github:WDD-CODER/ai-workflow-kit -Ref v1.2.0
 ```
 
 `-Adopt` writes only `.kit/install.json`: the hash of every managed file and every present seed, the declared

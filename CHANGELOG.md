@@ -9,18 +9,19 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
-## [2.0.0] - 2026-10-19
+## [1.2.0] - 2026-10-19
 
 The core no longer assumes a stack: "core + stack pack + layers". The frontend dev server, CI jobs, style rules,
 tech-debt rules and the references core commands make come from the packs and from config, a project without a
 backend gets no backend job, and a new **React + Vite** pack, a **Supabase** layer and an **upstream-owned** layer (for
 a repo that is a copy of someone else's) join the Angular and Node/Express packs. The installer detects the stack when
 none is named. The Planner always runs an Architect + Product Manager review before it saves a plan. New checks
-prove an install on fixture projects end to end. Major: several changes need a step in existing projects (below).
+prove an install on fixture projects end to end. Released as a minor version by choice, although several changes need a
+step in existing projects (below): read that list before you sync.
 
 ### What a project must do
 
-Run `kit-sync -Ref v2.0.0` (dry-run) first; it lists every change. Then:
+Run `kit-sync -Ref v1.2.0` (dry-run) first; it lists every change. Then:
 
 1. **`commands.*` are npm script names.** Every `commands.*` value in `kit.config.json` must be a script name
    (`"build"`, `"dev"`), not a command (`"npm run build"`, which rendered as `npm run npm run build`). Install and sync
@@ -446,8 +447,8 @@ Phases 4 to 6A, never tagged. Projects installed from a local kit folder.
 Phases 1 and 2, before this repository existed: the workflow was extracted from its source project into a
 stack-neutral `core/` with `{{placeholder}}` config keys and a leak check.
 
-[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v2.0.0...HEAD
-[2.0.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v2.0.0
+[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.2.0
 [1.0.5]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.5
 [1.0.4]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.4
 [1.0.3]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.3
