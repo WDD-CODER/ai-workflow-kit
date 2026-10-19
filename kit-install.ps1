@@ -30,11 +30,15 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Write-Error 'node is required (Node 18+).'; exit 1 }
-# A relative path is resolved from the current folder; an absolute one is used as is (Join-Path would glue
-# C:\x and C:\y into C:\x\C:\y under Windows PowerShell 5).
+# A folder or file as PowerShell itself resolves it: relative to the current location, absolute, drive-relative
+# (C:foo) or root-relative (\foo). (Join-Path glued an absolute path onto the current folder under Windows PowerShell 5.)
+# A trailing slash is dropped, except on a drive root: "...\my-app\" would end the quoted argument node receives in \"
+# and swallow the arguments after it.
 function Resolve-KitPath([string]$Path) {
-  if ([System.IO.Path]::IsPathRooted($Path)) { return [System.IO.Path]::GetFullPath($Path) }
-  return [System.IO.Path]::GetFullPath((Join-Path (Get-Location).ProviderPath $Path))
+  $full = [System.IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path))
+  $root = [System.IO.Path]::GetPathRoot($full)
+  if ($full.Length -gt $root.Length) { $full = $full.TrimEnd('\', '/') }
+  return $full
 }
 $resolved = Resolve-KitPath $Target
 Write-Host "kit-install target: $resolved"
