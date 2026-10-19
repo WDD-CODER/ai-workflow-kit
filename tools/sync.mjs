@@ -18,6 +18,8 @@
  *   deleted-locally   installed earlier, missing now                      -> kept missing
  *   override          listed in kit.config.json `overrides`               -> never written, not a conflict
  * Seed files (templates) are written once and never updated: only `new` applies to them.
+ * A file recorded as a seed that the kit now ships as managed is `conflict` unless it already matches the kit
+ * (`same`, which records it as managed): its recorded hash is the project's copy, not a kit version.
  * Exit 0 always for a completed report; 1 on a usage or config error.
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
@@ -87,6 +89,9 @@ for (const f of plan.files) {
   else if (!present) state = 'deleted-locally'
   else if (cur === next) state = 'same'
   else if (f.kind === 'seed') state = 'local-only'
+  // A seed the kit now manages: the recorded hash is the project's own copy (seeds are the project's after
+  // install, and --adopt records whatever is there), so "unchanged since install" proves nothing. Never overwrite.
+  else if (rec.kind === 'seed') state = 'conflict'
   else if (sha256(cur) === rec.sha256) state = nextHash === rec.sha256 ? 'same' : 'kit-update'
   else state = nextHash === rec.sha256 ? 'local-only' : 'conflict'
   rows.push({ dest: f.dest, state })

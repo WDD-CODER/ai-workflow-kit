@@ -6,11 +6,11 @@ Use this path for building new features. Loads {{stack.name}} + domain standards
 
 - `{{stack.standardsDoc}}` — Signals, Components, CSS (Layers), {{stack.name}} conventions
 - `{{docs.domainStandards}}` (skip if unset) — {{project.name}} domain model, data flow, naming conventions
-- `/_shared/tech-stack.md` — stack overrides
+- `{{paths.sharedDocs}}/tech-stack.md` — stack overrides
 
 ## Invokes
 
-- `/plan` — read-only phase: codebase scan → Plan Contract (Architect authors, saved to `plans/`)
+- `/plan` — read-only phase: codebase scan → Plan Contract (the Planner authors it and runs the Architect + PM review, saved to `plans/`)
 - `/review-it` — review phase: Reviewer checks plan-match, conventions, and the Verify gate
 
 ## Typical flow

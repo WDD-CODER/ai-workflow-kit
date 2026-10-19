@@ -1,5 +1,5 @@
 {
-  "$comment": "Kit config scaffold (conventions: slots.fePorts/bePorts are BASE port numbers (main = base, slot N = base+N); paths.srcRoot/serverRoot end with a slash when set; slots.dbNameFormat is a JS template body with ${n}; paths.hotspots is a list, rendered per context; plans.openDirs lists the folders whose *.plan.md files are open plans - range folders like plans/300-400/ are never open; project.repoName is the repo folder name (default: the target folder name) used for slot folders and base hrefs; slots.dbBackupDir defaults to <project slug>-db-backups; paths.routesFile is the router config file; overrides is a list of { path, reason } for installed files the project keeps as its own - install skips them, sync reports them as override and never writes them). Core files reference these keys as {{dotted.key}}. Values here are placeholders; each project fills its own. Generic defaults are kept only for git.mainBranch and the slot naming/count.",
+  "$comment": "Kit config scaffold (conventions: slots.fePorts/bePorts are BASE port numbers (main = base, slot N = base+N); paths.srcRoot/serverRoot end with a slash when set; slots.dbNameFormat is a JS template body with ${n}; paths.hotspots is a list, rendered per context; plans.openDirs lists the folders whose *.plan.md files are open plans - range folders like plans/300-400/ are never open; project.repoName is the repo folder name (default: the target folder name) used for slot folders and base hrefs; slots.dbBackupDir defaults to <project slug>-db-backups; paths.routesFile is the router config file; paths.planChecks is the project's own planning checklist that /plan's Architect + PM review adds when the file exists (optional; the kit never writes it); overrides is a list of { path, reason } for installed files the project keeps as its own - install skips them, sync reports them as override and never writes them). Core files reference these keys as {{dotted.key}}. Values here are placeholders; each project fills its own. Generic defaults are kept only for git.mainBranch, the slot naming/count and the docs paths (paths.sharedDocs, paths.planChecks).",
   "project": {
     "name": "",
     "uiLocale": "",
@@ -54,7 +54,8 @@
     "srcRoot": "",
     "serverRoot": "",
     "slotEnvFile": "",
-    "sharedDocs": "docs/project"
+    "sharedDocs": "docs/project",
+    "planChecks": "docs/project/plan-checks.md"
   },
   "plans": {
     "openDirs": ["plans"]

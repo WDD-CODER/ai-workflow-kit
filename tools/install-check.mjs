@@ -10,6 +10,8 @@
  * Also covers: idempotent re-install, SKIP-EXISTING on a local edit, and kit-sync (dry-run writes nothing,
  * local-only kept, conflict never overwritten, --apply updates only new + kit-update, overrides never written).
  * Adopt: an existing project gets only .kit/install.json and a clean sync; a second adopt or one with drift is refused.
+ * A seed the kit now manages: a customised copy is a conflict --apply never overwrites. Every path /plan and the
+ * workflow-map /plan row load exists in each fixture (packs [] up to angular + node-express).
  * Exit 0 = ok, 1 = problems (one per line).
  */
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, readdirSync, statSync, existsSync, cpSync } from 'fs'
@@ -40,7 +42,31 @@ const fixtures = [
   { name: 'core', args: [], cfg: CORE_CFG },
   { name: 'angular-cursor', args: ['--packs', 'angular', '--cursor'], cfg: { project: { name: 'ng-app' } } },
   { name: 'express-cursor-chef', args: ['--packs', 'node-express', '--cursor', '--yes-chef'], cfg: { project: { name: 'api-app' }, commands: { build: 'build', lint: 'lint' } } },
+  { name: 'angular-express-cursor', args: ['--packs', 'angular,node-express', '--cursor'], cfg: { project: { name: 'full-app' } } },
 ]
+
+// Every path `/plan` loads (its `## Loads` list) and the `/plan` row of workflow-map.md names must exist after
+// install. Entries marked optional ("when the file exists" / "(when present)") are skipped. A bare file name
+// (`hld-template.md`) sits in the folder of the path before it; `dir/*` means the folder.
+function loadPathProblems(dir) {
+  const out = []
+  const check = (where, tokens) => {
+    let prevDir = ''
+    for (const t of tokens) {
+      const p = t.includes('/') ? t.replace(/\/?\*$/, '') : prevDir + t
+      prevDir = p.includes('/') ? p.slice(0, p.lastIndexOf('/') + 1) : ''
+      if (!existsSync(join(dir, p))) out.push(`${where} loads ${t}, which install did not write`)
+    }
+  }
+  const plan = read(dir, '.claude/commands/plan.md').replace(/\r\n/g, '\n')
+  const loads = plan.match(/^## Loads\n([\s\S]*?)\n## /m)?.[1]
+  if (!loads) out.push('.claude/commands/plan.md has no ## Loads section')
+  else check('/plan', loads.split('\n').filter((l) => l.startsWith('- ') && !/when the file exists/.test(l)).flatMap((l) => [...l.split(' — ')[0].matchAll(/`([^`]+)`/g)].map((m) => m[1])))
+  const row = read(dir, 'docs/agent/workflow-map.md').split('\n').find((l) => l.startsWith('| `/plan` |'))
+  if (!row) out.push('workflow-map.md has no /plan row')
+  else check('workflow-map /plan row', row.split('|')[2].split(/,|;/).filter((part) => !/\(when present\)/.test(part)).flatMap((part) => [...part.matchAll(/`([^`]+)`/g)].map((m) => m[1])))
+  return out
+}
 
 const dirs = {}
 for (const fx of fixtures) {
@@ -76,6 +102,7 @@ for (const fx of fixtures) {
   for (const f of all.filter((x) => /(^|\/)\.?mcp\.json$/.test(x))) if (/playwright/i.test(read(dir, f))) fail(`${fx.name}: ${f} configures a Playwright MCP server`)
   if (!all.includes('docs/project/tech-stack.md')) fail(`${fx.name}: docs/project/tech-stack.md missing`)
   if (all.some((f) => f.startsWith('_shared/'))) fail(`${fx.name}: _shared/ must not be installed`)
+  for (const p of loadPathProblems(dir)) fail(`${fx.name}: ${p}`)
   const claude = read(dir, 'CLAUDE.md')
   if (fx.args.includes('--yes-chef') !== claude.includes('Yes chef!')) fail(`${fx.name}: Yes chef! gate must appear only with --yes-chef`)
   const agents = read(dir, 'AGENTS.md')
@@ -216,6 +243,34 @@ if (core) {
   rmSync(ad, { recursive: true, force: true })
 }
 
+// A seed the kit now manages (the PRD/HLD templates were seeds before they moved to core): the recorded hash is
+// the project's own copy, so a customised copy is a `conflict` that --apply never overwrites, and a copy that
+// already matches the kit is `same` and is recorded as managed from then on.
+{
+  const sp = tmp('seed-promoted')
+  writeFileSync(join(sp, 'kit.config.json'), JSON.stringify(CORE_CFG))
+  run('install.mjs', ['--target', sp])
+  const instPath = join(sp, '.kit/install.json')
+  const inst = JSON.parse(readFileSync(instPath, 'utf8'))
+  const custom = '# Plan XXX — our own template\n\n- a project-only line\n'
+  const hash = (await import('crypto')).createHash('sha256').update(custom).digest('hex')
+  const prd = '.claude/references/prd-template.md'
+  const hld = '.claude/references/hld-template.md'
+  writeFileSync(join(sp, prd), custom)
+  inst.files[prd] = { sha256: hash, kind: 'seed', source: `templates/${prd}` }
+  inst.files[hld] = { ...inst.files[hld], kind: 'seed', source: `templates/${hld}` }
+  writeFileSync(instPath, JSON.stringify(inst, null, 2))
+  const dry = run('sync.mjs', ['--target', sp])
+  if (!dry.stdout.includes(`conflict         ${prd}`)) fail(`a customised copy of a seed the kit now manages is not a conflict: ${dry.stdout.trim().split('\n').pop()}`)
+  if (!/dry-run — 0 new, 0 kit-update, 1 conflicts/.test(dry.stdout)) fail(`sync with a promoted seed: unexpected summary: ${dry.stdout.trim().split('\n').pop()}`)
+  const ap = run('sync.mjs', ['--target', sp, '--apply'])
+  if (read(sp, prd) !== custom) fail('sync --apply overwrote a customised copy of a seed the kit now manages')
+  const after = JSON.parse(readFileSync(instPath, 'utf8')).files
+  if (after[hld]?.kind !== 'managed') fail(`an unchanged promoted seed was not recorded as managed (kind ${after[hld]?.kind}): ${ap.stdout.trim().split('\n').pop()}`)
+  if (after[prd]?.kind !== 'seed') fail('sync --apply re-recorded a conflicting promoted seed')
+  rmSync(sp, { recursive: true, force: true })
+}
+
 // Sources. A plain install records the kit it ran from as `local:<path>`; an explicit --source folder works too.
 if (core) {
   const inst = JSON.parse(read(core, '.kit/install.json'))
@@ -310,4 +365,4 @@ if (problems.length > 0) {
   console.error(`INSTALL_CHECK: FAIL — ${problems.length} problems`)
   process.exit(1)
 }
-console.log(`INSTALL_CHECK: ok — ${fixtures.length} fixtures, re-install no-op, sync dry-run/apply, overrides, drift-check, adopt, local + github sources, 0 problems`)
+console.log(`INSTALL_CHECK: ok — ${fixtures.length} fixtures, re-install no-op, sync dry-run/apply, overrides, drift-check, adopt, promoted seeds, /plan load paths, local + github sources, 0 problems`)

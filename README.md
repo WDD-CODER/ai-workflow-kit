@@ -129,11 +129,11 @@ drift-check accepts any content. An override naming a file the kit does not ship
 
 | path | what |
 | --- | --- |
-| `core/` | Stack-neutral workflow files at the paths a project receives them, plus the generalized brain lessons. Placeholders look like `{{git.mainBranch}}`. |
+| `core/` | Stack-neutral workflow files at the paths a project receives them (including the PRD/HLD templates in `.claude/references/`), plus the generalized brain lessons. Placeholders look like `{{git.mainBranch}}`. |
 | `packs/angular/`, `packs/node-express/` | Stack packs. `pack.json` contract: `standardsDoc`, `skills`, `cursorRules`, `gotchas`, `validation` (npm script names), optional `configDefaults` and `agentsFragment`. |
 | `layers/cursor/` | Optional Cursor layer (`.cursor/commands`, rules, `mcp.json` without raw Playwright). |
-| `templates/` | Skeletons: `AGENTS.md`, `CLAUDE.md`, `docs/brain/*`, `docs/project/*`, `.gitignore`, `.mcp.json`, `.nvmrc`, `.prettierrc.json`, HLD/PRD templates; `templates/cursor/` only with `-Cursor`. |
-| `kit.config.json` | Every key a placeholder can name. `slots.fePorts/bePorts` are base ports (slot N = base + N); `paths.srcRoot/serverRoot` end with `/`. |
+| `templates/` | Skeletons: `AGENTS.md`, `CLAUDE.md`, `docs/brain/*`, `docs/project/*`, `.gitignore`, `.mcp.json`, `.nvmrc`, `.prettierrc.json`; `templates/cursor/` only with `-Cursor`. |
+| `kit.config.json` | Every key a placeholder can name. `slots.fePorts/bePorts` are base ports (slot N = base + N); `paths.srcRoot/serverRoot` end with `/`; `paths.planChecks` (default `docs/project/plan-checks.md`) is the project's own planning checklist, which `/plan`'s Architect + PM review adds when the file exists — optional, never written by the kit. |
 | `kit.json` | Kit version (semver), recorded into each install. |
 | `tools/install.mjs`, `tools/sync.mjs`, `tools/drift-check.mjs` | Installer, sync and drift check. |
 | `tools/lib/kit.mjs`, `tools/lib/source.mjs` | Render/plan engine; release fetch + cache. |

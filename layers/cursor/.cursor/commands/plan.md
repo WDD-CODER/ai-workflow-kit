@@ -1,5 +1,6 @@
 ---
-description: Planning path — scope, load standards, produce a Plan Contract
+description: Planning path — scope, load standards, run the Architect + PM review, produce a Plan Contract
 ---
 
-Follow `.claude/commands/plan.md` exactly.
+Follow `.claude/commands/plan.md` exactly, including its `## Architect + PM review (always)` section: every
+plan the Planner saves, drafted here or pasted in, gets that review before it is saved.
