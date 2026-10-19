@@ -976,6 +976,27 @@ if (core) {
   rmSync(sim, { recursive: true, force: true })
 }
 
+// The PowerShell wrappers (Windows PowerShell 5) take a relative or an absolute -Target and -Config.
+const powershell = process.platform === 'win32' && spawnSync('powershell.exe', ['-NoProfile', '-Command', '$PSVersionTable.PSVersion.Major'], { encoding: 'utf8' }).status === 0
+if (powershell) {
+  const ps = (cwd, script, ...a) => {
+    const r = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(kit, script), ...a], { cwd, encoding: 'utf8' })
+    return { status: r.status, out: `${r.stdout}${r.stderr}` }
+  }
+  const psDir = tmp('ps-target')
+  const psCfg = join(tmp('ps-config'), 'my.config.json')
+  writeFileSync(psCfg, JSON.stringify({ ...CORE_CFG, project: { name: 'ps-app' } }))
+  const inst = ps(tmpdir(), 'kit-install.ps1', '-Target', psDir, '-Config', psCfg)
+  if (inst.status !== 0 || !/KIT_INSTALL: ok/.test(inst.out)) fail(`kit-install.ps1 with an absolute -Target and -Config: exit ${inst.status}: ${inst.out.trim().split('\n').pop()}`)
+  writeFileSync(join(psDir, 'kit.config.json'), readFileSync(psCfg, 'utf8'))
+  const relDrift = ps(join(psDir, '..'), 'kit-drift.ps1', '-Target', relative(join(psDir, '..'), psDir))
+  const absDrift = ps(kit, 'kit-drift.ps1', '-Target', psDir)
+  if (relDrift.status !== 0 || absDrift.status !== 0 || !/KIT_DRIFT: ok/.test(relDrift.out + absDrift.out)) fail(`kit-drift.ps1 with a relative and an absolute -Target: exit ${relDrift.status} / ${absDrift.status}: ${(relDrift.out + absDrift.out).trim().split('\n').pop()}`)
+  const absSync = ps(kit, 'kit-sync.ps1', '-Target', psDir)
+  if (absSync.status !== 0 || !/KIT_SYNC: dry-run/.test(absSync.out)) fail(`kit-sync.ps1 with an absolute -Target: exit ${absSync.status}: ${absSync.out.trim().split('\n').pop()}`)
+  for (const d of [psDir, join(psCfg, '..')]) rmSync(d, { recursive: true, force: true })
+}
+
 // Required keys: core only with no config must STOP and write nothing.
 const bare = tmp('bare')
 const stop = run('install.mjs', ['--target', bare, '--packs', ''])
@@ -987,4 +1008,4 @@ if (problems.length > 0) {
   console.error(`INSTALL_CHECK: FAIL — ${problems.length} problems`)
   process.exit(1)
 }
-console.log(`INSTALL_CHECK: ok — ${fixtures.length} fixtures, ${haveActionlint ? `actionlint on ${actionlinted} rendered workflows` : 'actionlint not installed (skipped)'}, CI renders (ci.testMode run / if-present / skip), link check, re-install no-op, sync dry-run/apply/prune, overrides, drift-check, adopt, promoted seeds, /plan load paths, Planner docs, plan-name-similarity (stems, --related, --scope), local + github sources, stack detection, upstream-owned layer, 0 problems`)
+console.log(`INSTALL_CHECK: ok — ${fixtures.length} fixtures, ${haveActionlint ? `actionlint on ${actionlinted} rendered workflows` : 'actionlint not installed (skipped)'}, CI renders (ci.testMode run / if-present / skip), link check, re-install no-op, sync dry-run/apply/prune, overrides, drift-check, adopt, promoted seeds, /plan load paths, Planner docs, plan-name-similarity (stems, --related, --scope), ${powershell ? 'PowerShell wrappers (relative + absolute paths)' : 'PowerShell wrappers skipped (no Windows PowerShell)'}, local + github sources, stack detection, upstream-owned layer, 0 problems`)

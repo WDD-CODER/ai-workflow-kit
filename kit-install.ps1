@@ -30,12 +30,18 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Write-Error 'node is required (Node 18+).'; exit 1 }
-$resolved = [System.IO.Path]::GetFullPath((Join-Path (Get-Location).ProviderPath $Target))
+# A relative path is resolved from the current folder; an absolute one is used as is (Join-Path would glue
+# C:\x and C:\y into C:\x\C:\y under Windows PowerShell 5).
+function Resolve-KitPath([string]$Path) {
+  if ([System.IO.Path]::IsPathRooted($Path)) { return [System.IO.Path]::GetFullPath($Path) }
+  return [System.IO.Path]::GetFullPath((Join-Path (Get-Location).ProviderPath $Path))
+}
+$resolved = Resolve-KitPath $Target
 Write-Host "kit-install target: $resolved"
 $argsList = @("$PSScriptRoot/tools/install.mjs", '--target', $resolved)
 if ($Source) { $argsList += @('--source', $Source) }
 if ($Ref) { $argsList += @('--ref', $Ref) }
-if ($Config) { $argsList += @('--config', [System.IO.Path]::GetFullPath((Join-Path (Get-Location).ProviderPath $Config))) }
+if ($Config) { $argsList += @('--config', (Resolve-KitPath $Config)) }
 if ($PSBoundParameters.ContainsKey('Packs')) { $argsList += "--packs=$($Packs -join ',')" }
 if ($PSBoundParameters.ContainsKey('Layers')) { $argsList += "--layers=$($Layers -join ',')" }
 if ($Yes) { $argsList += '--yes' }
