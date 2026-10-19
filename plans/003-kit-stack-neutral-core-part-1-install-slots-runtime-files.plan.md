@@ -88,7 +88,7 @@ Thinking outside the box is expected; writing outside it requires explicit conse
 - [x] N6: Give workflow scripts their own package file so projects needn't edit theirs — kit-managed scripts/package.json, install --prefix scripts, lockfile hash — `core/scripts/package.json`, `tools/install.mjs`, `core/scripts/{take-plan,slot-serve}.mjs`
 - [x] N7: Fix the smaller config and drift gaps from the adoption — install.json always in scope, sensitive paths from config, ignored files skipped, i18n glob, browser default — `core/scripts/{scope-check,ship-prep}.mjs`, `tools/{drift-check,install}.mjs`, `kit.config.json`
 - [x] N8: Prove FoodVibe still works with the changed kit before merging — local-source kit-sync dry-run (0 conflicts) and scratch-clone slot-serve test; notes file — this plan file
-- [ ] N9: Run all kit checks and open the kit PR — leak-check, pack-check, install-check, e2e-check (Linux + Windows); CHANGELOG Unreleased — kit repo
+- [x] N9: Run all kit checks and open the kit PR — leak-check, pack-check, install-check, e2e-check (Linux + Windows); CHANGELOG Unreleased — kit repo
 
 ## Out of Scope
 CI workflows, core command style rules, tech-debt scan (004); React-Vite pack, upstream-owned layer, release (005).
@@ -133,7 +133,9 @@ merges": no tag, no release, no `kit.json` bump; CHANGELOG `### 003 — …` und
   that default named the backend's script and nothing read it. FoodVibe sets `commands.dev: "start"` itself.
 - **`scripts/package.json` `type`** is rendered from the root `package.json` (`kit.scriptsType`, default
   `commonjs`): a nested `package.json` without `type` would flip a project's own `scripts/*.js` from ESM to CJS.
-  `install` runs `npm install --prefix scripts` under `--install-deps` (the existing flag; install-check runs
+  `install` runs `npm install` inside `scripts/` under `--install-deps`. Not `--prefix scripts`: the first Windows
+  CI run showed npm 10 then runs the root package's lifecycle scripts (`prepare: husky` before husky is
+  installed); reproduced locally with npm@10.9.9, npm 11 does not. (`--install-deps` is the existing flag; install-check runs
   offline), otherwise prints the command. `take-plan` / `slot-serve` install it when `scripts/package-lock.json`
   changes (no restart of running servers for it). No lockfile yet = skipped (an install would create an untracked
   lockfile in the slot).
@@ -176,8 +178,10 @@ merges": no tag, no release, no `kit.json` bump; CHANGELOG `### 003 — …` und
   their lockfile is new to the slot`; install-check asserts the file in every fixture (`picomatch`, `type`).
 - `.kit/install.json`: e2e `PASS scope-check always allows .kit/install.json`. Sensitive paths: install-check —
   core fixture regex `only-this` replaces the default (`package.json` not sensitive), angular globs add to it.
-- Checks (final run before push; see the PR body for the last lines): leak-check ×3, pack-check, install-check,
-  e2e-check (42 cases) all ok locally on Windows; Linux + Windows CI on the PR.
+- Checks: leak-check ×3, pack-check, install-check, e2e-check (`E2E_CHECK: ok — 42 cases passed`) ok locally on
+  Windows. PR #25 CI (runs on push and pull_request, so the stacked PR gets it): the first run failed on Windows
+  (`npm install --prefix scripts` under npm 10, see Decisions; fix `029f234`), then leak-check, e2e ubuntu-latest
+  and e2e windows-latest all pass.
 
 ### N8 — FoodVibe safety (read-only; scratch clone under the session scratchpad)
 - `node tools/sync.mjs --target ../foodVibe1.0 --source .` → `KIT_SYNC: dry-run — 3 new, 20 kit-update,
