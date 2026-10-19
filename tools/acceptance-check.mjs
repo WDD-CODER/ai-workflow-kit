@@ -21,7 +21,7 @@
  * name the folder to install.
  * Needs git, bash, npm (network for the workflow scripts' dependencies). Exit 0 = every case passed, 1 = failures.
  */
-import { readFileSync, existsSync, mkdtempSync, rmSync, readdirSync, statSync, realpathSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, mkdtempSync, rmSync, readdirSync, statSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve, relative } from 'path'
 import { spawnSync } from 'child_process'
@@ -137,6 +137,13 @@ if (argv.includes('--e2e')) {
       r.status === 1 && out.includes(`install dependencies in ${bare} first`) && !out.includes('E2E: scratch folder'), tail(out))
   }
   for (const [kind, dir] of e2eTargets) {
+    // e2e --project needs the project's dependencies installed. The fixtures install nothing from the network (their dev
+    // server is a stand-in), so each declared package gets a stub folder, as an installed node_modules would have it.
+    const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))
+    for (const name of Object.keys({ ...pkg.dependencies, ...pkg.devDependencies })) {
+      mkdirSync(join(dir, 'node_modules', name), { recursive: true })
+      writeFileSync(join(dir, 'node_modules', name, 'package.json'), JSON.stringify({ name, version: '0.0.0' }))
+    }
     const r = spawnSync(process.execPath, [join(kit, 'tools', 'e2e-check.mjs'), '--project', dir], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
     const out = `${r.stdout ?? ''}${r.stderr ?? ''}`
     for (const l of out.split(/\r?\n/).filter((x) => /^(PASS|FAIL) /.test(x))) results.push(`${l.slice(0, 6)}${kind}: e2e: ${l.slice(6)}`)

@@ -16,7 +16,8 @@
  * dependency cache (Vite: node_modules/.vite) through the link into the project's node_modules, the same cache the
  * project's own dev server uses; --skip-serve avoids it. Nothing reaches GitHub; nothing uses --no-verify.
  * Before anything is cloned, the run stops with "install dependencies in <path> first" when the project (or its
- * scripts/) declares dependencies but has no node_modules: the slots could not start anything. The backend's env file
+ * scripts/) has no node_modules, or one that lacks most declared packages (an interrupted install): the slots could not
+ * start anything. A few missing packages are only a NOTE. The backend's env file
  * (<paths.serverRoot>.env, untracked) is copied into each scratch slot, as the slot setup (worktree-setup) does for a
  * real slot; when the project has none, the slot dev server cases are reported SKIP with the reason, not FAIL.
  * Cases: the plan commit runs the hooks; pre-push refuses code on main; claim, second claim refused, scope guard
@@ -462,17 +463,26 @@ function projectMain(here) {
   P.had = ['.', 'scripts'].filter((sub) => existsSync(join(here, sub, 'node_modules')))
   // Pre-flight: the slots borrow the project's node_modules, so a folder that declares dependencies needs them
   // installed first (else the slot dev server fails with "'vite' is not recognized" or the like).
-  const declares = (sub) => {
+  // No node_modules, or a broken install that lacks most declared packages (an interrupted npm ci), stops the run. A few
+  // missing packages are only noted: the cycle may not need them.
+  const declared = (sub) => {
     try {
       const pj = readJson(join(here, sub, 'package.json'))
-      return Object.keys({ ...pj.dependencies, ...pj.devDependencies }).length > 0
-    } catch { return false }
+      return Object.keys({ ...pj.dependencies, ...pj.devDependencies })
+    } catch { return [] }
   }
-  const noDeps = ['.', 'scripts'].filter((sub) => declares(sub) && !existsSync(join(here, sub, 'node_modules')))
+  const lacking = ['.', 'scripts']
+    .map((sub) => [sub, declared(sub).filter((name) => !existsSync(join(here, sub, 'node_modules', name, 'package.json')))])
+    .filter(([, missing]) => missing.length)
+  const noDeps = lacking.filter(([sub, missing]) => !existsSync(join(here, sub, 'node_modules')) || missing.length * 2 > declared(sub).length)
+  for (const [sub, missing] of lacking.filter((l) => !noDeps.includes(l))) {
+    console.log(`E2E: NOTE ${sub === '.' ? here : join(here, sub)} lacks ${missing.length} declared package(s): ${missing.join(', ')} (npm ci installs them)`)
+  }
   if (noDeps.length) {
-    for (const sub of noDeps) {
+    for (const [sub, missing] of noDeps) {
       const at = sub === '.' ? here : join(here, sub)
-      check(`dependencies installed in ${at}`, false, `install dependencies in ${at} first (npm ci): the scratch slots borrow its node_modules`)
+      const which = `${missing.length} of ${declared(sub).length} declared packages missing, e.g. ${missing.slice(0, 3).join(', ')}`
+      check(`dependencies installed in ${at}`, false, `install dependencies in ${at} first (npm ci): the scratch slots borrow its node_modules; ${which}`)
     }
     return
   }
