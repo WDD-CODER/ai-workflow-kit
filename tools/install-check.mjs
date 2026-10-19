@@ -8,15 +8,20 @@
  * for github.com (needs the git CLI, no network): cache reuse, recorded source/ref/commit, sync and drift-check
  * defaulting to them, sync --ref upgrade, a missing ref refused with nothing written, a moved tag refused.
  * Also covers: idempotent re-install, SKIP-EXISTING on a local edit, and kit-sync (dry-run writes nothing,
- * local-only kept, conflict never overwritten, --apply updates only new + kit-update, overrides never written).
+ * local-only kept, conflict never overwritten, --apply updates only new + kit-update, overrides never written) and its
+ * clean-up of files the kit stopped shipping (a missing one's record dropped on --apply; --prune deletes an unchanged
+ * managed file and releases an edited one or a seed; overrides untouched).
  * Adopt: an existing project gets only .kit/install.json and a clean sync; a second adopt or one with drift is refused.
  * A seed the kit now manages: a customised copy is a conflict --apply never overwrites. Every path /plan and the
  * workflow-map /plan row load exists in each fixture (packs [] up to angular + node-express).
  * Config-driven runtime: a commands.* full command is refused (install and sync, exit 2); no render doubles
  * `npm run`; a project-owned AGENTS.md gets AGENTS.workflow.md and a CLAUDE.md that imports both; an ignored path
  * is SKIP-IGNORED / `ignored`; the .gitignore skeleton and .git/info/exclude carry the runtime list; ship-prep's
- * sensitive paths, the frontend dev server values, an i18n folder hotspot and the browser line follow the config.
- * CI and packs: the rendered ci.yml / security.yml with and without paths.serverRoot and in every ci.* mode (actionlint
+ * sensitive paths, the frontend dev server values (and frontendArgs, built by the shared fe-command.mjs), an i18n folder
+ * hotspot and the browser line follow the config; the optional wording keys (project.uiDirection, project.icons.*,
+ * commands.logQuery, docs.domainSummary) render the project's lines when set and the generic ones when not.
+ * CI and packs: the rendered ci.yml / security.yml with and without paths.serverRoot and in every ci.* mode (ci.testMode
+ * run / if-present / skip included; actionlint
  * on each rendered workflow when installed: ACTIONLINT=<path> or on PATH; KIT_REQUIRE_ACTIONLINT=1 makes it required),
  * workflow-link-check on every fixture, no KIT:/PACK: directive left, style rules / prettier seed / pre-commit hooks only
  * from the angular pack, an optional pack seed skipped next to the project's own, and the tech-debt scan + baseline.
@@ -27,7 +32,7 @@ import { tmpdir } from 'os'
 import { join, relative, resolve } from 'path'
 import { spawnSync } from 'child_process'
 import { createHash } from 'crypto'
-import { fileURLToPath } from 'url'
+import { fileURLToPath, pathToFileURL } from 'url'
 import { builtinModules } from 'module'
 import { linkProblems } from './workflow-link-check.mjs'
 
@@ -48,19 +53,21 @@ const read = (dir, f) => readFileSync(join(dir, f), 'utf8')
 const tmp = (name) => mkdtempSync(join(tmpdir(), `kit-${name}-`))
 
 const HOSTILE_RE = 'a`b\'c"d${e}\\w'
+const WORDING = { icons: { library: 'Acme', component: 'AcmeIconComponent', registry: 'src/app/icons.ts' }, logQuery: 'npx acme-logs --since=plan-start --level=error', domainSummary: 'Orders, Refunds, Stock' }
 // stack.packs [] names the stack-neutral core explicitly (no stack named at all = install detects one and asks).
 const CORE_CFG = { project: { name: 'core-only' }, stack: { packs: [] }, commands: { build: 'build', lint: 'lint', test: 'test' }, hooks: { shellPath: 'bash' } }
 const fixtures = [
   // core: an i18n folder (every file under it is a hotspot), a sensitive-path regex that replaces the default, and the CI
   // keys of a project whose lockfile, lint debt and dependency advisories are not its own to fix (no backend).
-  { name: 'core', args: [], cfg: { ...CORE_CFG, project: { name: 'core-only', i18nFile: 'src/locales/' }, security: { sensitivePaths: 'only-this' }, ci: { install: 'npm install --no-audit --no-fund', lintScope: 'changed', appAuditMode: 'report' } } },
+  { name: 'core', args: [], cfg: { ...CORE_CFG, project: { name: 'core-only', i18nFile: 'src/locales/' }, security: { sensitivePaths: 'only-this' }, ci: { install: 'npm install --no-audit --no-fund', lintScope: 'changed', appAuditMode: 'report', testMode: 'if-present' } } },
   { name: 'angular-cursor', args: ['--packs', 'angular', '--cursor'], cfg: { project: { name: 'ng-app' } } },
   // express: an old backend-only `commands.dev: "dev"` with the kit's default slots.fe* values (install must NOTE it).
   { name: 'express-cursor-chef', args: ['--packs', 'node-express', '--cursor', '--yes-chef'], cfg: { project: { name: 'api-app' }, commands: { build: 'build', lint: 'lint', dev: 'dev' } } },
-  // full: a frontend matcher full of characters that would break a quoted render (quotes, backtick, `${`, backslash).
-  { name: 'angular-express-cursor', args: ['--packs', 'angular,node-express', '--cursor'], cfg: { project: { name: 'full-app' }, tools: { browser: 'acme-browser' }, slots: { feMatcher: HOSTILE_RE } } },
-  // react: the React-Vite pack with the Supabase layer (no backend folder: no server job).
-  { name: 'react-vite-supabase', args: ['--packs', 'react-vite', '--layers', 'supabase'], cfg: { project: { name: 'rv-app' } } },
+  // full: a frontend matcher full of characters that would break a quoted render (quotes, backtick, `${`, backslash), and
+  // the optional wording keys (an RTL UI, an icon library, a log query, a domain summary) the angular-cursor fixture leaves unset.
+  { name: 'angular-express-cursor', args: ['--packs', 'angular,node-express', '--cursor'], cfg: { project: { name: 'full-app', uiLocale: 'Arabic RTL', uiDirection: 'rtl', icons: WORDING.icons }, commands: { build: 'build', lint: 'lint', test: 'test', logQuery: WORDING.logQuery }, docs: { domainSummary: WORDING.domainSummary }, tools: { browser: 'acme-browser' }, slots: { feMatcher: HOSTILE_RE } } },
+  // react: the React-Vite pack with the Supabase layer (no backend folder: no server job), and no unit-test job.
+  { name: 'react-vite-supabase', args: ['--packs', 'react-vite', '--layers', 'supabase'], cfg: { project: { name: 'rv-app' }, ci: { testMode: 'skip' } } },
 ]
 
 // Evaluate a block of a rendered script (from the line starting with `from` up to and including the line
@@ -118,7 +125,8 @@ function ciProblems(dir, fx) {
   if (backend && !has(sec, '      - name: Install server', '        run: npm ci', '        working-directory: server/')) out.push('security.yml lost the server install step')
   if (backend && !has(sec, '      - name: npm audit (server)', '        run: npm audit --omit=dev --audit-level=critical', '        working-directory: server/')) out.push('security.yml lost the server audit')
   const install = (fx.ci ?? fx.cfg.ci)?.install ?? 'npm ci'
-  if (ci.split(`        run: ${install}\n`).length - 1 < 3 || !sec.includes(`        run: ${install}\n`)) out.push(`ci.yml / security.yml do not install with ci.install "${install}"`)
+  // lint, build and test install the app (no test job with ci.testMode skip).
+  if (ci.split(`        run: ${install}\n`).length - 1 < ((fx.ci ?? fx.cfg.ci)?.testMode === 'skip' ? 2 : 3) || !sec.includes(`        run: ${install}\n`)) out.push(`ci.yml / security.yml do not install with ci.install "${install}"`)
   if ((fx.ci ?? fx.cfg.ci)?.lintScope === 'changed') {
     const ok = lintJob.includes('name: ESLint (changed files)') && !lintJob.includes('run: npm run lint') && lintJob.includes('fetch-depth: 0') &&
       lintJob.includes("git -c core.quotePath=false diff -z --name-only --diff-filter=d \"$BASE\" HEAD -- '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' > \"$LIST\"") &&
@@ -137,6 +145,17 @@ function ciProblems(dir, fx) {
   const scriptsStep = scriptsAudit.split('Semgrep')[0]
   if (!scriptsAudit.startsWith(', report only)') || !scriptsStep.includes("if: hashFiles('scripts/package-lock.json') != ''") || !scriptsStep.includes('working-directory: scripts') ||
     !scriptsStep.includes('set +e') || !scriptsStep.includes('>> "$GITHUB_STEP_SUMMARY"') || !scriptsStep.includes('exit 0') || scriptsStep.includes('--audit-level')) out.push('security.yml: the scripts/ dependency audit must be report-only (set +e, summary, warning, exit 0)')
+  // ci.testMode: run = `npm run <commands.test>` (the job as before), if-present = with --if-present, skip = no test job
+  // and nothing that needs it.
+  const testMode = (fx.ci ?? fx.cfg.ci)?.testMode ?? 'run'
+  const testJob = ci.split('\n  test:\n')[1]?.split(/\n {2}[\w-]+:\n/)[0] ?? ''
+  if (testMode === 'skip') {
+    if (testJob || /^ {6}- test$/m.test(ci) || ci.includes('needs.test.result')) out.push('ci.yml testMode skip: no test job, no gate need, no gate check')
+  } else {
+    const line = testMode === 'if-present' ? '        run: npm run --if-present test' : '        run: npm run test'
+    if (!has(testJob, '      - name: Unit tests', line) || !/^ {6}- test$/m.test(ci) || !ci.includes('needs.test.result')) out.push(`ci.yml testMode ${testMode}: the test job must run "${line.trim()}" and the gate must need it`)
+    if (testMode === 'run' && testJob.includes('--if-present')) out.push('ci.yml testMode run: the test job must not pass on a missing script')
+  }
   if (!has(lintJob, '      - name: Install workflow script dependencies', "        if: hashFiles('scripts/package-lock.json') != ''", '        working-directory: scripts')) out.push('ci.yml must install the scripts/ dependencies inside scripts/ before the workflow script tests')
   if (haveActionlint) {
     const wf = readdirSync(join(dir, '.github/workflows')).filter((x) => /\.ya?ml$/.test(x)).map((x) => join(dir, '.github/workflows', x))
@@ -227,10 +246,39 @@ for (const fx of fixtures) {
   } catch (e) {
     fail(`${fx.name}: could not evaluate the rendered config constants: ${e.message}`)
   }
+  // The slot frontend command comes from the shared builder (scripts/lib/fe-command.mjs, also the adoption report's).
+  const procs = read(dir, 'scripts/lib/slot-procs.mjs')
+  if (!procs.includes("import { frontendCommand } from './fe-command.mjs'") || procs.includes("['exec', '--'")) fail(`${fx.name}: slot-procs.mjs must build the frontend command with fe-command.mjs, not its own copy`)
+  try {
+    const { frontendArgs } = await import(pathToFileURL(join(dir, 'scripts/lib/slot-procs.mjs')).href)
+    const want = { core: 'run  -- --port 4321', 'angular-cursor': 'exec -- ng serve -c slot --port 4321', 'react-vite-supabase': 'run dev -- --port 4321 --strictPort' }[fx.name]
+    if (want && frontendArgs(4321).join(' ') !== want) fail(`${fx.name}: slot-procs frontendArgs(4321) is "${frontendArgs(4321).join(' ')}", expected "${want}"`)
+  } catch (e) {
+    fail(`${fx.name}: could not import the rendered slot-procs.mjs: ${e.message}`)
+  }
   const claude = read(dir, 'CLAUDE.md')
   if (fx.args.includes('--yes-chef') !== claude.includes('Yes chef!')) fail(`${fx.name}: Yes chef! gate must appear only with --yes-chef`)
   const agents = read(dir, 'AGENTS.md')
   if (fx.name === 'angular-express-cursor' && !agents.includes('- Browser tool: acme-browser. Default: hand the Human')) fail(`${fx.name}: a configured tools.browser must be named in AGENTS.md`)
+  // Optional wording keys: set (full fixture) = the project's wording; unset = the generic kit lines, unchanged.
+  if (fx.args.join(' ').includes('angular')) {
+    const set = fx.name === 'angular-express-cursor'
+    const css = read(dir, '.claude/skills/cssLayer/SKILL.md')
+    const comp = read(dir, '.claude/skills/angularComponentStructure/SKILL.md')
+    const conv = read(dir, 'docs/agent/conventions.md')
+    const std = read(dir, 'docs/agent/standards-angular.md')
+    const want = set
+      ? [[css, 'The UI is Arabic RTL; physical `left`/`right` breaks mirroring.'], [comp, '  imports: [TranslatePipe, AcmeIconComponent],'],
+        [comp, '- Register every Acme icon the template uses in `src/app/icons.ts` before using it'], [conv, '* Acme icons used in templates must be registered in `src/app/icons.ts` before use.'],
+        [std, '* **Logic**: Orders, Refunds, Stock.\n']]
+      : [[css, 'Physical `left`/`right` break mirroring when the UI runs right-to-left.'], [comp, '  imports: [TranslatePipe, IconComponent],'],
+        [comp, '- Register every icon the template uses with the project icon registry before using it'], [conv, "* Icons used in templates must be registered with the project's icon registry before use."],
+        [std, '* **Logic**: project-specific domain rules live in `(not set)`, not here.']]
+    for (const [text, line] of want) if (!text.includes(line)) fail(`${fx.name}: ${set ? 'a set' : 'an unset'} wording key must render "${line.trim()}"`)
+  }
+  const review = read(dir, '.claude/commands/review-it.md')
+  const logs = fx.name === 'angular-express-cursor'
+  if (logs !== review.includes(`   - **Logs**: Run \`${WORDING.logQuery}\`. Any entry not explained by the milestone fails the review.`) || logs !== review.includes(`| Logs | PASS/FAIL | ${WORDING.logQuery} |`) || (!logs && review.includes('Logs'))) fail(`${fx.name}: /review-it must have the Logs check only with commands.logQuery`)
   if (fx.name === 'angular-cursor') {
     if (!agents.includes('Signals only')) fail(`${fx.name}: AGENTS.md is missing the angular pack's hard rules`)
     if (!agents.includes('angularComponentStructure')) fail(`${fx.name}: AGENTS.md is missing the angular skill triggers`)
@@ -334,6 +382,46 @@ if (ng) {
   writeFileSync(cfgPath, JSON.stringify({ ...cfg, overrides: [{ path: 'scripts/scope-check.mjs' }] }))
   const bad = run('sync.mjs', ['--target', ng])
   if (bad.status !== 1 || !bad.stderr.includes('needs a non-empty "path" and "reason"')) fail('an override without a reason was not refused')
+}
+
+// Files the kit stopped shipping (records with no planned file). A missing one's record is dropped on every --apply; the
+// rest stay `removed-from-kit` and on disk until --prune: an unchanged managed file is deleted, an edited one and a seed
+// are kept with their records dropped (local-only), an override is never touched. Dry-runs print what --prune would do.
+{
+  const pr = tmp('prune')
+  writeFileSync(join(pr, 'kit.config.json'), JSON.stringify(CORE_CFG))
+  run('install.mjs', ['--target', pr])
+  const instPath = join(pr, '.kit/install.json')
+  const inst = JSON.parse(readFileSync(instPath, 'utf8'))
+  const sha = (t) => createHash('sha256').update(t).digest('hex')
+  const old = { unchanged: 'old/unchanged.md', edited: 'old/edited.md', seed: 'old/seed.md', override: 'old/override.md', missing: 'old/missing.md' }
+  mkdirSync(join(pr, 'old'))
+  for (const k of ['unchanged', 'edited', 'seed', 'override']) writeFileSync(join(pr, old[k]), `# ${k}\n`)
+  inst.files[old.unchanged] = { sha256: sha('# unchanged\n'), kind: 'managed', source: `core/${old.unchanged}` }
+  inst.files[old.edited] = { sha256: sha('# as the kit shipped it\n'), kind: 'managed', source: `core/${old.edited}` }
+  inst.files[old.seed] = { sha256: sha('# seed\n'), kind: 'seed', source: `templates/${old.seed}` }
+  inst.files[old.override] = { sha256: sha('# override\n'), kind: 'managed', source: `core/${old.override}` }
+  inst.files[old.missing] = { sha256: sha('# gone\n'), kind: 'managed', source: `core/${old.missing}` }
+  writeFileSync(instPath, JSON.stringify(inst, null, 2))
+  writeFileSync(join(pr, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, overrides: [{ path: old.override, reason: 'install-check: kept by the project' }] }))
+  const recorded = () => Object.keys(JSON.parse(readFileSync(instPath, 'utf8')).files).filter((f) => f.startsWith('old/')).sort().join(',')
+  const onDisk = () => readdirSync(join(pr, 'old')).sort().join(',')
+  const lines = (r) => r.stdout.trim().split('\n').filter((l) => l.includes('old/') || l.startsWith('KIT_SYNC')).join(' | ')
+  const dry = run('sync.mjs', ['--target', pr])
+  if (!dry.stdout.includes(`pruned           ${old.missing} — already deleted: record dropped (on --apply)`) || !dry.stdout.includes(`removed-from-kit ${old.unchanged}`) ||
+    !dry.stdout.includes(`NOTE --prune would delete ${old.unchanged}: deleted (unchanged since install)`) || !dry.stdout.includes(`NOTE --prune would keep ${old.edited}: kept, record dropped (edited`) ||
+    !dry.stdout.includes(`NOTE --prune would keep ${old.seed}: kept, record dropped (a seed`) || dry.stdout.includes(`${old.override} —`) || !/ 3 removed-from-kit, 0 overrides, 1 pruned \(nothing written/.test(dry.stdout) ||
+    recorded() !== Object.values(old).sort().join(',')) fail(`sync dry-run with files the kit stopped shipping: ${lines(dry)}`)
+  const ap = run('sync.mjs', ['--target', pr, '--apply'])
+  if (recorded() !== [old.edited, old.override, old.seed, old.unchanged].sort().join(',') || onDisk() !== 'edited.md,override.md,seed.md,unchanged.md' || !/applied — .* 3 removed-from-kit, 0 overrides, 1 pruned$/m.test(ap.stdout)) fail(`sync --apply without --prune must drop only the missing file's record and delete nothing: recorded ${recorded()}, on disk ${onDisk()}: ${lines(ap)}`)
+  const pdry = run('sync.mjs', ['--target', pr, '--prune'])
+  if (!pdry.stdout.includes(`pruned           ${old.unchanged} — deleted (unchanged since install) (on --apply)`) || !pdry.stdout.includes(`local-only       ${old.edited} — kept, record dropped (edited`) ||
+    !pdry.stdout.includes(`local-only       ${old.seed} — kept, record dropped (a seed`) || onDisk() !== 'edited.md,override.md,seed.md,unchanged.md' || recorded().split(',').length !== 4) fail(`sync --prune dry-run: ${lines(pdry)}`)
+  const pap = run('sync.mjs', ['--target', pr, '--prune', '--apply'])
+  if (recorded() !== old.override || onDisk() !== 'edited.md,override.md,seed.md' || read(pr, old.edited) !== '# edited\n' || read(pr, old.override) !== '# override\n' || !/applied — .* 0 removed-from-kit, 0 overrides, 1 pruned$/m.test(pap.stdout)) fail(`sync --prune --apply: recorded ${recorded()}, on disk ${onDisk()}: ${lines(pap)}`)
+  const after = run('sync.mjs', ['--target', pr])
+  if (!/dry-run — 0 new, 0 kit-update, 0 conflicts, 0 local-only, 0 deleted-locally, 0 removed-from-kit, 0 overrides \(nothing written/.test(after.stdout)) fail(`sync after --prune: ${lines(after)}`)
+  rmSync(pr, { recursive: true, force: true })
 }
 
 // Drift check: a fresh install has no drift; editing one managed file makes it exit 1 naming that file;
@@ -613,9 +701,10 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
 // with an empty paths.serverRoot gets a NOTE (CI would render no server step).
 {
   const cm = tmp('ci-modes')
-  writeFileSync(join(cm, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, ci: { lintScope: 'changed-only', appAuditMode: 'warn' } }))
+  writeFileSync(join(cm, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, project: { name: 'core-only', uiDirection: 'right' }, ci: { lintScope: 'changed-only', appAuditMode: 'warn', testMode: 'sometimes' } }))
   const r = run('install.mjs', ['--target', cm])
-  if (r.status !== 2 || !r.stderr.includes('ci.lintScope is "changed-only" — allowed: "all", "changed"') || !r.stderr.includes('ci.appAuditMode is "warn" — allowed: "enforce", "report"') || files(cm).length !== 1) fail(`install with bad ci.* modes: exit ${r.status}, ${r.stderr.trim().split('\n')[0]}`)
+  if (r.status !== 2 || !r.stderr.includes('ci.lintScope is "changed-only" — allowed: "all", "changed"') || !r.stderr.includes('ci.appAuditMode is "warn" — allowed: "enforce", "report"') ||
+    !r.stderr.includes('ci.testMode is "sometimes" — allowed: "run", "if-present", "skip"') || !r.stderr.includes('project.uiDirection is "right" — allowed: "rtl", "ltr"') || files(cm).length !== 1) fail(`install with bad ci.* modes: exit ${r.status}, ${r.stderr.trim().split('\n')[0]}`)
   writeFileSync(join(cm, 'kit.config.json'), JSON.stringify(CORE_CFG))
   mkdirSync(join(cm, 'server'))
   writeFileSync(join(cm, 'server/package.json'), '{ "name": "api" }\n')
@@ -624,6 +713,9 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   writeFileSync(join(cm, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, ci: { appAuditMode: 'off' } }))
   const s = run('sync.mjs', ['--target', cm, '--apply'])
   if (s.status !== 2 || !s.stderr.includes('KIT_SYNC: STOP — ci.appAuditMode is "off"')) fail(`sync with a bad ci.appAuditMode: exit ${s.status}, ${s.stderr.trim().split('\n')[0]}`)
+  writeFileSync(join(cm, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, ci: { testMode: 'never' } }))
+  const t = run('sync.mjs', ['--target', cm, '--apply'])
+  if (t.status !== 2 || !t.stderr.includes('KIT_SYNC: STOP — ci.testMode is "never"')) fail(`sync with a bad ci.testMode: exit ${t.status}, ${t.stderr.trim().split('\n')[0]}`)
   rmSync(cm, { recursive: true, force: true })
 }
 
@@ -797,4 +889,4 @@ if (problems.length > 0) {
   console.error(`INSTALL_CHECK: FAIL — ${problems.length} problems`)
   process.exit(1)
 }
-console.log(`INSTALL_CHECK: ok — ${fixtures.length} fixtures, ${haveActionlint ? `actionlint on ${actionlinted} rendered workflows` : 'actionlint not installed (skipped)'}, CI renders, link check, re-install no-op, sync dry-run/apply, overrides, drift-check, adopt, promoted seeds, /plan load paths, local + github sources, stack detection, upstream-owned layer, 0 problems`)
+console.log(`INSTALL_CHECK: ok — ${fixtures.length} fixtures, ${haveActionlint ? `actionlint on ${actionlinted} rendered workflows` : 'actionlint not installed (skipped)'}, CI renders (ci.testMode run / if-present / skip), link check, re-install no-op, sync dry-run/apply/prune, overrides, drift-check, adopt, promoted seeds, /plan load paths, local + github sources, stack detection, upstream-owned layer, 0 problems`)
