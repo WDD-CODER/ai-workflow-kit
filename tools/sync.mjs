@@ -20,12 +20,19 @@
  * Seed files (templates) are written once and never updated: only `new` applies to them.
  * A file recorded as a seed that the kit now ships as managed is `conflict` unless it already matches the kit
  * (`same`, which records it as managed): its recorded hash is the project's copy, not a kit version.
- * Exit 0 always for a completed report; 1 on a usage or config error.
+ *   ignored           a missing path the project's git ignores           -> never written
+ * When the project owns AGENTS.md (an override, or present and not kit-installed) the kit's rules come as
+ * AGENTS.workflow.md (managed) instead.
+ * Exit 0 always for a completed report; 1 on a usage or config error; 2 when a commands.* value is a full
+ * command instead of an npm script name (nothing written).
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { resolve, join, dirname } from 'path'
 import { resolveSource } from './lib/source.mjs'
-import { KIT_ROOT, readJson, sha256, resolveConfig, planFiles, parseArgs, readOverrides, isHook, markHooksExecutable } from './lib/kit.mjs'
+import {
+  KIT_ROOT, readJson, sha256, resolveConfig, planFiles, parseArgs, readOverrides, isHook, markHooksExecutable, commandProblems,
+  ownsAgents, ignoredPaths, AGENTS_WORKFLOW, frontendNote,
+} from './lib/kit.mjs'
 
 let args
 try {
@@ -48,6 +55,7 @@ const inst = readJson(installFile)
 const cfgFile = join(target, 'kit.config.json')
 const project = existsSync(cfgFile) ? readJson(cfgFile) : {}
 let plan
+let feNote
 let overrides
 let kitRoot
 let origin
@@ -62,11 +70,20 @@ try {
   }))
   overrides = readOverrides(project)
   const vals = resolveConfig({ kitRoot, project, packs: inst.packs, target })
-  plan = planFiles({ kitRoot, packs: inst.packs, cursor: inst.cursor, yesChef: inst.yesChef, vals })
+  const bad = commandProblems(vals)
+  if (bad.length > 0) {
+    for (const m of bad) console.error(`KIT_SYNC: STOP — ${m}`)
+    console.error('Fix kit.config.json, then re-run. Nothing was written.')
+    process.exit(2)
+  }
+  feNote = frontendNote(vals)
+  const agentsWorkflow = ownsAgents({ target, overrides, recorded: inst.files ?? {} })
+  plan = planFiles({ kitRoot, packs: inst.packs, cursor: inst.cursor, yesChef: inst.yesChef, vals, agentsWorkflow })
 } catch (e) {
   console.error(`KIT_SYNC: FAIL — ${e.message}`)
   process.exit(1)
 }
+const ignored = ignoredPaths(target, plan.files.filter((f) => !existsSync(join(target, f.dest))).map((f) => f.dest))
 
 const rows = []
 const record = { ...inst.files }
@@ -83,6 +100,10 @@ for (const f of plan.files) {
   let state
   if (overrides.has(f.dest)) {
     rows.push({ dest: f.dest, state: 'override' })
+    continue
+  }
+  if (ignored.has(f.dest)) {
+    rows.push({ dest: f.dest, state: 'ignored' })
     continue
   }
   if (!rec) state = !present ? 'new' : cur === next ? 'same' : 'conflict'
@@ -104,12 +125,14 @@ for (const f of plan.files) {
   } else if (state === 'same') record[f.dest] = { sha256: nextHash, kind: f.kind, source: f.source }
 }
 for (const dest of Object.keys(inst.files)) if (!planned.has(dest) && !overrides.has(dest)) rows.push({ dest, state: 'removed-from-kit' })
-const unknownOverrides = [...overrides.keys()].filter((p) => !planned.has(p))
+// An AGENTS.md override is what sends the kit's rules to AGENTS.workflow.md: a known path.
+const unknownOverrides = [...overrides.keys()].filter((p) => !planned.has(p) && !(p === 'AGENTS.md' && planned.has(AGENTS_WORKFLOW)))
 
-const order = ['new', 'kit-update', 'conflict', 'local-only', 'deleted-locally', 'removed-from-kit', 'override']
+const order = ['new', 'kit-update', 'conflict', 'local-only', 'deleted-locally', 'removed-from-kit', 'override', 'ignored']
 const count = (s) => rows.filter((r) => r.state === s).length
 for (const s of order) for (const r of rows.filter((x) => x.state === s)) console.log(`${s.padEnd(16)} ${r.dest}`)
 for (const p of unknownOverrides) console.log(`NOTE override ${p} is not a file this kit ships — remove it from kit.config.json`)
+if (feNote) console.log(feNote)
 if (inst.kit?.version !== readJson(join(kitRoot, 'kit.json')).version) {
   console.log(`NOTE installed from kit ${inst.kit?.version}, this kit is ${readJson(join(kitRoot, 'kit.json')).version}`)
 }
@@ -127,5 +150,6 @@ if (args.apply) {
 console.log(
   `KIT_SYNC: ${args.apply ? 'applied' : 'dry-run'} — ${count('new')} new, ${count('kit-update')} kit-update, ${count('conflict')} conflicts, ` +
     `${count('local-only')} local-only, ${count('deleted-locally')} deleted-locally, ${count('removed-from-kit')} removed-from-kit, ${count('override')} overrides` +
+    (count('ignored') ? `, ${count('ignored')} ignored` : '') +
     (args.apply ? '' : ' (nothing written; re-run with --apply to write new + kit-update)'),
 )

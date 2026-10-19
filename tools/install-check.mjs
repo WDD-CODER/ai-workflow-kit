@@ -12,6 +12,10 @@
  * Adopt: an existing project gets only .kit/install.json and a clean sync; a second adopt or one with drift is refused.
  * A seed the kit now manages: a customised copy is a conflict --apply never overwrites. Every path /plan and the
  * workflow-map /plan row load exists in each fixture (packs [] up to angular + node-express).
+ * Config-driven runtime: a commands.* full command is refused (install and sync, exit 2); no render doubles
+ * `npm run`; a project-owned AGENTS.md gets AGENTS.workflow.md and a CLAUDE.md that imports both; an ignored path
+ * is SKIP-IGNORED / `ignored`; the .gitignore skeleton and .git/info/exclude carry the runtime list; ship-prep's
+ * sensitive paths, the frontend dev server values, an i18n folder hotspot and the browser line follow the config.
  * Exit 0 = ok, 1 = problems (one per line).
  */
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, readdirSync, statSync, existsSync, cpSync } from 'fs'
@@ -37,13 +41,27 @@ const files = (dir, base = dir, out = []) => {
 const read = (dir, f) => readFileSync(join(dir, f), 'utf8')
 const tmp = (name) => mkdtempSync(join(tmpdir(), `kit-${name}-`))
 
+const HOSTILE_RE = 'a`b\'c"d${e}\\w'
 const CORE_CFG = { project: { name: 'core-only' }, commands: { build: 'build', lint: 'lint', test: 'test' }, hooks: { shellPath: 'bash' } }
 const fixtures = [
-  { name: 'core', args: [], cfg: CORE_CFG },
+  // core: an i18n folder (every file under it is a hotspot) and a sensitive-path regex that replaces the default.
+  { name: 'core', args: [], cfg: { ...CORE_CFG, project: { name: 'core-only', i18nFile: 'src/locales/' }, security: { sensitivePaths: 'only-this' } } },
   { name: 'angular-cursor', args: ['--packs', 'angular', '--cursor'], cfg: { project: { name: 'ng-app' } } },
-  { name: 'express-cursor-chef', args: ['--packs', 'node-express', '--cursor', '--yes-chef'], cfg: { project: { name: 'api-app' }, commands: { build: 'build', lint: 'lint' } } },
-  { name: 'angular-express-cursor', args: ['--packs', 'angular,node-express', '--cursor'], cfg: { project: { name: 'full-app' } } },
+  // express: an old backend-only `commands.dev: "dev"` with the kit's default slots.fe* values (install must NOTE it).
+  { name: 'express-cursor-chef', args: ['--packs', 'node-express', '--cursor', '--yes-chef'], cfg: { project: { name: 'api-app' }, commands: { build: 'build', lint: 'lint', dev: 'dev' } } },
+  // full: a frontend matcher full of characters that would break a quoted render (quotes, backtick, `${`, backslash).
+  { name: 'angular-express-cursor', args: ['--packs', 'angular,node-express', '--cursor'], cfg: { project: { name: 'full-app' }, tools: { browser: 'acme-browser' }, slots: { feMatcher: HOSTILE_RE } } },
 ]
+
+// Evaluate a block of a rendered script (from the line starting with `from` up to and including the line
+// starting with `to`) and return the value of `expr`. Used for the config-driven constants.
+function evalBlock(text, from, to, expr) {
+  const lines = text.replace(/\r\n/g, '\n').split('\n')
+  const a = lines.findIndex((l) => l.startsWith(from))
+  const b = lines.findIndex((l, i) => i >= a && l.startsWith(to))
+  if (a < 0 || b < 0) throw new Error(`block ${from} … ${to} not found`)
+  return new Function(`${lines.slice(a, b + 1).join('\n')}\nreturn ${expr}`)()
+}
 
 // Every path `/plan` loads (its `## Loads` list) and the `/plan` row of workflow-map.md names must exist after
 // install. Entries marked optional ("when the file exists" / "(when present)") are skipped. A bare file name
@@ -78,6 +96,8 @@ for (const fx of fixtures) {
     fail(`${fx.name}: install exited ${r.status}: ${(r.stdout + r.stderr).trim().split('\n').pop()}`)
     continue
   }
+  const feNoted = /NOTE commands\.dev "dev" starts a frontend dev server/.test(r.stdout)
+  if ((fx.name === 'express-cursor-chef') !== feNoted) fail(`${fx.name}: the commands.dev NOTE must appear only for commands.dev with default slots.fe* values (got ${feNoted})`)
   const deps = (r.stdout.match(/npm install -D ([^ (]+(?: [^ (]+)*)/)?.[1] ?? '').split(' ')
   const builtin = deps.filter((d) => builtinModules.includes(d))
   if (builtin.length) fail(`${fx.name}: devDependencies list Node built-ins: ${builtin.join(', ')}`)
@@ -103,9 +123,34 @@ for (const fx of fixtures) {
   if (!all.includes('docs/project/tech-stack.md')) fail(`${fx.name}: docs/project/tech-stack.md missing`)
   if (all.some((f) => f.startsWith('_shared/'))) fail(`${fx.name}: _shared/ must not be installed`)
   for (const p of loadPathProblems(dir)) fail(`${fx.name}: ${p}`)
+  // commands.* are script names: no render may double the npm run.
+  for (const f of all) if (read(dir, f).includes('npm run npm run')) fail(`${fx.name}: ${f} renders "npm run npm run"`)
+  // The .gitignore skeleton carries the runtime list from scripts/local-excludes.mjs; scripts/ has its own package.
+  const gi = read(dir, '.gitignore')
+  if (/KIT:runtime-ignores/.test(gi) || !gi.includes('.worktree-port\n') || !gi.includes('.claude/.last-npm-install-hash-scripts\n')) fail(`${fx.name}: .gitignore lacks the runtime list of scripts/local-excludes.mjs`)
+  const spkg = all.includes('scripts/package.json') ? JSON.parse(read(dir, 'scripts/package.json')) : null
+  if (!spkg?.dependencies?.picomatch || spkg.type !== 'commonjs') fail(`${fx.name}: scripts/package.json missing, without picomatch, or type ${spkg?.type} (no root package.json = commonjs)`)
+  // The ship-prep sensitive paths (evaluated from the kit's own render): a list adds globs, a regex string replaces.
+  // The frontend dev server values come from the pack (or the kit defaults).
+  try {
+    const sens = evalBlock(read(dir, 'scripts/ship-prep.mjs'), 'const DEFAULT_SENSITIVE_RE', 'const isSensitive', 'isSensitive')
+    const fe = evalBlock(read(dir, 'scripts/lib/slot-procs.mjs'), 'const asList = ', 'const FE_MATCHER = ', '{ FE_SCRIPT, FE_EXEC, FE_PORT_ARGS, FE_ENV_FILE, FE_MATCHER }')
+    if (fx.name === 'angular-express-cursor' && fe.FE_MATCHER?.source !== HOSTILE_RE) fail(`${fx.name}: slots.feMatcher did not survive rendering: ${fe.FE_MATCHER?.source}`)
+    if (fx.name === 'core') {
+      if (!sens('only-this/x.ts') || sens('package.json')) fail(`${fx.name}: a security.sensitivePaths regex must replace the built-in sensitive paths`)
+      if (fe.FE_SCRIPT || fe.FE_MATCHER || fe.FE_PORT_ARGS.join(' ') !== '--port {port}') fail(`${fx.name}: frontend defaults unexpected: ${JSON.stringify(fe)}`)
+    }
+    if (fx.name === 'angular-cursor') {
+      if (!sens('src/app/core/guards/auth.guard.ts') || !sens('src/app/core/interceptors/a/b.ts') || !sens('package.json') || sens('src/app/feature/list.ts')) fail(`${fx.name}: pack sensitive-path globs must add to the built-in ones`)
+      if (fe.FE_SCRIPT !== 'start' || fe.FE_EXEC.join(' ') !== 'ng serve' || fe.FE_PORT_ARGS.join(' ') !== '-c slot --port {port}' || !fe.FE_MATCHER.test('node "/x/node_modules/@angular/cli/bin/ng.js" serve -c slot') || !fe.FE_ENV_FILE) fail(`${fx.name}: frontend values do not come from the pack: ${JSON.stringify(fe)}`)
+    }
+  } catch (e) {
+    fail(`${fx.name}: could not evaluate the rendered config constants: ${e.message}`)
+  }
   const claude = read(dir, 'CLAUDE.md')
   if (fx.args.includes('--yes-chef') !== claude.includes('Yes chef!')) fail(`${fx.name}: Yes chef! gate must appear only with --yes-chef`)
   const agents = read(dir, 'AGENTS.md')
+  if (fx.name === 'angular-express-cursor' && !agents.includes('- Browser tool: acme-browser. Default: hand the Human')) fail(`${fx.name}: a configured tools.browser must be named in AGENTS.md`)
   if (fx.name === 'angular-cursor') {
     if (!agents.includes('Signals only')) fail(`${fx.name}: AGENTS.md is missing the angular pack's hard rules`)
     if (!agents.includes('angularComponentStructure')) fail(`${fx.name}: AGENTS.md is missing the angular skill triggers`)
@@ -127,6 +172,9 @@ for (const fx of fixtures) {
     if (ap.status !== 0 || !existsSync(join(dir, '.claude/todo.md')) || !read(dir, '.claude/todo.md').includes('### Plan 001 — First')) fail(`${fx.name}: todo-query append on a fresh project: ${(ap.stdout + ap.stderr).trim()}`)
     rmSync(join(dir, '.claude/todo.md'))
     if (agents.includes('Signals only')) fail(`${fx.name}: core-only AGENTS.md must not carry angular rules`)
+    if (/Browser tool: browser tool/.test(agents) || !agents.includes('- Browser checks: hand the Human')) fail(`${fx.name}: tools.browser at the default must leave the tool name out of AGENTS.md`)
+    const hotspots = evalBlock(read(dir, 'scripts/scope-check.mjs'), 'const HOTSPOTS = [', '  .map((p) =>', 'HOTSPOTS')
+    if (!hotspots.includes('src/locales/**')) fail(`${fx.name}: an i18n folder (project.i18nFile "src/locales/") must be the hotspot src/locales/**, got ${JSON.stringify(hotspots)}`)
     if (all.some((f) => f.startsWith('.cursor/'))) fail(`${fx.name}: no --cursor, yet .cursor files were installed`)
     const hook = read(dir, '.husky/pre-commit')
     if (/no-semi|security-grep|lint-staged/.test(hook)) fail(`${fx.name}: pre-commit still runs a hook whose script was not installed`)
@@ -352,6 +400,64 @@ else {
   g(['push', '-q', '-f', remote, 'refs/tags/v9.9.9'], work)
   const moved = ghRun('install.mjs', [...GH, '--ref', 'v9.9.9', '--target', second])
   if (moved.status !== 1 || !moved.stderr.includes('tag v9.9.9 moved')) fail(`a moved tag was not refused: ${moved.stderr.trim()}`)
+}
+
+// commands.* take npm script names: a full command ("npm run build") is refused with exit 2 by install (nothing
+// written) and by sync (install.json untouched), with the script name to use instead.
+{
+  const fc = tmp('full-command')
+  writeFileSync(join(fc, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, commands: { ...CORE_CFG.commands, build: 'npm run build' } }))
+  const r = run('install.mjs', ['--target', fc])
+  if (r.status !== 2 || !r.stderr.includes('commands.build is "npm run build"') || !r.stderr.includes('set it to "build"') || files(fc).length !== 1) fail(`install with commands.build "npm run build": exit ${r.status}, ${files(fc).length} files, ${r.stderr.trim().split('\n')[0]}`)
+  writeFileSync(join(fc, 'kit.config.json'), JSON.stringify(CORE_CFG))
+  run('install.mjs', ['--target', fc])
+  const before = read(fc, '.kit/install.json')
+  writeFileSync(join(fc, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, commands: { ...CORE_CFG.commands, lint: 'npm run lint' } }))
+  const s = run('sync.mjs', ['--target', fc, '--apply'])
+  if (s.status !== 2 || !s.stderr.includes('KIT_SYNC: STOP — commands.lint is "npm run lint"') || read(fc, '.kit/install.json') !== before) fail(`sync with commands.lint "npm run lint": exit ${s.status}, ${s.stderr.trim().split('\n')[0]}`)
+  rmSync(fc, { recursive: true, force: true })
+}
+
+// The project owns AGENTS.md (present before install, or listed in overrides): the kit's rules go to
+// AGENTS.workflow.md (managed, fully rendered), AGENTS.md is left alone, CLAUDE.md imports both; sync and
+// drift-check agree. `no-config`: no kit.config.json, so install writes the effective config (tools.browser at its
+// default included) — drift-check right after must still be ok.
+for (const mode of ['present', 'override', 'no-config']) {
+  const ag = tmp(`agents-${mode}`)
+  const own = '# AGENTS.md — the project\'s own rules\n'
+  writeFileSync(join(ag, 'AGENTS.md'), own)
+  const overrides = mode === 'override' ? [{ path: 'AGENTS.md', reason: 'install-check: the project owns AGENTS.md' }] : []
+  if (mode !== 'no-config') writeFileSync(join(ag, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, overrides }))
+  const r = run('install.mjs', ['--target', ag, ...(mode === 'no-config' ? ['--packs', 'angular'] : [])])
+  const wf = existsSync(join(ag, 'AGENTS.workflow.md')) ? read(ag, 'AGENTS.workflow.md') : ''
+  const claude = existsSync(join(ag, 'CLAUDE.md')) ? read(ag, 'CLAUDE.md') : ''
+  if (r.status !== 0 || !wf.includes('## Hard rules') || /\{\{/.test(wf) || !wf.includes('Kit-managed')) fail(`AGENTS.md ${mode}: AGENTS.workflow.md not rendered (exit ${r.status}): ${(r.stdout + r.stderr).trim().split('\n').pop()}`)
+  if (read(ag, 'AGENTS.md') !== own) fail(`AGENTS.md ${mode}: install wrote the project's AGENTS.md`)
+  if (!/^@AGENTS\.md$/m.test(claude) || !/^@AGENTS\.workflow\.md$/m.test(claude)) fail(`AGENTS.md ${mode}: CLAUDE.md must import @AGENTS.md and @AGENTS.workflow.md`)
+  if (JSON.parse(read(ag, '.kit/install.json')).files['AGENTS.workflow.md']?.kind !== 'managed') fail(`AGENTS.md ${mode}: AGENTS.workflow.md is not recorded as managed`)
+  const s = run('sync.mjs', ['--target', ag])
+  if (!/dry-run — 0 new, 0 kit-update, 0 conflicts/.test(s.stdout)) fail(`AGENTS.md ${mode}: sync right after install: ${s.stdout.trim().split('\n').pop()}`)
+  const d = run('drift-check.mjs', ['--target', ag])
+  if (d.status !== 0) fail(`AGENTS.md ${mode}: drift-check: ${d.stdout.trim().split('\n').pop()}`)
+  rmSync(ag, { recursive: true, force: true })
+}
+
+// A kit file the project's .gitignore ignores never reaches a clone: install skips it (SKIP-IGNORED), drift-check
+// reports it `ignored` (not `missing`), sync never writes it. Install also adds the runtime list to .git/info/exclude.
+{
+  const ig = tmp('ignored')
+  if (g(['init', '-q'], ig).status !== 0) fail('git init failed for the ignored-paths case')
+  writeFileSync(join(ig, '.gitignore'), '.vscode/\n')
+  writeFileSync(join(ig, 'kit.config.json'), JSON.stringify(CORE_CFG))
+  const r = run('install.mjs', ['--target', ig])
+  if (r.status !== 0 || !r.stdout.includes('SKIP-IGNORED .vscode/settings.json') || existsSync(join(ig, '.vscode/settings.json'))) fail(`install over an ignored path: ${(r.stdout + r.stderr).trim().split('\n').pop()}`)
+  const d = run('drift-check.mjs', ['--target', ig])
+  if (d.status !== 0 || !d.stdout.includes('ignored   .vscode/settings.json') || d.stdout.includes('missing   .vscode/')) fail(`drift-check with an ignored path: ${d.stdout.trim().split('\n').pop()}`)
+  const s = run('sync.mjs', ['--target', ig, '--apply'])
+  if (!s.stdout.includes('ignored          .vscode/settings.json') || existsSync(join(ig, '.vscode/settings.json'))) fail(`sync with an ignored path: ${s.stdout.trim().split('\n').pop()}`)
+  const exclude = readFileSync(join(ig, '.git', 'info', 'exclude'), 'utf8')
+  if (!exclude.includes('.worktree-port\n') || !exclude.includes('.claude/.last-npm-install-hash-scripts\n')) fail('install did not add the runtime list to .git/info/exclude')
+  rmSync(ig, { recursive: true, force: true })
 }
 
 // Required keys: core only with no config must STOP and write nothing.

@@ -61,6 +61,79 @@ What a project must do:
   `current-state.md` instead of a `/_shared/` folder that is not installed, and `README_WORKFLOW.md` names
   `docs/agent/` instead of a `.claude/rules/` folder that does not exist.
 
+### 003 — Stack-neutral core, part 1: install, slots and runtime files
+
+What a project must do:
+1. Every `commands.*` value in `kit.config.json` must be an npm **script name** (`"build"`), not a command
+   (`"npm run build"`, which rendered as `npm run npm run build`). Install and sync now stop with exit 2 and name
+   the value to use; change it, then re-run. `commands.lintStaged` stays a full command.
+2. After the sync, run `npm install` inside `scripts/` once in the main folder and commit
+   `scripts/package-lock.json`. The workflow scripts' dependency (`picomatch`) now lives in the kit-managed
+   `scripts/package.json`; slots reinstall it when that lockfile changes. Until the lockfile exists, the scripts
+   still find `picomatch` in the root `node_modules` when it is there. A CI job that runs the workflow scripts
+   from a clean checkout without the root install needs that install too. (Not `npm install --prefix scripts`: npm 10 then runs the root
+   package's lifecycle scripts, e.g. a `prepare: husky` that is not installed yet.)
+3. A project that keeps its own `AGENTS.md` (an `overrides` entry) gets `AGENTS.workflow.md` as a `new` file:
+   add the line `@AGENTS.workflow.md` under `@AGENTS.md` in `CLAUDE.md` (a seed, so sync does not change it).
+4. A project without the angular pack whose slot frontend started only because
+   `src/environments/environment.local.ts` existed: set `commands.dev` (and, as needed, `slots.feExec`,
+   `slots.fePortArgs`, `slots.feMatcher`, `slots.feEnvFile`) in `kit.config.json`. With the angular pack nothing
+   changes: it supplies today's command (`npm exec -- ng serve -c slot --port <port>`) and env file.
+5. A node-express project without a root frontend whose `kit.config.json` still says `commands.dev: "dev"` (older
+   installs copied that pack default into the written config): set `commands.dev` to `""`, or slots would start
+   `npm run dev -- --port <port>` as a frontend. Install and sync print a `NOTE` while `commands.dev` is set and every
+   `slots.fe*` value is the kit default. A real frontend with the default `slots.fePortArgs` (`--port {port}`) must
+   fail on a busy port; add its strict-port flag if it would move to another port.
+6. Optional: the `.gitignore` skeleton (a seed) lists three more runtime paths (`.claude/*.log`,
+   `.claude/.last-npm-install-hash-scripts`, `scripts/node_modules/`). Copy them into your `.gitignore` if you
+   like; `take-plan` already adds the whole list to `.git/info/exclude`.
+
+#### Added
+- `scripts/local-excludes.mjs`: the single list of runtime files (slot markers, logs, install hashes, session
+  state). It appends the list idempotently to `$(git rev-parse --git-common-dir)/info/exclude` (`--check` exits 1
+  when an entry is missing). The `.gitignore` skeleton is rendered from it; install, `take-plan` (before its
+  dirty check) and the worktree-setup skill run it, so a fresh clone whose `.gitignore` the project owns is no
+  longer refused with "uncommitted or untracked changes".
+- `scripts/package.json` (kit-managed, `picomatch` ^4.0.7; its `type` mirrors the root `package.json`, so the
+  project's own `scripts/*.js` keep their module type). `install --install-deps` runs
+  `npm install` inside `scripts/`; `take-plan` and `slot-serve` install it when `scripts/package-lock.json`
+  changes (hash in `.claude/.last-npm-install-hash-scripts`); the root devDependency note no longer lists it.
+- `AGENTS.workflow.md`: when the project owns `AGENTS.md` (in `overrides`, or present and not installed by the
+  kit), the kit's `AGENTS.md` skeleton is rendered there as a managed file with a header saying who owns what,
+  and the `CLAUDE.md` skeleton imports both.
+- Config keys `slots.feExec`, `slots.fePortArgs` (default `["--port", "{port}"]`), `slots.feMatcher`,
+  `slots.feEnvFile`; the angular pack fills them with its current values. Placeholder filter `|json`.
+- `kit-sync`, `kit-drift` and install skip a missing kit file the project's git ignores: state `ignored`
+  (sync, drift-check) and `SKIP-IGNORED` (install), instead of `new` / `missing`.
+- e2e: a refused claim commit, a fresh clone with its own `.gitignore`, the config-driven frontend dev server
+  (started, kept, stopped), the scripts' own install, and `.kit/install.json` in scope. install-check: full
+  commands refused, `AGENTS.workflow.md` (pre-existing and overridden `AGENTS.md`), ignored paths, sensitive
+  paths and frontend values from config, an i18n folder hotspot, the browser line, the `.gitignore` runtime list.
+
+#### Changed
+- The slot frontend dev server comes from config: `commands.dev` names the npm script (no such script in
+  `package.json` = no frontend) and `slot-serve` runs `npm run <dev> -- <fePortArgs>`, or
+  `npm exec -- <feExec> <fePortArgs>`; `slots.feMatcher` recognises its processes (default `run <dev>`) and
+  `slots.feEnvFile` is the optional env file whose `.slot` copy gets the slot's backend port. The port
+  arguments must make the server fail on a taken port, never move to another one. It was Angular-only
+  (`environment.local.ts` + `ng serve`).
+- The node-express pack no longer sets `commands.dev` (`"dev"`): core now reads it as the frontend script, and
+  nothing read it before.
+- `ship-prep` reads `security.sensitivePaths`: a regex string replaces the built-in sensitive-path regex (the
+  default when unset), a list of globs adds to it.
+- `project.i18nFile` may be a glob or a folder (`src/locales/` → `src/locales/**`) as well as a file or a
+  comma-separated list; every entry is an append-only hotspot.
+- `tools.browser` left at its default no longer renders "Browser tool: browser tool." in the `AGENTS.md`
+  skeleton; the line keeps only the browser-check guidance.
+- Dropped the unused config key `commands.npm`.
+
+#### Fixed
+- `take-plan` no longer half-claims a slot when the claim commit fails (e.g. a pre-commit hook): it restores
+  the plan file, returns the slot to its detached commit, deletes the new branch and prints
+  `TAKE_PLAN: claim commit failed: …`. It checks the result and names any step that did not undo, and a merged
+  PR's old remote branch is deleted only after the claim commit succeeded.
+- `scope-check` always allows `.kit/install.json` (kit-sync re-records it), so it is never `scope: out`.
+
 ## [1.0.5] - 2026-10-18
 
 Fixes found installing the kit into a React + Vite project. Sync to pick them up (`kit-sync -Ref v1.0.5 -Apply`);

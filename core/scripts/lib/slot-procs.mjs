@@ -36,6 +36,46 @@ const CHAIN_CMD = /npm-cli\.js|npx-cli\.js|\bnpm(\.cmd)?\s|\bnpx(\.cmd)?\s|cross
 const CHAIN_NAME = isWin ? /^(node|cmd)\.exe$/i : /^(node|nodejs|npm|npx|sh|dash)$/i
 const WATCHER = /--watch\b/
 
+// --- the frontend dev server, from kit.config.json (rendered at install; a stack pack supplies the values) ---
+// commands.dev     npm script that serves the frontend; no such script in package.json = no frontend.
+// slots.feExec     optional: run this binary with `npm exec --` instead of the script (e.g. a framework CLI's serve).
+// slots.fePortArgs args appended to the start command; {port} = this slot's frontend port. They must make the
+//                  server FAIL when the port is taken, never move to the next port (e.g. a strict-port flag):
+//                  "kept" detection and the refusal of a second start rely on the port.
+// slots.feMatcher  regex (case-insensitive) that recognises the dev server's processes; default: `run <script>`.
+// slots.feEnvFile  optional local environment file the frontend needs. When set and missing there is no
+//                  frontend; before a start its slot copy (`.local` -> `.slot` in the name) is written with this
+//                  slot's backend port.
+// Rendered as JSON literals, so quotes, backslashes or backticks in a value cannot break this module.
+const asList = (v) => (Array.isArray(v) ? v : v == null || v === '' ? [] : String(v).split(',')).map((s) => String(s).trim()).filter(Boolean)
+const FE_SCRIPT = String({{commands.dev|json}} || '')
+const FE_EXEC = asList({{slots.feExec|json}})
+const FE_PORT_ARGS = asList({{slots.fePortArgs|json}})
+const FE_MATCHER_SRC = String({{slots.feMatcher|json}} || '')
+const FE_ENV_FILE = String({{slots.feEnvFile|json}} || '')
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const FE_MATCHER = FE_MATCHER_SRC ? new RegExp(FE_MATCHER_SRC, 'i') : FE_SCRIPT ? new RegExp(`\\brun\\s+${escapeRe(FE_SCRIPT)}(\\s|"|$)`, 'i') : null
+
+/** True when a command line is the frontend dev server (or a process of its chain). */
+export const isFrontendCmd = (cmd) => Boolean(FE_MATCHER) && FE_MATCHER.test(cmd || '')
+
+/** The project has a frontend dev server: commands.dev names a package.json script (and slots.feEnvFile exists, when set). */
+export function hasFrontend(root = repoRoot) {
+  if (!FE_SCRIPT) return false
+  if (FE_ENV_FILE && !existsSync(join(root, FE_ENV_FILE))) return false
+  try {
+    return Boolean((JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).scripts || {})[FE_SCRIPT])
+  } catch {
+    return false
+  }
+}
+
+/** npm arguments that start the frontend dev server on `port`. */
+export function frontendArgs(port) {
+  const extra = FE_PORT_ARGS.map((a) => a.replace(/\{port\}/g, String(port)))
+  return FE_EXEC.length ? ['exec', '--', ...FE_EXEC, ...extra] : ['run', FE_SCRIPT, '--', ...extra]
+}
+
 const run = (cmd, args) => {
   try {
     return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 })
@@ -105,7 +145,7 @@ export function listeners() {
   return map
 }
 
-export const isChainProc = (p) => Boolean(p) && CHAIN_NAME.test(p.name) && CHAIN_CMD.test(p.cmd)
+export const isChainProc = (p) => Boolean(p) && CHAIN_NAME.test(p.name) && (CHAIN_CMD.test(p.cmd) || isFrontendCmd(p.cmd))
 export const isDevServer = (cmd) => DEV_SERVER.test(cmd)
 
 /** This process and its ancestors: never part of a chain we kill. */
@@ -432,6 +472,17 @@ export function startServer({ label, port, cwd, args, env, logPath, timeoutMs })
 
 // --- setup steps shared by take-plan.mjs and slot-serve.mjs --------------------------------------
 
+/**
+ * The folders whose dependencies a slot keeps installed: [dir, hash file under .claude/, label]. The root, the
+ * workflow scripts' own package (scripts/package.json, kit-managed) and the backend when there is one.
+ */
+export function installDirs(root = repoRoot) {
+  const out = [[root, '.last-npm-install-hash', '.']]
+  if (existsSync(join(root, 'scripts', 'package.json'))) out.push([join(root, 'scripts'), '.last-npm-install-hash-scripts', 'scripts'])
+  if (existsSync(join(root, 'server', 'package.json'))) out.push([join(root, 'server'), '.last-npm-install-hash-server', 'server'])
+  return out
+}
+
 /** npm install when package-lock.json changed since the last install here. Returns true when it ran. */
 export function npmInstallIfChanged(dir, hashFileName, root = repoRoot) {
   const lockPath = join(dir, 'package-lock.json')
@@ -449,11 +500,15 @@ export function npmInstallIfChanged(dir, hashFileName, root = repoRoot) {
   return true
 }
 
-export const envLocalPath = join(repoRoot, 'src', 'environments', 'environment.local.ts')
-
-/** environment.slot.ts = environment.local.ts with this slot's backend port. No-op without a local env file. */
+/**
+ * The slot copy of slots.feEnvFile (environment.local.ts -> environment.slot.ts) with this slot's backend port.
+ * No-op when the key is unset, the file is missing or its name has no `.local` part.
+ */
 export function generateEnvironmentSlot(bePort) {
-  if (!existsSync(envLocalPath)) return
+  if (!FE_ENV_FILE) return
+  const envLocalPath = join(repoRoot, FE_ENV_FILE)
+  const slotName = basename(envLocalPath).replace(/\.local(\.[^.]+)$/, '.slot$1')
+  if (!existsSync(envLocalPath) || slotName === basename(envLocalPath)) return
   const text = readFileSync(envLocalPath, 'utf8')
   // Rewrites only the localhost port on the apiUrl / authApiUrl lines, so the remote-link
   // branch (e.g. `viaRemote ? '' : <localhost url>`) survives into the slot file.
@@ -461,7 +516,7 @@ export function generateEnvironmentSlot(bePort) {
     /^(\s*(?:apiUrl|authApiUrl):[^\n]*?)'http:\/\/localhost:\d+'/gm,
     (_, lead) => `${lead}'http://localhost:${bePort}'`
   )
-  const slotPath = join(repoRoot, 'src', 'environments', 'environment.slot.ts')
+  const slotPath = join(dirname(envLocalPath), slotName)
   // Same content -> no write, so a running frontend dev server is not poked into a rebuild.
   if (existsSync(slotPath) && readFileSync(slotPath, 'utf8') === withApi) return
   writeFileSync(slotPath, withApi)

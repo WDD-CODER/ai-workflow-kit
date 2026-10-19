@@ -18,10 +18,80 @@ import { fileURLToPath } from 'url'
 export const KIT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 export const NOT_SET = '(not set)'
 // Empty is the right rendering for these (they are prefixes / optional fragments, not words in a sentence).
-const BLANK_OK = new Set(['paths.srcRoot', 'paths.serverRoot', 'paths.slotEnvFile', 'kit.mcpArgs', 'commands.slotPrepare'])
+const BLANK_OK = new Set(['paths.srcRoot', 'paths.serverRoot', 'paths.slotEnvFile', 'kit.mcpArgs', 'commands.slotPrepare', 'commands.dev', 'slots.feMatcher', 'slots.feEnvFile'])
 export const REQUIRED = ['project.name', 'commands.build', 'commands.lint', 'commands.test', 'hooks.shellPath']
+// commands.* hold npm script names; the core files run them as `npm run <name>`. lintStaged is a full command.
+const SCRIPT_NAME_KEYS = ['build', 'buildProd', 'dev', 'devLocal', 'test', 'lint', 'e2e', 'codegen', 'cli', 'slotPrepare'].map((k) => `commands.${k}`)
+
+/**
+ * commands.* values that are full commands instead of npm script names ("npm run build" renders as
+ * `npm run npm run build`). Returns one message per bad key; install and sync refuse while any is left.
+ */
+export function commandProblems(vals) {
+  const out = []
+  for (const key of SCRIPT_NAME_KEYS) {
+    const v = vals[key]
+    if (typeof v !== 'string') continue
+    const m = /^\s*npm\s+(?:run(?:-script)?\s+)?(\S.*)$/.exec(v)
+    if (m) out.push(`${key} is "${v}" — commands.* take npm script names, not commands: set it to "${m[1].trim()}"`)
+  }
+  return out
+}
+
+/**
+ * A NOTE when commands.dev will start a slot frontend with nothing but the kit defaults (no pack or project set
+ * any slots.fe* value): an older effective config may carry a backend-only `commands.dev: "dev"`. Else null.
+ */
+export function frontendNote(vals) {
+  const dev = vals['commands.dev']
+  if (isEmpty(dev) || !vals['kit.feDefaults']) return null
+  return `NOTE commands.dev "${dev}" starts a frontend dev server in each slot (npm run ${dev} -- --port <port>), with the kit's default slots.fe* values. ` +
+    'No root frontend (e.g. a backend-only project)? Set commands.dev to "". Otherwise check slots.fePortArgs makes the server fail on a busy port (strict port), never move to another.'
+}
+
+/** The runtime ignore list, read from core/scripts/local-excludes.mjs (its KIT:runtime-ignores block). */
+export function runtimeIgnores(kitRoot) {
+  const file = join(kitRoot, 'core', 'scripts', 'local-excludes.mjs')
+  if (!existsSync(file)) return null
+  const block = /KIT:runtime-ignores-begin[^\n]*\n([\s\S]*?)\/\/ KIT:runtime-ignores-end/.exec(readFileSync(file, 'utf8'))
+  if (!block) return null
+  const out = []
+  for (const line of block[1].split(/\r?\n/)) {
+    const comment = /^\s*\/\/\s*(.+?)\s*$/.exec(line)
+    const entry = /^\s*'([^']+)',?\s*$/.exec(line)
+    if (comment && !/KIT:/.test(comment[1])) out.push(`${out.length ? '\n' : ''}# ${comment[1]}`)
+    else if (entry) out.push(entry[1])
+  }
+  return out
+}
+
+/**
+ * Paths (of `dests`) the target's git ignore rules ignore. Tracked files never count (git does not ignore them).
+ * Empty set outside a git work tree.
+ */
+export function ignoredPaths(target, dests) {
+  if (dests.length === 0 || !existsSync(join(target, '.git'))) return new Set()
+  const r = spawnSync('git', ['check-ignore', '--stdin'], { cwd: target, input: dests.join('\n') + '\n', encoding: 'utf8' })
+  if (r.status !== 0) return new Set()
+  return new Set(r.stdout.split(/\r?\n/).map((l) => l.trim()).filter(Boolean))
+}
+
+/**
+ * The project owns AGENTS.md (listed in `overrides`, or present and not installed by the kit): the kit's rules
+ * then go to AGENTS.workflow.md (managed) and CLAUDE.md imports both. `recorded` = .kit/install.json files, or
+ * null when there is no install record (then only an override counts).
+ */
+export function ownsAgents({ target, overrides, recorded }) {
+  if (overrides?.has('AGENTS.md')) return true
+  if (!recorded) return false
+  return existsSync(join(target, 'AGENTS.md')) && !recorded['AGENTS.md']
+}
 const GOTCHA_FILE = /^docs\/brain\/gotchas\/[^/]+\.md$/
 const PACK_SKIP = new Set(['pack.json', 'AGENTS.fragment.md'])
+export const AGENTS_WORKFLOW = 'AGENTS.workflow.md'
+const AGENTS_WORKFLOW_NOTE = '> Kit-managed (ai-workflow-kit): the workflow\'s hard rules and skill triggers, rendered from the kit\'s ' +
+  '`AGENTS.md` skeleton because this project keeps its own `AGENTS.md`. `kit-sync` updates this file; change it in ' +
+  'the kit, not here. The project\'s own rules stay in `AGENTS.md`; `CLAUDE.md` imports both.'
 // A rule that points at a skill is installed only when that skill is.
 const REQUIRES = { '.cursor/rules/auth-and-logging-must-use-skill.mdc': '.claude/skills/auth-and-logging/SKILL.md' }
 
@@ -84,7 +154,8 @@ export function resolveConfig({ kitRoot, project, packs, target, platform = proc
     // The first pack named is the primary stack: its standards doc is the one core files point at.
     if (isEmpty(packLayer['stack.standardsDoc'])) packLayer['stack.standardsDoc'] = pack.standardsDoc
     for (const [k, v] of Object.entries(pack.configDefaults ?? {})) {
-      if (Array.isArray(v)) packLayer[k] = [...new Set([...(packLayer[k] ?? []), ...v])]
+      // Lists add up across packs (hotspots, sensitive paths), except slots.* argument lists: the first pack's wins.
+      if (Array.isArray(v) && !k.startsWith('slots.')) packLayer[k] = [...new Set([...(packLayer[k] ?? []), ...v])]
       else if (isEmpty(packLayer[k])) packLayer[k] = v
     }
   }
@@ -110,6 +181,20 @@ export function resolveConfig({ kitRoot, project, packs, target, platform = proc
   vals['kit.mcpCommand'] = platform === 'win32' ? 'cmd' : 'npx'
   vals['kit.mcpArgs'] = platform === 'win32' ? '"/c", "npx", ' : ''
   vals['kit.nodeVersion'] = nodeVersion
+  // tools.browser equal to the kit default (unset, or copied into the effective config install writes): the
+  // AGENTS.md skeleton then leaves the tool name out. Compared by value, so install, sync and drift agree.
+  vals['kit.browserSet'] = !isEmpty(vals['tools.browser']) && vals['tools.browser'] !== base['tools.browser']
+  // commands.dev starts a slot frontend; none of the slots.fe* values differ from the kit defaults = nothing
+  // (pack or project) said how. Install and sync print a NOTE then (e.g. an old backend-only `commands.dev: "dev"`).
+  const same = (a, b) => JSON.stringify(a ?? '') === JSON.stringify(b ?? '')
+  vals['kit.feDefaults'] = ['slots.feExec', 'slots.fePortArgs', 'slots.feMatcher', 'slots.feEnvFile'].every((k) => same(vals[k], base[k]))
+  // scripts/package.json keeps the module type the root package.json gives the project's own scripts/*.js files.
+  let rootType = 'commonjs'
+  try {
+    const t = readJson(join(resolve(target), 'package.json')).type
+    if (t === 'module' || t === 'commonjs') rootType = t
+  } catch { /* no or unreadable package.json: Node's default */ }
+  vals['kit.scriptsType'] = rootType
   return vals
 }
 
@@ -128,6 +213,8 @@ export function render(text, vals, report = { unknown: new Set(), notSet: new Se
     if (filter === 'quoted') return list.length ? list.map((i) => `'${i}'`).join(', ') : "''"
     if (filter === 'dquoted') return list.length ? list.map((i) => `"${i}"`).join(', ') : '""'
     if (filter === 'glob') return list.length > 1 ? `{${list.join(',')}}` : (list[0] ?? '')
+    // A JS/JSON literal of the value as configured (a string stays a string, a list a list): code that must tell them apart.
+    if (filter === 'json') return JSON.stringify(v ?? '')
     // Regex alternation body for shell guards: plans|plans/design (dots escaped).
     if (filter === 'alt') return list.map((i) => i.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
     if (isEmpty(v)) {
@@ -196,7 +283,7 @@ export function markHooksExecutable(target, dests) {
  * Plan every file the kit would install: [{ dest, kind, source, content }] (content rendered).
  * `vals` is the output of resolveConfig.
  */
-export function planFiles({ kitRoot, packs, cursor, yesChef, vals }) {
+export function planFiles({ kitRoot, packs, cursor, yesChef, vals, agentsWorkflow = false }) {
   const report = { unknown: new Set(), notSet: new Set() }
   const raw = new Map() // dest -> { kind, source, text }
   const add = (dest, kind, source) => {
@@ -227,6 +314,12 @@ export function planFiles({ kitRoot, packs, cursor, yesChef, vals }) {
     add(dest, 'seed', `templates/${f}`)
   }
   for (const [dest, needs] of Object.entries(REQUIRES)) if (raw.has(dest) && !raw.has(needs)) raw.delete(dest)
+  // The project owns AGENTS.md: the kit's rules are rendered into AGENTS.workflow.md, a managed file.
+  if (agentsWorkflow && raw.has('AGENTS.md')) {
+    const a = raw.get('AGENTS.md')
+    raw.delete('AGENTS.md')
+    raw.set(AGENTS_WORKFLOW, { kind: 'managed', source: a.source, text: a.text })
+  }
 
   // Pack-supplied sections for the seed skeletons.
   const frag = { 'Hard rules': [], 'Skill triggers': [], 'Standards index': [] }
@@ -243,12 +336,19 @@ export function planFiles({ kitRoot, packs, cursor, yesChef, vals }) {
   const files = []
   for (const [dest, { kind, source, text }] of raw) {
     let body = text
-    if (dest === 'AGENTS.md') {
+    if (dest === 'AGENTS.md' || dest === AGENTS_WORKFLOW) {
       body = fillMarker(body, 'PACK:hard-rules', frag['Hard rules'])
       body = fillMarker(body, 'PACK:skill-triggers', frag['Skill triggers'])
       body = fillMarker(body, 'PACK:standards-index', frag['Standards index'])
+      // No browser tool configured: keep the guidance, drop the "Browser tool: browser tool." name.
+      if (!vals['kit.browserSet']) body = body.replace('Browser tool: {{tools.browser}}. Default: hand', 'Browser checks: hand')
+      if (dest === AGENTS_WORKFLOW) body = body.replace(/^# AGENTS\.md(.*)\r?\n/, (_, rest) => `# ${AGENTS_WORKFLOW}${rest}\n\n${AGENTS_WORKFLOW_NOTE}\n`)
     } else if (dest === 'CLAUDE.md') {
       body = fillMarker(body, 'KIT:yes-chef', yesChef ? readFileSync(join(tplRoot, 'fragments', 'yes-chef.md'), 'utf8').trimEnd().split('\n') : [])
+      body = fillMarker(body, 'KIT:agents-workflow', agentsWorkflow ? [`@${AGENTS_WORKFLOW}`] : [])
+    } else if (dest === '.gitignore') {
+      const list = runtimeIgnores(kitRoot)
+      if (list) body = body.replace(/^# KIT:runtime-ignores[ \t]*\r?\n/m, `${list.join('\n')}\n`)
     } else if (dest === 'docs/brain/gotchas.md') {
       const rows = gotchaRows
         .filter((g) => !body.includes(`./gotchas/${basename(g)}`))

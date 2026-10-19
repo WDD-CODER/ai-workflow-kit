@@ -20,15 +20,15 @@ import { execFileSync } from 'child_process'
 import { join } from 'path'
 import { isSlot, slotNumber, ports, activePlanPath } from './lib/slot.mjs'
 import {
-  repoRoot, envLocalPath, portState, processTable, listeners, devChains, killTree, readSlotPids, writeSlotPids,
-  stopSlotServers, waitForPort, waitForPortFree, startServer, npmInstallIfChanged, generateEnvironmentSlot
+  repoRoot, portState, processTable, listeners, devChains, killTree, readSlotPids, writeSlotPids,
+  stopSlotServers, waitForPort, waitForPortFree, startServer, npmInstallIfChanged, generateEnvironmentSlot,
+  hasFrontend as projectHasFrontend, frontendArgs, isFrontendCmd, installDirs
 } from './lib/slot-procs.mjs'
 
 const isWin = process.platform === 'win32'
 // Optional npm script run before the backend starts (e.g. code generation the backend imports). Empty = skip.
 const SLOT_PREPARE = '{{commands.slotPrepare}}'
 const START_TIMEOUT_MS = { be: 90000, fe: 180000 }
-const NG_SERVE = /\bng(\.js|\.cmd)?"?\s+serve\b/i
 
 function fail(message) {
   console.error(`SLOT_SERVE: ${message}`)
@@ -40,9 +40,10 @@ if (!isSlot()) fail('not a slot - the main folder\'s dev servers are the Human\'
 const n = slotNumber()
 const { fe: fePort, be: bePort } = ports()
 const hasServer = existsSync(join(repoRoot, 'server', 'package.json'))
-const hasFrontend = existsSync(envLocalPath)
+// The frontend comes from kit.config.json: commands.dev + slots.fe* (lib/slot-procs.mjs; a stack pack fills them).
+const hasFrontend = projectHasFrontend()
 const halves = [['be', bePort, hasServer], ['fe', fePort, hasFrontend]].filter(([, , present]) => present)
-if (!halves.length) fail('this project has no dev servers to start')
+if (!halves.length) fail('this project has no dev servers to start (no server/package.json, and kit.config.json commands.dev names no package.json script)')
 
 const stopAll = (why) => {
   for (const l of stopSlotServers()) console.log(`SLOT_SERVE: ${why} - ${l}`)
@@ -53,11 +54,12 @@ if (process.argv.includes('--restart')) stopAll('restart')
 
 // --- dependencies -----------------------------------------------------------------------------
 let installed = false
-for (const [dir, hashFile] of [[repoRoot, '.last-npm-install-hash'], ...(hasServer ? [[join(repoRoot, 'server'), '.last-npm-install-hash-server']] : [])]) {
+for (const [dir, hashFile, label] of installDirs(repoRoot)) {
   try {
-    if (npmInstallIfChanged(dir, hashFile)) installed = true
+    // The workflow scripts' own dependencies are not loaded by the servers: no restart for them.
+    if (npmInstallIfChanged(dir, hashFile) && label !== 'scripts') installed = true
   } catch (e) {
-    fail(`npm install failed in ${dir === repoRoot ? '.' : 'server'} - servers not started.\n${String(e.message).split('\n')[0]}`)
+    fail(`npm install failed in ${label} - servers not started.\n${String(e.message).split('\n')[0]}`)
   }
 }
 // Running servers loaded the old dependencies.
@@ -69,7 +71,7 @@ const lst = listeners()
 const chains = devChains(repoRoot, table, lst)
 const chainFor = (label) => chains.find((c) => {
   const cmds = c.pids.map((pid) => (table.get(pid) || {}).cmd || '')
-  return label === 'be' ? c.watcher : cmds.some((cmd) => NG_SERVE.test(cmd))
+  return label === 'be' ? c.watcher : cmds.some(isFrontendCmd)
 })
 
 const roots = readSlotPids().map((e) => e.pid)
@@ -126,7 +128,7 @@ for (const [label, port] of toStart) {
     if (isolatedDb && process.env.MONGO_LOCAL_URI) env.MONGO_LOCAL_URI = withDbName(process.env.MONGO_LOCAL_URI, `{{slots.dbNameFormat}}`)
     spec = { cwd: join(repoRoot, 'server'), args: ['run', 'dev:local'], env }
   } else {
-    spec = { cwd: repoRoot, args: ['exec', '--', 'ng', 'serve', '-c', 'slot', '--port', String(fePort)] }
+    spec = { cwd: repoRoot, args: frontendArgs(fePort) }
   }
   const r = startServer({ label, port, logPath, timeoutMs: START_TIMEOUT_MS[label], ...spec })
   if (!r.ok) {

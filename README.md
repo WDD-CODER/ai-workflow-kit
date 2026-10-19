@@ -40,12 +40,31 @@ cd ai-workflow-kit
   `configDefaults`. The installer writes the effective config to `<project>/kit.config.json` when absent.
   Required keys (`project.name`, `commands.build|lint|test`, `hooks.shellPath`) missing → exit 2, nothing
   written. Other empty keys render `(not set)` and are listed.
+- `commands.*` are npm **script names** (`"build"`), never commands: a value like `"npm run build"` makes
+  install and sync stop with exit 2 and name the script to use (`commands.lintStaged` is the one full command).
+- A kit file the project's `.gitignore` ignores is not written (`SKIP-IGNORED`): it would never reach a clone.
+- A project that keeps its own `AGENTS.md` (listed in `overrides`, or present before install) gets the kit's
+  rules in `AGENTS.workflow.md` (managed, synced) instead; the `CLAUDE.md` skeleton imports both. A
+  `CLAUDE.md` that already exists needs the line `@AGENTS.workflow.md` (install prints a `NOTE`).
 
 ### First-time setup in the project
 
 - **Git hooks.** The `.husky/*` hooks are plain `sh` scripts with a shebang, so they run with husky
   (`"prepare": "husky"`, then `npm run prepare`) or without it (`git config core.hooksPath .husky`). The
   installer stages them as executable (`git add --chmod=+x`); lint-staged runs only when it is installed.
+- **Workflow script dependencies.** The scripts' own npm dependencies (`picomatch`) are in the kit-managed
+  `scripts/package.json`, so the project's `package.json` needs none of them: run `npm install` inside `scripts/`
+  (or install with `-InstallDeps`) and commit `scripts/package-lock.json`. Slots reinstall them when that
+  lockfile changes (`take-plan`, `slot-serve`).
+- **Runtime files.** Slot markers, logs and install hashes are listed once, in `scripts/local-excludes.mjs`;
+  the `.gitignore` skeleton is rendered from it, and install, `take-plan` and the worktree-setup skill add it to
+  `.git/info/exclude`, so a fresh clone stays clean even when the project keeps its own `.gitignore`.
+- **Frontend dev server in slots.** `slot-serve` starts `npm run <commands.dev> -- <slots.fePortArgs>` (or
+  `npm exec -- <slots.feExec> <slots.fePortArgs>`), `{port}` = the slot's frontend port; a stack pack supplies
+  the values. The arguments must make the server fail when its port is taken (e.g. a strict-port flag), never
+  move to another port. The kit default `["--port", "{port}"]` is only right for a server that already fails on a busy
+  port; add the strict-port flag otherwise (install and sync print a `NOTE` while `commands.dev` is set and every
+  `slots.fe*` value is the default). No `commands.dev` script in `package.json` = no frontend.
 - **todo-sync needs one repo setting.** Settings → Actions → General → Workflow permissions → tick
   "Allow GitHub Actions to create and approve pull requests". Without it every merge's todo-sync run fails
   at `gh pr create`; the run deletes its `chore/todo-sync-*` branch and prints an error naming the setting.
@@ -62,7 +81,8 @@ cd ai-workflow-kit
 ```
 
 States: `new`, `kit-update` (written on `-Apply`), `local-only`, `conflict` (never overwritten — resolve by
-hand), `removed-from-kit`, `deleted-locally`, `override`.
+hand), `removed-from-kit`, `deleted-locally`, `override`, `ignored` (missing, and the project's git ignores
+it: never written). Drift-check reports such a file as `ignored`, not `missing`.
 
 ## Upgrade to another release
 
@@ -133,7 +153,7 @@ drift-check accepts any content. An override naming a file the kit does not ship
 | `packs/angular/`, `packs/node-express/` | Stack packs. `pack.json` contract: `standardsDoc`, `skills`, `cursorRules`, `gotchas`, `validation` (npm script names), optional `configDefaults` and `agentsFragment`. |
 | `layers/cursor/` | Optional Cursor layer (`.cursor/commands`, rules, `mcp.json` without raw Playwright). |
 | `templates/` | Skeletons: `AGENTS.md`, `CLAUDE.md`, `docs/brain/*`, `docs/project/*`, `.gitignore`, `.mcp.json`, `.nvmrc`, `.prettierrc.json`; `templates/cursor/` only with `-Cursor`. |
-| `kit.config.json` | Every key a placeholder can name. `slots.fePorts/bePorts` are base ports (slot N = base + N); `paths.srcRoot/serverRoot` end with `/`; `paths.planChecks` (default `docs/project/plan-checks.md`) is the project's own planning checklist, which `/plan`'s Architect + PM review adds when the file exists — optional, never written by the kit. |
+| `kit.config.json` | Every key a placeholder can name. `slots.fePorts/bePorts` are base ports (slot N = base + N); `paths.srcRoot/serverRoot` end with `/`; `paths.planChecks` (default `docs/project/plan-checks.md`) is the project's own planning checklist, which `/plan`'s Architect + PM review adds when the file exists — optional, never written by the kit. `commands.*` are npm script names; `commands.dev` + `slots.feExec`, `slots.fePortArgs`, `slots.feMatcher`, `slots.feEnvFile` describe the slot frontend dev server (filled by a stack pack); `project.i18nFile` may be a file, glob or folder (`src/locales/`); `security.sensitivePaths` as a regex string replaces `ship-prep`'s built-in sensitive paths, as a list of globs adds to them; `tools.browser` left at its default is not named in `AGENTS.md`. The `$comment` scaffold documents every key. |
 | `kit.json` | Kit version (semver), recorded into each install. |
 | `tools/install.mjs`, `tools/sync.mjs`, `tools/drift-check.mjs` | Installer, sync and drift check. |
 | `tools/lib/kit.mjs`, `tools/lib/source.mjs` | Render/plan engine; release fetch + cache. |
@@ -141,7 +161,8 @@ drift-check accepts any content. An override naming a file the kit does not ship
 | `.github/workflows/leak-check.yml` | Runs every check on push and pull request. |
 
 Placeholder filters (code contexts): `{{paths.hotspots|quoted}}` → `'a', 'b'`, `|dquoted`, `|glob` →
-`{a,b}`, `|alt` → `a|b` (regex alternation, metacharacters escaped).
+`{a,b}`, `|alt` → `a|b` (regex alternation, metacharacters escaped), `|json` → the value as a JS/JSON literal
+(a string stays a string, a list a list).
 
 ## Checks
 

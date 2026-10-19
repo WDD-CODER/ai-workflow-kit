@@ -18,13 +18,14 @@
  *   drift      the project's file differs from the rendered kit file      -> exit 1
  *   missing    the kit ships it, the project has no such file             -> exit 1
  *   override   listed in kit.config.json `overrides` (any content)        -> fine
+ *   ignored    missing, and the project's git ignores the path            -> fine (it never reaches a clone)
  *
  * Read-only. Exit 0 = no undeclared differences, 1 = differences or a usage/config error.
  */
 import { readFileSync, existsSync } from 'fs'
 import { resolve, join } from 'path'
 import { resolveSource } from './lib/source.mjs'
-import { KIT_ROOT, readJson, resolveConfig, planFiles, parseArgs, readOverrides } from './lib/kit.mjs'
+import { KIT_ROOT, readJson, resolveConfig, planFiles, parseArgs, readOverrides, ownsAgents, ignoredPaths, AGENTS_WORKFLOW } from './lib/kit.mjs'
 
 const die = (m) => {
   console.error(`KIT_DRIFT: FAIL — ${m}`)
@@ -66,17 +67,22 @@ try {
   }))
   overrides = readOverrides(project)
   const vals = resolveConfig({ kitRoot, project, packs, target })
-  plan = planFiles({ kitRoot, packs, cursor, yesChef: !!inst?.yesChef, vals })
+  // Without .kit/install.json only an override makes AGENTS.md the project's (a hand-copied AGENTS.md is the kit's).
+  const agentsWorkflow = ownsAgents({ target, overrides, recorded: inst ? inst.files ?? {} : null })
+  plan = planFiles({ kitRoot, packs, cursor, yesChef: !!inst?.yesChef, vals, agentsWorkflow })
 } catch (e) {
   die(e.message)
 }
 
 const rows = []
 const managed = plan.files.filter((f) => f.kind === 'managed')
+// A missing file the project's git ignores never reaches a clone: `ignored`, not `missing`.
+const ignored = ignoredPaths(target, managed.filter((f) => !existsSync(join(target, f.dest))).map((f) => f.dest))
 for (const f of managed) {
   const dest = join(target, f.dest)
   let state
   if (overrides.has(f.dest)) state = 'override'
+  else if (ignored.has(f.dest)) state = 'ignored'
   else if (!existsSync(dest)) state = 'missing'
   else state = readFileSync(dest, 'utf8') === f.content ? 'same' : 'drift'
   rows.push({ dest: f.dest, state })
@@ -84,7 +90,8 @@ for (const f of managed) {
 
 // Seeds can be overridden too (kit-sync then never writes them), so they count as shipped here.
 const shipped = new Set(plan.files.map((f) => f.dest))
-for (const s of ['drift', 'missing']) for (const r of rows.filter((x) => x.state === s)) console.log(`${s.padEnd(9)} ${r.dest}`)
+if (shipped.has(AGENTS_WORKFLOW)) shipped.add('AGENTS.md') // its override is what sends the rules to AGENTS.workflow.md
+for (const s of ['drift', 'missing', 'ignored']) for (const r of rows.filter((x) => x.state === s)) console.log(`${s.padEnd(9)} ${r.dest}`)
 if (args.verbose) for (const r of rows.filter((x) => x.state === 'override')) console.log(`override  ${r.dest} — ${overrides.get(r.dest)}`)
 for (const p of overrides.keys()) if (!shipped.has(p)) console.log(`NOTE override ${p} is not a file this kit ships — remove it from kit.config.json`)
 const notSet = [...plan.report.notSet].sort()
@@ -93,7 +100,7 @@ if (plan.report.unknown.size > 0) console.log(`NOTE unknown placeholders: ${[...
 
 const n = (s) => rows.filter((r) => r.state === s).length
 const undeclared = n('drift') + n('missing')
-const tail = `packs=[${packs.join(', ')}], cursor=${cursor}, ${managed.length} managed files, source=${origin.source}${origin.ref ? '@' + origin.ref : ''}`
+const tail = `${n('ignored') ? `${n('ignored')} ignored, ` : ''}packs=[${packs.join(', ')}], cursor=${cursor}, ${managed.length} managed files, source=${origin.source}${origin.ref ? '@' + origin.ref : ''}`
 if (undeclared > 0) {
   console.log(`KIT_DRIFT: FAIL — ${undeclared} undeclared differences (${n('drift')} drift, ${n('missing')} missing), ${n('override')} overrides; ${tail}`)
   process.exit(1)

@@ -1,0 +1,9 @@
+{
+  "name": "workflow-scripts",
+  "private": true,
+  "description": "Dependencies of the workflow scripts in this folder (kit-managed; kit-sync updates it). Install: run npm install inside scripts/. Commit scripts/package-lock.json.",
+  "type": "{{kit.scriptsType}}",
+  "dependencies": {
+    "picomatch": "^4.0.7"
+  }
+}
