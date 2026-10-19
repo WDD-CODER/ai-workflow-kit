@@ -216,10 +216,38 @@ release, no `kit.json` bump; CHANGELOG `### 004 — …` under `## [Unreleased]`
   byte-identical, plus the new first line "Match the file's existing style; never reformat untouched lines." and the
   neutral Loads descriptions; `review.md` skip-list wording; `ship.md` and `standards-git.md` (the `gh -R` / PATCH
   text); `security.yml` — `working-directory: server` → `server/` (same folder), same `npm ci` installs, same two
-  `--omit=dev --audit-level=critical` audits, plus the `scripts/` audit step that runs only once
-  `scripts/package-lock.json` is committed (none yet); `scripts/techdebt-report.mjs` (scan added). Identical:
+  `--omit=dev --audit-level=critical` audits, plus a **report-only** `scripts/` audit step (never fails the job; runs
+  only once `scripts/package-lock.json` is committed — none yet), so FoodVibe gets no new blocking CI gate;
+  `scripts/techdebt-report.mjs` (scan added). Identical:
   `.husky/pre-commit` (same hook order), `docs-refresh.md`, `pr-check-fix-loop.md`, `.prettierrc.json`, every other file.
   Overridden (sync never writes them): `.github/workflows/ci.yml` (render keeps `server-tests`, full `npm run lint`,
   `npm ci`; it moves to `working-directory`), `.claude/commands/fix.md` (Angular rules via the pack, real section
   names), `.claude/commands/commands.md`, `.claude/skills/techdebt/SKILL.md`.
 - No CI behaviour or command-rule change for FoodVibe; no new override needed.
+- **Done-when "0 `conflict`" — accepted exception:** the dry-run shows 2 conflicts, the PRD/HLD templates. They come from
+  plan 002 by design (seeds promoted to managed; plan 006 notes them and A7 resolves them), not from 004. 004 adds no
+  conflict. Re-checked after the review fixes: same `3 new, 26 kit-update, 2 conflicts` and the same 12 differing
+  renders; `security.yml`'s only addition is the report-only `scripts/` audit.
+
+### PR #26 review fixes
+1. (medium) `ci.lintScope: changed` linted kit-managed files (e.g. `scripts/*.mjs` in a sync PR) → the step drops every
+   path recorded in `.kit/install.json` (read with `node -p`, no `jq` dependency). Verified with a stub `npx` in a
+   scratch repo: a PR merge commit and a push both lint `src/a.ts` and `src/b c.ts`, never the kit file `scripts/x.mjs`.
+2. (medium) `scripts/package-lock.json` is the project's, `scripts/package.json` the kit's (Planner decision):
+   (a) `sync --apply` that writes `scripts/package.json` runs `npm install --no-audit --no-fund` inside `scripts/` (same
+   shell spawn as install, never `--prefix`) when that lockfile exists, and logs it; on failure it prints the exact
+   command. install-check: no lockfile → no install; with a lockfile, offline with an empty npm cache → the failure NOTE
+   naming `cd scripts && npm install --no-audit --no-fund`. (b) The `scripts/` audit in `security.yml` is report-only
+   (`set +e`, summary, `::warning`, `exit 0`): kit dependencies are fixed by a kit release. FoodVibe gets no new blocking
+   gate. (c) CHANGELOG item 4.
+3. (low) PR path compares the merge commit with `HEAD^1`; the diff is `git -c core.quotePath=false diff -z` written to a
+   file (a failing diff fails the step under `set -e`), read NUL-separated (names with spaces survive). Verified: outside
+   a repo the step exits 128 instead of "nothing to lint".
+4. (low) `ci.lintScope` / `ci.appAuditMode` outside `all|changed` / `enforce|report` → install and sync `STOP`, exit 2
+   (install-check case).
+5. (low) `server/package.json` with an empty `paths.serverRoot` → install and sync `NOTE` (install-check case);
+   CHANGELOG item 3 says a project with a backend must set the key.
+6. (low) `PACK:<name>` fragment lines take the marker line's indentation.
+7. Done-when wording: the accepted exception above.
+- Checks after the fixes: leak-check ×3, pack-check, workflow-link-check (0 missing), install-check with actionlint
+  (16 rendered workflows) and e2e — see the PR body.

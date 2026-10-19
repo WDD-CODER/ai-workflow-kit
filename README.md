@@ -72,8 +72,10 @@ cd ai-workflow-kit
   `*.ts *.tsx *.js *.jsx *.mjs *.cjs` files (PR base; a push: the commit before it), `ci.appAuditMode: "report"` writes
   the app's `npm audit` to the job summary and a warning instead of failing, and `ci.install` replaces `npm ci`
   (e.g. `npm install --no-audit --no-fund` for a lockfile the project can't fix). The workflow scripts' own
-  dependencies are always audited at `critical` (when `scripts/package-lock.json` is committed). No backend
-  (`paths.serverRoot` empty) = no `server-tests` job and no server step.
+  dependencies (kit-managed) are audited report-only, and `kit-sync --apply` refreshes `scripts/package-lock.json` when it
+  updates them. Kit-managed files are never linted by the changed-files lint. No backend
+  (`paths.serverRoot` empty) = no `server-tests` job and no server step; install and sync print a `NOTE` when
+  `server/package.json` exists while the key is empty.
 - **CI secret scan.** The `gitleaks` job in `ci.yml` asks for `contents: read` and `pull-requests: read`
   and posts no PR comments (`GITLEAKS_ENABLE_COMMENTS: false`), so it works with the default read-only
   token. A repository owned by an organization (not a personal account) also needs a `GITLEAKS_LICENSE`

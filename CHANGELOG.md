@@ -142,14 +142,21 @@ What a project must do:
    come from the pack). Sync shows the changed managed files as `kit-update`.
 2. A project whose CI can't be green for code or dependencies it does not own (an upstream copy, a stale lockfile, a
    legacy codebase): set `ci.install` (e.g. `"npm install --no-audit --no-fund"`), `ci.lintScope: "changed"` (ESLint on
-   the changed files only; needs ESLint in the root `node_modules`) and/or `ci.appAuditMode: "report"` in
-   `kit.config.json`, then sync. An `overrides` entry for `.github/workflows/ci.yml` or `security.yml` kept only for
-   that, or only to drop the backend job, can go: sync, check the rendered file, remove the override.
+   the project's own changed files only — kit-managed files are left out; needs ESLint in the root `node_modules`)
+   and/or `ci.appAuditMode: "report"` in `kit.config.json`, then sync. Install and sync refuse (exit 2) any other value
+   of the two modes. An `overrides` entry for `.github/workflows/ci.yml` or `security.yml` kept only for that, or only
+   to drop the backend job, can go: sync, check the rendered file, remove the override.
 3. A project with no backend leaves `paths.serverRoot` empty: `ci.yml` and `security.yml` then render no server job
-   or step (no more `npm ci --prefix ` with nothing after it, no `working-directory: server`).
-4. `security.yml` now also audits the workflow scripts' dependencies (`scripts/package.json`) at `critical` when
-   `scripts/package-lock.json` is committed (003, item 2), and `ci.yml` installs them inside `scripts/` before
-   `npm run test:scripts`.
+   or step (no more `npm ci --prefix ` with nothing after it, no `working-directory: server`). **A project that has a
+   backend must set `paths.serverRoot`** (e.g. `"server/"`, which the node-express pack sets): with it empty, CI runs no
+   server tests and no server audit. Install and sync print a `NOTE` when `server/package.json` exists and the key is
+   empty.
+4. The workflow scripts' dependencies (`scripts/package.json`, kit-managed): `ci.yml` installs them inside `scripts/`
+   before `npm run test:scripts`, and `security.yml` audits them **report-only** (job summary + warning, never a
+   failed job: a kit release fixes them, not the project) — both only once `scripts/package-lock.json` is committed
+   (003, item 2). `kit-sync --apply` that updates `scripts/package.json` now runs `npm install` inside `scripts/` when
+   that lockfile exists, so the lockfile follows the kit; commit it with the sync. If that install fails, sync prints
+   the command to run.
 5. Optional: record a tech-debt baseline once — `node scripts/techdebt-report.mjs scan --write-baseline`, commit
    `<paths.sharedDocs>/techdebt-baseline.json` — so the `techdebt` skill reports `NEW_DEBT: yes|no` against it
    instead of the whole legacy count. A project that overrides `.claude/skills/techdebt/SKILL.md` can add the `scan`
@@ -160,10 +167,12 @@ What a project must do:
 
 #### Added
 - Config keys `ci.install` (default `npm ci`), `ci.lintScope` (`all` default | `changed`) and `ci.appAuditMode`
-  (`enforce` default | `report`). `changed` lints the changed `*.ts *.tsx *.js *.jsx *.mjs *.cjs` files: a PR against
-  its base, a push against `github.event.before` (a new branch: `HEAD~1`; nothing to compare = pass). `report` runs
-  the app audit with `set +e` and writes the result to `$GITHUB_STEP_SUMMARY` plus a `::warning`; the `scripts/`
-  audit stays enforced.
+  (`enforce` default | `report`). `changed` lints the changed `*.ts *.tsx *.js *.jsx *.mjs *.cjs` files minus the
+  kit-managed ones (`.kit/install.json`): a PR's merge commit against its base side (`HEAD^1`), a push against
+  `github.event.before` (a new branch: `HEAD~1`; nothing to compare = pass); a failing `git diff` fails the step.
+  `report` runs the app audit with `set +e` and writes the result to `$GITHUB_STEP_SUMMARY` plus a `::warning`.
+- `kit-sync --apply` refreshes `scripts/package-lock.json` (`npm install` inside `scripts/`) when it writes
+  `scripts/package.json` and the project has that lockfile.
 - Conditional blocks in kit files: `KIT:if <key>` / `KIT:else` / `KIT:end` (as `# …` or `<!-- … -->` lines; `key`,
   `!key`, `key=value`, `key!=value`). The backend job and steps in `ci.yml` and `security.yml` render only with
   `paths.serverRoot`.

@@ -43,7 +43,23 @@ export function commandProblems(vals) {
     const m = /^\s*npm\s+(?:run(?:-script)?\s+)?(\S.*)$/.exec(v)
     if (m) out.push(`${key} is "${v}" — commands.* take npm script names, not commands: set it to "${m[1].trim()}"`)
   }
+  // ci.* modes: a value outside the set would silently render the default branch of the workflow.
+  for (const [key, allowed] of Object.entries(CI_MODES)) {
+    const v = vals[key]
+    if (!isEmpty(v) && !allowed.includes(v)) out.push(`${key} is "${v}" — allowed: ${allowed.map((a) => `"${a}"`).join(', ')}`)
+  }
   return out
+}
+const CI_MODES = { 'ci.lintScope': ['all', 'changed'], 'ci.appAuditMode': ['enforce', 'report'] }
+
+/**
+ * A NOTE when the project has a backend package (server/package.json) but paths.serverRoot is empty: CI then renders
+ * no server tests, install or audit. Else null.
+ */
+export function backendNote(vals, target) {
+  if (!isEmpty(vals['paths.serverRoot']) || !existsSync(join(target, 'server', 'package.json'))) return null
+  return 'NOTE server/package.json exists but paths.serverRoot is empty: ci.yml and security.yml render no server tests, install or audit. ' +
+    'Set paths.serverRoot to "server/" if that is the project backend.'
 }
 
 /**
@@ -189,7 +205,11 @@ function fillPackMarkers(text, fragments) {
   for (const line of text.split('\n')) {
     const name = packMarker(line)
     if (name == null) out.push(line)
-    else for (const f of fragments) out.push(...(f[name] ?? []))
+    else {
+      // Fragment lines take the marker's indentation (a marker inside an indented YAML or list block).
+      const indent = /^[ \t]*/.exec(line)[0]
+      for (const f of fragments) out.push(...(f[name] ?? []).map((l) => (l.trim() ? indent + l : l)))
+    }
   }
   return out.join('\n')
 }

@@ -24,15 +24,18 @@
  *   ignored           a missing path the project's git ignores           -> never written
  * When the project owns AGENTS.md (an override, or present and not kit-installed) the kit's rules come as
  * AGENTS.workflow.md (managed) instead.
+ * --apply that writes scripts/package.json also runs npm install inside scripts/ when the project has
+ * scripts/package-lock.json (the lockfile is the project's; this keeps it in step with the kit's package.json).
  * Exit 0 always for a completed report; 1 on a usage or config error; 2 when a commands.* value is a full
  * command instead of an npm script name (nothing written).
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
+import { spawnSync } from 'child_process'
 import { resolve, join, dirname } from 'path'
 import { resolveSource } from './lib/source.mjs'
 import {
   KIT_ROOT, readJson, sha256, resolveConfig, planFiles, parseArgs, readOverrides, isHook, markHooksExecutable, commandProblems,
-  ownsAgents, ignoredPaths, AGENTS_WORKFLOW, frontendNote, presentAlternative,
+  ownsAgents, ignoredPaths, AGENTS_WORKFLOW, frontendNote, presentAlternative, backendNote,
 } from './lib/kit.mjs'
 
 let args
@@ -57,6 +60,7 @@ const cfgFile = join(target, 'kit.config.json')
 const project = existsSync(cfgFile) ? readJson(cfgFile) : {}
 let plan
 let feNote
+let beNote
 let overrides
 let kitRoot
 let origin
@@ -78,6 +82,7 @@ try {
     process.exit(2)
   }
   feNote = frontendNote(vals)
+  beNote = backendNote(vals, target)
   const agentsWorkflow = ownsAgents({ target, overrides, recorded: inst.files ?? {} })
   plan = planFiles({ kitRoot, packs: inst.packs, cursor: inst.cursor, yesChef: inst.yesChef, vals, agentsWorkflow })
 } catch (e) {
@@ -91,6 +96,7 @@ const record = { ...inst.files }
 const planned = new Set()
 const hooksWritten = []
 const skippedSeeds = []
+let scriptsPkgWritten = false
 for (const f of plan.files) {
   planned.add(f.dest)
   const rec = inst.files[f.dest]
@@ -129,6 +135,7 @@ for (const f of plan.files) {
     mkdirSync(dirname(dest), { recursive: true })
     writeFileSync(dest, next, 'utf8')
     if (isHook(f.dest)) hooksWritten.push(f.dest)
+    if (f.dest === 'scripts/package.json') scriptsPkgWritten = true
     record[f.dest] = { sha256: nextHash, kind: f.kind, source: f.source }
   } else if (state === 'same') record[f.dest] = { sha256: nextHash, kind: f.kind, source: f.source }
 }
@@ -142,6 +149,7 @@ for (const s of order) for (const r of rows.filter((x) => x.state === s)) consol
 for (const n of skippedSeeds) console.log(n)
 for (const p of unknownOverrides) console.log(`NOTE override ${p} is not a file this kit ships — remove it from kit.config.json`)
 if (feNote) console.log(feNote)
+if (beNote) console.log(beNote)
 if (inst.kit?.version !== readJson(join(kitRoot, 'kit.json')).version) {
   console.log(`NOTE installed from kit ${inst.kit?.version}, this kit is ${readJson(join(kitRoot, 'kit.json')).version}`)
 }
@@ -155,6 +163,15 @@ if (args.apply) {
   const sorted = Object.fromEntries(Object.entries(record).sort(([a], [b]) => (a < b ? -1 : 1)))
   const { kit: _kit, source: _source, ref: _ref, commit: _commit, files: _files, ...rest } = inst
   writeFileSync(installFile, JSON.stringify({ kit: { version: kitVersion }, ...origin, ...rest, files: sorted }, null, 2) + '\n', 'utf8')
+  // scripts/package.json is the kit's, scripts/package-lock.json the project's: refresh the lockfile with the new
+  // dependencies, or `npm ci` inside scripts/ (CI, slots) fails on the sync PR. Inside scripts/, never --prefix (npm 10).
+  if (scriptsPkgWritten && existsSync(join(target, 'scripts', 'package-lock.json'))) {
+    // One command string: on Windows npm is a .cmd and needs a shell, which must not get an args array (DEP0190).
+    const r = spawnSync('npm install --no-audit --no-fund', { cwd: join(target, 'scripts'), stdio: 'inherit', shell: true })
+    console.log(r.status === 0
+      ? 'NOTE scripts/package.json changed: refreshed scripts/package-lock.json (npm install inside scripts/); commit it with the sync'
+      : 'NOTE scripts/package.json changed but npm install inside scripts/ failed. Run it, then commit scripts/package-lock.json:  cd scripts && npm install --no-audit --no-fund')
+  }
 }
 console.log(
   `KIT_SYNC: ${args.apply ? 'applied' : 'dry-run'} — ${count('new')} new, ${count('kit-update')} kit-update, ${count('conflict')} conflicts, ` +

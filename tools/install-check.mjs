@@ -26,6 +26,7 @@ import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, readdirSyn
 import { tmpdir } from 'os'
 import { join, relative, resolve } from 'path'
 import { spawnSync } from 'child_process'
+import { createHash } from 'crypto'
 import { fileURLToPath } from 'url'
 import { builtinModules } from 'module'
 import { linkProblems } from './workflow-link-check.mjs'
@@ -117,16 +118,22 @@ function ciProblems(dir, fx) {
   if (ci.split(`        run: ${install}\n`).length - 1 < 3 || !sec.includes(`        run: ${install}\n`)) out.push(`ci.yml / security.yml do not install with ci.install "${install}"`)
   if (fx.cfg.ci?.lintScope === 'changed') {
     const ok = lintJob.includes('name: ESLint (changed files)') && !lintJob.includes('run: npm run lint') && lintJob.includes('fetch-depth: 0') &&
-      lintJob.includes("git diff --name-only --diff-filter=d \"$BASE\" HEAD -- '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs'") &&
-      lintJob.includes('PR_BASE: ${{ github.event.pull_request.base.sha }}') && lintJob.includes('PUSH_BEFORE: ${{ github.event.before }}') &&
-      lintJob.includes("git rev-parse -q --verify 'HEAD~1'") && lintJob.includes('nothing to lint')
-    if (!ok) out.push('ci.yml lintScope changed: lint must be ESLint on the changed files (PR base, push before, HEAD~1 fallback, none = pass)')
+      lintJob.includes("git -c core.quotePath=false diff -z --name-only --diff-filter=d \"$BASE\" HEAD -- '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' > \"$LIST\"") &&
+      lintJob.includes("BASE=\"$(git rev-parse --verify 'HEAD^1')\"") && lintJob.includes('PUSH_BEFORE: ${{ github.event.before }}') &&
+      lintJob.includes("git rev-parse -q --verify 'HEAD~1'") && lintJob.includes('nothing to lint') &&
+      lintJob.includes("Object.keys(require('./.kit/install.json').files || {})")
+    if (!ok) out.push('ci.yml lintScope changed: lint must be ESLint on the changed files (PR HEAD^1, push before, HEAD~1 fallback, none = pass, kit files left out)')
   } else if (!has(lintJob, '      - name: ESLint', '        run: npm run lint') || lintJob.includes('changed files')) out.push('ci.yml lintScope all: lint must run npm run <commands.lint> on the whole repo')
-  const audits = sec.split('npm audit (workflow scripts)')[0]
+  const cut = sec.indexOf('npm audit (workflow scripts')
+  const audits = cut < 0 ? sec : sec.slice(0, cut)
+  const scriptsAudit = cut < 0 ? '' : sec.slice(cut + 'npm audit (workflow scripts'.length)
   if (fx.cfg.ci?.appAuditMode === 'report') {
     if (!audits.includes('set +e') || !audits.includes('>> "$GITHUB_STEP_SUMMARY"') || !audits.includes('::warning') || audits.includes('--audit-level')) out.push('security.yml report mode: set +e, job summary and a warning, no enforced app audit')
   } else if (!has(audits, '      - name: npm audit (root)', '        run: npm audit --omit=dev --audit-level=critical') || audits.includes('set +e')) out.push('security.yml enforce mode must keep the critical production audit')
-  if (!has(sec, '      - name: npm audit (workflow scripts)', "        if: hashFiles('scripts/package-lock.json') != ''", '        run: npm audit --omit=dev --audit-level=critical', '        working-directory: scripts')) out.push('security.yml must enforce the scripts/ dependency audit at critical')
+  // The kit-managed scripts/ dependencies: a kit release fixes them, so their audit only reports.
+  const scriptsStep = scriptsAudit.split('Semgrep')[0]
+  if (!scriptsAudit.startsWith(', report only)') || !scriptsStep.includes("if: hashFiles('scripts/package-lock.json') != ''") || !scriptsStep.includes('working-directory: scripts') ||
+    !scriptsStep.includes('set +e') || !scriptsStep.includes('>> "$GITHUB_STEP_SUMMARY"') || !scriptsStep.includes('exit 0') || scriptsStep.includes('--audit-level')) out.push('security.yml: the scripts/ dependency audit must be report-only (set +e, summary, warning, exit 0)')
   if (!has(lintJob, '      - name: Install workflow script dependencies', "        if: hashFiles('scripts/package-lock.json') != ''", '        working-directory: scripts')) out.push('ci.yml must install the scripts/ dependencies inside scripts/ before the workflow script tests')
   if (haveActionlint) {
     const wf = readdirSync(join(dir, '.github/workflows')).filter((x) => /\.ya?ml$/.test(x)).map((x) => join(dir, '.github/workflows', x))
@@ -565,6 +572,53 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   const worse = scan('--strict')
   if (worse.status !== 1 || !worse.stdout.includes('NEW_DEBT: yes (any +1)')) fail(`techdebt scan with new debt (${name}): exit ${worse.status}, ${worse.stdout.trim().split('\n').pop()}`)
   rmSync(td, { recursive: true, force: true })
+}
+
+// ci.* modes outside the allowed set are refused like a full command (exit 2, nothing written); a server/package.json
+// with an empty paths.serverRoot gets a NOTE (CI would render no server step).
+{
+  const cm = tmp('ci-modes')
+  writeFileSync(join(cm, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, ci: { lintScope: 'changed-only', appAuditMode: 'warn' } }))
+  const r = run('install.mjs', ['--target', cm])
+  if (r.status !== 2 || !r.stderr.includes('ci.lintScope is "changed-only" — allowed: "all", "changed"') || !r.stderr.includes('ci.appAuditMode is "warn" — allowed: "enforce", "report"') || files(cm).length !== 1) fail(`install with bad ci.* modes: exit ${r.status}, ${r.stderr.trim().split('\n')[0]}`)
+  writeFileSync(join(cm, 'kit.config.json'), JSON.stringify(CORE_CFG))
+  mkdirSync(join(cm, 'server'))
+  writeFileSync(join(cm, 'server/package.json'), '{ "name": "api" }\n')
+  const ok = run('install.mjs', ['--target', cm])
+  if (ok.status !== 0 || !ok.stdout.includes('NOTE server/package.json exists but paths.serverRoot is empty')) fail(`install with server/ and no paths.serverRoot: no NOTE: ${ok.stdout.trim().split('\n').pop()}`)
+  writeFileSync(join(cm, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, ci: { appAuditMode: 'off' } }))
+  const s = run('sync.mjs', ['--target', cm, '--apply'])
+  if (s.status !== 2 || !s.stderr.includes('KIT_SYNC: STOP — ci.appAuditMode is "off"')) fail(`sync with a bad ci.appAuditMode: exit ${s.status}, ${s.stderr.trim().split('\n')[0]}`)
+  rmSync(cm, { recursive: true, force: true })
+}
+
+// sync --apply that updates the kit-managed scripts/package.json refreshes the project's scripts/package-lock.json
+// (npm install inside scripts/). Offline with an empty npm cache the install fails: sync names the command to run.
+// Without a lockfile, sync runs nothing.
+{
+  const lk = tmp('scripts-lock')
+  const cache = tmp('npm-cache')
+  writeFileSync(join(lk, 'kit.config.json'), JSON.stringify(CORE_CFG))
+  run('install.mjs', ['--target', lk])
+  const instPath = join(lk, '.kit/install.json')
+  const older = '{ "name": "workflow-scripts", "private": true, "dependencies": {} }\n'
+  const asOlderKit = () => {
+    writeFileSync(join(lk, 'scripts/package.json'), older)
+    const inst = JSON.parse(readFileSync(instPath, 'utf8'))
+    inst.files['scripts/package.json'].sha256 = createHash('sha256').update(older).digest('hex')
+    writeFileSync(instPath, JSON.stringify(inst, null, 2))
+  }
+  const env = { ...process.env, npm_config_offline: 'true', npm_config_cache: cache, npm_config_update_notifier: 'false' }
+  const sync = () => spawnSync(process.execPath, [join(kit, 'tools', 'sync.mjs'), '--target', lk, '--apply'], { encoding: 'utf8', env })
+  asOlderKit()
+  const none = sync()
+  if (/npm install inside scripts/.test(none.stdout) || read(lk, 'scripts/package.json') === older) fail(`sync without scripts/package-lock.json: ${none.stdout.trim().split('\n').pop()}`)
+  asOlderKit()
+  writeFileSync(join(lk, 'scripts/package-lock.json'), JSON.stringify({ name: 'workflow-scripts', lockfileVersion: 3, requires: true, packages: { '': { name: 'workflow-scripts', dependencies: {} } } }, null, 2))
+  const s = sync()
+  if (read(lk, 'scripts/package.json') === older || !s.stdout.includes('NOTE scripts/package.json changed but npm install inside scripts/ failed') || !s.stdout.includes('cd scripts && npm install --no-audit --no-fund')) fail(`sync --apply with scripts/package-lock.json did not try npm install inside scripts/ (or did not name the command): ${s.stdout.trim().split('\n').slice(-3).join(' | ')}`)
+  rmSync(lk, { recursive: true, force: true })
+  rmSync(cache, { recursive: true, force: true })
 }
 
 // Required keys: core only with no config must STOP and write nothing.

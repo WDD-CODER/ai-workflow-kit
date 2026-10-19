@@ -33,7 +33,7 @@ import { resolve, join, dirname } from 'path'
 import { resolveSource } from './lib/source.mjs'
 import {
   KIT_ROOT, REQUIRED, isEmpty, readJson, sha256, resolveConfig, planFiles, parseArgs, unflatten, NOT_SET, readOverrides, isHook,
-  markHooksExecutable, commandProblems, ownsAgents, ignoredPaths, AGENTS_WORKFLOW, frontendNote, presentAlternative,
+  markHooksExecutable, commandProblems, ownsAgents, ignoredPaths, AGENTS_WORKFLOW, frontendNote, presentAlternative, backendNote,
 } from './lib/kit.mjs'
 
 let args
@@ -256,6 +256,8 @@ if (plan.files.some((f) => f.dest === '.github/workflows/todo-sync.yml')) {
 }
 const feNote = frontendNote(vals)
 if (feNote) log(feNote)
+const beNote = backendNote(vals, target)
+if (beNote) log(beNote)
 if (agentsWorkflow) {
   const claude = join(target, 'CLAUDE.md')
   const imports = existsSync(claude) && readFileSync(claude, 'utf8').includes(`@${AGENTS_WORKFLOW}`)
