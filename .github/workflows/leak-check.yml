@@ -20,8 +20,25 @@ jobs:
         run: node tools/leak-check.mjs --root README.md --root CHANGELOG.md --root docs --project-only
       - name: Packs must satisfy the pack contract
         run: node tools/pack-check.mjs
-      - name: Installer and sync install a working project (three fixtures)
+      # actionlint, pinned by version and checksum, lints every workflow install-check renders.
+      - name: Install actionlint (pinned)
+        env:
+          ACTIONLINT_VERSION: 1.7.7
+          ACTIONLINT_SHA256: 023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757
+        run: |
+          set -euo pipefail
+          tgz="$RUNNER_TEMP/actionlint.tar.gz"
+          curl -sSfL -o "$tgz" "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  $tgz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/actionlint"
+          tar -xzf "$tgz" -C "$RUNNER_TEMP/actionlint" actionlint
+          echo "ACTIONLINT=$RUNNER_TEMP/actionlint/actionlint" >> "$GITHUB_ENV"
+      - name: Installer and sync install a working project (fixtures; rendered workflows pass actionlint)
+        env:
+          KIT_REQUIRE_ACTIONLINT: '1'
         run: node tools/install-check.mjs
+      - name: Every path the installed workflow docs name exists (packs [], angular, node-express, both)
+        run: node tools/workflow-link-check.mjs
 
   e2e:
     # A fresh project taken through plan -> take-plan -> ship -> merge -> close-out (tools/e2e-check.mjs).

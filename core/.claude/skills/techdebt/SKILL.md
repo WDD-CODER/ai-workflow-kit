@@ -21,11 +21,16 @@ It prints `REPORT_PATH`, the scope (and the staged file list in working-tree mod
 
 Run the tools that exist before reading code by hand — they are faster and don't miss files:
 
+- `node scripts/techdebt-report.mjs scan` — counts the debt markers in the project's own `.ts .tsx .js .jsx .html .css .scss`
+  files (untyped escape hatches, `@ts-ignore`, `eslint-disable`, `console.log`, TODO/FIXME, files over 300 lines, plus the
+  stack pack's rules) and compares them with `{{paths.sharedDocs}}/techdebt-baseline.json`: `NEW_DEBT: yes` means a count went
+  up since the baseline. On an old codebase record the baseline once (`scan --write-baseline`, commit it), so the report
+  shows the trend instead of the whole legacy. `--list` prints every hit.
 - `npm run {{commands.lint}}` — the project's style rules
 - the project's dead-code tool, if it has one (unused exports, files and dependencies)
 - a grep for the state types the project bans ({{stack.stateRules}}) that lint does not catch
 
-<!-- PACK:stack — framework-specific greps (decorators, banned state types) come from the stack pack -->
+<!-- PACK:techdebt -->
 
 - `grep -rnE "TODO|FIXME" <scope>` — classify each as critical / nice-to-have
 - components or modules over 300 lines (`wc -l`) — split candidates
@@ -52,6 +57,9 @@ Write `REPORT_PATH` with exactly this structure; the script parses the `## Summa
 ## Scope
 full-project | working-tree (file list)
 
+## Scan vs baseline
+<the scan table and its NEW_DEBT line, verbatim>
+
 ## Detailed Findings
 ### Security Flags
 ### Dead Code
@@ -66,5 +74,7 @@ full-project | working-tree (file list)
 ## 4. Hand-off
 
 - Open findings that need a plan → append `[ ]` items under a `### Tech Debt` heading in `.claude/todo.md` (Planner only; a Worker lists them in the report and in its PR description instead).
-- Breadcrumbs stale after deletions → run `breadcrumbs`.
+<!-- KIT:if stack.docsMapSkill -->
+- Folder maps stale after deletions → run `{{stack.docsMapSkill}}`.
+<!-- KIT:end -->
 - Finish with one line: `Tech debt audit written to <REPORT_PATH> — N blocking, N findings, N fixed.`

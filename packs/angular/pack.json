@@ -23,6 +23,26 @@
     "test"
   ],
   "agentsFragment": "AGENTS.fragment.md",
+  "fragments": "FRAGMENTS.md",
+  "provides": {
+    "conventionsDoc": "docs/agent/conventions.md",
+    "styleSkill": "cssLayer",
+    "authSkill": "auth-and-logging",
+    "docsMapSkill": "breadcrumbs",
+    "docsMapCheck": "scripts/breadcrumbs-check.mjs",
+    "cssSection": "UI, CSS & Folder Structure",
+    "componentsSection": "Angular 19 & Reactivity"
+  },
+  "seeds": {
+    ".prettierrc.json": {
+      "skipWhenPresent": [".prettierrc", ".prettierrc.yaml", ".prettierrc.yml", ".prettierrc.json5", ".prettierrc.js", ".prettierrc.cjs", ".prettierrc.mjs", ".prettierrc.toml", "prettier.config.js", "prettier.config.cjs", "prettier.config.mjs", "prettier.config.ts", "package.json#prettier"]
+    }
+  },
+  "techdebtRules": [
+    { "id": "legacy-decorator", "pattern": "@(Input|Output)\\(", "ext": ["ts"], "exclude": "\\.spec\\.ts$" },
+    { "id": "behavior-subject", "pattern": "\\bBehaviorSubject\\b", "ext": ["ts"], "exclude": "\\.spec\\.ts$" },
+    { "id": "semicolon", "pattern": ";\\s*$", "ext": ["ts"], "exclude": "\\.spec\\.ts$|(^|/)(main|app\\.config|app\\.routes)\\.ts$" }
+  ],
   "configDefaults": {
     "stack.name": "Angular",
     "stack.stylesheetExt": "scss",

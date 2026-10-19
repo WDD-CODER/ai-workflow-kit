@@ -4,7 +4,9 @@ Use this path for building new features. Loads {{stack.name}} + domain standards
 
 ## Loads
 
-- `{{stack.standardsDoc}}` — Signals, Components, CSS (Layers), {{stack.name}} conventions
+<!-- KIT:if stack.standardsDoc -->
+- `{{stack.standardsDoc}}` — {{stack.name}} conventions (state, components, styling)
+<!-- KIT:end -->
 - `{{docs.domainStandards}}` (skip if unset) — {{project.name}} domain model, data flow, naming conventions
 - `{{paths.sharedDocs}}/tech-stack.md` — stack overrides
 
@@ -25,6 +27,7 @@ Use this path for building new features. Loads {{stack.name}} + domain standards
 
 ## Hard rules (inherited from CLAUDE.md / .cursor/rules/contractor-role.mdc)
 
-- No semicolons in `.ts` files. Single quotes in TS, double quotes in HTML.
+- Match the file's existing style; never reformat untouched lines.
+<!-- PACK:style:feat -->
 - `npm run {{commands.build}}` / `npm run {{commands.lint}}` must pass before declaring a milestone ready.
 - Branch guard enforced — never write on `main`.

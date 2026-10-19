@@ -18,6 +18,19 @@
 * Never force-push to `main`/`master`. Avoid destructive git ops unless Human explicitly requests them.
 * **Todo sync on ship approval (before commit):** `/ship` Approve **Y** is commit/push consent and Human validation of any `[human]` items — agents **must** mark matching `.claude/todo.md` / plan Atomic Sub-tasks `[x]` and stage them in the **same** ship commit as the job (see `AGENTS.md` **Job validation**, `docs/agent/job-validation.md`, `/ship` Phase 4 On approval). Do not commit the job first and leave todos for a follow-up push. Chat-only jobs: `/done` or Path B in `job-validation.md`.
 
+### `gh` in a fork, and when `gh pr edit` fails
+
+* **Name the repo on every `gh` call.** In a fork, `gh` picks the *parent* repository as its default, so `gh pr create`
+  fails with "No commits between <parent>:{{git.mainBranch}} and …" (or a PR lands in the wrong repo). Read the repo
+  `origin` points at once — `git remote get-url origin` (`https://github.com/<owner>/<repo>.git` or
+  `git@github.com:<owner>/<repo>.git`) — and pass it literally: `gh pr create -R <owner>/<repo> --base {{git.mainBranch}} …`,
+  `gh pr view <n> -R <owner>/<repo>`, `gh pr checks <n> -R <owner>/<repo>`, `gh pr merge <n> -R <owner>/<repo> …`.
+  Outside a fork the flag is harmless, so use it always.
+* **`gh pr edit` can fail on a deprecated GitHub API** (`GraphQL: Projects (classic) is being deprecated …
+  (repository.pullRequest.projectCards)`), even for a body-only edit. Edit the PR through the REST API instead: write the
+  body to a file, then `gh api -X PATCH repos/<owner>/<repo>/pulls/<n> -F body=@<file>` (`-f title=<title>` for the
+  title). The same call works for an issue: `repos/<owner>/<repo>/issues/<n>`.
+
 ---
 
 ## Post-push Merge Gate (mandatory)

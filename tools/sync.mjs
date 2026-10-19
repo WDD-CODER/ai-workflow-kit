@@ -17,7 +17,8 @@
  *   removed-from-kit  installed earlier, no longer shipped                -> kept, delete by hand if unwanted
  *   deleted-locally   installed earlier, missing now                      -> kept missing
  *   override          listed in kit.config.json `overrides`               -> never written, not a conflict
- * Seed files (templates) are written once and never updated: only `new` applies to them.
+ * Seed files (templates) are written once and never updated: only `new` applies to them. An optional pack seed is not
+ * written at all while the project has its own equivalent (a NOTE).
  * A file recorded as a seed that the kit now ships as managed is `conflict` unless it already matches the kit
  * (`same`, which records it as managed): its recorded hash is the project's copy, not a kit version.
  *   ignored           a missing path the project's git ignores           -> never written
@@ -31,7 +32,7 @@ import { resolve, join, dirname } from 'path'
 import { resolveSource } from './lib/source.mjs'
 import {
   KIT_ROOT, readJson, sha256, resolveConfig, planFiles, parseArgs, readOverrides, isHook, markHooksExecutable, commandProblems,
-  ownsAgents, ignoredPaths, AGENTS_WORKFLOW, frontendNote,
+  ownsAgents, ignoredPaths, AGENTS_WORKFLOW, frontendNote, presentAlternative,
 } from './lib/kit.mjs'
 
 let args
@@ -89,6 +90,7 @@ const rows = []
 const record = { ...inst.files }
 const planned = new Set()
 const hooksWritten = []
+const skippedSeeds = []
 for (const f of plan.files) {
   planned.add(f.dest)
   const rec = inst.files[f.dest]
@@ -104,6 +106,12 @@ for (const f of plan.files) {
   }
   if (ignored.has(f.dest)) {
     rows.push({ dest: f.dest, state: 'ignored' })
+    continue
+  }
+  // An optional pack seed the project never received, next to its own equivalent: never written.
+  const alt = !rec && !present && presentAlternative(target, f.skipWhenPresent)
+  if (alt) {
+    skippedSeeds.push(`NOTE ${f.dest} not written: the project has ${alt}`)
     continue
   }
   if (!rec) state = !present ? 'new' : cur === next ? 'same' : 'conflict'
@@ -131,6 +139,7 @@ const unknownOverrides = [...overrides.keys()].filter((p) => !planned.has(p) && 
 const order = ['new', 'kit-update', 'conflict', 'local-only', 'deleted-locally', 'removed-from-kit', 'override', 'ignored']
 const count = (s) => rows.filter((r) => r.state === s).length
 for (const s of order) for (const r of rows.filter((x) => x.state === s)) console.log(`${s.padEnd(16)} ${r.dest}`)
+for (const n of skippedSeeds) console.log(n)
 for (const p of unknownOverrides) console.log(`NOTE override ${p} is not a file this kit ships — remove it from kit.config.json`)
 if (feNote) console.log(feNote)
 if (inst.kit?.version !== readJson(join(kitRoot, 'kit.json')).version) {

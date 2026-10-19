@@ -22,7 +22,11 @@ Standalone review command. Used by `/ship` Phase 2 and invokable alone.
    ```
    Also include unstaged/staged working-tree changes relevant to this session.
 2. `docs/agent/standards-security.md`
-3. `docs/agent/conventions.md`
+<!-- KIT:if stack.conventionsDoc -->
+3. `{{stack.conventionsDoc}}`
+<!-- KIT:else -->
+3. `AGENTS.md` (the project's conventions; no stack pack conventions doc)
+<!-- KIT:end -->
 4. If a brief with a **"Done when"** section is in context this session — check the diff against those criteria explicitly. If none is in context, skip the brief-match check and note: `Brief-match: SKIPPED (no Done-when brief in context)`.
 
 ## What to check (judgment only)
@@ -33,7 +37,7 @@ Standalone review command. Used by `/ship` Phase 2 and invokable alone.
 
 ## What to skip (CI already covers)
 
-Do **not** re-check: semicolons, quotes, `no-explicit-any`, unused vars, secret-shaped strings, npm audit, semgrep OWASP patterns, or other mechanical lint/CI gates from Brief 2.
+Do **not** re-check: formatting (punctuation, quote style), `no-explicit-any`, unused vars, secret-shaped strings, npm audit, semgrep OWASP patterns, or other mechanical lint/CI gates from Brief 2.
 
 ## Output format (required)
 

@@ -134,6 +134,81 @@ What a project must do:
   PR's old remote branch is deleted only after the claim commit succeeded.
 - `scope-check` always allows `.kit/install.json` (kit-sync re-records it), so it is never `scope: out`.
 
+### 004 — Stack-neutral core, part 2: CI, commands, tech debt and rules by pack
+
+What a project must do:
+1. Nothing, for a project on the angular (and node-express) pack: its CI keeps the `server-tests` job, the full
+   `npm run <commands.lint>` and the enforced critical audit, and its commands keep the same Angular rules (they now
+   come from the pack). Sync shows the changed managed files as `kit-update`.
+2. A project whose CI can't be green for code or dependencies it does not own (an upstream copy, a stale lockfile, a
+   legacy codebase): set `ci.install` (e.g. `"npm install --no-audit --no-fund"`), `ci.lintScope: "changed"` (ESLint on
+   the changed files only; needs ESLint in the root `node_modules`) and/or `ci.appAuditMode: "report"` in
+   `kit.config.json`, then sync. An `overrides` entry for `.github/workflows/ci.yml` or `security.yml` kept only for
+   that, or only to drop the backend job, can go: sync, check the rendered file, remove the override.
+3. A project with no backend leaves `paths.serverRoot` empty: `ci.yml` and `security.yml` then render no server job
+   or step (no more `npm ci --prefix ` with nothing after it, no `working-directory: server`).
+4. `security.yml` now also audits the workflow scripts' dependencies (`scripts/package.json`) at `critical` when
+   `scripts/package-lock.json` is committed (003, item 2), and `ci.yml` installs them inside `scripts/` before
+   `npm run test:scripts`.
+5. Optional: record a tech-debt baseline once — `node scripts/techdebt-report.mjs scan --write-baseline`, commit
+   `<paths.sharedDocs>/techdebt-baseline.json` — so the `techdebt` skill reports `NEW_DEBT: yes|no` against it
+   instead of the whole legacy count. A project that overrides `.claude/skills/techdebt/SKILL.md` can add the `scan`
+   step to its copy.
+6. A project without the angular pack keeps the `.prettierrc.json` it got as a seed (sync never deletes seeds);
+   delete it if its code style differs. New installs get it only with the angular pack, and not when the project
+   already has a prettier config.
+
+#### Added
+- Config keys `ci.install` (default `npm ci`), `ci.lintScope` (`all` default | `changed`) and `ci.appAuditMode`
+  (`enforce` default | `report`). `changed` lints the changed `*.ts *.tsx *.js *.jsx *.mjs *.cjs` files: a PR against
+  its base, a push against `github.event.before` (a new branch: `HEAD~1`; nothing to compare = pass). `report` runs
+  the app audit with `set +e` and writes the result to `$GITHUB_STEP_SUMMARY` plus a `::warning`; the `scripts/`
+  audit stays enforced.
+- Conditional blocks in kit files: `KIT:if <key>` / `KIT:else` / `KIT:end` (as `# …` or `<!-- … -->` lines; `key`,
+  `!key`, `key=value`, `key!=value`). The backend job and steps in `ci.yml` and `security.yml` render only with
+  `paths.serverRoot`.
+- Pack fragments: a pack's `fragments` file (`FRAGMENTS.md`, not installed) fills `PACK:<name>` marker lines in core
+  files. The angular pack supplies the style rules of `/feat`, `/fix`, `/refactor`, `/security`, their styling and
+  auth skill lines, its pre-commit hooks (`pre-commit-no-semi` before the secret scan, `pre-commit-security-grep`
+  after it, as before) and its tech-debt greps.
+- The pack contract: `pack.json` `provides` names what a pack supplies for core references — `conventionsDoc`,
+  `backendDoc`, `styleSkill`, `authSkill`, `docsMapSkill`, `docsMapCheck`, `cssSection`, `componentsSection` — as the
+  config keys `stack.<key>` (a project may set its own). Core uses each only inside `KIT:if stack.<key>` with a
+  fallback, so a project with no pack gets no dangling path. `pack-check` fails on an unguarded contract key, a key
+  no pack provides, a provided file, skill or section that does not exist, a fragment that fills no marker, and a
+  core file that names a file or skill only a pack ships.
+- `tools/workflow-link-check.mjs`: every backticked path, `node scripts/…` and `npm run <script>` in the installed
+  commands, skills, agents, `docs/agent`, Cursor rules and `AGENTS.md`/`CLAUDE.md` must exist (runtime files and
+  examples skipped). Without arguments it checks installs with packs `[]`, angular, node-express and both;
+  `--target <dir>` checks a project. install-check runs it on each of its fixtures; kit CI runs both.
+- `techdebt-report.mjs scan`: counts `any`, `@ts-ignore`, `eslint-disable`, `console.log`, TODO/FIXME and files over
+  300 lines in the project's own `.ts .tsx .js .jsx .mjs .cjs .html .css .scss` files (tracked files under
+  `paths.srcRoot`, kit-managed files left out, tests left out for `any` and `console.log`), plus the pack's
+  `techdebtRules` (angular: legacy `@Input`/`@Output`, `BehaviorSubject`, trailing semicolons), and compares with
+  `<paths.sharedDocs>/techdebt-baseline.json`: `NEW_DEBT: yes|no` (`unknown` without a baseline). `--write-baseline`,
+  `--strict` (exit 1 on new debt), `--list`. The `techdebt` skill runs it; its `PACK:techdebt` marker is filled by
+  the pack.
+- Pack seeds: `pack.json` `seeds` marks pack files that are written once, optionally with `skipWhenPresent` (install
+  `SKIP-PRESENT`, a sync `NOTE`).
+- install-check: CI renders with and without `paths.serverRoot` and with every `ci.*` mode (actionlint on every
+  rendered workflow when it is installed; kit CI installs a pinned, checksum-verified actionlint and requires it),
+  the link check per fixture, no `KIT:`/`PACK:` directive left in a render, style rules and the prettier seed only
+  with the angular pack, the pre-commit hook order, a prettier seed skipped next to `prettier.config.js`, and the
+  tech-debt scan (core and angular rules, baseline, `--strict`).
+- `standards-git.md` and `/ship`: pass `-R <owner>/<repo>` (from `git remote get-url origin`) on every `gh` call —
+  in a fork `gh` targets the parent repo — and edit a PR with `gh api -X PATCH repos/<owner>/<repo>/pulls/<n>
+  -F body=@<file>` when `gh pr edit` fails on the Projects (classic) deprecation.
+
+#### Changed
+- Core commands carry no stack style rules: `/feat`, `/fix`, `/refactor` and `/security` say "Match the file's
+  existing style; never reformat untouched lines" and take the rest from the pack. `/review`, `/fix`,
+  `/docs-refresh`, `/security`, the techdebt skill and `pr-check-fix-loop.md` reach the conventions doc, backend
+  standards, styling, auth and docs-map skills through the pack contract; `/fix` "Loads by area" names the pack's
+  real standards-doc sections.
+- `.prettierrc.json` moved from `templates/` to the angular pack (a seed).
+- `ci.yml`: `server-tests` runs inside `paths.serverRoot` (`working-directory`) instead of `npm --prefix`; the gate's
+  `needs` is a block list; the docs-only path filter drops three patterns `*.md` already covered (shellcheck SC2221).
+
 ## [1.0.5] - 2026-10-18
 
 Fixes found installing the kit into a React + Vite project. Sync to pick them up (`kit-sync -Ref v1.0.5 -Apply`);

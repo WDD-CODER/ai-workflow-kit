@@ -36,14 +36,14 @@ Show all registered slash commands with short descriptions and file locations.
 | `/brief` | Capture or generate a session brief | `.claude/commands/brief.md` | FLOW | SHARED |
 | `/cleanup` | Session & worktree pruning | `.claude/commands/cleanup.md` | UTIL | SHARED |
 | `/commands` | List all registered slash commands, categories, and paths | `.claude/commands/commands.md` | UTIL | SHARED |
-| `/docs-refresh` | On-demand documentation refresh (breadcrumbs + project docs) | `.claude/commands/docs-refresh.md` | UTIL | SHARED |
+| `/docs-refresh` | On-demand documentation refresh (folder maps + project docs) | `.claude/commands/docs-refresh.md` | UTIL | SHARED |
 | `/done` | Validate a finished chat job — close-out ask, then mark matching todos `[x]` | `.claude/commands/done.md` | UTIL | SHARED |
 | `/feat` | New-feature path — rules, `/plan`, Contractor + `/review-it` | `.claude/commands/feat.md` | FLOW | SHARED |
 | `/fix` | Bug fix path — matching rules + quality pass | `.claude/commands/fix.md` | FLOW | SHARED |
 | `/fix-pr-checks` | Bounded PR CI/security fix loop (2 rounds max) | `.claude/commands/fix-pr-checks.md` | FLOW | SHARED |
 | `/plan` | Planning / Plan Contract path | `.claude/commands/plan.md` | FLOW | SHARED |
 | `/workflow-report` | Workflow report (not the feature) before `/clear` — feeds the next kit round | `.claude/commands/workflow-report.md` | UTIL | SHARED |
-| `/refactor` | Refactor path — {{stack.name}}/domain rules, cssLayer, techdebt | `.claude/commands/refactor.md` | FLOW | SHARED |
+| `/refactor` | Refactor path — {{stack.name}}/domain rules, styling skill, techdebt | `.claude/commands/refactor.md` | FLOW | SHARED |
 | `/review-it` | Reviewer pass — plan-match, conventions, Verify; report-only by default | `.claude/commands/review-it.md` | FLOW | CC |
 | `/security` | Security path — security rules + pre-commit security grep + CI | `.claude/commands/security.md` | FLOW | SHARED |
 | `/ship` | Session end — build gate, chat-scoped commit (`--yes` skips wait) | `.claude/commands/ship.md` | FLOW | SHARED |

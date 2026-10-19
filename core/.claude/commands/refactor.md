@@ -4,8 +4,10 @@ Use this path for code cleanup, dead code removal, pattern consolidation, and te
 
 ## Loads
 
-- `{{stack.standardsDoc}}` — component structure, Signals, CSS layer architecture
-- `cssLayer` skill — CSS layer ordering, BEM naming, token usage
+<!-- KIT:if stack.standardsDoc -->
+- `{{stack.standardsDoc}}` — component structure, state rules, styling architecture
+<!-- KIT:end -->
+<!-- PACK:loads:refactor -->
 - `techdebt` skill — scan for violations, duplications, dead code
 
 ## Invokes
@@ -25,8 +27,8 @@ Use this path for code cleanup, dead code removal, pattern consolidation, and te
 
 - No behavior changes in a refactor commit. If you find a bug, open a `/fix` separately.
 - `npm run {{commands.build}}` must pass after every commit.
-- No semicolons in any `.ts` file touched.
-- Reference `cssLayer` skill before modifying any `.{{stack.stylesheetExt}}` file — layer order matters.
+- Match the file's existing style; never reformat untouched lines.
+<!-- PACK:style:refactor -->
 - Human commits by default (`git-agent` prep only).
 
 ## Scope guidelines

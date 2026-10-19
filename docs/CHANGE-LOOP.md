@@ -14,8 +14,8 @@ kit branch + PR  ->  merge  ->  tag vX.Y.Z + GitHub release  ->  project: kit-sy
 - Edit `core/`, `packs/`, `layers/`, `templates/` or `tools/`. Write lessons and comments for any project:
   `leak-check` fails on project names, machine paths, ports and project history.
 - Add a line under `## [Unreleased]` in `CHANGELOG.md`: what changed, and what a project must do, if anything.
-- Run the checks (`node tools/leak-check.mjs`, the `--project-only` runs, `pack-check`, `install-check`),
-  open a PR, and merge once CI is green.
+- Run the checks (`node tools/leak-check.mjs`, the `--project-only` runs, `pack-check`, `install-check`,
+  `e2e-check`, `workflow-link-check`; the README's **Checks**), open a PR, and merge once CI is green.
 
 ## 2. Cut a release
 
