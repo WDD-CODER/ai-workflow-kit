@@ -1,6 +1,7 @@
 # CLAUDE.md — {{project.name}}
 
 @AGENTS.md
+<!-- KIT:agents-workflow -->
 
 ## Claude Code–only addendum
 

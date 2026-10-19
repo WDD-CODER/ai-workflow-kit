@@ -18,14 +18,21 @@
  * kit-sync can target the project. Refuses (nothing written) unless the drift check is clean: every managed
  * file outside `overrides` must match the rendered kit byte for byte. Cursor: --cursor/--no-cursor, else
  * "a .cursor/ folder exists".
- * Exit 0 ok, 1 error, 2 required config keys missing (nothing written).
+ * A path the target's git ignores is not written (SKIP-IGNORED). When the project owns AGENTS.md (an override,
+ * or present and not kit-installed), the kit's rules go to AGENTS.workflow.md (managed) and CLAUDE.md imports both.
+ * The workflow scripts' dependencies are in scripts/package.json: --install-deps runs npm install --prefix scripts.
+ * In a git repository the runtime ignore list is added to .git/info/exclude (scripts/local-excludes.mjs).
+ * Exit 0 ok, 1 error, 2 required config keys missing or a commands.* value that is a full command (nothing written).
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { spawnSync } from 'child_process'
 import { builtinModules } from 'module'
 import { resolve, join, dirname } from 'path'
 import { resolveSource } from './lib/source.mjs'
-import { KIT_ROOT, REQUIRED, isEmpty, readJson, sha256, resolveConfig, planFiles, parseArgs, unflatten, NOT_SET, readOverrides, isHook, markHooksExecutable } from './lib/kit.mjs'
+import {
+  KIT_ROOT, REQUIRED, isEmpty, readJson, sha256, resolveConfig, planFiles, parseArgs, unflatten, NOT_SET, readOverrides, isHook,
+  markHooksExecutable, commandProblems, ownsAgents, ignoredPaths, AGENTS_WORKFLOW,
+} from './lib/kit.mjs'
 
 let args
 try {
@@ -68,11 +75,15 @@ let plan
 let overrides
 let kitRoot
 let origin
+let agentsWorkflow
+const prior = existsSync(join(target, '.kit', 'install.json')) ? readJson(join(target, '.kit', 'install.json')) : { files: {} }
 try {
   ;({ kitRoot, record: origin } = resolveSource({ source: args.source, ref: args.ref, fallback: KIT_ROOT, target }))
   overrides = readOverrides(projectCfg)
   vals = resolveConfig({ kitRoot, project: projectCfg, packs, target })
-  plan = planFiles({ kitRoot, packs, cursor: !!args.cursor, yesChef: !!args['yes-chef'], vals })
+  // --adopt records what is there: only an override makes AGENTS.md the project's.
+  agentsWorkflow = ownsAgents({ target, overrides, recorded: args.adopt ? null : prior.files })
+  plan = planFiles({ kitRoot, packs, cursor: !!args.cursor, yesChef: !!args['yes-chef'], vals, agentsWorkflow })
 } catch (e) {
   console.error(`KIT_INSTALL: FAIL — ${e.message}`)
   process.exit(1)
@@ -82,6 +93,12 @@ const missing = REQUIRED.filter((k) => isEmpty(vals[k]))
 if (missing.length > 0 && !args['allow-unfilled']) {
   console.error(`KIT_INSTALL: STOP — required config not set: ${missing.join(', ')}`)
   console.error('Add them to kit.config.json (or pick a stack pack with --packs, which fills build/lint/test), then re-run. Nothing was written.')
+  process.exit(2)
+}
+const badCommands = commandProblems(vals)
+if (badCommands.length > 0) {
+  for (const m of badCommands) console.error(`KIT_INSTALL: STOP — ${m}`)
+  console.error('Fix kit.config.json, then re-run. Nothing was written.')
   process.exit(2)
 }
 
@@ -119,14 +136,20 @@ if (args.adopt) {
   process.exit(0)
 }
 
-const prior = existsSync(join(target, '.kit', 'install.json')) ? readJson(join(target, '.kit', 'install.json')) : { files: {} }
 const record = { ...prior.files }
-const counts = { written: 0, same: 0, skipped: 0, overridden: 0 }
+const counts = { written: 0, same: 0, skipped: 0, overridden: 0, ignored: 0 }
 const hooksWritten = []
+// A path the project's git ignores would never reach another clone: not written, reported SKIP-IGNORED.
+const ignored = ignoredPaths(target, plan.files.filter((f) => !existsSync(join(target, f.dest))).map((f) => f.dest))
 for (const f of plan.files) {
   if (overrides.has(f.dest)) {
     counts.overridden++
     log(`SKIP-OVERRIDE ${f.dest}`)
+    continue
+  }
+  if (ignored.has(f.dest)) {
+    counts.ignored++
+    log(`SKIP-IGNORED ${f.dest} (the project's .gitignore ignores it)`)
     continue
   }
   const dest = join(target, f.dest)
@@ -185,15 +208,28 @@ if (existsSync(pkgFile)) {
   const absent = ['commands.build', 'commands.lint', 'commands.test'].map((k) => vals[k]).filter((s) => s && !(s in scripts))
   if (absent.length > 0) log(`NOTE package.json has no script(s): ${absent.join(', ')} — the workflow runs them with npm run`)
 } else log('NOTE no package.json yet — create one with the build/lint/test scripts before the first /ship')
-// devDependencies the installed scripts import (bare specifiers) plus the hook runners.
+// devDependencies the installed files import (bare specifiers) plus the hook runners. The workflow scripts'
+// own dependencies live in the kit-managed scripts/package.json (installed with npm install --prefix scripts),
+// so a project never has to add them to its own package.json.
 const BUILTIN = new Set(builtinModules)
+const scriptsPkg = plan.files.find((f) => f.dest === 'scripts/package.json')
+const scriptsDeps = new Set(Object.keys(scriptsPkg ? JSON.parse(scriptsPkg.content).dependencies ?? {} : {}))
 const deps = new Set()
 for (const f of plan.files) {
   if (!f.dest.endsWith('.mjs')) continue
   for (const m of f.content.matchAll(/^import\s[^'"\n]*from\s+'([^'.\/][^']*)'/gm)) {
     const name = m[1].startsWith('@') ? m[1].split('/').slice(0, 2).join('/') : m[1].split('/')[0]
-    if (!BUILTIN.has(name) && !name.startsWith('node:')) deps.add(name)
+    if (BUILTIN.has(name) || name.startsWith('node:')) continue
+    if (f.dest.startsWith('scripts/') && scriptsDeps.has(name)) continue
+    deps.add(name)
   }
+}
+if (scriptsPkg && !overrides.has('scripts/package.json')) {
+  if (args['install-deps'] && !args['dry-run']) {
+    const r = spawnSync('npm install --prefix scripts --no-audit --no-fund', { cwd: target, stdio: 'inherit', shell: true })
+    log(r.status === 0 ? 'NOTE installed the workflow scripts\' dependencies (npm install --prefix scripts); commit scripts/package-lock.json'
+      : 'NOTE npm install --prefix scripts failed; run it again before using the workflow scripts')
+  } else log('NOTE the workflow scripts\' dependencies are in scripts/package.json — run: npm install --prefix scripts  (or re-run with --install-deps), then commit scripts/package-lock.json')
 }
 const hasHusky = plan.files.some((f) => f.dest.startsWith('.husky/'))
 if (hasHusky) deps.add('husky')
@@ -210,4 +246,15 @@ if (hasHusky) log('NOTE git hooks are inactive until enabled — either husky ("
 if (plan.files.some((f) => f.dest === '.github/workflows/todo-sync.yml')) {
   log('NOTE todo-sync needs a repo setting on GitHub: Settings → Actions → General → Workflow permissions → tick "Allow GitHub Actions to create and approve pull requests"')
 }
-log(`KIT_INSTALL: ok — ${counts.written} ${args['dry-run'] ? 'would be written' : 'written'}, ${counts.same} identical, ${counts.skipped} skipped-existing, ${counts.overridden} overrides, packs=[${packs.join(', ')}], cursor=${!!args.cursor}, source=${origin.source}${origin.ref ? '@' + origin.ref : ''}`)
+if (agentsWorkflow) {
+  const claude = join(target, 'CLAUDE.md')
+  const imports = existsSync(claude) && readFileSync(claude, 'utf8').includes(`@${AGENTS_WORKFLOW}`)
+  log(`NOTE AGENTS.md is the project's: the kit's rules are in ${AGENTS_WORKFLOW}${imports || args['dry-run'] ? '' : ` — add the line @${AGENTS_WORKFLOW} to CLAUDE.md under @AGENTS.md`}`)
+}
+// Runtime files (.worktree-*, logs, hashes) never show as changes, even when the project keeps its own .gitignore.
+const excludes = join(target, 'scripts', 'local-excludes.mjs')
+if (!args['dry-run'] && existsSync(join(target, '.git')) && existsSync(excludes)) {
+  const r = spawnSync(process.execPath, [excludes], { cwd: target, encoding: 'utf8' })
+  if (r.status === 0 && /added/.test(r.stdout)) log(`NOTE ${r.stdout.trim().replace(/^LOCAL_EXCLUDES: /, '')} (scripts/local-excludes.mjs)`)
+}
+log(`KIT_INSTALL: ok — ${counts.written} ${args['dry-run'] ? 'would be written' : 'written'}, ${counts.same} identical, ${counts.skipped} skipped-existing, ${counts.overridden} overrides, ${counts.ignored} ignored, packs=[${packs.join(', ')}], cursor=${!!args.cursor}, source=${origin.source}${origin.ref ? '@' + origin.ref : ''}`)

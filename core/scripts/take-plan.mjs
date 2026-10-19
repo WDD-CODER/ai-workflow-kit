@@ -9,8 +9,11 @@
  *
  * Order matters: every check that can refuse (plan exists, scope block fenced,
  * clean tree, slot free, ports usable) runs BEFORE the claim (branch + commit),
- * so a refusal never leaves a half-claimed slot. The claim is finished once the branch is checked out;
- * nothing after it (npm install, DB seed) can fail the claim.
+ * so a refusal never leaves a half-claimed slot. A claim commit that fails (e.g. a pre-commit hook) is rolled
+ * back: plan file restored, slot detached where it was, the new branch deleted. The claim is finished once the
+ * branch is checked out; nothing after it (npm install, DB seed) can fail the claim. The runtime ignore rules
+ * (scripts/local-excludes.mjs) are added to .git/info/exclude before the dirty check, so a fresh clone whose
+ * .gitignore the project does not take from the kit is not refused for the slot's own runtime files.
  *
  * Never deletes uncommitted work and never force-switches. A branch is treated
  * as merged when it is an ancestor of {{git.mainBranch}} or its GitHub PR was merged
@@ -28,7 +31,8 @@ import { isSlot, slotNumber, ports, listSlots } from './lib/slot.mjs'
 import { extractScopeGlobs } from './lib/plan-scope.mjs'
 import { findOpenPlanIn } from './lib/plan-paths.mjs'
 import { parseInvariants, checkPlanArch } from './lib/invariants.mjs'
-import { portState, waitForPortFree, stopSlotServers, npmInstallIfChanged, generateEnvironmentSlot, envLocalPath } from './lib/slot-procs.mjs'
+import { portState, waitForPortFree, stopSlotServers, npmInstallIfChanged, generateEnvironmentSlot, hasFrontend as projectHasFrontend, installDirs } from './lib/slot-procs.mjs'
+import { ensureLocalExcludes } from './local-excludes.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(__dirname, '..')
@@ -137,7 +141,7 @@ function claimLock(dir) {
 
 // Project shape: dev-server steps run only for the parts this project has.
 const hasServer = existsSync(join(repoRoot, 'server', 'package.json'))
-const hasFrontend = existsSync(envLocalPath) // the per-slot frontend config is what the dev server runs against
+const hasFrontend = projectHasFrontend() // commands.dev names a package.json script (see lib/slot-procs.mjs)
 
 // --- (a) not a slot -> refuse, and say where to go ----------------------------
 if (!isSlot()) {
@@ -190,6 +194,12 @@ if (registryText) {
 }
 
 // --- (c) safety, all before anything changes: dirty tree, plan order, the plan's branch, then this slot's branch
+// The slot's runtime files (.worktree-*, logs, hashes) are never work, even when the project keeps its own .gitignore.
+try {
+  ensureLocalExcludes(repoRoot)
+} catch (e) {
+  console.log(`TAKE_PLAN: warning - could not update .git/info/exclude (${String(e.message).split('\n')[0]})`)
+}
 if (isDirty()) {
   fail('uncommitted or untracked changes present in this slot - refusing to touch it; commit, stash, or ask the Human')
 }
@@ -275,6 +285,10 @@ for (const [, port] of halves) {
 // --- (e) claim: branch + .worktree-plan + Status: active ----------------------
 const planAbs = join(repoRoot, match)
 if (!resuming) {
+  // Where the slot stood before the claim: a failed claim commit goes back here (detached), so a refusal never
+  // leaves a half-claimed slot (a branch with the plan staged and no commit).
+  const preClaimHead = git(['rev-parse', 'HEAD'])
+  let createdBranch = false
   if (leftover && !leftoverMerged) {
     git(['switch', branchName])
     console.log(`TAKE_PLAN: reusing existing branch ${branchName} (it has commits not on {{git.mainBranch}})`)
@@ -294,11 +308,24 @@ if (!resuming) {
       console.log(`TAKE_PLAN: ${branchName} was merged in PR #${leftoverPr} - ${note}`)
     }
     git(['switch', '-c', branchName, 'origin/{{git.mainBranch}}'])
+    createdBranch = true
   }
   updateStatusActive(planAbs)
   git(['add', match])
   // The Planner may have saved the plan as "Status: active" already - then there is nothing to commit.
-  if (tryGit(['diff', '--cached', '--name-only'])) git(['commit', '-m', `chore(plan ${nnn}): mark active in wt-${n}`])
+  if (tryGit(['diff', '--cached', '--name-only'])) {
+    try {
+      execFileSync('git', ['commit', '-m', `chore(plan ${nnn}): mark active in wt-${n}`], { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+    } catch (e) {
+      // Roll the claim back: unstage and restore the plan file, return to the pre-claim commit, drop the new branch.
+      const why = `${e.stderr || ''}${e.stdout || ''}`.replace(/\r\n/g, '\n').trim().split('\n').slice(-5).join(' | ') || e.message
+      tryGit(['reset', '-q', '--', match])
+      tryGit(['checkout', '-q', '--', match])
+      tryGit(['switch', '-q', '--detach', preClaimHead])
+      if (createdBranch) tryGit(['branch', '-D', branchName])
+      fail(`claim commit failed: ${why} - slot wt-${n} is back to detached and idle${createdBranch ? `, branch ${branchName} removed` : ''}. Fix the hook error and re-run.`)
+    }
+  }
 }
 const previousPlan = existsSync(worktreePlanPath) ? readFileSync(worktreePlanPath, 'utf8').trim() : ''
 writeFileSync(worktreePlanPath, `${match}\n`)
@@ -312,12 +339,12 @@ if (existsSync(statePointer)) unlinkSync(statePointer)
 
 // --- (f) after the claim, nothing can fail it: npm install if the lockfile changed + environment.slot.ts
 // A build needs the dependencies; a failed install is reported, never a refusal (slot-serve.mjs retries it).
-for (const [dir, hashFile] of [[repoRoot, '.last-npm-install-hash'], ...(hasServer ? [[join(repoRoot, 'server'), '.last-npm-install-hash-server']] : [])]) {
+for (const [dir, hashFile, label] of installDirs(repoRoot)) {
   try {
-    if (npmInstallIfChanged(dir, hashFile)) console.log(`TAKE_PLAN: npm install ran in ${dir === repoRoot ? '.' : 'server'} (lockfile changed)`)
+    if (npmInstallIfChanged(dir, hashFile)) console.log(`TAKE_PLAN: npm install ran in ${label} (lockfile changed)`)
   } catch (e) {
     const why = String(e.message).split('\n')[0]
-    console.log(`TAKE_PLAN: warning - npm install failed in ${dir === repoRoot ? '.' : 'server'} (${why}); slot-serve.mjs retries it`)
+    console.log(`TAKE_PLAN: warning - npm install failed in ${label} (${why}); slot-serve.mjs retries it`)
   }
 }
 generateEnvironmentSlot(bePort)

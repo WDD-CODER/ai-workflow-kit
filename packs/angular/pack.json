@@ -31,6 +31,10 @@
     "commands.lint": "lint",
     "commands.test": "test",
     "commands.dev": "start",
+    "slots.feExec": ["ng", "serve"],
+    "slots.fePortArgs": ["-c", "slot", "--port", "{port}"],
+    "slots.feMatcher": "\\bng(\\.js|\\.cmd)?\"?\\s+serve\\b",
+    "slots.feEnvFile": "src/environments/environment.local.ts",
     "paths.srcRoot": "src/app/",
     "paths.hotspots": [
       "src/styles.scss",

@@ -12,7 +12,11 @@
  * push to main); pre-push refuses code on main; branch guard denies code on main and allows the plan;
  * slot claim (take-plan, REALITY: clean); a second claim of the same plan is refused; scope guard allows
  * in-scope and denies out-of-scope; ship-prep scope ok; Worker push; server merge; ledger sync, plan
- * close-out, archive and slot release; drift-check ok and a no-op kit-sync afterwards; pre-push accepts a
+ * close-out, archive and slot release; drift-check ok and a no-op kit-sync afterwards; the workflow scripts'
+ * own dependencies (scripts/package.json) installed by install and take-plan; the frontend dev server from
+ * config (slot-serve started, kept, slot-stop frees the port); .kit/install.json always in scope; a claim commit
+ * refused by a pre-commit hook rolls back (slot detached, idle, no branch) and a retry claims; a fresh clone of a
+ * project that keeps its own .gitignore claims a plan (runtime files in .git/info/exclude); pre-push accepts a
  * closed plan in a range folder and refuses code; a project without
  * husky (core.hooksPath=.husky only) runs the hooks: the first commit passes, a staged fake key is refused;
  * SessionStart prints valid JSON on each branch (idle slot, worker without and with a session-state file).
@@ -40,6 +44,25 @@ const env = {
   GIT_TERMINAL_PROMPT: '0',
 }
 
+const FE_BASE = 47200
+// Stand-in frontend dev server (the project's `dev` script): listens on --port and fails when the port is taken,
+// as a strict-port dev server must. Like a real dev server binary, the listening process carries its absolute
+// path in its command line (slot-procs recognises a slot's processes by their folder).
+const DEV_SERVER = `import { createServer } from 'http'
+import { spawn } from 'child_process'
+import { fileURLToPath } from 'url'
+const args = process.argv.slice(2)
+if (!args.includes('--serve')) {
+  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--serve', ...args], { stdio: 'inherit' })
+  child.on('exit', (code) => process.exit(code ?? 1))
+} else {
+  const port = Number(args[args.indexOf('--port') + 1])
+  createServer((req, res) => res.end('ok'))
+    .on('error', (e) => { console.error(e.message); process.exit(1) })
+    .listen(port, () => console.log('dev server on ' + port))
+}
+`
+const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
 const results = []
 let failed = 0
 const sh = (cmd, args, cwd, input) => {
@@ -50,6 +73,15 @@ const git = (cwd, ...args) => sh('git', args, cwd)
 const node = (cwd, ...args) => sh(process.execPath, args, cwd)
 const npm = (cwd, cmd) => spawnSync(cmd, { cwd, env, encoding: 'utf8', shell: true })
 const tail = (s) => s.trim().split(/\r?\n/).slice(-3).join(' | ')
+// True when nothing listens on `port` (a listen attempt succeeds); retried while a stop settles.
+const portFree = (port) => {
+  for (let i = 0; i < 20; i++) {
+    const r = spawnSync(process.execPath, ['-e', `require('net').createServer().once('error', () => process.exit(1)).listen(${port}, () => process.exit(0))`], { encoding: 'utf8' })
+    if (r.status === 0) return true
+    sleep(500)
+  }
+  return false
+}
 function check(name, ok, evidence) {
   results.push(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : ` — ${evidence}`}`)
   if (!ok) failed++
@@ -68,16 +100,22 @@ function main() {
   sh('git', ['init', '-q', '-b', 'main', proj], root)
   writeFileSync(join(proj, 'package.json'), JSON.stringify({
     name: 'e2e-app', version: '0.0.0', private: true, type: 'module',
-    scripts: { build: 'node -e "console.log(\'build ok\')"', lint: 'node -e ""', test: 'node -e ""', prepare: 'husky' },
+    scripts: { build: 'node -e "console.log(\'build ok\')"', lint: 'node -e ""', test: 'node -e ""', dev: 'node dev-server.mjs', prepare: 'husky' },
   }, null, 2) + '\n')
+  // The frontend dev server comes from config (commands.dev + slots.fe*), the way a stack pack supplies it.
+  // Unusual base ports, so a dev server already running on this machine is never in the way.
   writeFileSync(join(proj, 'kit.config.json'), JSON.stringify({
     project: { name: 'e2e-app', repoName: 'e2e-app' },
-    commands: { build: 'build', lint: 'lint', test: 'test' },
+    commands: { build: 'build', lint: 'lint', test: 'test', dev: 'dev' },
+    slots: { fePorts: FE_BASE, bePorts: FE_BASE + 100, fePortArgs: ['--port', '{port}', '--strictPort'], feMatcher: 'dev-server\\.mjs' },
     hooks: { shellPath: 'bash' },
   }, null, 2) + '\n')
+  writeFileSync(join(proj, 'dev-server.mjs'), DEV_SERVER)
   const inst = node(proj, join(kit, 'tools', 'install.mjs'), '--target', proj, '--source', kit, '--install-deps')
   if (!check('install from the kit into a fresh project', inst.status === 0 && /KIT_INSTALL: ok/.test(inst.out), tail(inst.out))) return
   check('install lists no Node built-in as a devDependency', !/npm install -D [^\n]*\bnet\b/.test(inst.out), tail(inst.out))
+  check('install --install-deps installs the workflow scripts\' own dependencies (scripts/package.json)',
+    /installed the workflow scripts' dependencies/.test(inst.out) && existsSync(join(proj, 'scripts', 'package-lock.json')) && !/npm install -D [^\n]*\bpicomatch\b/.test(inst.out), tail(inst.out))
   npm(proj, 'npm run -s prepare')
   git(proj, 'add', '-A')
   const c0 = git(proj, 'commit', '-q', '-m', 'chore: install the workflow kit')
@@ -127,17 +165,31 @@ function main() {
   git(proj, 'reset', '-q', '--hard', 'origin/main')
 
   // 4. Worker: slot, claim, guards, ship-prep, push.
+  // Slot provisioning as the worktree-setup skill does it: root deps + the workflow scripts' own deps.
+  const provision = (dir) => npm(dir, 'npm install --prefer-offline --no-audit --no-fund && npm install --prefix scripts --prefer-offline --no-audit --no-fund')
   git(proj, 'worktree', 'add', '-q', '--detach', slot, 'origin/main')
-  npm(slot, 'npm install --prefer-offline --no-audit --no-fund')
+  provision(slot)
   writeFileSync(join(slot, '.worktree-root'), proj)
-  writeFileSync(join(slot, '.worktree-port'), '4201')
+  writeFileSync(join(slot, '.worktree-port'), String(FE_BASE + 1))
   const tp = node(slot, 'scripts/take-plan.mjs', '001')
   check('take-plan 001 claims slot wt-1 with REALITY: clean', tp.status === 0 && /OK plan=001 branch=feat\/001-hello-script/.test(tp.out) && /REALITY: clean/.test(tp.out), tail(tp.out))
+  check('take-plan installs the scripts/ dependencies when their lockfile is new to the slot', /npm install ran in scripts/.test(tp.out), tail(tp.out))
+
+  // Frontend dev server from config: started, kept on a re-run, stopped (port freed) by slot-stop.
+  const fePort = FE_BASE + 1
+  const sv1 = node(slot, 'scripts/slot-serve.mjs')
+  check(`slot-serve starts the frontend from commands.dev (fe=${fePort} started)`, sv1.status === 0 && new RegExp(`fe=${fePort} started`).test(sv1.out), tail(sv1.out))
+  const sv2 = node(slot, 'scripts/slot-serve.mjs')
+  check(`slot-serve again keeps it (fe=${fePort} kept)`, sv2.status === 0 && new RegExp(`fe=${fePort} kept`).test(sv2.out), tail(sv2.out))
+  const stop = node(slot, 'scripts/slot-stop.mjs')
+  check('slot-stop stops it and frees the port', stop.status === 0 && /SLOT_STOP: ok/.test(stop.out) && portFree(fePort), tail(stop.out))
+  const genOk = node(slot, 'scripts/scope-check.mjs', '--file=.kit/install.json')
+  check('scope-check always allows .kit/install.json (kit-sync re-records it)', genOk.status === 0, tail(genOk.out))
 
   git(proj, 'worktree', 'add', '-q', '--detach', slot2, 'origin/main')
   writeFileSync(join(slot2, '.worktree-root'), proj)
-  writeFileSync(join(slot2, '.worktree-port'), '4202')
-  npm(slot2, 'npm install --prefer-offline --no-audit --no-fund')
+  writeFileSync(join(slot2, '.worktree-port'), String(FE_BASE + 2))
+  provision(slot2)
   const tp2 = node(slot2, 'scripts/take-plan.mjs', '001')
   check('a second slot cannot take a plan that is already active', tp2.status !== 0 && git(slot2, 'branch', '--show-current').out.trim() === '', tail(tp2.out))
 
@@ -192,6 +244,59 @@ function main() {
   check('drift-check ok after the full cycle', drift.status === 0 && /KIT_DRIFT: ok/.test(drift.out), tail(drift.out))
   const ks = node(proj, join(kit, 'tools', 'sync.mjs'), '--target', proj)
   check('kit-sync dry-run is a no-op', /0 new, 0 kit-update, 0 conflicts/.test(ks.out), tail(ks.out))
+
+  // A claim commit that a pre-commit hook refuses leaves the slot as it was: detached, idle, no branch, clean.
+  const plan2Rel = 'plans/002-second-script.plan.md'
+  writeFileSync(join(proj, plan2Rel), plan.replace('# Plan 001 — Hello Script', '# Plan 002 — Second Script')
+    .replace(`Snapshot: ${snap}`, `Snapshot: ${git(proj, 'rev-parse', 'origin/main').out.trim()}`).replace('H1:', 'S1:'))
+  git(proj, 'add', plan2Rel)
+  git(proj, 'commit', '-q', '-m', 'plan(002): second script')
+  const pp2 = git(proj, 'push', '-q', 'origin', 'main')
+  const failHooks = join(root, 'failing-hooks')
+  mkdirSync(failHooks, { recursive: true })
+  writeFileSync(join(failHooks, 'pre-commit'), '#!/bin/sh\necho "pre-commit: refused by the e2e fixture" >&2\nexit 1\n', { mode: 0o755 })
+  const hookEnv = { ...env, GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'core.hooksPath', GIT_CONFIG_VALUE_0: failHooks.replace(/\\/g, '/') }
+  const tpFail = spawnSync(process.execPath, ['scripts/take-plan.mjs', '002'], { cwd: slot2, env: hookEnv, encoding: 'utf8' })
+  const failOut = `${tpFail.stdout}${tpFail.stderr}`
+  const idle = git(slot2, 'branch', '--show-current').out.trim() === '' && git(slot2, 'branch', '--list', 'feat/002-*').out.trim() === ''
+  const clean = git(slot2, 'status', '--porcelain').out.trim() === '' && !existsSync(join(slot2, '.worktree-plan'))
+  check('a refused claim commit rolls back: slot detached and idle, no branch left, clean tree',
+    pp2.status === 0 && tpFail.status !== 0 && /TAKE_PLAN: claim commit failed: /.test(failOut) && idle && clean, tail(failOut))
+  const tpRetry = node(slot2, 'scripts/take-plan.mjs', '002')
+  check('after the rollback the same slot claims the plan normally', tpRetry.status === 0 && /OK plan=002 branch=feat\/002-second-script/.test(tpRetry.out), tail(tpRetry.out))
+
+  // A fresh plain clone of a project that keeps its own .gitignore (an override): the slot's runtime files go to
+  // .git/info/exclude, so take-plan is not refused for them.
+  const own = join(root, 'owned-app')
+  const ownOrigin = join(root, 'owned-origin.git')
+  const ownSlot = join(root, 'owned-app-wt-1')
+  sh('git', ['init', '-q', '--bare', '-b', 'main', ownOrigin], root)
+  sh('git', ['init', '-q', '-b', 'main', own], root)
+  writeFileSync(join(own, 'package.json'), JSON.stringify({
+    name: 'owned-app', version: '0.0.0', private: true, scripts: { build: 'node -e ""', lint: 'node -e ""', test: 'node -e ""' },
+  }, null, 2) + '\n')
+  writeFileSync(join(own, '.gitignore'), 'node_modules/\n')
+  writeFileSync(join(own, 'kit.config.json'), JSON.stringify({
+    project: { name: 'owned-app', repoName: 'owned-app' },
+    commands: { build: 'build', lint: 'lint', test: 'test' },
+    hooks: { shellPath: 'bash' },
+    overrides: [{ path: '.gitignore', reason: 'e2e: the project keeps its own .gitignore' }],
+  }, null, 2) + '\n')
+  const ownInst = node(own, join(kit, 'tools', 'install.mjs'), '--target', own, '--source', kit)
+  npm(own, 'npm install --prefix scripts --prefer-offline --no-audit --no-fund')
+  mkdirSync(join(own, 'plans'), { recursive: true })
+  writeFileSync(join(own, planRel), plan.replace(`Snapshot: ${snap}\n`, ''))
+  git(own, 'add', '-A')
+  git(own, 'commit', '-q', '-m', 'chore: install the workflow kit, plan 001')
+  git(own, 'push', '-q', ownOrigin, 'main')
+  sh('git', ['clone', '-q', ownOrigin, ownSlot], root)
+  npm(ownSlot, 'npm install --prefix scripts --prefer-offline --no-audit --no-fund')
+  writeFileSync(join(ownSlot, '.worktree-root'), own)
+  writeFileSync(join(ownSlot, '.worktree-port'), String(FE_BASE + 1))
+  const ownTp = node(ownSlot, 'scripts/take-plan.mjs', '001')
+  check('fresh clone with its own .gitignore: take-plan claims (runtime files in .git/info/exclude)',
+    /SKIP-OVERRIDE \.gitignore/.test(ownInst.out) && ownTp.status === 0 && /OK plan=001/.test(ownTp.out) &&
+    git(ownSlot, 'status', '--porcelain').out.trim() === '' && node(ownSlot, 'scripts/local-excludes.mjs', '--check').status === 0, tail(ownInst.out + ownTp.out))
 
   // pre-push accepts a closed plan in a range folder and still refuses code. A plain clone has no
   // hooks configured, so the commits are made there and the project's hook is run on them directly.

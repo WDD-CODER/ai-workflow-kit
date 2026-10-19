@@ -1,6 +1,6 @@
 ---
 name: worktree-setup
-description: One-time provisioning or repair of the three permanent Planner-Worker slots `../{{project.repoName}}{{slots.folderSuffix}}` (N = 1..{{slots.count}}) — git worktrees detached at origin/{{git.mainBranch}} with deps installed, `.worktree-root`/`.worktree-port` written and `{{paths.serverRoot}}.env` copied. Use only when the user says "setup worktree", "new worktree", "slot is missing" or a `{{slots.nameFormat}}` folder is absent. Taking a plan into an existing slot is `/take-plan`, not this.
+description: One-time provisioning or repair of the three permanent Planner-Worker slots `../{{project.repoName}}{{slots.folderSuffix}}` (N = 1..{{slots.count}}) — git worktrees detached at origin/{{git.mainBranch}} with deps installed (root, `scripts/`, backend), `.worktree-root`/`.worktree-port` written, runtime files excluded and the backend `.env` copied. Use only when the user says "setup worktree", "new worktree", "slot is missing" or a `{{slots.nameFormat}}` folder is absent. Taking a plan into an existing slot is `/take-plan`, not this.
 disable-model-invocation: true
 ---
 
@@ -20,9 +20,10 @@ Detached at `origin/{{git.mainBranch}}`, never on `main` and never on a branch �
 
 ## 2. Provision every slot (new or existing)
 
-1. `npm install` at the slot root and inside `{{paths.serverRoot}}`.
+1. `npm install` at the slot root, `npm install --prefix scripts` (the workflow scripts' own dependencies, `scripts/package.json`), and `npm install` inside the backend folder `{{paths.serverRoot}}` when the project has one (`paths.serverRoot` set).
 2. Write `.worktree-root` = absolute path of the main repo, and `.worktree-port` = `{{slots.fePorts}}+N` (the port map in `AGENTS.md`: slot N = {{slots.fePorts}}+N).
-3. Copy `{{paths.serverRoot}}.env` from the main repo into the slot (`{{paths.serverRoot}}.env` is the only env file; skip silently if missing — it is a secret and may be absent on purpose).
+3. `node scripts/local-excludes.mjs` — adds the runtime files (`.worktree-*`, logs, install hashes) to the shared `.git/info/exclude`, so a slot never looks dirty even when the project keeps its own `.gitignore`.
+4. With a backend folder only: copy `{{paths.serverRoot}}.env` from the main repo into the slot (`{{paths.serverRoot}}.env` is the only env file; skip silently if missing — it is a secret and may be absent on purpose).
 
 ## 3. Report
 

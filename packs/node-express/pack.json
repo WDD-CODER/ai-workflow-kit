@@ -10,7 +10,6 @@
   "configDefaults": {
     "stack.backend": "Node / Express / MongoDB",
     "commands.test": "test",
-    "commands.dev": "dev",
     "paths.serverRoot": "server/",
     "paths.slotEnvFile": "server/.env",
     "security.sensitivePaths": ["server/middleware/**", "server/routes/auth.js"]
