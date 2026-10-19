@@ -86,7 +86,7 @@ Thinking outside the box is expected; writing outside it requires explicit conse
 - [x] C4: Turn FoodVibe's small wording overrides into kit settings — one key or fragment per candidate per C0, or a recorded "stays an override" — `packs/angular/**`, `core/**`, `kit.config.json`
 - [x] C5: Document the new keys and release notes — README config section, CHANGE-LOOP prune note, CHANGELOG `[1.3.0]` with "overrides you can drop" — `README.md`, `docs/**`, `CHANGELOG.md`, `kit.json`
 - [ ] C6: Release v1.3.0 — all checks, kit PR, merge after Dandan's review, tag + GitHub release after Dandan's go — kit repo
-- [ ] C7: Sync FoodVibe to v1.3.0 and drop the covered overrides — dry-run, set the new keys, Apply, delete the covered `overrides` entries, ng build, kit-owned + manifest checks, /ship — `../foodVibe1.0` slot
+- [ ] C7: Sync FoodVibe to v1.3.0 and drop the covered overrides — dry-run, set the new keys, Apply, delete the covered `overrides` entries, add `scripts/lib/fe-command.mjs` to `docs/workflow-kit/manifest.json` (tier `core`, action `copy`) then `node scripts/kit-owned.mjs --write` (else `KIT_MANIFEST: FAIL … 1 unclassified`), ng build, kit-owned + manifest checks, /ship — `../foodVibe1.0` slot
 - [ ] C8: Sync agentdesk to v1.3.0 and drop its CI override — set `ci.testMode`, Apply with `--prune`, delete the `ci.yml` override, CI green, /ship — `../agentdesk` slot
 
 ## Out of Scope
@@ -211,3 +211,44 @@ C0–C5 done here; C6–C8 wait for Dandan (merge, tag, project syncs). Version 
   `ACCEPTANCE_CHECK: ok — 121 checks passed (angular, react-vite, upstream-owned, e2e --project)` (incl.
   `PASS angular: adoption-report frontend row: npm exec -- ng serve -c slot --port {port}` and
   `PASS react-vite: adoption-report frontend row: npm run dev -- --port {port} --strictPort`). Linux + Windows: kit CI on the PR.
+
+### PR #28 review fixes
+1. (medium) FoodVibe's own `scripts/kit-manifest-check.mjs` fails on an unclassified `scripts/` file, so the new
+   `scripts/lib/fe-command.mjs` would fail it after C7. C7 now says: add it to `docs/workflow-kit/manifest.json` (tier
+   `core`, action `copy`), then `node scripts/kit-owned.mjs --write`. CHANGELOG `[1.3.0]` "What a project must do" gained
+   a line: a project that classifies the kit's `scripts/` files must register the new file.
+2. (low) Sync: `withUpstream` now also gets the recorded paths, so a `removed-from-kit` record under
+   `ownership.upstreamPaths` is never pruned. The "not a file this kit ships" NOTE lists explicit overrides only (an
+   upstream-owned recorded path is not an `overrides` entry).
+3. (low) A record that matches a shipped path only in letter case (a case-only rename) is never treated as a stale
+   file: row `pruned … case-only rename of <shipped>: record dropped, file left alone`, nothing on disk touched. The
+   pre-fix code deleted the shipped `scripts/todo-query.mjs` on Windows in this case (install-check against the pre-fix
+   `sync.mjs`: `1 deleted-locally` after `--prune --apply`).
+4. (low) A record whose path resolves outside the target (absolute, or `..`) is skipped with
+   `NOTE <path> is recorded in .kit/install.json but lies outside the project: left alone (remove the record by hand)`;
+   the record stays. The pre-fix code deleted the outside file.
+5. (low) "Unchanged" compares the file's hash as is or with CRLF → LF, so a CRLF checkout of an unchanged file is
+   pruned; anything else stays (fail-safe).
+6. (low) `project.uiLocale` is documented as a display phrase (`$comment`, README, CHANGELOG: e.g. `Arabic RTL`, not a
+   locale code) instead of changing the cssLayer line: the key is already used that way (`conventions.md` heading
+   `## Translation ({{project.uiLocale}})`, the PRD template), and FoodVibe's render stays byte-identical
+   (`cssLayer/SKILL.md: IDENTICAL` re-checked). A code like `he` would render "The UI is he;" — the docs now say not to.
+7. (low) `commandProblems` refuses a `commands.logQuery` with `|` or a backtick (exit 2, install and sync).
+8. (low) Records released by `--prune` (edited managed file or seed, kept on disk) are a separate state and count,
+   `released` (`, N released` in the summary), instead of being folded into `local-only`. This replaces the Goal's
+   "(it then shows as `local-only`)" wording; README, CHANGE-LOOP, CHANGELOG and `kit-sync.ps1` say so, and that
+   overrides and upstream-owned paths are never touched.
+- install-check cases added to the prune fixture: an upstream-owned record (kept, record kept), a case-only rename of
+  `scripts/todo-query.mjs` (file kept, record dropped — on Windows' case-insensitive FS this is the real collision; on
+  Linux the same row and outcome), a `../<name>-outside.md` record with an unchanged file next to the target (file and
+  record kept, NOTE), a CRLF copy of an LF-recorded file (pruned); and `commands.logQuery` with `|` and with a backtick
+  (sync exit 2). The same install-check run against the pre-fix `sync.mjs` + `kit.mjs` (scratch copy) →
+  `INSTALL_CHECK: FAIL — 7 problems` (all new cases fail).
+- Projects (no keys, dry-runs with this branch as source): unchanged — FoodVibe `RENDER_COMPARE: 2 files differ (182 -> 183 files)`,
+  `KIT_SYNC: dry-run — 1 new, 1 kit-update, 0 conflicts, 26 local-only, 0 deleted-locally, 0 removed-from-kit, 20 overrides`;
+  agentdesk `RENDER_COMPARE: 2 files differ (133 -> 134 files)`,
+  `KIT_SYNC: dry-run — 1 new, 1 kit-update, 0 conflicts, 9 local-only, 0 deleted-locally, 0 removed-from-kit, 9 overrides, 1 pruned`.
+- Checks after the fixes (local, Windows): `LEAK_CHECK: ok — 161 files, 0 leaks` / `47 files, 0 leaks` / `3 files, 0 leaks`;
+  `PACK_CHECK: ok — 3 packs, 2 layers, 8 contract keys used by core (each provided), 0 problems`;
+  `INSTALL_CHECK: ok — 5 fixtures, actionlint not installed (skipped), …, 0 problems`; `WORKFLOW_LINK_CHECK: ok — 7 fixtures (…), 0 missing`;
+  `E2E_CHECK: ok — 42 cases passed`; `ACCEPTANCE_CHECK: ok — 121 checks passed (angular, react-vite, upstream-owned, e2e --project)`.

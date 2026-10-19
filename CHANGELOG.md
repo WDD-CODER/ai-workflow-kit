@@ -21,6 +21,10 @@ Nothing. Every new key is optional, and with none set every rendered file is the
 `scripts/lib/slot-procs.mjs` (`kit-update`, same behaviour) and the new `scripts/lib/fe-command.mjs` (`new`). Sync
 (`kit-sync -Ref v1.3.0`, then `-Apply`) and commit both.
 
+A project that keeps its own classification of the kit's `scripts/` files (a manifest or an ownership list its own
+check reads) must register `scripts/lib/fe-command.mjs` there (a core, copied file), or that check reports it as
+unclassified.
+
 ### Overrides you can drop
 
 Set the key, drop the `overrides` entry, run sync, and check the rendered file (a file that differs from your copy is a
@@ -30,7 +34,7 @@ Set the key, drop the `overrides` entry, run sync, and check the rendered file (
   on code you do not own): set `ci.testMode` to `skip` (no test job) or `if-present` (passes when there is no such
   script).
 - `.claude/skills/cssLayer/SKILL.md` (angular pack), kept for a "the UI is right-to-left" line: `project.uiDirection:
-  "rtl"` (the line names `project.uiLocale` when it is set).
+  "rtl"` (the line names `project.uiLocale` when it is set: a display phrase such as `Arabic RTL`, not a locale code).
 - `docs/agent/standards-angular.md`, kept for a project-specific **Logic** line: `docs.domainSummary` (the line becomes
   `* **Logic**: <summary>.`).
 - `.claude/commands/review-it.md`, kept for a log-query step: `commands.logQuery` (the full command that prints the
@@ -47,10 +51,13 @@ Set the key, drop the `overrides` entry, run sync, and check the rendered file (
   when the job and the mode disagree.
 - `kit-sync --prune` (`kit-sync.ps1 -Prune`): with `--apply`, a managed file the kit no longer ships that is unchanged
   since install (its hash equals the record) is deleted and its record dropped; an edited one or a seed stays on disk and
-  only its record is dropped (shown as `local-only`). Overrides are never touched; without `--prune` nothing is deleted,
-  and a dry-run prints what `--prune` would do. The summary line gains `N pruned`.
+  only its record is dropped (`released`). A CRLF checkout of an unchanged file counts as unchanged. Never touched:
+  overrides, upstream-owned paths, a record outside the project, and a record that differs from a shipped path only in
+  letter case (a case-only rename: its record is dropped, the file stays). Without `--prune` nothing is deleted, and a
+  dry-run prints what `--prune` would do. The summary line gains `N pruned` and `N released`.
 - Optional wording keys, unset = the v1.2.0 lines: `commands.logQuery` (`/review-it` Logs check), `project.uiDirection`
   (`rtl` | `ltr`; refused otherwise), `project.icons.library` / `component` / `registry`, `docs.domainSummary`.
+  Install and sync refuse a `commands.logQuery` with `|` or a backtick (it is shown in a Markdown table and code span).
 - `scripts/lib/fe-command.mjs`: the pure builder of the slot frontend command (`frontendCommand`), used by
   `slot-procs.mjs` (`frontendArgs`) and by `tools/adoption-report.mjs`.
 - Checks: `install-check` renders `ci.testMode` run / if-present / skip (actionlint in kit CI), refuses bad `ci.testMode`
