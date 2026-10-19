@@ -32,7 +32,7 @@ import { resolve, join, dirname } from 'path'
 import { resolveSource } from './lib/source.mjs'
 import {
   KIT_ROOT, REQUIRED, isEmpty, readJson, sha256, resolveConfig, planFiles, parseArgs, unflatten, NOT_SET, readOverrides, isHook,
-  markHooksExecutable, commandProblems, ownsAgents, ignoredPaths, AGENTS_WORKFLOW,
+  markHooksExecutable, commandProblems, ownsAgents, ignoredPaths, AGENTS_WORKFLOW, frontendNote,
 } from './lib/kit.mjs'
 
 let args
@@ -247,6 +247,8 @@ if (hasHusky) log('NOTE git hooks are inactive until enabled — either husky ("
 if (plan.files.some((f) => f.dest === '.github/workflows/todo-sync.yml')) {
   log('NOTE todo-sync needs a repo setting on GitHub: Settings → Actions → General → Workflow permissions → tick "Allow GitHub Actions to create and approve pull requests"')
 }
+const feNote = frontendNote(vals)
+if (feNote) log(feNote)
 if (agentsWorkflow) {
   const claude = join(target, 'CLAUDE.md')
   const imports = existsSync(claude) && readFileSync(claude, 'utf8').includes(`@${AGENTS_WORKFLOW}`)

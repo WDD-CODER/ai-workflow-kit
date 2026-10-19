@@ -41,13 +41,16 @@ const files = (dir, base = dir, out = []) => {
 const read = (dir, f) => readFileSync(join(dir, f), 'utf8')
 const tmp = (name) => mkdtempSync(join(tmpdir(), `kit-${name}-`))
 
+const HOSTILE_RE = 'a`b\'c"d${e}\\w'
 const CORE_CFG = { project: { name: 'core-only' }, commands: { build: 'build', lint: 'lint', test: 'test' }, hooks: { shellPath: 'bash' } }
 const fixtures = [
   // core: an i18n folder (every file under it is a hotspot) and a sensitive-path regex that replaces the default.
   { name: 'core', args: [], cfg: { ...CORE_CFG, project: { name: 'core-only', i18nFile: 'src/locales/' }, security: { sensitivePaths: 'only-this' } } },
   { name: 'angular-cursor', args: ['--packs', 'angular', '--cursor'], cfg: { project: { name: 'ng-app' } } },
-  { name: 'express-cursor-chef', args: ['--packs', 'node-express', '--cursor', '--yes-chef'], cfg: { project: { name: 'api-app' }, commands: { build: 'build', lint: 'lint' } } },
-  { name: 'angular-express-cursor', args: ['--packs', 'angular,node-express', '--cursor'], cfg: { project: { name: 'full-app' }, tools: { browser: 'acme-browser' } } },
+  // express: an old backend-only `commands.dev: "dev"` with the kit's default slots.fe* values (install must NOTE it).
+  { name: 'express-cursor-chef', args: ['--packs', 'node-express', '--cursor', '--yes-chef'], cfg: { project: { name: 'api-app' }, commands: { build: 'build', lint: 'lint', dev: 'dev' } } },
+  // full: a frontend matcher full of characters that would break a quoted render (quotes, backtick, `${`, backslash).
+  { name: 'angular-express-cursor', args: ['--packs', 'angular,node-express', '--cursor'], cfg: { project: { name: 'full-app' }, tools: { browser: 'acme-browser' }, slots: { feMatcher: HOSTILE_RE } } },
 ]
 
 // Evaluate a block of a rendered script (from the line starting with `from` up to and including the line
@@ -93,6 +96,8 @@ for (const fx of fixtures) {
     fail(`${fx.name}: install exited ${r.status}: ${(r.stdout + r.stderr).trim().split('\n').pop()}`)
     continue
   }
+  const feNoted = /NOTE commands\.dev "dev" starts a frontend dev server/.test(r.stdout)
+  if ((fx.name === 'express-cursor-chef') !== feNoted) fail(`${fx.name}: the commands.dev NOTE must appear only for commands.dev with default slots.fe* values (got ${feNoted})`)
   const deps = (r.stdout.match(/npm install -D ([^ (]+(?: [^ (]+)*)/)?.[1] ?? '').split(' ')
   const builtin = deps.filter((d) => builtinModules.includes(d))
   if (builtin.length) fail(`${fx.name}: devDependencies list Node built-ins: ${builtin.join(', ')}`)
@@ -129,7 +134,8 @@ for (const fx of fixtures) {
   // The frontend dev server values come from the pack (or the kit defaults).
   try {
     const sens = evalBlock(read(dir, 'scripts/ship-prep.mjs'), 'const DEFAULT_SENSITIVE_RE', 'const isSensitive', 'isSensitive')
-    const fe = evalBlock(read(dir, 'scripts/lib/slot-procs.mjs'), "const FE_SCRIPT = '", 'const FE_MATCHER = ', '{ FE_SCRIPT, FE_EXEC, FE_PORT_ARGS, FE_ENV_FILE, FE_MATCHER }')
+    const fe = evalBlock(read(dir, 'scripts/lib/slot-procs.mjs'), 'const asList = ', 'const FE_MATCHER = ', '{ FE_SCRIPT, FE_EXEC, FE_PORT_ARGS, FE_ENV_FILE, FE_MATCHER }')
+    if (fx.name === 'angular-express-cursor' && fe.FE_MATCHER?.source !== HOSTILE_RE) fail(`${fx.name}: slots.feMatcher did not survive rendering: ${fe.FE_MATCHER?.source}`)
     if (fx.name === 'core') {
       if (!sens('only-this/x.ts') || sens('package.json')) fail(`${fx.name}: a security.sensitivePaths regex must replace the built-in sensitive paths`)
       if (fe.FE_SCRIPT || fe.FE_MATCHER || fe.FE_PORT_ARGS.join(' ') !== '--port {port}') fail(`${fx.name}: frontend defaults unexpected: ${JSON.stringify(fe)}`)
@@ -414,14 +420,15 @@ else {
 
 // The project owns AGENTS.md (present before install, or listed in overrides): the kit's rules go to
 // AGENTS.workflow.md (managed, fully rendered), AGENTS.md is left alone, CLAUDE.md imports both; sync and
-// drift-check agree.
-for (const mode of ['present', 'override']) {
+// drift-check agree. `no-config`: no kit.config.json, so install writes the effective config (tools.browser at its
+// default included) — drift-check right after must still be ok.
+for (const mode of ['present', 'override', 'no-config']) {
   const ag = tmp(`agents-${mode}`)
   const own = '# AGENTS.md — the project\'s own rules\n'
   writeFileSync(join(ag, 'AGENTS.md'), own)
   const overrides = mode === 'override' ? [{ path: 'AGENTS.md', reason: 'install-check: the project owns AGENTS.md' }] : []
-  writeFileSync(join(ag, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, overrides }))
-  const r = run('install.mjs', ['--target', ag])
+  if (mode !== 'no-config') writeFileSync(join(ag, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, overrides }))
+  const r = run('install.mjs', ['--target', ag, ...(mode === 'no-config' ? ['--packs', 'angular'] : [])])
   const wf = existsSync(join(ag, 'AGENTS.workflow.md')) ? read(ag, 'AGENTS.workflow.md') : ''
   const claude = existsSync(join(ag, 'CLAUDE.md')) ? read(ag, 'CLAUDE.md') : ''
   if (r.status !== 0 || !wf.includes('## Hard rules') || /\{\{/.test(wf) || !wf.includes('Kit-managed')) fail(`AGENTS.md ${mode}: AGENTS.workflow.md not rendered (exit ${r.status}): ${(r.stdout + r.stderr).trim().split('\n').pop()}`)

@@ -46,11 +46,13 @@ const WATCHER = /--watch\b/
 // slots.feEnvFile  optional local environment file the frontend needs. When set and missing there is no
 //                  frontend; before a start its slot copy (`.local` -> `.slot` in the name) is written with this
 //                  slot's backend port.
-const FE_SCRIPT = '{{commands.dev}}'
-const FE_EXEC = [{{slots.feExec|dquoted}}].filter(Boolean)
-const FE_PORT_ARGS = [{{slots.fePortArgs|dquoted}}].filter(Boolean)
-const FE_MATCHER_SRC = String.raw`{{slots.feMatcher}}`
-const FE_ENV_FILE = '{{slots.feEnvFile}}'
+// Rendered as JSON literals, so quotes, backslashes or backticks in a value cannot break this module.
+const asList = (v) => (Array.isArray(v) ? v : v == null || v === '' ? [] : String(v).split(',')).map((s) => String(s).trim()).filter(Boolean)
+const FE_SCRIPT = String({{commands.dev|json}} || '')
+const FE_EXEC = asList({{slots.feExec|json}})
+const FE_PORT_ARGS = asList({{slots.fePortArgs|json}})
+const FE_MATCHER_SRC = String({{slots.feMatcher|json}} || '')
+const FE_ENV_FILE = String({{slots.feEnvFile|json}} || '')
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const FE_MATCHER = FE_MATCHER_SRC ? new RegExp(FE_MATCHER_SRC, 'i') : FE_SCRIPT ? new RegExp(`\\brun\\s+${escapeRe(FE_SCRIPT)}(\\s|"|$)`, 'i') : null
 

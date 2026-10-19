@@ -79,7 +79,12 @@ What a project must do:
    `src/environments/environment.local.ts` existed: set `commands.dev` (and, as needed, `slots.feExec`,
    `slots.fePortArgs`, `slots.feMatcher`, `slots.feEnvFile`) in `kit.config.json`. With the angular pack nothing
    changes: it supplies today's command (`npm exec -- ng serve -c slot --port <port>`) and env file.
-5. Optional: the `.gitignore` skeleton (a seed) lists three more runtime paths (`.claude/*.log`,
+5. A node-express project without a root frontend whose `kit.config.json` still says `commands.dev: "dev"` (older
+   installs copied that pack default into the written config): set `commands.dev` to `""`, or slots would start
+   `npm run dev -- --port <port>` as a frontend. Install and sync print a `NOTE` while `commands.dev` is set and every
+   `slots.fe*` value is the kit default. A real frontend with the default `slots.fePortArgs` (`--port {port}`) must
+   fail on a busy port; add its strict-port flag if it would move to another port.
+6. Optional: the `.gitignore` skeleton (a seed) lists three more runtime paths (`.claude/*.log`,
    `.claude/.last-npm-install-hash-scripts`, `scripts/node_modules/`). Copy them into your `.gitignore` if you
    like; `take-plan` already adds the whole list to `.git/info/exclude`.
 
@@ -125,7 +130,8 @@ What a project must do:
 #### Fixed
 - `take-plan` no longer half-claims a slot when the claim commit fails (e.g. a pre-commit hook): it restores
   the plan file, returns the slot to its detached commit, deletes the new branch and prints
-  `TAKE_PLAN: claim commit failed: …`.
+  `TAKE_PLAN: claim commit failed: …`. It checks the result and names any step that did not undo, and a merged
+  PR's old remote branch is deleted only after the claim commit succeeded.
 - `scope-check` always allows `.kit/install.json` (kit-sync re-records it), so it is never `scope: out`.
 
 ## [1.0.5] - 2026-10-18

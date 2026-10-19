@@ -31,7 +31,7 @@ import { resolve, join, dirname } from 'path'
 import { resolveSource } from './lib/source.mjs'
 import {
   KIT_ROOT, readJson, sha256, resolveConfig, planFiles, parseArgs, readOverrides, isHook, markHooksExecutable, commandProblems,
-  ownsAgents, ignoredPaths, AGENTS_WORKFLOW,
+  ownsAgents, ignoredPaths, AGENTS_WORKFLOW, frontendNote,
 } from './lib/kit.mjs'
 
 let args
@@ -55,6 +55,7 @@ const inst = readJson(installFile)
 const cfgFile = join(target, 'kit.config.json')
 const project = existsSync(cfgFile) ? readJson(cfgFile) : {}
 let plan
+let feNote
 let overrides
 let kitRoot
 let origin
@@ -75,6 +76,7 @@ try {
     console.error('Fix kit.config.json, then re-run. Nothing was written.')
     process.exit(2)
   }
+  feNote = frontendNote(vals)
   const agentsWorkflow = ownsAgents({ target, overrides, recorded: inst.files ?? {} })
   plan = planFiles({ kitRoot, packs: inst.packs, cursor: inst.cursor, yesChef: inst.yesChef, vals, agentsWorkflow })
 } catch (e) {
@@ -130,6 +132,7 @@ const order = ['new', 'kit-update', 'conflict', 'local-only', 'deleted-locally',
 const count = (s) => rows.filter((r) => r.state === s).length
 for (const s of order) for (const r of rows.filter((x) => x.state === s)) console.log(`${s.padEnd(16)} ${r.dest}`)
 for (const p of unknownOverrides) console.log(`NOTE override ${p} is not a file this kit ships — remove it from kit.config.json`)
+if (feNote) console.log(feNote)
 if (inst.kit?.version !== readJson(join(kitRoot, 'kit.json')).version) {
   console.log(`NOTE installed from kit ${inst.kit?.version}, this kit is ${readJson(join(kitRoot, 'kit.json')).version}`)
 }

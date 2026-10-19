@@ -62,7 +62,9 @@ cd ai-workflow-kit
 - **Frontend dev server in slots.** `slot-serve` starts `npm run <commands.dev> -- <slots.fePortArgs>` (or
   `npm exec -- <slots.feExec> <slots.fePortArgs>`), `{port}` = the slot's frontend port; a stack pack supplies
   the values. The arguments must make the server fail when its port is taken (e.g. a strict-port flag), never
-  move to another port. No `commands.dev` script in `package.json` = no frontend.
+  move to another port. The kit default `["--port", "{port}"]` is only right for a server that already fails on a busy
+  port; add the strict-port flag otherwise (install and sync print a `NOTE` while `commands.dev` is set and every
+  `slots.fe*` value is the default). No `commands.dev` script in `package.json` = no frontend.
 - **todo-sync needs one repo setting.** Settings → Actions → General → Workflow permissions → tick
   "Allow GitHub Actions to create and approve pull requests". Without it every merge's todo-sync run fails
   at `gh pr create`; the run deletes its `chore/todo-sync-*` branch and prints an error naming the setting.

@@ -204,3 +204,25 @@ merges": no tag, no release, no `kit.json` bump; CHANGELOG `### 003 — …` und
   --port 4207`; `environment.slot.ts` written with `http://localhost:3007`; HTTP 200. Re-run → `fe=4207 kept`.
   `node scripts/slot-stop.mjs` → `stopped PID … (recorded: node.exe npm-cli.js exec -- ng serve -c slot --port
   4207)`, port 4207 free, no node process left. Scratch clone deleted afterwards.
+
+### PR #25 review fixes
+1. (medium) Fresh install with its own `AGENTS.md` and no `kit.config.json` drifted at once: the written effective
+   config carried `tools.browser: "browser tool"`, which then counted as project-set. `kit.browserSet` now compares
+   the value with the kit default. install-check case `AGENTS.md no-config` (install `--packs angular`, then sync
+   0/0/0 and drift-check ok); mutation (old rule) → `KIT_DRIFT: FAIL — 1 undeclared differences`.
+2. (medium) Old effective configs of node-express projects still hold `commands.dev: "dev"`. Install and sync
+   print `NOTE commands.dev "dev" starts a frontend dev server …` while `commands.dev` is set and every
+   `slots.fe*` value equals the kit default (`kit.feDefaults`); CHANGELOG "what a project must do" item 5.
+   install-check asserts the NOTE only for the node-express fixture with `commands.dev: "dev"`. FoodVibe: no NOTE
+   (the angular pack sets the fe values).
+3. (low) A merged PR's old remote branch is deleted only after the claim commit succeeded.
+4. (low) The rollback runs each step on its own, then checks the branch, the leftover branch and the plan file.
+   If anything is left it names the failed steps and the exact commands to finish by hand.
+5. (low) `slot-procs.mjs` renders the fe values with `|json` (lists through `asList`). install-check: a project
+   `slots.feMatcher` with quote, double quote, backtick, `${` and backslash renders, passes `node --check` and
+   keeps its source. FoodVibe's values are unchanged (probe: `exec -- ng serve -c slot --port 4201`).
+6. (low) The default `slots.fePortArgs` stays `["--port","{port}"]`. The `$comment`, the README and the CHANGELOG
+   now say it is only right for a server that already fails on a busy port; any other server needs its
+   strict-port flag. The NOTE from 2 flags the all-default case. Angular pack values unchanged.
+- Checks after the fixes: leak-check ×3, pack-check, install-check, e2e (42) ok. FoodVibe dry-run rows unchanged
+  (`3 new, 20 kit-update, 2 conflicts` — the two templates).

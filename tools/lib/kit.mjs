@@ -38,6 +38,17 @@ export function commandProblems(vals) {
   return out
 }
 
+/**
+ * A NOTE when commands.dev will start a slot frontend with nothing but the kit defaults (no pack or project set
+ * any slots.fe* value): an older effective config may carry a backend-only `commands.dev: "dev"`. Else null.
+ */
+export function frontendNote(vals) {
+  const dev = vals['commands.dev']
+  if (isEmpty(dev) || !vals['kit.feDefaults']) return null
+  return `NOTE commands.dev "${dev}" starts a frontend dev server in each slot (npm run ${dev} -- --port <port>), with the kit's default slots.fe* values. ` +
+    'No root frontend (e.g. a backend-only project)? Set commands.dev to "". Otherwise check slots.fePortArgs makes the server fail on a busy port (strict port), never move to another.'
+}
+
 /** The runtime ignore list, read from core/scripts/local-excludes.mjs (its KIT:runtime-ignores block). */
 export function runtimeIgnores(kitRoot) {
   const file = join(kitRoot, 'core', 'scripts', 'local-excludes.mjs')
@@ -170,8 +181,13 @@ export function resolveConfig({ kitRoot, project, packs, target, platform = proc
   vals['kit.mcpCommand'] = platform === 'win32' ? 'cmd' : 'npx'
   vals['kit.mcpArgs'] = platform === 'win32' ? '"/c", "npx", ' : ''
   vals['kit.nodeVersion'] = nodeVersion
-  // tools.browser left at the kit default: the AGENTS.md skeleton then leaves the tool name out.
-  vals['kit.browserSet'] = !isEmpty(proj['tools.browser']) || !isEmpty(packLayer['tools.browser'])
+  // tools.browser equal to the kit default (unset, or copied into the effective config install writes): the
+  // AGENTS.md skeleton then leaves the tool name out. Compared by value, so install, sync and drift agree.
+  vals['kit.browserSet'] = !isEmpty(vals['tools.browser']) && vals['tools.browser'] !== base['tools.browser']
+  // commands.dev starts a slot frontend; none of the slots.fe* values differ from the kit defaults = nothing
+  // (pack or project) said how. Install and sync print a NOTE then (e.g. an old backend-only `commands.dev: "dev"`).
+  const same = (a, b) => JSON.stringify(a ?? '') === JSON.stringify(b ?? '')
+  vals['kit.feDefaults'] = ['slots.feExec', 'slots.fePortArgs', 'slots.feMatcher', 'slots.feEnvFile'].every((k) => same(vals[k], base[k]))
   // scripts/package.json keeps the module type the root package.json gives the project's own scripts/*.js files.
   let rootType = 'commonjs'
   try {

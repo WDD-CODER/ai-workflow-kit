@@ -293,20 +293,8 @@ if (!resuming) {
     git(['switch', branchName])
     console.log(`TAKE_PLAN: reusing existing branch ${branchName} (it has commits not on {{git.mainBranch}})`)
   } else {
-    if (leftoverMerged) git(['branch', '-D', branchName]) // stale: nothing on it that main lacks
-    if (leftoverPr) {
-      // The old remote branch would reject the fresh branch's push. GitHub keeps it restorable from the merged PR.
-      let note = 'starting fresh'
-      if (tryGit(['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branchName}`])) {
-        try {
-          execFileSync('git', ['push', 'origin', '--delete', branchName], { cwd: repoRoot, env: ghEnv, stdio: 'ignore' })
-          note = 'deleted its old remote branch, starting fresh'
-        } catch {
-          note = `starting fresh; its old remote branch is still there - delete it (git push origin --delete ${branchName}) before pushing`
-        }
-      }
-      console.log(`TAKE_PLAN: ${branchName} was merged in PR #${leftoverPr} - ${note}`)
-    }
+    // Stale: nothing on it that main lacks (merged), so a failed claim below does not need it back.
+    if (leftoverMerged) git(['branch', '-D', branchName])
     git(['switch', '-c', branchName, 'origin/{{git.mainBranch}}'])
     createdBranch = true
   }
@@ -319,12 +307,42 @@ if (!resuming) {
     } catch (e) {
       // Roll the claim back: unstage and restore the plan file, return to the pre-claim commit, drop the new branch.
       const why = `${e.stderr || ''}${e.stdout || ''}`.replace(/\r\n/g, '\n').trim().split('\n').slice(-5).join(' | ') || e.message
-      tryGit(['reset', '-q', '--', match])
-      tryGit(['checkout', '-q', '--', match])
-      tryGit(['switch', '-q', '--detach', preClaimHead])
-      if (createdBranch) tryGit(['branch', '-D', branchName])
+      const failed = []
+      const step = (label, args) => {
+        try {
+          execFileSync('git', args, { cwd: repoRoot, stdio: 'ignore' })
+        } catch {
+          failed.push(label)
+        }
+      }
+      step('unstage the plan file', ['reset', '-q', '--', match])
+      step('restore the plan file', ['checkout', '-q', '--', match])
+      step(`detach at ${preClaimHead.slice(0, 8)}`, ['switch', '-q', '--detach', preClaimHead])
+      if (createdBranch) step(`delete branch ${branchName}`, ['branch', '-D', branchName])
+      // Check the result instead of trusting the steps.
+      const left = []
+      if (tryGit(['branch', '--show-current'])) left.push(`still on branch ${tryGit(['branch', '--show-current'])}`)
+      if (createdBranch && tryGit(['rev-parse', '--verify', '--quiet', `refs/heads/${branchName}`])) left.push(`branch ${branchName} still exists`)
+      if (tryGit(['status', '--porcelain', '--', match])) left.push(`${match} still changed`)
+      if (left.length) {
+        fail(`claim commit failed: ${why} - and the rollback is incomplete (${failed.length ? `failed: ${failed.join(', ')}; ` : ''}${left.join('; ')}). Fix by hand: git switch --detach ${preClaimHead}${createdBranch ? `, git branch -D ${branchName}` : ''}, then re-run.`)
+      }
       fail(`claim commit failed: ${why} - slot wt-${n} is back to detached and idle${createdBranch ? `, branch ${branchName} removed` : ''}. Fix the hook error and re-run.`)
     }
+  }
+  // Only once the claim is committed: the old remote branch of a merged PR would reject the fresh branch's push.
+  // GitHub keeps it restorable from the merged PR.
+  if (leftoverPr && createdBranch) {
+    let note = 'starting fresh'
+    if (tryGit(['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branchName}`])) {
+      try {
+        execFileSync('git', ['push', 'origin', '--delete', branchName], { cwd: repoRoot, env: ghEnv, stdio: 'ignore' })
+        note = 'deleted its old remote branch, starting fresh'
+      } catch {
+        note = `starting fresh; its old remote branch is still there - delete it (git push origin --delete ${branchName}) before pushing`
+      }
+    }
+    console.log(`TAKE_PLAN: ${branchName} was merged in PR #${leftoverPr} - ${note}`)
   }
 }
 const previousPlan = existsSync(worktreePlanPath) ? readFileSync(worktreePlanPath, 'utf8').trim() : ''
