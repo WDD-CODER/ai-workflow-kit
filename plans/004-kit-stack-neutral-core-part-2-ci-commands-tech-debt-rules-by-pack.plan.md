@@ -81,7 +81,7 @@ Thinking outside the box is expected; writing outside it requires explicit conse
 - [x] M6: Make the tech-debt scan work for any stack and compare against a baseline — scan subcommand, baseline file, tsx/jsx, pack rule sets, skill PACK:stack — `core/scripts/techdebt-report.mjs`, `core/.claude/skills/techdebt/SKILL.md`, `packs/angular/**`
 - [x] M7: Make git commands work in forks and when PR edit is blocked — gh -R from origin, PATCH fallback documented — `core/docs/agent/standards-git.md`, `core/.claude/commands/ship.md`
 - [x] M8: Prove FoodVibe still renders the same CI and rules before merging — local-source dry-run, rendered ci.yml and fix.md compared; notes — this plan file
-- [ ] M9: Run all kit checks and open the kit PR — leak-check, pack-check, install-check, e2e-check, link check; CHANGELOG Unreleased — kit repo
+- [x] M9: Run all kit checks and open the kit PR — leak-check, pack-check, install-check, e2e-check, link check; CHANGELOG Unreleased — kit repo
 
 ## Out of Scope
 React-Vite pack, upstream-owned layer, adoption tools, release (005); porting Python scripts to node.
@@ -205,7 +205,7 @@ release, no `kit.json` bump; CHANGELOG `### 004 — …` under `## [Unreleased]`
   `grep -rn "@Input()\|BehaviorSubject" src/app --include=*.ts` minus specs: none left since the 2026-09-27 report);
   baseline written to `_shared/techdebt-baseline.json`; a probe line `@Input() a = 1;` + `BehaviorSubject` →
   `NEW_DEBT: yes (legacy-decorator +1, behavior-subject +1, semicolon +1)`, the categories of FoodVibe's reports.
-- Kit checks: see M9 / the PR body.
+- Kit checks (local, Windows): leak-check ×3 ok (152 / 38 / 3 files), `PACK_CHECK: ok — 2 packs, 8 contract keys used by core`, `INSTALL_CHECK: ok — 4 fixtures, actionlint on 16 rendered workflows, … 0 problems`, `E2E_CHECK: ok — 42 cases passed`, `WORKFLOW_LINK_CHECK: ok — 4 fixtures …, 0 missing`. PR #26 CI (`c84fc9d`): leak-check (actionlint tarball checksum OK, `actionlint on 16 rendered workflows`, link check 0 missing), e2e ubuntu-latest and windows-latest all pass.
 
 ### M8 — FoodVibe safety (read-only; renders and a scratch clone under the session scratchpad)
 - `node tools/sync.mjs --target ../foodVibe1.0 --source .` → `KIT_SYNC: dry-run — 3 new, 26 kit-update, 2 conflicts,
