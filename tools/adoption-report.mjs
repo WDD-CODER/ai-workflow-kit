@@ -88,9 +88,17 @@ row('managed files', undeclared.length ? 'warn' : 'ok', undeclared.length ? `${s
 // stack: what the installer would detect now
 const found = detectStack({ kitRoot: KIT_ROOT, target, project })
 const notInstalled = [...found.packs.filter((p) => !packs.includes(p.name)), ...found.layers.filter((l) => !layers.includes(l.name))]
+const suggested = found.suggested.filter((s) => !(s.kind === 'layer' ? layers : packs).includes(s.name))
+const suggestNote = suggested.length ? `; suggested, check it applies: ${suggested.map((s) => `${s.name} (${s.why})`).join('; ')}` : ''
 row('stack', notInstalled.length ? 'warn' : 'ok', notInstalled.length
-  ? `detected but not installed: ${notInstalled.map((u) => `${u.name} (${u.why})`).join('; ')} — kit-sync --packs/--layers adds them`
-  : `packs=[${packs.join(', ')}] layers=[${layers.join(', ')}] (detection agrees)`)
+  ? `detected but not installed: ${notInstalled.map((u) => `${u.name} (${u.why})`).join('; ')} — kit-sync --packs/--layers adds them${suggestNote}`
+  : `packs=[${packs.join(', ')}] layers=[${layers.join(', ')}] (detection agrees)${suggestNote}`)
+// The config and the install record name the same stack (install stops when they disagree).
+const cfgStack = project.stack ?? {}
+const mismatch = ['packs', 'layers'].filter((k) => Array.isArray(cfgStack[k]) && Array.isArray(inst[k]) && JSON.stringify(cfgStack[k]) !== JSON.stringify(inst[k]))
+row('stack record', mismatch.length ? 'warn' : 'ok', mismatch.length
+  ? mismatch.map((k) => `kit.config.json stack.${k} [${cfgStack[k].join(', ')}] ≠ .kit/install.json ${k} [${inst[k].join(', ')}]`).join('; ') + ' — a re-install stops until they agree (kit-sync --packs/--layers --apply updates both)'
+  : 'kit.config.json and .kit/install.json name the same stack')
 
 // Claude Code hooks: each command's scripts exist
 const scriptRefs = (cmd) => [...cmd.matchAll(/(?:^|[\s"'/])(scripts\/[\w./-]+\.(?:mjs|js|sh|py))/g)].map((m) => m[1])

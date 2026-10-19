@@ -676,12 +676,16 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   const ngApp = det('ng', { 'kit.config.json': cfg, 'package.json': { dependencies: { '@angular/core': '19.0.0' } }, 'server/package.json': { dependencies: { express: '4.0.0' } } })
   const rvApp = det('rv', { 'kit.config.json': cfg, 'package.json': { dependencies: { react: '18.3.1' }, devDependencies: { vite: '5.4.0' } }, 'supabase/config.toml': '' })
   const upApp = det('up', { 'package.json': { dependencies: { react: '18.3.1', vite: '5.4.0' } } }, true)
+  // An Angular SSR app lists express in the root package.json: that is no backend (no node-express pack).
+  const ssrApp = det('ssr', { 'kit.config.json': cfg, 'package.json': { dependencies: { '@angular/core': '19.0.0', express: '4.0.0' } } })
   const none = det('none', { 'kit.config.json': cfg, 'package.json': { dependencies: { lodash: '4.0.0' } } })
   const count = (d) => files(d).filter((f) => !f.startsWith('.git/')).length
   const cases = [
     [ngApp, 'KIT_INSTALL: detected packs=[angular, node-express] layers=[]', ['angular — package.json has @angular/core', 'node-express — server/package.json has express']],
     [rvApp, 'KIT_INSTALL: detected packs=[react-vite] layers=[supabase]', ['react-vite — package.json has vite + react', 'supabase — supabase/ exists']],
-    [upApp, 'KIT_INSTALL: detected packs=[react-vite] layers=[upstream-owned]', ['upstream-owned — git remote "upstream" exists']],
+    // An `upstream` remote (every fork clone has one) only suggests the upstream-owned layer.
+    [upApp, 'KIT_INSTALL: detected packs=[react-vite] layers=[]', ['suggested layer upstream-owned — git remote "upstream" exists; not included: if it applies, add --layers upstream-owned']],
+    [ssrApp, 'KIT_INSTALL: detected packs=[angular] layers=[]', ['angular — package.json has @angular/core']],
   ]
   for (const [d, line, whys] of cases) {
     const before = count(d)
@@ -719,9 +723,30 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   if (!addDry.stdout.includes('NOTE stack packs=[] layers=[] -> packs=[react-vite] layers=[supabase] (recorded on --apply)') || !addDry.stdout.includes('new              docs/agent/standards-react.md') || existsSync(join(none, 'docs/agent/standards-react.md'))) fail(`sync --packs dry-run: ${addDry.stdout.trim().split('\n').pop()}`)
   run('sync.mjs', ['--target', none, '--packs', 'react-vite', '--layers', 'supabase', '--apply'])
   const added = JSON.parse(read(none, '.kit/install.json'))
+  if (JSON.stringify(JSON.parse(read(none, 'kit.config.json')).stack) !== '{"packs":["react-vite"],"layers":["supabase"]}') fail(`sync --packs --apply must record the stack in kit.config.json too: ${read(none, 'kit.config.json')}`)
+  const reinstall = run('install.mjs', ['--target', none, '--dry-run'])
+  if (reinstall.status !== 0 || !reinstall.stdout.includes('packs=[react-vite], layers=[supabase]')) fail(`a re-install after sync --packs keeps the stack: ${(reinstall.stdout + reinstall.stderr).trim().split('\n').pop()}`)
   const addDrift = run('drift-check.mjs', ['--target', none])
   if (JSON.stringify([added.packs, added.layers]) !== '[["react-vite"],["supabase"]]' || !existsSync(join(none, 'docs/agent/standards-supabase.md')) || addDrift.status !== 0) fail(`sync --packs --apply: recorded ${JSON.stringify([added.packs, added.layers])}, drift ${addDrift.stdout.trim().split('\n').pop()}`)
-  for (const d of [ngApp, rvApp, upApp, none, wins]) rmSync(d, { recursive: true, force: true })
+  // --yes installs the detected stack only: the suggested upstream-owned layer stays out until named.
+  writeFileSync(join(upApp, 'kit.config.json'), JSON.stringify(cfg))
+  const upYes = run('install.mjs', ['--target', upApp, '--yes'])
+  if (upYes.status !== 0 || JSON.stringify(JSON.parse(read(upApp, 'kit.config.json')).stack) !== '{"packs":["react-vite"],"layers":[]}' || existsSync(join(upApp, '.claude/commands/pull-copy.md'))) fail(`detection --yes must not include a suggested layer: ${upYes.stdout.trim().split('\n').pop()}`)
+  // The config and the install record disagree (a hand-edited stack.packs): install stops, nothing written.
+  const ssrYes = run('install.mjs', ['--target', ssrApp, '--yes'])
+  if (ssrYes.status !== 0 || files(ssrApp).some((f) => /standards-backend\.md/.test(f))) fail(`an Angular app with express in the root package.json must not get node-express: ${ssrYes.stdout.trim().split('\n').pop()}`)
+  const ssrCfg = JSON.parse(read(ssrApp, 'kit.config.json'))
+  writeFileSync(join(ssrApp, 'kit.config.json'), JSON.stringify({ ...ssrCfg, stack: { ...ssrCfg.stack, packs: [] } }))
+  const before = read(ssrApp, '.kit/install.json')
+  const mism = run('install.mjs', ['--target', ssrApp])
+  if (mism.status !== 2 || !mism.stderr.includes('kit.config.json stack.packs [] and .kit/install.json packs [angular] disagree') || read(ssrApp, '.kit/install.json') !== before) fail(`config / record stack mismatch must stop: exit ${mism.status}, ${mism.stderr.trim().split('\n')[0]}`)
+  const rep = spawnSync(process.execPath, [join(kit, 'tools', 'adoption-report.mjs'), '--target', ssrApp], { encoding: 'utf8' })
+  if (!/^stack record\s+warn\s+kit\.config\.json stack\.packs \[\] ≠ \.kit\/install\.json packs \[angular\]/m.test(rep.stdout)) fail(`adoption-report must flag the stack mismatch: ${rep.stdout.split('\n').find((l) => l.startsWith('stack record'))}`)
+  // ownership.upstreamPaths outside the shared glob subset is refused (the kit and the scope guard would disagree).
+  writeFileSync(join(ssrApp, 'kit.config.json'), JSON.stringify({ ...ssrCfg, ownership: { upstreamPaths: ['src/**/*.{ts,tsx}'] } }))
+  const brace = run('install.mjs', ['--target', ssrApp, '--dry-run'])
+  if (brace.status !== 2 || !brace.stderr.includes('ownership.upstreamPaths "src/**/*.{ts,tsx}" — brace lists')) fail(`a brace glob in ownership.upstreamPaths must be refused: exit ${brace.status}`)
+  for (const d of [ngApp, rvApp, upApp, none, wins, ssrApp]) rmSync(d, { recursive: true, force: true })
 }
 
 // The upstream-owned layer: the project keeps .gitignore, package.json and AGENTS.md (ownership.upstreamPaths, the layer's

@@ -10,7 +10,7 @@
   "detect": {
     "order": 20,
     "anyOf": [
-      { "deps": ["express"], "in": ["", "{paths.serverRoot}", "server/"] }
+      { "deps": ["express"], "in": ["{paths.serverRoot}", "server/"] }
     ]
   },
   "provides": { "backendDoc": "docs/agent/standards-backend.md" },

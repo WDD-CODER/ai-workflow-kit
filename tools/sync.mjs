@@ -8,7 +8,8 @@
  * --ref <tag> upgrades (or downgrades) a github source; --apply then records the new source/ref/commit.
  * A ref that does not exist fails before anything is written.
  * Packs and layers: the ones .kit/install.json recorded; --packs / --layers change them (a stack pack or a layer added
- * to an installed project) and --apply records the new lists.
+ * to an installed project) and --apply records the new lists in .kit/install.json and kit.config.json (stack.packs,
+ * stack.layers), so install, which reads the config first, keeps them.
  *
  * Dry-run by default; writes nothing. --apply writes only `new` and `kit-update` files and refreshes
  * .kit/install.json. A `conflict` (local edit AND kit change, or an untracked file in the way) is never overwritten.
@@ -176,6 +177,14 @@ if (args.apply) {
   // The stack as synced (--packs / --layers may have changed it); `layers` only once a project has one.
   const stack = { packs, ...(layers.length || 'layers' in inst ? { layers } : {}) }
   writeFileSync(installFile, JSON.stringify({ kit: { version: kitVersion }, ...origin, ...rest, ...stack, files: sorted }, null, 2) + '\n', 'utf8')
+  // A stack changed with --packs / --layers goes into kit.config.json too: install reads stack.packs / stack.layers
+  // first, and stops while they disagree with the record.
+  if ((args.packs != null || args.layers != null) && existsSync(cfgFile)) {
+    const cfg = readJson(cfgFile)
+    cfg.stack = { ...(cfg.stack ?? {}), ...(args.packs != null ? { packs } : {}), ...(args.layers != null ? { layers } : {}) }
+    writeFileSync(cfgFile, JSON.stringify(cfg, null, 2) + '\n', 'utf8')
+    console.log(`NOTE kit.config.json: stack.packs=[${(cfg.stack.packs ?? []).join(', ')}] stack.layers=[${(cfg.stack.layers ?? []).join(', ')}]`)
+  }
   // scripts/package.json is the kit's, scripts/package-lock.json the project's: refresh the lockfile with the new
   // dependencies, or `npm ci` inside scripts/ (CI, slots) fails on the sync PR. Inside scripts/, never --prefix (npm 10).
   if (scriptsPkgWritten && existsSync(join(target, 'scripts', 'package-lock.json'))) {

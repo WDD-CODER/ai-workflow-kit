@@ -3,7 +3,8 @@
  *
  *   node tools/workflow-link-check.mjs                   # installs the fixtures (packs [], angular, node-express,
  *                                                         # angular + node-express, react-vite, react-vite + layers
- *                                                         # supabase and upstream-owned; each with the Cursor layer)
+ *                                                         # supabase and upstream-owned; each with the Cursor layer,
+ *                                                         # plus angular without it)
  *                                                         # into temp folders and checks each
  *   node tools/workflow-link-check.mjs --target <dir>    # checks an installed project
  *
@@ -112,6 +113,7 @@ export function linkProblems(dir) {
 const FIXTURES = [
   { name: 'packs-none', packs: '' },
   { name: 'angular', packs: 'angular' },
+  { name: 'angular-no-cursor', packs: 'angular', noCursor: true }, // the pack ships .cursor/rules without the layer
   { name: 'node-express', packs: 'node-express' },
   { name: 'angular-node-express', packs: 'angular,node-express' },
   { name: 'react-vite', packs: 'react-vite' },
@@ -132,7 +134,7 @@ function main() {
   for (const fx of FIXTURES) {
     const dir = mkdtempSync(join(tmpdir(), `kit-links-${fx.name}-`))
     writeFileSync(join(dir, 'kit.config.json'), JSON.stringify({ project: { name: `links-${fx.name}` }, commands: { build: 'build', lint: 'lint', test: 'test' }, hooks: { shellPath: 'bash' } }))
-    const r = spawnSync(process.execPath, [join(kit, 'tools', 'install.mjs'), '--target', dir, '--cursor', '--packs', fx.packs, ...(fx.layers ? ['--layers', fx.layers] : [])], { encoding: 'utf8' })
+    const r = spawnSync(process.execPath, [join(kit, 'tools', 'install.mjs'), '--target', dir, ...(fx.noCursor ? [] : ['--cursor']), '--packs', fx.packs, ...(fx.layers ? ['--layers', fx.layers] : [])], { encoding: 'utf8' })
     if (r.status !== 0) {
       console.error(`${fx.name}: install exited ${r.status}: ${(r.stdout + r.stderr).trim().split('\n').pop()}`)
       total++
@@ -144,7 +146,7 @@ function main() {
     }
     rmSync(dir, { recursive: true, force: true })
   }
-  console.log(`WORKFLOW_LINK_CHECK: ${total ? 'FAIL' : 'ok'} — ${FIXTURES.length} fixtures (packs [], angular, node-express, angular + node-express, react-vite, react-vite + supabase + upstream-owned), ${total} missing`)
+  console.log(`WORKFLOW_LINK_CHECK: ${total ? 'FAIL' : 'ok'} — ${FIXTURES.length} fixtures (packs [], angular, angular without Cursor, node-express, angular + node-express, react-vite, react-vite + supabase + upstream-owned), ${total} missing`)
   process.exit(total ? 1 : 0)
 }
 

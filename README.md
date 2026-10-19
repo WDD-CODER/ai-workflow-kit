@@ -101,12 +101,14 @@ are copied.
 | layer | `cursor` | Cursor commands and rules (`-Cursor`) |
 
 **Detection.** With no `-Packs` and no `stack.packs`, `install` reads the project: `@angular/core` → `angular`;
-`vite` + `react` → `react-vite`; `express` in the root or the backend `package.json` → `node-express`; a `supabase/`
-folder or `@supabase/supabase-js` → `supabase`; an `upstream` git remote → `upstream-owned`. It prints
-`KIT_INSTALL: detected packs=[…] layers=[…]` with the reason for each and writes nothing (exit 2) until `-Yes`; then it
-installs them and records `stack.packs` / `stack.layers` in `kit.config.json`. Nothing matches → exit 2 (name the
-packs, or `-Packs ''`). An explicit `-Packs` or `stack.packs` always wins. Each rule lives in its `pack.json` /
-`layer.json` (`detect`), so a new pack brings its own.
+`vite` + `react` → `react-vite`; `express` in the backend's `package.json` (`server/` or `paths.serverRoot`, not the
+root, where an SSR frontend may list it) → `node-express`; a `supabase/` folder or `@supabase/supabase-js` →
+`supabase`. It prints `KIT_INSTALL: detected packs=[…] layers=[…]` with the reason for each and writes nothing (exit 2)
+until `-Yes`; then it installs them and records `stack.packs` / `stack.layers` in `kit.config.json`. An `upstream` git
+remote only **suggests** `upstream-owned` (every fork clone has one): it is printed, never installed by `-Yes`; add it
+with `-Layers`. Nothing matches → exit 2 (name the packs, or `-Packs ''`). An explicit `-Packs` or `stack.packs` always
+wins; install stops when `stack.packs` / `stack.layers` and `.kit/install.json` disagree. Each rule lives in its
+`pack.json` / `layer.json` (`detect`, optionally `suggestOnly`), so a new pack brings its own.
 
 **Upstream-owned files.** `ownership.upstreamPaths` (globs; the layer's default is `.gitignore`, `AGENTS.md`,
 `package.json`, `package-lock.json`, a project list replaces it) are files another repo owns. Install never writes
@@ -117,7 +119,7 @@ them, sync and drift-check report them as `override` (no hand-written override n
 conflict, and leaves the force-push to the Human.
 
 Adding a pack or layer to an installed project: `kit-sync -Packs react-vite -Layers supabase` (dry-run), then
-`-Apply` records the new lists.
+`-Apply` records the new lists in `.kit/install.json` and `kit.config.json`.
 
 ## Sync (see what a newer kit changes)
 

@@ -22,7 +22,7 @@
  */
 import { readFileSync, readdirSync, existsSync, statSync } from 'fs'
 import { resolve, join, relative } from 'path'
-import { CONTRACT, REQUIRES, fragmentSections, packMarker, condLine } from './lib/kit.mjs'
+import { CONTRACT, REQUIRES, fragmentSections, packMarker, condLine, globProblem } from './lib/kit.mjs'
 
 const packsDir = resolve('packs')
 const problems = []
@@ -138,6 +138,12 @@ function checkOptional(dir, root, pack, docPath) {
   for (const key of Object.keys(pack.configDefaults ?? {})) {
     if (!configKeys.has(key)) problems.push(`${dir}: configDefaults key not in kit.config.json: ${key}`)
   }
+  // Globs the kit matches itself and the scope guard matches with picomatch: only the subset both read alike.
+  for (const g of [].concat(pack.configDefaults?.['ownership.upstreamPaths'] ?? [])) {
+    const why = globProblem(g)
+    if (why) problems.push(`${dir}: configDefaults ownership.upstreamPaths "${g}": ${why}`)
+  }
+  if (pack.detect != null && pack.detect.suggestOnly != null && typeof pack.detect.suggestOnly !== 'boolean') problems.push(`${dir}: detect.suggestOnly must be true or false`)
   // The pack contract: each provided value must exist in the pack.
   const headings = docPath && existsSync(docPath)
     ? readFileSync(docPath, 'utf8').split(/\r?\n/).filter((l) => l.startsWith('## ')).map((l) => l.slice(3).trim())

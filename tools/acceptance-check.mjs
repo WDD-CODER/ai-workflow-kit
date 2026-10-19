@@ -74,7 +74,7 @@ for (const kind of only ? [only] : Object.keys(KINDS)) {
   const clean = () => git(fx.dir, 'status', '--porcelain').out.trim() === ''
 
   const det = tool('install.mjs', '--target', fx.dir, '--dry-run')
-  check(at(`stack detection proposes ${fx.detected} and writes nothing`), det.status === 2 && det.out.includes(`KIT_INSTALL: detected ${fx.detected}`) && clean(), tail(det.out))
+  check(at(`stack detection proposes ${fx.detected} and writes nothing`), det.status === 2 && det.out.includes(`KIT_INSTALL: detected ${fx.detected}`) && (!fx.suggested || det.out.includes(fx.suggested)) && clean(), tail(det.out))
 
   const args = ['--packs', fx.packs.join(','), ...(fx.layers.length ? ['--layers', fx.layers.join(',')] : []), ...(fx.args ?? [])]
   const inst = tool('install.mjs', '--target', fx.dir, ...args)

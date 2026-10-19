@@ -28,7 +28,11 @@ Run `kit-sync -Ref v2.0.0` (dry-run) first; it lists every change. Then:
 2. **Name the stack for a core-only install.** With no `--packs` and no `stack.packs`, install now detects the packs and
    layers, prints them with the reason for each and installs them only after `--yes`; when nothing matches it stops
    (exit 2) instead of installing the core alone. For the stack-neutral core only, pass `--packs ""` (PowerShell
-   `-Packs ''`) or set `"stack": { "packs": [] }`. Installed projects are not affected: sync uses the recorded packs.
+   `-Packs ''`) or set `"stack": { "packs": [] }`. This applies to `--config <file>` too: a config file without a `stack`
+   now exits 2 the same way. Detection never includes the `upstream-owned` layer by itself (every fork clone has an
+   `upstream` remote): it prints it as a suggestion, and you add it with `--layers`. Installed projects are not affected:
+   sync uses the recorded packs. Install stops (exit 2) when `kit.config.json` `stack.packs` / `stack.layers` and
+   `.kit/install.json` disagree — make them match.
 3. **PRD and HLD templates.** `kit-sync` shows `.claude/references/prd-template.md` and `hld-template.md` as `conflict`
    whenever the project's copy differs from the kit's (they were seeds and are now kit-managed; sync never overwrites
    them). For each: move the project-only lines into the file named by `paths.planChecks` (default
@@ -62,8 +66,11 @@ Run `kit-sync -Ref v2.0.0` (dry-run) first; it lists every change. Then:
    any other value of the two modes. An `overrides` entry for `ci.yml` or `security.yml` kept only for this, or only to
    drop the backend job, can go.
 9. **React + Vite projects that forked kit files.** Add the stack with `kit-sync --packs react-vite --layers
-   supabase[,upstream-owned]` (dry-run, then `--apply` records it; a project-owned `AGENTS.md` is a seed, so copy the
-   pack's hard rules and skill triggers in from a scratch install). Move `.gitignore`, `AGENTS.md`, `package.json` (and
+   supabase[,upstream-owned]` (dry-run, then `--apply` records it in `.kit/install.json` **and** in `kit.config.json`
+   `stack.packs` / `stack.layers` — a hand-edited config that still says `packs: []` makes a later install stop; a
+   project-owned `AGENTS.md` is a seed, so copy the pack's hard rules and skill triggers in from a scratch install). On
+   the `upstream-owned` layer a plan cannot add a dependency: `package.json` is upstream's (the scope guard denies it,
+   `ship-prep` flags a shell change to it). Move `.gitignore`, `AGENTS.md`, `package.json` (and
    any other upstream-owned file) from `overrides` to `ownership.upstreamPaths` — the `upstream-owned` layer's default
    already lists `.gitignore`, `AGENTS.md`, `package.json` and `package-lock.json`. Then these overrides can be dropped,
    because the kit now covers what they were forked for (drop the entry, sync, check the rendered file; keep an
@@ -255,12 +262,21 @@ enforced critical audit) and the same Angular rules, now from the pack; sync sho
   denies it ("upstream-owned, not an `approved:`"), even when the plan lists it; `ship-prep`'s scope check names it.
 - Stack detection: `pack.json` / `layer.json` `detect` rules (`deps` in the root or backend `package.json`, a `path`, a
   `gitRemote`). With no `--packs` and no `stack.packs`, install prints `KIT_INSTALL: detected packs=[…] layers=[…]` with a
-  reason per entry, writes nothing until `--yes`, then records the stack in `kit.config.json`.
-- `kit-sync --packs / --layers` add a pack or layer to an installed project (`--apply` records them); `kit-install.ps1
+  reason per entry, writes nothing until `--yes`, then records the stack in `kit.config.json`. node-express is detected
+  from the backend folder only (an SSR frontend lists `express` in the root); a `suggestOnly` rule (the `upstream`
+  remote → `upstream-owned`) is printed as a suggestion and never installed by `--yes`. Install stops when
+  `kit.config.json` `stack.*` and `.kit/install.json` disagree; `adoption-report` flags it.
+- `ownership.upstreamPaths` takes `**`, `*`, `?` and a trailing `/` only (the syntax the kit's matcher and the scope
+  guard's read alike): install and sync refuse braces, character classes and `!`; `pack-check` checks pack and layer
+  defaults.
+- `kit-sync --packs / --layers` add a pack or layer to an installed project (`--apply` records them in
+  `.kit/install.json` and `kit.config.json`); `kit-install.ps1
   -Layers -Yes`, `kit-sync.ps1 -Packs -Layers`. Every tool flag also takes `--flag=value` (PowerShell 5 drops an empty
   argument, so the wrappers pass `--packs=`).
 - `tools/e2e-check.mjs --project <path>`: the e2e cycle on a scratch copy of a real installed project — slots borrow its
-  `node_modules` through junctions (removed with `rmdir`, the source checked intact afterwards); the plan commit runs the
+  `node_modules` through junctions (removed with `rmdir`, also from exit and signal handlers when the run is
+  interrupted; the source checked intact afterwards; never delete its temp folder recursively while a link is there);
+  `/pull-copy` and the e2e use the upstream's own default branch (`refs/remotes/upstream/HEAD`); the plan commit runs the
   hooks; claim, guards (hotspot, upstream-owned path), the slot dev server, ship, merge, close-out, a Planner close-out
   push into a range folder, `/pull-copy` (replay, refused force-push, conflict abort) with an upstream, drift-check, the
   maintenance scripts and SessionStart JSON.
@@ -279,6 +295,9 @@ enforced critical audit) and the same Angular rules, now from the pack; sync sho
 - `install` with no `--packs`, no `stack.packs` and no recorded packs detects the stack and stops until `--yes` (exit 2),
   instead of installing the core alone (what-to-do item 2).
 - `workflow-map.md` §4 has a `PACK:workflow-map:skills` marker for the pack's skill rows (no pack section = no line).
+- `workflow-map.md` and `README_WORKFLOW.md` name `.cursor/commands/` and `contractor-role.mdc` only with the Cursor
+  layer (new builtin `kit.cursor` for `KIT:if`): an install without `--cursor` (e.g. the angular pack alone) had two
+  dangling references. Renders with `--cursor` are unchanged.
 
 ## [1.0.5] - 2026-10-18
 

@@ -52,7 +52,21 @@ export function commandProblems(vals) {
     const v = vals[key]
     if (!isEmpty(v) && !allowed.includes(v)) out.push(`${key} is "${v}" — allowed: ${allowed.map((a) => `"${a}"`).join(', ')}`)
   }
+  // ownership.upstreamPaths is read by the kit's own glob matcher and by the scope guard's (picomatch): only the syntax
+  // both read alike (`**`, `*`, `?`, a trailing `/`).
+  for (const g of asList(vals['ownership.upstreamPaths'])) {
+    const why = globProblem(g)
+    if (why) out.push(`ownership.upstreamPaths "${g}" — ${why}`)
+  }
   return out
+}
+
+/** Why a glob is outside the subset every kit matcher reads alike (`**`, `*`, `?`, trailing `/`), or null. */
+export function globProblem(g) {
+  if (/[{}]/.test(g)) return 'brace lists ({a,b}) are not supported: list each glob on its own'
+  if (/[[\]]/.test(g)) return 'character classes ([abc]) are not supported: list each path on its own'
+  if (/^!/.test(g)) return 'negation (!) is not supported'
+  return null
 }
 const CI_MODES = { 'ci.lintScope': ['all', 'changed'], 'ci.appAuditMode': ['enforce', 'report'] }
 
@@ -316,7 +330,8 @@ export const splitList = (s) => String(s ?? '').split(',').map((x) => x.trim()).
  *                   project's configured backend folder, skipped when unset); default the root only
  *   path: "<p>"     the file or folder exists in the project
  *   gitRemote: "<name>"   the project's git repo has that remote
- * Returns { packs: [{ name, why }], layers: [{ name, why }] }.
+ * and "suggestOnly": true makes a match a suggestion (printed, never installed by --yes).
+ * Returns { packs: [{ name, why }], layers: [{ name, why }], suggested: [{ name, why, kind }] }.
  */
 export function detectStack({ kitRoot, target, project = {} }) {
   const pkgCache = new Map()
@@ -375,14 +390,22 @@ export function detectStack({ kitRoot, target, project = {} }) {
       for (const rule of m.detect?.anyOf ?? []) {
         const why = ruleWhy(rule)
         if (why) {
-          out.push({ name, why, order: m.detect.order ?? 50 })
+          out.push({ name, why, order: m.detect.order ?? 50, suggest: !!m.detect.suggestOnly })
           break
         }
       }
     }
-    return out.sort((a, b) => a.order - b.order).map(({ name, why }) => ({ name, why }))
+    return out.sort((a, b) => a.order - b.order).map(({ name, why, suggest }) => ({ name, why, suggest }))
   }
-  return { packs: scan('packs', loadPack), layers: scan('layers', loadLayer) }
+  // A `suggestOnly` rule (e.g. an `upstream` remote, which every fork clone has) is printed as a suggestion with its
+  // reason, never installed by --yes: the Human names it with --layers / --packs.
+  const all = [...scan('packs', loadPack), ...scan('layers', loadLayer).map((l) => ({ ...l, layer: true }))]
+  const strip = ({ name, why }) => ({ name, why })
+  return {
+    packs: all.filter((u) => !u.layer && !u.suggest).map(strip),
+    layers: all.filter((u) => u.layer && !u.suggest).map(strip),
+    suggested: all.filter((u) => u.suggest).map((u) => ({ ...strip(u), kind: u.layer ? 'layer' : 'pack' })),
+  }
 }
 
 // Glob -> RegExp for ownership.upstreamPaths: `**` any depth, `*` within one folder, `?` one character; a trailing
@@ -571,6 +594,8 @@ export function markHooksExecutable(target, dests) {
  */
 export function planFiles({ kitRoot, packs, layers = [], cursor, yesChef, vals, agentsWorkflow = false }) {
   const units = selectedUnits(kitRoot, packs, layers)
+  // Builtin for KIT:if: the Cursor layer is installed (set = not empty).
+  vals = { ...vals, 'kit.cursor': cursor ? 'yes' : '' }
   const report = { unknown: new Set(), notSet: new Set() }
   const raw = new Map() // dest -> { kind, source, text }
   const add = (dest, kind, source) => {

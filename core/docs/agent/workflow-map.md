@@ -67,9 +67,15 @@ Cursor rule files ship with the optional `layer:cursor`; the stack pack adds sta
 | `/auto-solve` | autonomous solve loop (browse-based verification) |
 | `/skills`, `/commands` | listings |
 
+<!-- KIT:if kit.cursor -->
 ### Commands — Cursor (`.cursor/commands/`)
 
 Redirect stubs for palette discoverability ship with the optional `layer:cursor`.
+<!-- KIT:else -->
+### Commands — Cursor
+
+Redirect stubs for palette discoverability ship with the optional Cursor layer (not installed here).
+<!-- KIT:end -->
 
 ---
 

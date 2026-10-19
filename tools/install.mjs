@@ -28,7 +28,9 @@
  * none of them, install detects the packs and layers from the project (each pack.json / layer.json `detect` rules: a
  * package.json dependency, a folder, a git remote), prints `KIT_INSTALL: detected packs=[…] layers=[…]` with the reason
  * for each, and stops (exit 2, nothing written) until --yes confirms; then it installs them and records them in
- * kit.config.json. Nothing matches: exit 2 (name the packs, or --packs "" for core only). --layers cursor = --cursor.
+ * kit.config.json. Nothing matches: exit 2 (name the packs, or --packs "" for core only). A `suggestOnly` match (the
+ * upstream-owned layer: an `upstream` remote) is printed as a suggestion, never installed by --yes. Config stack.packs /
+ * stack.layers that disagree with .kit/install.json (no --packs / --layers given): exit 2. --layers cursor = --cursor.
  * ownership.upstreamPaths (globs; the upstream-owned layer): matching kit files are never written (SKIP-OVERRIDE, like
  * an override), and a matching AGENTS.md sends the kit's rules to AGENTS.workflow.md.
  * Exit 0 ok, 1 error, 2 required config keys missing, a commands.* value that is a full command, or a detected stack
@@ -95,6 +97,16 @@ if (layers?.includes('cursor')) {
   layers = layers.filter((l) => l !== 'cursor')
 }
 let recordStack = false // detected and confirmed: write stack.packs / stack.layers into kit.config.json
+// The config and the install record must name the same stack: a silent pick of one would drop (or add) packs.
+for (const [key, flag] of [['packs', 'packs'], ['layers', 'layers']]) {
+  const cfgList = projectCfg.stack?.[key]
+  if (args[flag] != null || !Array.isArray(cfgList) || !Array.isArray(prior[key])) continue
+  if (JSON.stringify(cfgList) !== JSON.stringify(prior[key])) {
+    console.error(`KIT_INSTALL: STOP — kit.config.json stack.${key} [${cfgList.join(', ')}] and .kit/install.json ${key} [${prior[key].join(', ')}] disagree.`)
+    console.error(`Set stack.${key} to the stack you want (kit-sync --${flag} <list> --apply updates both), or pass --${flag}. Nothing was written.`)
+    process.exit(2)
+  }
+}
 
 let vals
 let plan
@@ -115,6 +127,7 @@ try {
     if (layers == null) layers = found.layers.map((l) => l.name)
     log(`KIT_INSTALL: detected packs=[${packs.join(', ')}] layers=[${layers.join(', ')}]`)
     for (const u of [...found.packs, ...found.layers.filter((l) => layers.includes(l.name))]) log(`  ${u.name} — ${u.why}`)
+    for (const s of found.suggested) log(`  suggested ${s.kind} ${s.name} — ${s.why}; not included: if it applies, add --${s.kind}s ${[...(s.kind === 'layer' ? layers : packs), s.name].join(',')}`)
     if (!args.yes) {
       console.error('KIT_INSTALL: STOP — confirm the detected stack: re-run with --yes to install it and record it in kit.config.json (stack.packs, stack.layers), or name it with --packs / --layers. Nothing was written.')
       process.exit(2)

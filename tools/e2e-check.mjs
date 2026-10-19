@@ -10,7 +10,11 @@
  * a bare `upstream` (= its upstream/<main branch>, when it has one), a Planner clone with core.hooksPath=.husky (no husky
  * needed), and two Worker slots that borrow the project's node_modules (root and scripts/) through directory junctions
  * (symlinks on POSIX). The junctions are removed with `rmdir` (never their contents) before the temp folder is deleted,
- * and the run asserts the project's own node_modules are still there. Nothing reaches GitHub; nothing uses --no-verify.
+ * and the run asserts the project's own node_modules are still there; an interrupted run (Ctrl+C, a kill, a timeout)
+ * removes them from its exit and signal handlers. Never delete a kit-e2e-* temp folder recursively while it still
+ * holds a node_modules link (PowerShell 5 Remove-Item -Recurse follows junctions). The slot dev server writes its
+ * dependency cache (Vite: node_modules/.vite) through the link into the project's node_modules, the same cache the
+ * project's own dev server uses; --skip-serve avoids it. Nothing reaches GitHub; nothing uses --no-verify.
  * Cases: the plan commit runs the hooks; pre-push refuses code on main; claim, second claim refused, scope guard
  * (in scope, out of scope, a hotspot, an upstream-owned path); the frontend dev server from config (started, kept,
  * freed); ship-prep, build gate, Worker push; server merge, ledger sync, plan close-out; a Planner close-out push into
@@ -410,15 +414,32 @@ function link(target, path) {
   return existsSync(path)
 }
 // Remove every junction itself, never what it points at: `rmdir` on Windows, unlink on POSIX. True when all are gone.
+// Synchronous and idempotent (the links that are gone leave the list), so the exit and signal handlers can call it.
 function unlinkAll() {
-  for (const p of junctions.reverse()) {
+  for (const p of [...junctions].reverse()) {
     try {
       if (!lstatSync(p, { throwIfNoEntry: false })) continue
-      if (isWin) sh('cmd', ['/c', 'rmdir', p], root)
+      if (isWin) spawnSync('cmd', ['/c', 'rmdir', p], { cwd: tmpdir(), encoding: 'utf8' })
       else rmSync(p)
     } catch { /* checked below */ }
   }
-  return junctions.every((p) => !lstatSync(p, { throwIfNoEntry: false }))
+  const left = junctions.filter((p) => lstatSync(p, { throwIfNoEntry: false }))
+  junctions.splice(0, junctions.length, ...left)
+  return left.length === 0
+}
+// An interrupted run (Ctrl+C, a CI timeout, a kill) still removes the links: a later recursive delete of the temp
+// folder (PowerShell 5 `Remove-Item -Recurse` follows junctions) would otherwise empty the project's node_modules.
+process.on('exit', () => {
+  if (junctions.length && !unlinkAll()) console.error(`E2E: junctions still in ${root}: ${junctions.join(', ')} — remove each with rmdir before deleting the folder`)
+})
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK']) {
+  try {
+    process.on(sig, () => {
+      unlinkAll()
+      console.error(`E2E: interrupted (${sig}); node_modules links removed${junctions.length ? ` except ${junctions.join(', ')}` : ''}. Scratch folder: ${root}`)
+      process.exit(130)
+    })
+  } catch { /* signal not supported on this platform */ }
 }
 const sha = (file) => createHash('sha256').update(readFileSync(file)).digest('hex')
 
@@ -429,6 +450,9 @@ function projectMain(here) {
   }
   P.here = here
   P.had = ['.', 'scripts'].filter((sub) => existsSync(join(here, sub, 'node_modules')))
+  console.log(`E2E: scratch folder ${root} — its slots LINK to ${here}'s node_modules. While this run is alive or if it was ` +
+    'killed, do NOT delete that folder recursively (Remove-Item -Recurse / rm -rf follow the links): remove each ' +
+    'node_modules link with rmdir first. The run removes them itself when it ends or is interrupted.')
   const inst = readJson(join(here, '.kit', 'install.json'))
   const cfg = existsSync(join(here, 'kit.config.json')) ? readJson(join(here, 'kit.config.json')) : {}
   const vals = resolveConfig({ kitRoot: kit, project: cfg, packs: inst.packs ?? [], layers: inst.layers ?? [], target: here })
@@ -465,11 +489,13 @@ function projectMain(here) {
 
   // 0. Stand-ins for GitHub (origin) and the upstream repo, and the Planner folder.
   const head = git(here, 'rev-parse', 'HEAD').out.trim()
-  const upRef = git(here, 'rev-parse', '--verify', '-q', `upstream/${main}`).out.trim()
-  for (const [bare, ref] of [[origin, head], ...(upRef ? [[upstream, upRef]] : [])]) {
+  // The upstream's own default branch (refs/remotes/upstream/HEAD), else the same name as ours.
+  const upBranch = git(here, 'symbolic-ref', '--short', 'refs/remotes/upstream/HEAD').out.trim().replace(/^upstream\//, '') || main
+  const upRef = git(here, 'rev-parse', '--verify', '-q', `upstream/${upBranch}`).out.trim()
+  for (const [bare, ref, branch] of [[origin, head, main], ...(upRef ? [[upstream, upRef, upBranch]] : [])]) {
     git(root, 'clone', '-q', '--bare', '--no-tags', here, bare)
-    git(bare, 'update-ref', `refs/heads/${main}`, ref)
-    git(bare, 'symbolic-ref', 'HEAD', `refs/heads/${main}`)
+    git(bare, 'update-ref', `refs/heads/${branch}`, ref)
+    git(bare, 'symbolic-ref', 'HEAD', `refs/heads/${branch}`)
   }
   const cl = git(root, 'clone', '-q', '-b', main, origin, proj)
   git(proj, 'config', 'core.hooksPath', '.husky') // hooks on, as in the real Planner folder (husky or not)
@@ -616,17 +642,17 @@ function projectMain(here) {
 
   // 8. /pull-copy against the scratch upstream: a new upstream commit, our commits replayed on top.
   if (upRef) {
-    git(root, 'clone', '-q', '-b', main, upstream, friend)
+    git(root, 'clone', '-q', '-b', upBranch, upstream, friend)
     writeFileSync(join(friend, 'e2e-upstream-change.txt'), 'upstream change\n')
     git(friend, 'add', 'e2e-upstream-change.txt')
     git(friend, 'commit', '-q', '-m', 'upstream: new change')
-    git(friend, 'push', '-q', 'origin', main)
+    git(friend, 'push', '-q', 'origin', upBranch)
     git(proj, 'fetch', '-q', 'upstream')
-    const incoming = git(proj, 'rev-list', '--count', `HEAD..upstream/${main}`).out.trim()
+    const incoming = git(proj, 'rev-list', '--count', `HEAD..upstream/${upBranch}`).out.trim()
     // A rebase replays commits, not merges: PR merge commits collapse, so count non-merge commits.
-    const ours = git(proj, 'rev-list', '--count', '--no-merges', `upstream/${main}..HEAD`).out.trim()
-    const rb = git(proj, 'rebase', `upstream/${main}`)
-    const onTop = git(proj, 'rev-list', '--count', '--no-merges', `upstream/${main}..HEAD`).out.trim()
+    const ours = git(proj, 'rev-list', '--count', '--no-merges', `upstream/${upBranch}..HEAD`).out.trim()
+    const rb = git(proj, 'rebase', `upstream/${upBranch}`)
+    const onTop = git(proj, 'rev-list', '--count', '--no-merges', `upstream/${upBranch}..HEAD`).out.trim()
     check('/pull-copy: the rebase onto upstream replays every one of our commits on top', rb.status === 0 && incoming === '1' && onTop === ours && existsSync(join(proj, 'e2e-upstream-change.txt')), `incoming=${incoming} ours=${ours} onTop=${onTop} ${tail(rb.out)}`)
     const fp = git(proj, 'push', '--force-with-lease', 'origin', main)
     check('/pull-copy: the force-push without --no-verify is refused by pre-push (the Human runs it)', fp.status !== 0 && /PRE_PUSH: refusing/.test(fp.out), tail(fp.out))
@@ -634,10 +660,10 @@ function projectMain(here) {
     writeFileSync(join(friend, 'CLAUDE.md'), '# upstream\n')
     git(friend, 'add', 'CLAUDE.md')
     git(friend, 'commit', '-q', '-m', 'upstream: add CLAUDE.md')
-    git(friend, 'push', '-q', 'origin', main)
+    git(friend, 'push', '-q', 'origin', upBranch)
     const before = git(proj, 'rev-parse', 'HEAD').out.trim()
     git(proj, 'fetch', '-q', 'upstream')
-    const rb2 = git(proj, 'rebase', `upstream/${main}`)
+    const rb2 = git(proj, 'rebase', `upstream/${upBranch}`)
     const conflicts = git(proj, 'diff', '--name-only', '--diff-filter=U').out.trim()
     const ab = git(proj, 'rebase', '--abort')
     check('/pull-copy conflict path: the rebase stops on CLAUDE.md and --abort restores the old head', rb2.status !== 0 && /CLAUDE\.md/.test(conflicts) && ab.status === 0 && git(proj, 'rev-parse', 'HEAD').out.trim() === before, `conflicts=${conflicts} ${tail(rb2.out)}`)

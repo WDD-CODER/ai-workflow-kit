@@ -15,7 +15,10 @@ writing the same files.
 
 **What to do instead:** List the upstream-owned paths in `ownership.upstreamPaths` (`kit.config.json`): install never
 writes them and the scope guard denies them. Workflow work goes in kit-owned paths (`scripts/`, `docs/`, `.claude/`,
-`.github/`, `plans/`). An app fix goes to the upstream owner as a written brief, not a commit.
+`.github/`, `plans/`). An app fix goes to the upstream owner as a written brief, not a commit. The scope guard sees
+file edits (Edit / Write tools) only: a shell command that rewrites an upstream-owned file (`npm install` rewriting
+`package-lock.json`, a formatter) is caught later, by `ship-prep`'s scope check, which lists the file as upstream-owned.
+That also means a plan cannot add a dependency here: `package.json` is upstream's.
 
 ---
 

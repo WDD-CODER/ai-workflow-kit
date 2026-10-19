@@ -4,7 +4,7 @@ Status: draft
 Snapshot: b0ba42501af952fc23566a1885fab53af57e6686
 
 ## Problem Statement
-With a stack-neutral core (plans 003, 004), the kit can ship what the React + Vite + Supabase adoption built by hand: a `packs/react-vite/` pack, a `layers/upstream-owned/` layer for projects that are a copy of someone else's repo, and the verification tools that found the problems. Then it releases everything as **v1.2.0**, syncs FoodVibe, and the adopting project drops its forked files. Source: hand-off `handoff/2026-10-18-react-vite-adoption.md` §4, §5, §6, §7 (local only, never commit; the pack files are copied from the adopting project and generalised — no project names, people or paths reach the kit).
+With a stack-neutral core (plans 003, 004), the kit can ship what the React + Vite + Supabase adoption built by hand: a `packs/react-vite/` pack, a `layers/upstream-owned/` layer for projects that are a copy of someone else's repo, and the verification tools that found the problems. Then it releases everything as **v2.0.0**, syncs FoodVibe, and the adopting project drops its forked files. Source: hand-off `handoff/2026-10-18-react-vite-adoption.md` §4, §5, §6, §7 (local only, never commit; the pack files are copied from the adopting project and generalised — no project names, people or paths reach the kit).
 
 ## Prerequisites
 - Plans 003 and 004 merged into kit `main`.
@@ -15,11 +15,11 @@ Hand-off §7 acceptance test is the definition of done:
 - [auto] `e2e-check --project <fixture>` passes every case on Windows and Linux CI, including the first commit running the hook without `--no-verify`, Vite slot server started/kept/freed, Planner close-out push accepted.
 - [auto] Rendered CI on the fixture has no `--prefix ` at end of line, no server job, and lints changed files only.
 - [auto] SessionStart run with a state file containing quotes and newlines → valid JSON.
-- [auto] Tag + release `v1.2.0`; CHANGELOG "what a project must do" lists the `commands.*` script-name change and which overrides can be dropped.
+- [auto] Tag + release `v2.0.0`; CHANGELOG "what a project must do" lists the `commands.*` script-name change and which overrides can be dropped.
 - [auto] Stack detection: `install --target <fixture> --dry-run` with no `--packs` and no `stack.packs` prints `KIT_INSTALL: detected packs=[angular, node-express]` on an Angular+Express fixture and `packs=[react-vite] layers=[supabase]` on the React fixture, writes nothing until confirmed (`--yes` or `-Packs` given), and an Angular install contains no `packs/react-vite` file (and vice versa).
-- [auto] FoodVibe `kit-sync -Ref v1.2.0 -Apply`: 0 unresolved `conflict`, `npx ng build`, `node scripts/kit-owned.mjs --check`, `node scripts/kit-manifest-check.mjs` pass; `overrides` list unchanged or shorter.
+- [auto] FoodVibe `kit-sync -Ref v2.0.0 -Apply`: 0 unresolved `conflict`, `npx ng build`, `node scripts/kit-owned.mjs --check`, `node scripts/kit-manifest-check.mjs` pass; `overrides` list unchanged or shorter.
 - [human] In a FoodVibe slot after the sync: `execute plan` on a small plan claims the slot, starts the Angular dev server on first need, and `/ship` works — same as before.
-- [human] The adopting React project syncs to `v1.2.0` and deletes every "backport to kit" override in hand-off Appendix A (Dandan runs it there or confirms the other agent did). Then the `handoff/` folder is deleted from the kit checkout.
+- [human] The adopting React project syncs to `v2.0.0` and deletes every "backport to kit" override in hand-off Appendix A (Dandan runs it there or confirms the other agent did). Then the `handoff/` folder is deleted from the kit checkout.
 
 ## Execution Mode
 - **Parallel:** no. Session opened in the kit folder; FoodVibe sync PR from a `wt-N` slot.
@@ -66,7 +66,7 @@ Thinking outside the box is expected; writing outside it requires explicit conse
 - **`packs/react-vite/`** (hand-off §4 table): `standards-react.md` (`standardsDoc`), `conventions.md`, Supabase backend standards (decide in Step 0: inside the pack or a separate `layers/supabase/`; recommend a layer so React without Supabase works), `react-component-structure` skill, `cssLayer` skill (Tailwind tokens, `cn()`, logical RTL classes), `auth-and-logging` skill, generic Vite/Supabase gotchas, techdebt rule set, `pack.json` `configDefaults` (`commands.dev: "dev"`, `slots.fePortArgs`, `slots.feMatcher`, `stack.stateRules`, `paths.routesFile`, hotspots, `stylesheetExt: "css"`, `serverRoot: ""`), `AGENTS.fragment.md`, workflow-map rows, techdebt `PACK:stack` block. No `breadcrumbs`; `/docs-refresh` falls back cleanly.
 - **`layers/upstream-owned/`:** config `ownership.upstreamPaths` (globs) that install never writes and the scope guard denies with "upstream-owned, not an `approved:`"; turns on local-excludes, `AGENTS.workflow.md`, `scripts/package.json`; CI defaults `ci.lintScope: changed`, `ci.appAuditMode: report`, `ci.install: "npm install --no-audit --no-fund"`; `/pull-copy` command (rebase on `upstream/main`, refuse to resolve conflicts, force-push left to the Human).
 - **Tools (§5):** `tools/e2e-check.mjs --project <path>` mode (scratch clone of a real project, junctioned `node_modules` removed with `rmdir` only, asserts source `node_modules` intact); `tools/adoption-report.mjs` (per-part status from `.kit/install.json` + hooks + `.husky`); fixtures for Angular, React-Vite and upstream-owned run in kit CI.
-- **Release:** bump `kit.json` to `1.2.0`, date the CHANGELOG, tag after Dandan's go.
+- **Release:** bump `kit.json` to `2.0.0`, date the CHANGELOG, tag after Dandan's go.
 - **Stack detection (installer):** packs are already opt-in (only the chosen packs are copied), but today the human must name them. Install now proposes them when neither `--packs` nor `stack.packs` is set: `@angular/core` → `angular`; `vite` + `react` → `react-vite`; `express` in the root or `paths.serverRoot` package → `node-express`; `supabase/` folder or `@supabase/supabase-js` → `supabase`; a fork `origin` with an `upstream` remote → suggest `upstream-owned`. It prints the proposal with the reason for each, writes `stack.packs`/layers into `kit.config.json` only after confirmation (`--yes`, or explicit `-Packs`), and refuses (exit 2) when nothing matches instead of installing core with dangling stack references. Detection rules live in each `pack.json` (`detect`), so a new pack brings its own rule.
 
 ## Atomic Sub-tasks
@@ -77,9 +77,9 @@ Thinking outside the box is expected; writing outside it requires explicit conse
 - [x] V4: Let the end-to-end check run against a real installed project — e2e --project mode, safe junction cleanup — `tools/e2e-check.mjs`
 - [x] V5: Add an adoption report that shows which workflow parts are installed and working — adoption-report tool — `tools/adoption-report.mjs`
 - [x] V6: Run the acceptance test on Angular, React-Vite and upstream-owned fixtures in kit CI — fixtures + CI matrix (Linux + Windows) — `tools/fixtures/**`, `.github/workflows/**`
-- [x] V7: Release v1.2.0 with clear upgrade notes — CHANGELOG what-to-do, kit.json, README packs/layers section; tag after Dandan's go — kit repo (run 006: version 2.0.0, no tag — the tag waits for merge point 1)
-- [ ] V8: Sync FoodVibe to v1.2.0 and ship it — dry-run, Apply, ng build, kit-owned and manifest checks, /ship — `../foodVibe1.0/.kit/install.json` + files kit-sync writes (after merge point 1: plan 006 A7, to v2.0.0)
-- [ ] V9: Have the React project drop its forked files and delete the hand-off — adopting project syncs v1.2.0 and removes Appendix A overrides; delete the kit handoff folder after Dandan's go — `handoff/` (after merge point 1: plan 006 A8, to v2.0.0)
+- [x] V7: Release v2.0.0 with clear upgrade notes — CHANGELOG what-to-do, kit.json, README packs/layers section; tag after Dandan's go — kit repo (run 006: no tag — the tag waits for merge point 1)
+- [ ] V8: Sync FoodVibe to v2.0.0 and ship it — dry-run, Apply, ng build, kit-owned and manifest checks, /ship — `../foodVibe1.0/.kit/install.json` + files kit-sync writes (after merge point 1: plan 006 A7)
+- [ ] V9: Have the React project drop its forked files and delete the hand-off — adopting project syncs v2.0.0 and removes Appendix A overrides; delete the kit handoff folder after Dandan's go — `handoff/` (after merge point 1: plan 006 A8)
 - [x] V10: Make the installer detect the project stack and install only the matching packs — pack.json detect rules, proposal + confirm, refuse when nothing matches, install-check cases for both stacks — `tools/install.mjs`, `tools/lib/**`, `packs/*/pack.json`, `kit-install.ps1`, `tools/install-check.mjs`
 
 ## Out of Scope
@@ -90,7 +90,7 @@ Porting the Python session-manifest scripts to node; the guards mod stale-scope 
 Run under plan 006 (autonomous run, step A4): branch `feat/005-react-vite-pack` from `feat/004-neutral-core-ci-commands`
 (`ab260e9`, PR #26, not merged yet), stacked PR. Plan 006 replaces "Dandan merges / tag after go": no tag, no release.
 Version **2.0.0** (Planner decision: 002/003 need project action, which the kit's semver rule calls major; the Human
-confirms at merge point 1), not the 1.2.0 the Goals name. V8 and V9 run after merge point 1 (plan 006 A7 / A8).
+confirms at merge point 1), the plan said 1.2.0; its Problem Statement, Goals, Design and sub-tasks were reworded to 2.0.0 in the PR #27 review round. V8 and V9 run after merge point 1 (plan 006 A7 / A8).
 
 ### V0 — Reality check
 - 003 and 004 are on the stacked branches (PRs #25, #26), not merged; this branch builds on them. Their pack contract
@@ -185,3 +185,33 @@ confirms at merge point 1), not the 1.2.0 the Goals name. V8 and V9 run after me
   scratch clone excludes the link paths). Then green: leak-check (`actionlint on 24 rendered workflows`, link check
   6 fixtures), e2e ubuntu-latest and windows-latest (`E2E_CHECK: ok — 42 cases passed`, `ACCEPTANCE_CHECK: ok — 118 checks
   passed (angular, react-vite, upstream-owned, e2e --project)` on both).
+
+### PR #27 review fixes
+1. (medium) Stack source mismatch: `sync --apply` with `--packs/--layers` now writes `stack.packs`/`stack.layers` into
+   `kit.config.json` too; install stops (exit 2, names both lists) when the config and `.kit/install.json` disagree and no
+   `--packs`/`--layers` is given; `adoption-report` has a `stack record` row (warn); CHANGELOG items 2 and 9. install-check:
+   sync `--packs --apply` records the config and a re-install keeps the stack; a hand-edited `stack.packs: []` → STOP,
+   install record untouched; the adoption-report row.
+2. (medium) Detection: node-express reads `express` only from `paths.serverRoot` / `server/` (an SSR frontend lists it in
+   the root). `upstream-owned` is `suggestOnly`: printed as `suggested layer upstream-owned — … not included: if it
+   applies, add --layers …`, never installed by `--yes`. install-check: Angular + root `express` → `packs=[angular]`;
+   a fork with an `upstream` remote → suggestion only, `--yes` records `layers: []` and installs no `/pull-copy`.
+   The acceptance fixture expects `packs=[react-vite] layers=[supabase]` plus the suggestion line.
+3. (medium) e2e `--project`: `unlinkAll()` is synchronous and idempotent and also runs from `exit` and
+   SIGINT/SIGTERM/SIGHUP/SIGBREAK handlers; the run prints a loud line naming the scratch folder and warning against a
+   recursive delete while links exist. Vite's dependency cache (`node_modules/.vite`) is written through the link into
+   the project's own `node_modules` — no cheap flag to move it (Vite's `cacheDir` is config-only); documented in the
+   header, `--skip-serve` avoids it.
+4. (low) One glob subset: `ownership.upstreamPaths` takes `**`, `*`, `?`, trailing `/` only; install/sync refuse braces,
+   character classes and `!` (exit 2, `commandProblems`); pack-check checks pack/layer defaults. install-check case.
+5. (low) `/pull-copy` finds the upstream's default branch (`git remote set-head upstream --auto`, then
+   `git symbolic-ref --short refs/remotes/upstream/HEAD`); the e2e uses `refs/remotes/upstream/HEAD` too, else our name.
+6. (low) upstream-owned gotcha: the guard sees Edit/Write only; a shell `npm install` rewriting `package-lock.json` is
+   caught by `ship-prep`; a plan cannot add a dependency there.
+7. (low) CHANGELOG item 2: `--config <file>` without `stack` exits 2 too; item 9: no dependency changes on the layer.
+- Pre-existing gap fixed: `workflow-map.md` and `README_WORKFLOW.md` name `.cursor/commands/` and `contractor-role.mdc`
+  only inside `KIT:if kit.cursor` (new builtin set by `planFiles`). workflow-link-check has an `angular-no-cursor` fixture
+  (`0 missing`); the acceptance Angular fixture no longer needs `--cursor`. FoodVibe (cursor on) renders unchanged.
+- Plan wording: Problem Statement, Goals, Design and V7–V9 now say v2.0.0 (was v1.2.0).
+- FoodVibe dry-run after the fixes: unchanged — `3 new, 27 kit-update, 2 conflicts` (the two templates); render diff vs
+  the 004 branch still only `scope-check.mjs` and `scope-guard.sh`.

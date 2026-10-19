@@ -8,8 +8,8 @@
  *   react-vite      React 18 + Vite + TypeScript app with Supabase-like folders, no server/ (detected: pack react-vite,
  *                   layer supabase); the project owns every file
  *   upstream-owned  the same app as a copy of someone else's repo: an `upstream` remote, upstream-owned .gitignore,
- *                   package.json and AGENTS.md, double quotes + semicolons, no husky (detected: pack react-vite, layers
- *                   supabase, upstream-owned)
+ *                   package.json and AGENTS.md, double quotes + semicolons, no husky (detected: pack react-vite, layer
+ *                   supabase; upstream-owned only suggested — the `upstream` remote)
  *
  * Nothing is installed from the network: `npm run dev` starts a stand-in Vite (tools/vite.mjs: a strict-port HTTP server
  * whose command line names vite), build / lint / test are no-op scripts. Node built-ins only.
@@ -20,10 +20,9 @@ import { spawnSync } from 'child_process'
 import { fileURLToPath, pathToFileURL } from 'url'
 
 export const KINDS = {
-  // The Angular pack ships Cursor rules, so its projects take the Cursor layer too (the workflow docs name it).
-  angular: { packs: ['angular', 'node-express'], layers: [], args: ['--cursor'], detected: 'packs=[angular, node-express] layers=[]' },
+  angular: { packs: ['angular', 'node-express'], layers: [], detected: 'packs=[angular, node-express] layers=[]' },
   'react-vite': { packs: ['react-vite'], layers: ['supabase'], detected: 'packs=[react-vite] layers=[supabase]' },
-  'upstream-owned': { packs: ['react-vite'], layers: ['upstream-owned'], detected: 'packs=[react-vite] layers=[supabase, upstream-owned]' },
+  'upstream-owned': { packs: ['react-vite'], layers: ['upstream-owned'], detected: 'packs=[react-vite] layers=[supabase]', suggested: 'suggested layer upstream-owned — git remote "upstream" exists; not included' },
 }
 
 const GIT_ENV = {
