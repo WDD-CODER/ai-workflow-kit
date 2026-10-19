@@ -25,15 +25,17 @@ Claude.ai or another tool may draft a plan; the Planner still runs the review be
 1. User describes the problem or feature area.
 2. The Planner runs structured scoping (forcing questions, landscape, premise challenge), asking only
    where the decision is the Human's, and writes the plan to the PRD template. Then it runs the
-   **Architect + PM review** below on its own draft and fixes every gap before showing the plan.
+   **Architect + PM review** below on its own draft. It fixes what it can, and the review block lists
+   each fix, so the Human sees what changed.
    **Architecture step:** read `docs/brain/invariants.md` and fill the plan's
    `## Architecture Impact` — one line per invariant whose `Touches` globs the scope reaches
    (`preserves` / `deviation until …` / `changes — ADR …`), or `INV-none: preserves — <why>`.
    A question whose answer could break an invariant is asked as: INV-n · current rule ·
    proposed change · who loses what. A yes needs the Human's explicit `approve arch change INV-n`,
    then a superseding ADR plus an `Arch-approved: Human YYYY-MM-DD` line.
-3. Output: a Plan Contract under `plans/NNN-slug.plan.md` with numbered milestones
-   and a Verify command per milestone. Persist with save-plan (never invent a
+3. Output: a Plan Contract under `plans/NNN-slug.plan.md` in the PRD template's shape. Its
+   `## Atomic Sub-tasks` are the milestones. Each success criterion is tagged `[auto]` or `[human]`,
+   and an `[auto]` one names the exact check that proves it. Persist with save-plan (never invent a
    parallel naming scheme).
 4. User approves the plan → save via the Planner protocol below → say "execute plan NNN"
    in a free `{{slots.nameFormat}}` slot to start work (`.claude/commands/take-plan.md`) → `/review-it`.
@@ -41,7 +43,9 @@ Claude.ai or another tool may draft a plan; the Planner still runs the review be
 ## Architect + PM review (always)
 
 Runs on **every plan the Planner saves**: plans it writes, and briefs or Plan Contracts it receives
-(Claude.ai, Cursor, another agent, a paste). Workers in slots do not author plans; a Plan Contract saved
+(Claude.ai, Cursor, another agent, a paste). It also runs on a brief or a feature request when the Human
+picks **a** at the `brief-detection` gate: the same review, and nothing is saved. Workers in slots do not
+author plans; a Plan Contract saved
 mid-brief inside a slot goes through save-plan only. Check against the real codebase on
 `origin/{{git.mainBranch}}` (fetched), not against what the draft says exists.
 
@@ -64,24 +68,30 @@ mid-brief inside a slot goes through save-plan only. Check against the real code
   "handle errors appropriately", "same as the other screen".
 - The project's own checks in `{{paths.planChecks}}`, when that file exists.
 
-**Output** — one block, printed before the plan is saved:
+**Overlap** (every time, also on a brief that is not a plan yet)
+- Run `node scripts/plan-name-similarity.mjs --name="<the draft's title>" --related --scope="<the draft's
+  scope globs, comma-separated>"`. It searches open and closed plans: by title (`PLAN_SIMILARITY`), by
+  text (`PLAN_RELATED`), and the open plans' Read-Write Scope for the same files (`PLAN_SCOPE_OVERLAP`).
+  For a brief, use its one-line goal as the title. No scope yet: leave out `--scope`.
+- Read each plan it lists. Unless the draft already names that plan, each one is an `open:` line:
+  "same work as `<path>`?" or "shares `<files>` with `<path>` (Status: …)".
+
+**Output** — one block, printed before the plan is saved. One line per gap:
 
 ```
 ARCHITECT + PM REVIEW
-no gaps
+fixed: <gap> → <what you changed>
+open: <gap> — <question for the Human>
 ```
 
-or one line per gap with a proposed fix:
+- `fixed:` is a gap you closed in the draft yourself. List every one, also on a plan you wrote.
+- `open:` is a gap that needs the Human: a decision, a missing fact, or a possible overlap.
+- Print `no gaps` only when there is no `fixed:` line and no `open:` line.
 
-```
-ARCHITECT + PM REVIEW
-- <gap> → <proposed fix>
-```
-
-A received plan is reviewed, not rewritten: the Planner shows the gaps and applies only the fixes the
-Human accepts, plus the obvious mechanical ones (paths, titles, tags), which it lists. A gap the Human
-rejects is noted in the plan's `## Execution Notes` (the gap, and "kept as is: Human"); then continue. A
-decision that belongs to the Human is asked, never assumed.
+A received plan is reviewed, not rewritten: the Planner fixes only the obvious mechanical gaps (paths,
+titles, tags) as `fixed:` lines and asks the rest as `open:` lines. It applies the fixes the Human
+accepts. A gap the Human rejects is noted in the plan's `## Execution Notes` (the gap, and "kept as is:
+Human"); then continue. A decision that belongs to the Human is asked, never assumed.
 
 ## Planner protocol (pushing to `main`)
 
@@ -90,8 +100,8 @@ review docs allow a direct push to `main` — restricted to `plans/*.plan.md` an
 `.claude/todo.md` by `scripts/branch-guard.sh` and `.husky/pre-push`.
 
 0. `git fetch origin`, then run the **Architect + PM review** above against the fetched
-   `origin/{{git.mainBranch}}` and print its block. Gaps → wait for the Human's answer and apply the accepted
-   fixes before step 4. A plan the Planner wrote and already reviewed in this
+   `origin/{{git.mainBranch}}` and print its block. `open:` lines → wait for the Human's answer and apply the
+   accepted fixes before step 4. A plan the Planner wrote and already reviewed in this
    session is not reviewed twice; print the block it got.
 1. Main must be clean and on `main`: `git status --porcelain` empty, `git branch
    --show-current` = `main`. Otherwise STOP and ask the Human. Then `git pull --ff-only`.

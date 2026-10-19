@@ -8,7 +8,7 @@ Snapshot: [origin/{{git.mainBranch}} SHA the plan was verified against — leave
 
 ## Goals & Success Criteria
 - Primary: [measurable outcome]
-- Success: [how we know it's done — tag each item `[auto]` or `[human]`]
+- Success: [how we know it's done — tag each item `[auto]` or `[human]`; an `[auto]` item names the exact check: a command and its expected output]
 
 ## Execution Mode
 - Parallel: yes | no — will this run alongside other active plans?
@@ -74,8 +74,11 @@ line or file this plan names was removed, renamed or rewritten).
 - [Which keys are needed in `{{project.i18nFile}}`]
 
 ## Atomic Sub-tasks
-- [ ] A1: [First atomic task]
-- [ ] A2: [Second atomic task]
+
+These are the plan's milestones: a Worker does them in order and ticks each one after it is checked.
+
+- [ ] A1: [plain title: what changes and why] — [details] — [target file(s)]
+- [ ] A2: [plain title: what changes and why] — [details] — [target file(s)]
 
 ## Technical Considerations
 - Dependencies: [existing services/components affected]
@@ -94,4 +97,8 @@ Every Atomic Sub-task names its files and is concrete enough for a Worker to run
 [Explicitly list what is NOT included]
 
 ## Critical Questions
-[Q&A format per the `brief-detection` skill — multiple choice, never open-ended]
+[One line per question the Human answers before work starts: `- Q: … A: …`. Offer choices, never an open
+question. An unanswered one is `A: open`. `- none` when there are none.]
+
+## Execution Notes
+[Written while the plan runs: decisions, evidence (exact output lines), and review gaps the Human kept as is.]
