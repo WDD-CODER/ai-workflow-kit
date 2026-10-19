@@ -4,19 +4,31 @@
  * Compares an incoming plan name (or proposed filename) against existing
  * plans/ tree (*.plan.md) filenames + H1 / YAML name titles, plus plan
  * headings in the last two `.claude/todo-archive/NNN.md` volumes.
- * Token overlap only - no body-text matching.
+ * Token overlap only - no body-text matching. This default output is the gate save-plan and
+ * plan-write-guard.sh read; the flags below never change it.
+ *
+ * The Architect + PM review's overlap search adds flags (`/plan`):
+ *   --related  also search the full text of every plan, open and closed (PLAN_RELATED): a plan whose
+ *              text holds the name's words, rare words weighing most. Implies --stem.
+ *   --stem     compare words by stem: "favourites" = "favorite", "recipes" = "recipe".
+ *   --scope="glob,glob"  list the open plans whose Read-Write Scope shares a file with these globs
+ *              (PLAN_SCOPE_OVERLAP). A bare --scope with --file uses that plan's scope block. A path
+ *              without a glob counts as the file and as the folder (x and x/**).
  *
  * Usage:
  *   node scripts/plan-name-similarity.mjs --name="Project Memory Bank"
  *   node scripts/plan-name-similarity.mjs --file=plans/290-project-memory-bank.plan.md
  *   node scripts/plan-name-similarity.mjs --name="foo" --exclude=plans/290-foo.plan.md
  *   node scripts/plan-name-similarity.mjs --name="foo" --json
+ *   node scripts/plan-name-similarity.mjs --name="foo" --related --scope="src/app/foo,server/routes/foo.js"
  *
  * Exit: 0 always (advisory). Hits printed to stdout; empty hits = safe to save new.
  */
 import { readFileSync, readdirSync, statSync, existsSync } from 'fs'
 import { resolve, dirname, join, relative, basename } from 'path'
 import { fileURLToPath } from 'url'
+import { isOpenPlanPath, listOpenPlans } from './lib/plan-paths.mjs'
+import { extractScopeGlobs } from './lib/plan-scope.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(__dirname, '..')
@@ -36,9 +48,33 @@ const args = Object.fromEntries(
   })
 )
 
+// --related / --stem: words compare by stem, and a few more filler words are dropped.
+const useStem = Boolean(args.related || args.stem)
+const STEM_STOP_WORDS = [...STOP, 'as', 'is', 'by', 'at', 'from', 'into']
+
+/**
+ * One stem per spelling and word form: British "-our" -> "-or" (favourite/favorite), plural and -ing/-ed endings,
+ * a doubled final consonant, a final "e" (recipes/recipe -> recip, favorites/favorited -> favorit, shopping -> shop).
+ * Crude on purpose: both sides are stemmed the same way, so only the match matters.
+ */
+function stem(word) {
+  let s = word
+  if (s.length <= 3 || /[^a-z0-9]/.test(s)) return s
+  if (s.length >= 6) s = s.replace(/our(?=(?:ite|ites|ed|ing|s)?$)/, 'or')
+  if (s.length > 4 && s.endsWith('ies')) s = `${s.slice(0, -3)}y`
+  else if (/(?:x|ch|sh|ss|z)es$/.test(s)) s = s.slice(0, -2)
+  else if (s.length > 3 && s.endsWith('s') && !/(?:ss|us|is)$/.test(s)) s = s.slice(0, -1)
+  if (s.length > 5 && s.endsWith('ing')) s = s.slice(0, -3)
+  else if (s.length > 4 && s.endsWith('ed')) s = s.slice(0, -2)
+  if (/([bdgmnprt])\1$/.test(s)) s = s.slice(0, -1)
+  if (s.length > 4 && s.endsWith('e')) s = s.slice(0, -1)
+  return s
+}
+const STEM_STOP = new Set([...STEM_STOP_WORDS, ...STEM_STOP_WORDS.map(stem)])
+
 function usage() {
   console.error(
-    'Usage: node scripts/plan-name-similarity.mjs --name="Title" | --file=plans/NNN-slug.plan.md [--exclude=path] [--json] [--min-score=0.8]'
+    'Usage: node scripts/plan-name-similarity.mjs --name="Title" | --file=plans/NNN-slug.plan.md [--exclude=path] [--json] [--min-score=0.8] [--related] [--stem] [--scope="glob,glob"]'
   )
 }
 
@@ -96,6 +132,11 @@ function titleFromArchiveHeading(heading) {
 }
 
 function tokenize(raw) {
+  const words = baseTokens(raw)
+  return useStem ? words.filter(t => !STEM_STOP.has(t)).map(stem).filter(t => !STEM_STOP.has(t)) : words
+}
+
+function baseTokens(raw) {
   return String(raw || '')
     .toLowerCase()
     .replace(/[`"'()[\]{}]/g, ' ')
@@ -157,6 +198,63 @@ function considerHit(hits, { path, title, body, qTokens, qOnly, minScore, source
   })
 }
 
+/** The first body line that holds `token`, shortened. */
+function lineWith(text, token, max = 120) {
+  const line = text
+    .split('\n')
+    .map(l => l.trim())
+    .find(l => l && !l.startsWith('#') && tokenize(l).includes(token))
+  if (!line) return ''
+  return line.length > max ? `${line.slice(0, max - 1)}...` : line
+}
+
+// --- scope globs: can two of them name the same file? ---------------------------------------------
+const isGlob = (g) => /[*?[\]{}]/.test(g)
+function globRe(g) {
+  let re = ''
+  for (let i = 0; i < g.length; i++) {
+    const c = g[i]
+    if (c === '*' && g[i + 1] === '*') {
+      re += '.*'
+      i++
+      if (g[i + 1] === '/') i++
+    } else if (c === '*') re += '[^/]*'
+    else if (c === '?') re += '[^/]'
+    else re += c.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+  }
+  return new RegExp(`^${re}$`)
+}
+const clean = (g) => g.trim().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '')
+// A path without a glob is the file itself and everything under it as a folder.
+const forms = (g) => (isGlob(g) ? [g] : [g, `${g}/**`])
+const literalBase = (g) => g.split('/').filter((part, i, all) => !all.slice(0, i + 1).some(isGlob)).join('/')
+// A sample file name a glob's last part accepts (`*.ts` -> `z.ts`, `**` -> `z`).
+const leaf = (g) => (g.split('/').pop() || 'z').replace(/\*\*?|\?/g, 'z').replace(/\{([^,}]*)[^}]*\}/g, '$1') || 'z'
+/**
+ * True when the two scope entries can name the same file: equal, a literal path one glob matches, or a sample path
+ * built from either side's literal folder and file pattern that both accept. `*.md` (no folder) meets only top-level
+ * Markdown files; `src/x/*.ts` does not meet `src/x/components/**`.
+ */
+function globsMeet(a, b) {
+  for (const x of forms(clean(a))) {
+    for (const y of forms(clean(b))) {
+      if (x === y) return true
+      const [rx, ry] = [globRe(x), globRe(y)]
+      if ((!isGlob(x) && ry.test(x)) || (!isGlob(y) && rx.test(y))) return true
+      if (!isGlob(x) || !isGlob(y)) continue
+      for (const base of new Set([literalBase(x), literalBase(y)])) {
+        for (const mid of ['', 'z/']) {
+          for (const name of new Set([leaf(x), leaf(y), 'z'])) {
+            const probe = `${base ? `${base}/` : ''}${mid}${name}`
+            if (rx.test(probe) && ry.test(probe)) return true
+          }
+        }
+      }
+    }
+  }
+  return false
+}
+
 const inputName = resolveInputName()
 if (!inputName) {
   usage()
@@ -165,6 +263,7 @@ if (!inputName) {
 
 // Default 0.8 = strong name match (e.g. 3/4 tokens). Avoids flooding on shared domain words.
 const minScore = Number(args['min-score'] ?? 0.8)
+const relatedMin = Number(args['related-min-score'] ?? 0.75)
 const excludeRaw = args.exclude && args.exclude !== true ? String(args.exclude) : null
 const excludeFull = excludeRaw ? resolve(repoRoot, excludeRaw) : null
 
@@ -173,6 +272,8 @@ const queryFromSlug = tokenize(slugFromFilename(inputName.replace(/\s+/g, '-') +
 const qTokens = [...new Set([...queryTokens, ...queryFromSlug])]
 const qOnly = tokenize(inputName)
 
+const inputFile = args.file && args.file !== true ? resolve(repoRoot, String(args.file)) : null
+const docs = [] // every plan's text, for --related
 const hits = []
 for (const full of listPlanFiles(plansDir)) {
   if (excludeFull && resolve(full) === excludeFull) continue
@@ -185,6 +286,7 @@ for (const full of listPlanFiles(plansDir)) {
   const rel = relative(repoRoot, full).replace(/\\/g, '/')
   const slug = slugFromFilename(full)
   const title = titleFromPlan(body, slug)
+  if (!inputFile || resolve(full) !== inputFile) docs.push({ rel, title, body })
   const candTokens = [...new Set([...tokenize(slug.replace(/-/g, ' ')), ...tokenize(title)])]
   const score = Math.max(
     scoreOverlap(qTokens, candTokens),
@@ -235,6 +337,62 @@ for (const vol of listLastArchiveVolumes(2)) {
 
 hits.sort((a, b) => b.score - a.score)
 
+// --related: the plans whose full text holds the name's words. A word few plans use weighs more than one most plans
+// use (inverse document frequency), so "favourite" in "favourite recipes filter" decides, not "recipe".
+const related = []
+if (args.related) {
+  const qset = [...new Set(qOnly.length ? qOnly : qTokens)]
+  const counted = docs.map(d => {
+    const tf = new Map()
+    for (const t of tokenize(d.body)) tf.set(t, (tf.get(t) ?? 0) + 1)
+    return { ...d, tf }
+  })
+  const N = counted.length
+  const idf = new Map(qset.map(t => [t, Math.log((N + 1) / (counted.filter(d => d.tf.has(t)).length + 0.5))]))
+  const total = qset.reduce((sum, t) => sum + idf.get(t), 0)
+  const titled = new Set(hits.map(h => h.path))
+  for (const d of counted) {
+    if (titled.has(d.rel) || !total) continue
+    const shared = qset.filter(t => d.tf.has(t))
+    if (shared.length < Math.min(2, qset.length)) continue
+    const coverage = shared.reduce((sum, t) => sum + idf.get(t), 0) / total
+    if (coverage < relatedMin) continue
+    const weight = shared.reduce((sum, t) => sum + idf.get(t) * Math.log(1 + d.tf.get(t)), 0)
+    const rarest = [...shared].sort((a, b) => idf.get(b) - idf.get(a))[0]
+    related.push({
+      path: d.rel,
+      title: d.title,
+      state: isOpenPlanPath(d.rel) ? 'open' : 'closed',
+      coverage: Math.round(coverage * 100) / 100,
+      weight,
+      shared,
+      excerpt: lineWith(d.body, rarest)
+    })
+  }
+  related.sort((a, b) => b.coverage - a.coverage || b.weight - a.weight)
+}
+
+// --scope: open plans whose Read-Write Scope shares a file with the given globs (a bare --scope with --file: that
+// plan's own scope block).
+let scopeGlobs = null
+if (args.scope && args.scope !== true) scopeGlobs = String(args.scope).split(',').map(g => g.trim()).filter(Boolean)
+else if (args.scope && inputFile && existsSync(inputFile)) scopeGlobs = extractScopeGlobs(readFileSync(inputFile, 'utf8')) ?? []
+const scopeOverlap = []
+if (scopeGlobs?.length) {
+  for (const rel of listOpenPlans(repoRoot)) {
+    const full = join(repoRoot, rel)
+    if ((inputFile && resolve(full) === inputFile) || (excludeFull && resolve(full) === excludeFull)) continue
+    const text = readFileSync(full, 'utf8')
+    const theirs = extractScopeGlobs(text) ?? []
+    const pairs = []
+    for (const mine of scopeGlobs) for (const other of theirs) if (globsMeet(mine, other)) pairs.push(mine === other ? mine : `${mine} ~ ${other}`)
+    if (pairs.length) {
+      const status = (text.match(/^Status:\s*(\S+)/m) || [])[1] ?? 'unknown'
+      scopeOverlap.push({ path: rel, title: titleFromPlan(text, slugFromFilename(rel)), status, shared: [...new Set(pairs)] })
+    }
+  }
+}
+
 const archiveVolumesScanned = listLastArchiveVolumes(2).map(v => v.name)
 
 const payload = {
@@ -243,7 +401,9 @@ const payload = {
   minScore,
   archiveVolumesScanned,
   hitCount: hits.length,
-  hits: hits.slice(0, 8)
+  hits: hits.slice(0, 8),
+  ...(args.related ? { plansScanned: docs.length, related: related.slice(0, 5).map(({ weight, ...r }) => r) } : {}),
+  ...(scopeGlobs ? { scope: scopeGlobs, scopeOverlap } : {})
 }
 
 if (args.json) {
@@ -263,6 +423,28 @@ if (args.json) {
     console.log(`  why: ${h.why} (score ${h.score})${ex}`)
   }
   console.log('Ask Human: rewrite existing / save as new / cancel')
+}
+if (!args.json && args.related) {
+  if (!related.length) console.log(`PLAN_RELATED: none - no other plan's text covers "${inputName}" (${docs.length} plans searched).`)
+  else {
+    const more = related.length > 5 ? ' (the 5 closest below)' : ''
+    console.log(`PLAN_RELATED: ${related.length} plan(s) whose text covers "${inputName}"${more} - check each is not the same work:`)
+    for (const r of related.slice(0, 5)) {
+      console.log(`- ${r.path} (${r.state})`)
+      console.log(`  title: ${r.title}`)
+      console.log(`  why: text has ${r.shared.join(', ')} (coverage ${r.coverage})${r.excerpt ? ` | ${r.excerpt}` : ''}`)
+    }
+  }
+}
+if (!args.json && scopeGlobs) {
+  if (!scopeOverlap.length) console.log("PLAN_SCOPE_OVERLAP: none - no open plan's Read-Write Scope shares a file with this scope.")
+  else {
+    console.log(`PLAN_SCOPE_OVERLAP: ${scopeOverlap.length} open plan(s) share files with this scope:`)
+    for (const o of scopeOverlap) {
+      const more = o.shared.length > 4 ? ` (+${o.shared.length - 4} more)` : ''
+      console.log(`- ${o.path} (Status: ${o.status}) - ${o.title}: ${o.shared.slice(0, 4).join(', ')}${more}`)
+    }
+  }
 }
 
 process.exit(0)

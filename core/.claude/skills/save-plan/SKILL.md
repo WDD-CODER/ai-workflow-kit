@@ -30,6 +30,7 @@ save-plan:
 - Path `plans/<NNN>-<slug>.plan.md`. Open plans live directly in one of the open plan folders ({{plans.openDirs}}); when `plans/design` is one of them, a plan with `Track: design` or `Track: split` (Claude Design work: mostly style and layout) goes to `plans/design/<NNN>-<slug>.plan.md`. Closed plans always go to the range folder `plans/<range>/`, design or not. H1 `# Plan NNN — <Human Title>` (the title drives similarity — make it describe the work). Refactor variant: `NNN-R`.
 - `## Read-Write Scope` in a shape `scripts/lib/plan-scope.mjs` parses: a fenced ```` ```scope ```` block, one glob per line, **or** a `**Scope:**` line followed by bullets whose first token is a `` `backticked` `` glob. A bare `scope` line or un-backticked bullets are not parsed and `take-plan` refuses the plan.
 - Exactly one `Status:` line (`Status: draft` for new; `take-plan` sets `active`; after the merge the todo-sync workflow's `plan-close.mjs` sets `done` and moves the plan into `plans/<range>/`). One `Snapshot:` line (filled in Phase 3).
+- The shape is `.claude/references/prd-template.md`. Its `## Atomic Sub-tasks` are the milestones: there is no separate milestone list and no per-step Verify field (the checks are the `[auto]` success criteria). `## Execution Notes` collects decisions and evidence while the plan runs.
 - Every Atomic Sub-task is `- [ ] <ID>: <title> — <details> — <target file(s)>` (`<details>` optional). The **title** is the only part the plan panel and progress views show, so it must stand alone:
   - One plain sentence, at most ~90 characters, that says **what changes and why it matters**, written for someone who has not read the plan.
   - No backticks, paths, `--flags`, commands or code names in the title. They go in `<details>` / `<target file(s)>`.
@@ -43,7 +44,7 @@ save-plan:
 
 1. Extract the display name from the H1 / `name:` / first heading; derive the kebab-case slug.
 2. `node scripts/plan-name-similarity.mjs --name="<Display Name>"`
-3. `no similar plans` → go on, do **not** ask rewrite/new/cancel. `similar plan(s)` → paste the script output and ask exactly:
+3. `no similar plans` → go on, do **not** ask rewrite/new/cancel. `similar plan(s)` → paste the script output and ask exactly (titles are compared by word stem, so "favourites" and "favorite" match):
 
 ```text
 Similar plan(s) found — validate:
@@ -57,6 +58,8 @@ Reply: rewrite existing | save as new | cancel
 - **rewrite existing** → overwrite that path, sync its Atomic Sub-tasks + `.claude/todo.md`, no new `NNN`.
 - **save as new** → continue; before the Write put the relative path in `.claude/.plan-write-ack` (one line, e.g. `plans/123-example-feature.plan.md`) so the PreToolUse guard allows the create.
 - **cancel** → stop, write nothing, execute nothing.
+
+This gate compares titles only. The wider search (plan text, and open plans' scope) is `/plan`'s Architect + PM review (`--related --scope`); its findings are `open:` lines there, not this question.
 
 ## Phase 1 — number + ledger (Planner only)
 

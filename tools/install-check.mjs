@@ -103,6 +103,64 @@ function loadPathProblems(dir) {
   return out
 }
 
+// The Planner's instructions agree with each other: a prose feature request reaches the review (brief-detection's rule,
+// its gate text, and its examples obey the rule's two mechanical tests); option a runs the review and saves nothing;
+// option b hands to /plan, save-plan and a slot (take-plan), and nothing says the Planner runs a milestone; /plan, the
+// PRD template and save-plan describe one shape (Atomic Sub-tasks, no Verify per milestone, ## Execution Notes, no
+// dead Q&A reference); the review block lists fixed:/open: lines and always runs the overlap search.
+function plannerDocProblems(dir) {
+  const out = []
+  const doc = (f) => read(dir, f).replace(/\r\n/g, '\n')
+  const need = (f, text, what) => { if (!doc(f).includes(text)) out.push(`${f}: ${what} (missing: ${text})`) }
+  const never = (f, re, what) => { const m = doc(f).match(re); if (m) out.push(`${f}: ${what} (found: ${m[0]})`) }
+  const bd = '.claude/skills/brief-detection/SKILL.md'
+  need(bd, '**A feature request in prose** meets all three:', 'no prose feature-request rule')
+  need(bd, '- It is longer than one sentence.', 'prose rule: the sentence test')
+  need(bd, '- It does not end with a question mark.', 'prose rule: the question test')
+  need(bd, 'Looks like a feature request: {one-line goal}.\na. refine it with a review (default) · b. /plan it · c. just discuss', 'feature request gate text')
+  never(bd, /execute \*\*one milestone\*\*|Execute as-is|do not trigger `\/plan`/, 'option a/b still skip the review or run a milestone')
+  const rows = Object.fromEntries(doc(bd).split('\n').filter((l) => /^\| [abc] \|/.test(l)).map((l) => [l[2], l]))
+  if (!/Architect \+ PM review/.test(rows.a ?? '') || !/Save nothing/.test(rows.a ?? '')) out.push(`${bd}: option a must run the Architect + PM review and save nothing`)
+  if (!['/plan', 'save-plan', 'take-plan', 'does not start the work'].every((t) => (rows.b ?? '').includes(t))) out.push(`${bd}: option b must hand to /plan, save-plan and take-plan, and the Planner must not start the work`)
+  // Examples: a "feature request" row passes both mechanical tests; a "none" row is a question, one sentence, or a
+  // request to run / explain something.
+  const examples = doc(bd).split('**Examples**')[1]?.split('\n## ')[0] ?? ''
+  const ex = examples.split('\n').filter((l) => /^\| (?!Message|---)/.test(l)).map((l) => l.split('|').map((c) => c.trim()))
+  const sentences = (m) => m.split(/(?<=[.!?])\s+/).filter(Boolean).length
+  const feature = ex.filter((c) => c[2] === 'feature request')
+  const none = ex.filter((c) => /^none\b/.test(c[2]))
+  if (feature.length < 2 || none.length < 2) out.push(`${bd}: needs at least two feature-request and two no-gate examples (got ${feature.length} / ${none.length})`)
+  for (const [, m] of feature) if (sentences(m) < 2 || m.endsWith('?')) out.push(`${bd}: example "${m}" is marked a feature request but fails the sentence or question test`)
+  for (const [, m, gate] of none) if (!(m.includes('?') || sentences(m) < 2 || /^(Run|Check|Explain|Review)\b/.test(m) || gate === 'none (a small change)')) out.push(`${bd}: example "${m}" is marked none but looks like a feature request`)
+  need(bd, '- a small change: one file, a typo or a one-line fix', 'prose rule: the small-change exception')
+  need(bd, 'also a request phrased as a question', 'prose rule: a question-form request is a question')
+  need(bd, 'the one tool call this gate allows before it is done (read-only)', 'the main-folder test is the only tool call before the gate')
+  const plan = '.claude/commands/plan.md'
+  never(plan, /Verify command per milestone|numbered milestones/, '/plan still asks for milestones + a Verify command the PRD template lacks')
+  need(plan, 'fixed: <gap> → <what you changed>', 'review block: fixed: line')
+  need(plan, 'open: <gap> — <question for the Human>', 'review block: open: line')
+  need(plan, 'Print `no gaps` only when there is no `fixed:` line and no `open:` line', 'review block: no gaps rule')
+  need(plan, 'node scripts/plan-name-similarity.mjs --name="<the draft\'s title>" --related --scope=', 'review: overlap search')
+  need(plan, 'picks **a** at the `brief-detection` gate', 'review: runs on option a')
+  need(plan, '**On a brief (option a at the `brief-detection` gate)** there is no plan file yet.', 'review: a brief is not checked as a plan file')
+  need(plan, 'List every other plan you read on one line: `checked: <plan numbers>`.', 'review: overlap hits that are not the same work go on one checked: line')
+  const prd = '.claude/references/prd-template.md'
+  need(prd, '\n## Execution Notes\n', 'no ## Execution Notes section (plan.md writes rejected gaps there)')
+  need(prd, '\n## Atomic Sub-tasks\n', 'no ## Atomic Sub-tasks section')
+  never(prd, /Q&A format per the `brief-detection` skill/, 'dead Q&A reference')
+  need('.claude/skills/save-plan/SKILL.md', 'Its `## Atomic Sub-tasks` are the milestones', 'save-plan: one plan shape')
+  // The workflow map and the Cursor rule describe the same trigger and routes as the skill.
+  const wm = 'docs/agent/workflow-map.md'
+  never(wm, /3\+ structured H2|routes to `\/feat` \(option b\)|--routes--> \/feat/, 'workflow map: old brief-detection trigger or option b → /feat')
+  need(wm, 'a feature request in prose in the main folder', 'workflow map: brief-detection row names the prose rule')
+  const rule = '.cursor/rules/brief-detection-must-use-skill.mdc'
+  if (existsSync(join(dir, rule))) {
+    never(rule, /3\+ (structured )?H2|3\+ H2 markers/, 'Cursor rule: still loads the skill only on 3+ H2 markers')
+    need(rule, 'asks in a few sentences to build,', 'Cursor rule: loads the skill for a prose feature request')
+  }
+  return out
+}
+
 // actionlint (pinned in kit CI, which sets KIT_REQUIRE_ACTIONLINT=1) lints every rendered workflow when available.
 const actionlint = process.env.ACTIONLINT || 'actionlint'
 const haveActionlint = spawnSync(actionlint, ['-version'], { encoding: 'utf8' }).status === 0
@@ -203,6 +261,7 @@ for (const fx of fixtures) {
   if (!all.includes('docs/project/tech-stack.md')) fail(`${fx.name}: docs/project/tech-stack.md missing`)
   if (all.some((f) => f.startsWith('_shared/'))) fail(`${fx.name}: _shared/ must not be installed`)
   for (const p of loadPathProblems(dir)) fail(`${fx.name}: ${p}`)
+  for (const p of plannerDocProblems(dir)) fail(`${fx.name}: Planner docs: ${p}`)
   for (const p of ciProblems(dir, fx)) fail(`${fx.name}: ${p}`)
   // Every path, `node scripts/…` and `npm run …` the workflow docs name exists (packs [] too: no dangling pack file).
   for (const p of linkProblems(dir)) fail(`${fx.name}: link check: ${p.file}:${p.line}: ${p.what}`)
@@ -910,6 +969,79 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   rmSync(up, { recursive: true, force: true })
 }
 
+// plan-name-similarity (the rendered core script). Without the review's flags its output is v1.3.0's, line for line (the
+// expected text below is what v1.3.0 prints on this fixture): save-plan and plan-write-guard.sh read it. --stem matches
+// by stem ("favourite" = "favorites"); --related finds a closed plan whose text covers the request though its title does
+// not; --scope lists an open plan sharing files (a bare folder counts as the folder), and only with --scope.
+if (core) {
+  const sim = tmp('sim')
+  cpSync(join(core, 'scripts'), join(sim, 'scripts'), { recursive: true })
+  mkdirSync(join(sim, 'plans', '1-100'), { recursive: true })
+  writeFileSync(join(sim, 'plans', '1-100', '012-favorites-button-on-item-list.plan.md'), '# Plan 012 — Favorites Button on the Item List\n\nStatus: done\n\n## Problem Statement\nUsers mark items as favorites; a "Favorites only" toggle joins the filter sidebar.\n')
+  writeFileSync(join(sim, 'plans', '1-100', '013-order-export.plan.md'), '# Plan 013 — Order Export\n\nStatus: done\n\n## Problem Statement\nExport orders to a spreadsheet.\n')
+  writeFileSync(join(sim, 'plans', '020-item-list-paging.plan.md'), '# Plan 020 — Item List Paging\n\nStatus: active\n\n## Read-Write Scope\n\n```scope\nsrc/app/items/**\n```\n')
+  const sn = (...a) => spawnSync(process.execPath, [join(sim, 'scripts', 'plan-name-similarity.mjs'), ...a], { encoding: 'utf8' }).stdout.replace(/\r\n/g, '\n')
+  const v130 = {
+    'Favourite button on item lists': 'PLAN_SIMILARITY: no similar plans for "Favourite button on item lists" - safe to save as new.\n',
+    'Item list paging': 'PLAN_SIMILARITY: 1 similar plan(s) for "Item list paging" - confirm with Human before write.\n- plans/020-item-list-paging.plan.md\n  title: Item List Paging\n  why: similar because name shares: item, list, paging (score 1) | Status: active\nAsk Human: rewrite existing / save as new / cancel\n',
+    'Item lists paging': 'PLAN_SIMILARITY: no similar plans for "Item lists paging" - safe to save as new.\n',
+  }
+  for (const [q, want] of Object.entries(v130)) {
+    const got = sn(`--name=${q}`)
+    if (got !== want) fail(`plan-name-similarity default output for "${q}" differs from v1.3.0: ${JSON.stringify(got)}`)
+  }
+  const title = sn('--name=Favourite button on item lists', '--stem')
+  if (!/PLAN_SIMILARITY: 1 similar plan/.test(title) || !title.includes('plans/1-100/012-favorites-button-on-item-list.plan.md')) fail(`plan-name-similarity --stem: "Favourite button on item lists" must match "Favorites Button on the Item List": ${title.trim().split('\n')[0]}`)
+  const rel = sn('--name=favourite items filter', '--related')
+  if (!/PLAN_SIMILARITY: no similar plans/.test(rel) || !/PLAN_RELATED: 1 plan\(s\)/.test(rel) || !rel.includes('- plans/1-100/012-favorites-button-on-item-list.plan.md (closed)')) fail(`plan-name-similarity --related: the closed favourites plan must be found by its text: ${rel.trim().split('\n').slice(0, 3).join(' | ')}`)
+  const scopeCases = [
+    ['src/app/items/badge.ts,docs/x.md', true], ['src/app/items', true], ['src/app/items/', true], ['src/**', true],
+    ['src/app/*.ts', false], ['*.md', false], ['server/routes/x.js', false], ['src/app/items-old/**', false],
+  ]
+  for (const [globs, meets] of scopeCases) {
+    const out = sn('--name=item badges', `--scope=${globs}`)
+    const listed = /PLAN_SCOPE_OVERLAP: 1 open plan/.test(out) && out.includes('plans/020-item-list-paging.plan.md (Status: active)')
+    if (listed !== meets || (!meets && !/PLAN_SCOPE_OVERLAP: none/.test(out))) fail(`plan-name-similarity --scope=${globs} vs src/app/items/**: must ${meets ? '' : 'not '}overlap: ${out.trim().split('\n').pop()}`)
+  }
+  const fileOnly = sn('--file=plans/020-item-list-paging.plan.md')
+  if (/PLAN_SCOPE_OVERLAP|PLAN_RELATED/.test(fileOnly)) fail(`plan-name-similarity --file without --scope must not print the scope search: ${fileOnly.trim().split('\n').pop()}`)
+  rmSync(sim, { recursive: true, force: true })
+}
+
+// The PowerShell wrappers (Windows PowerShell 5) resolve -Target and -Config as PowerShell does: relative, absolute,
+// with a trailing slash (tab completion; the argument after it, -Apply, must still arrive), in a folder with a space,
+// drive-relative (C:name) and root-relative (\path).
+const powershell = process.platform === 'win32' && spawnSync('powershell.exe', ['-NoProfile', '-Command', '$PSVersionTable.PSVersion.Major'], { encoding: 'utf8' }).status === 0
+if (powershell) {
+  const BS = String.fromCharCode(92) // a trailing backslash, as tab completion writes it
+  const ps = (cwd, script, ...a) => {
+    const r = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(kit, script), ...a], { cwd, encoding: 'utf8' })
+    return { status: r.status, out: `${r.stdout}${r.stderr}` }
+  }
+  const psDir = mkdtempSync(join(tmpdir(), 'kit ps target-'))
+  const psCfg = join(tmp('ps-config'), 'my.config.json')
+  writeFileSync(psCfg, JSON.stringify({ ...CORE_CFG, project: { name: 'ps-app' } }))
+  const inst = ps(tmpdir(), 'kit-install.ps1', '-Target', psDir + BS, '-Config', psCfg)
+  if (inst.status !== 0 || !/KIT_INSTALL: ok/.test(inst.out) || !inst.out.split(/\r?\n/).includes(`kit-install target: ${psDir}`)) fail(`kit-install.ps1 with an absolute -Target (trailing slash, a space) and -Config: exit ${inst.status}: ${inst.out.trim().split('\n').pop()}`)
+  writeFileSync(join(psDir, 'kit.config.json'), readFileSync(psCfg, 'utf8'))
+  const parent = join(psDir, '..')
+  const name = relative(parent, psDir)
+  const drive = psDir.slice(0, 2) // e.g. C:
+  const forms = [
+    ['relative', parent, name], ['relative with a trailing slash', parent, name + BS], ['absolute', kit, psDir],
+    ['drive-relative', parent, `${drive}${name}`], ['root-relative', kit, psDir.slice(2)],
+  ]
+  for (const [what, cwd, target] of forms) {
+    const d = ps(cwd, 'kit-drift.ps1', '-Target', target)
+    if (d.status !== 0 || !/KIT_DRIFT: ok/.test(d.out) || !d.out.split(/\r?\n/).includes(`kit-drift target: ${psDir}`)) fail(`kit-drift.ps1 with a ${what} -Target (${target}): exit ${d.status}: ${d.out.trim().split('\n').slice(0, 2).join(' | ')}`)
+  }
+  const absSync = ps(kit, 'kit-sync.ps1', '-Target', psDir)
+  if (absSync.status !== 0 || !/KIT_SYNC: dry-run/.test(absSync.out)) fail(`kit-sync.ps1 with an absolute -Target: exit ${absSync.status}: ${absSync.out.trim().split('\n').pop()}`)
+  const slashApply = ps(parent, 'kit-sync.ps1', '-Target', name + BS, '-Apply')
+  if (slashApply.status !== 0 || !/KIT_SYNC: applied/.test(slashApply.out)) fail(`kit-sync.ps1 -Target <folder>\\ -Apply: -Apply must still arrive: exit ${slashApply.status}: ${slashApply.out.trim().split('\n').pop()}`)
+  for (const d of [psDir, join(psCfg, '..')]) rmSync(d, { recursive: true, force: true })
+}
+
 // Required keys: core only with no config must STOP and write nothing.
 const bare = tmp('bare')
 const stop = run('install.mjs', ['--target', bare, '--packs', ''])
@@ -921,4 +1053,4 @@ if (problems.length > 0) {
   console.error(`INSTALL_CHECK: FAIL — ${problems.length} problems`)
   process.exit(1)
 }
-console.log(`INSTALL_CHECK: ok — ${fixtures.length} fixtures, ${haveActionlint ? `actionlint on ${actionlinted} rendered workflows` : 'actionlint not installed (skipped)'}, CI renders (ci.testMode run / if-present / skip), link check, re-install no-op, sync dry-run/apply/prune, overrides, drift-check, adopt, promoted seeds, /plan load paths, local + github sources, stack detection, upstream-owned layer, 0 problems`)
+console.log(`INSTALL_CHECK: ok — ${fixtures.length} fixtures, ${haveActionlint ? `actionlint on ${actionlinted} rendered workflows` : 'actionlint not installed (skipped)'}, CI renders (ci.testMode run / if-present / skip), link check, re-install no-op, sync dry-run/apply/prune, overrides, drift-check, adopt, promoted seeds, /plan load paths, Planner docs, plan-name-similarity (default = v1.3.0, --stem, --related, --scope), ${powershell ? 'PowerShell wrappers (relative, absolute, trailing slash, drive- and root-relative)' : 'PowerShell wrappers skipped (no Windows PowerShell)'}, local + github sources, stack detection, upstream-owned layer, 0 problems`)

@@ -25,7 +25,17 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Write-Error 'node is required (Node 18+).'; exit 1 }
-$resolved = [System.IO.Path]::GetFullPath((Join-Path (Get-Location).ProviderPath $Target))
+# A folder or file as PowerShell itself resolves it: relative to the current location, absolute, drive-relative
+# (C:foo) or root-relative (\foo). (Join-Path glued an absolute path onto the current folder under Windows PowerShell 5.)
+# A trailing slash is dropped, except on a drive root: "...\my-app\" would end the quoted argument node receives in \"
+# and swallow the arguments after it.
+function Resolve-KitPath([string]$Path) {
+  $full = [System.IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path))
+  $root = [System.IO.Path]::GetPathRoot($full)
+  if ($full.Length -gt $root.Length) { $full = $full.TrimEnd('\', '/') }
+  return $full
+}
+$resolved = Resolve-KitPath $Target
 Write-Host "kit-sync target: $resolved"
 $argsList = @("$PSScriptRoot/tools/sync.mjs", '--target', $resolved)
 if ($Source) { $argsList += @('--source', $Source) }

@@ -9,6 +9,73 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-10-19
+
+The Planner's Architect + PM review now reaches every brief, including a feature request written in plain prose, and
+shows what it changed. `/plan`, the PRD template and save-plan describe one plan shape. Plus three tool fixes: the
+PowerShell wrappers take an absolute folder, `e2e-check --project` explains missing dependencies and env files, and
+`workflow-link-check` no longer fails on a gitignored runtime file.
+
+### What a project must do
+
+Nothing. Sync (`kit-sync -Ref v1.3.1`, then `-Apply`) and commit. Rendered files that change (`kit-update`):
+`.claude/skills/brief-detection/SKILL.md`, `.claude/commands/plan.md`, `.claude/references/prd-template.md`,
+`.claude/skills/save-plan/SKILL.md`, `scripts/plan-name-similarity.mjs`, `docs/agent/workflow-map.md` (the
+`brief-detection` row and diagram line) and, with the Cursor layer, `.cursor/rules/brief-detection-must-use-skill.mdc`.
+No config key is new. A project that overrides `docs/agent/workflow-map.md` can update its `brief-detection` row and
+diagram line by hand to the new trigger and routes.
+
+### Changed
+- `brief-detection`: in the main folder, a feature request in prose (asks to build, add, change, fix or remove
+  something; longer than one sentence; not a question) gets a short gate:
+  `a. refine it with a review (default) · b. /plan it · c. just discuss`. A question, a slash command, a request to
+  run or explain something, an answer, a request phrased as a question ("Can you add …?"), a small change (one file,
+  a typo, a one-line fix), or any message in a slot gets no gate. The structured-brief gate has the same choices. The
+  main-folder test is the one tool call allowed before the gate (or the SessionStart slot line). The workflow map's `brief-detection` row and the Cursor rule say the same.
+- Option **a** (the default) runs `/plan`'s Architect + PM review on the brief and saves nothing (it used to skip the
+  review). On a brief the review checks codebase facts, Human decisions, testability and overlap only; missing plan
+  sections are not gaps until `/plan`, and there are no `fixed:` lines. Option **b** hands to `/plan` → save-plan → a Worker claims the plan in a slot with `take-plan`; it no
+  longer says to run a milestone, which the Planner never does.
+- `/plan`'s review block lists `fixed: <gap> → <change>` and `open: <gap> — <question>` lines, also on a plan the
+  Planner wrote itself; `no gaps` only when both lists are empty. It always runs the overlap search (below); a plan it
+  finds is an `open:` line only when it may be the same work or shares a file, the rest go on one `checked:` line.
+- One plan shape: `/plan` no longer asks for "numbered milestones and a Verify command per milestone". The PRD
+  template's Atomic Sub-tasks are the milestones, and each `[auto]` success criterion names its exact check. The
+  template gains `## Execution Notes` (where `/plan` writes gaps the Human kept), and `## Critical Questions` says its
+  own `Q: … A: …` format instead of pointing at a format `brief-detection` never defined. save-plan says the same.
+- `plan-name-similarity`, new flags for the review: `--stem` matches words by stem (`favourite` = `favorites`,
+  `recipes` = `recipe`); `--related` (implies `--stem`) searches the text of every plan, open and closed (rare words
+  weigh most) and prints `PLAN_RELATED`; `--scope="glob,…"` (a bare `--scope` with `--file`: that plan's scope block)
+  prints `PLAN_SCOPE_OVERLAP` for open plans whose Read-Write Scope shares a file (a path without a glob counts as the
+  file and as the folder). Without these flags the output is v1.3.0's, line for line, so save-plan's gate and
+  `plan-write-guard.sh` behave as before.
+- `e2e-check --project`: stops before cloning with `install dependencies in <path> first` when the project or its
+  `scripts/` has no `node_modules`, or one that lacks most declared packages (a broken install; a few missing are a
+  NOTE); copies `<paths.serverRoot>.env` (when git ignores it) into the scratch slots, as the slot setup does for a real
+  slot, and deletes the copies when the run ends, also on Ctrl+C or a kill; without that file the slot dev server
+  cases are `SKIP` with the reason (the summary line adds `, N skipped`).
+- `workflow-link-check`: a path a doc names that does not exist but the project's git ignores is counted as `runtime`
+  (`N runtime (gitignored)`), not missing.
+
+### Fixed
+- `kit-sync.ps1`, `kit-install.ps1`, `kit-drift.ps1`: an absolute `-Target` (or `-Config`) failed under Windows
+  PowerShell 5 (`Join-Path` glued it onto the current folder). Paths now resolve as PowerShell does: relative,
+  absolute, drive-relative (`C:name`), root-relative (`\name`). A trailing slash (`.\my-app\`, tab completion) is
+  dropped; it used to end the argument in `\"` and swallow the arguments after it, such as `-Apply`.
+- `plan-name-similarity` missed existing plans worded differently from the request: titles only, exact words, and a
+  0.8 score. See `--stem` / `--related` above (the review uses them; the default gate is unchanged).
+
+### Checks
+- `install-check`: the rendered Planner instructions agree (the prose rule, the gate text, examples that obey the
+  rule, option a reviews and saves nothing, option b hands to `/plan`, save-plan and `take-plan`, the `fixed:` /
+  `open:` / `checked:` block, the brief-only review, the small-change and question-form exceptions, the overlap search,
+  one plan shape); `plan-name-similarity` default output equal to v1.3.0's on a fixture, `--stem`, `--related`, and
+  `--scope` overlap cases (bare folder, trailing slash, `src/**`; not `*.md`, `src/app/*.ts`, a sibling folder); the
+  three PowerShell wrappers with relative, absolute, trailing-slash, spaced, drive-relative and root-relative paths,
+  and `-Apply` after a trailing slash (Windows).
+- `workflow-link-check`: a fixture with a gitignored runtime path (runtime when ignored, missing when not).
+- `acceptance-check --e2e`: `e2e-check --project` on a clone without `node_modules` stops before cloning.
+
 ## [1.3.0] - 2026-10-19
 
 Follow-ups from the first v1.2.0 syncs: the CI unit-test job can be softened or turned off, sync cleans up the files a
@@ -511,7 +578,8 @@ Phases 4 to 6A, never tagged. Projects installed from a local kit folder.
 Phases 1 and 2, before this repository existed: the workflow was extracted from its source project into a
 stack-neutral `core/` with `{{placeholder}}` config keys and a leak check.
 
-[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.3.1
 [1.3.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.3.0
 [1.2.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.2.0
 [1.0.5]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.5

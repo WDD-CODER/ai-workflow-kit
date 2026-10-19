@@ -12,18 +12,21 @@
  * and AGENTS.md, AGENTS.workflow.md, CLAUDE.md, README_WORKFLOW.md. Checked on every line:
  *   - a backticked path under a folder the kit installs (`.claude/…`, `docs/…`, `scripts/…`, …): the file or folder
  *     exists. Examples and runtime files are skipped: anything with <…>, *, {…}, $, NNN or YYYY in it, and the
- *     RUNTIME list below (files the workflow creates while it runs).
+ *     RUNTIME list below (files the workflow creates while it runs). A missing path the project's git ignores
+ *     (`git check-ignore`, when the target is a git work tree) is a runtime file too: counted as `runtime`, not missing.
  *   - `node scripts/<file>`: the script exists.
  *   - `npm run <script>`: package.json has it (no package.json yet: one of the configured commands.* names);
  *     `--if-present` runs are optional. `npm run (not set)` is a config key the project still has to fill.
  * Node built-ins only. Exit 0 = 0 missing, 1 = missing references (one per line: file:line: what).
+ * A gitignored-runtime fixture (a doc naming an ignored state file) checks the runtime count, and the same path missing
+ * once it is not ignored.
  */
 import { readFileSync, readdirSync, existsSync, statSync, mkdtempSync, writeFileSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, relative, resolve } from 'path'
 import { spawnSync } from 'child_process'
 import { fileURLToPath, pathToFileURL } from 'url'
-import { resolveConfig, readJson } from './lib/kit.mjs'
+import { resolveConfig, readJson, ignoredPaths } from './lib/kit.mjs'
 
 const kit = resolve(fileURLToPath(new URL('..', import.meta.url)))
 
@@ -57,7 +60,16 @@ const isRuntime = (p) => RUNTIME.some((r) => p === r || p === r.replace(/\/$/, '
  * folder is one the kit installed into (.kit/install.json), else one the project has.
  */
 export function linkProblems(dir) {
+  return linkReport(dir).missing
+}
+
+/**
+ * { missing, runtime }: `missing` as linkProblems; `runtime` = backticked paths that do not exist but the project's git
+ * ignores (a log or state file written at run time), [{ file, line, path }]. They never fail the check.
+ */
+export function linkReport(dir) {
   const out = []
+  const absent = [] // backticked paths that do not exist: missing unless git ignores them
   let inst = null
   try {
     inst = JSON.parse(readFileSync(join(dir, '.kit/install.json'), 'utf8'))
@@ -92,7 +104,7 @@ export function linkProblems(dir) {
         if (/\s/.test(p) || EXAMPLE.test(p) || !p.includes('/') || p.startsWith('/') || /^[a-z]+:\/\//i.test(p)) continue
         if (!roots.has(p.split('/')[0]) || isRuntime(p) || optional.has(p) || seen.has(p)) continue
         seen.add(p)
-        if (!exists(p)) out.push({ ...at, what: `path ${p} does not exist` })
+        if (!exists(p)) absent.push({ ...at, path: p })
       }
       for (const [, p] of text.matchAll(/\bnode\s+(scripts\/[\w./-]+)/g)) {
         if (EXAMPLE.test(p) || seen.has(p)) continue
@@ -107,7 +119,12 @@ export function linkProblems(dir) {
       }
     })
   }
-  return out
+  const bare = (p) => p.replace(/\/$/, '')
+  const ignored = ignoredPaths(dir, [...new Set(absent.map((a) => bare(a.path)))])
+  const runtime = absent.filter((a) => ignored.has(bare(a.path)))
+  for (const a of absent) if (!runtime.includes(a)) out.push({ file: a.file, line: a.line, what: `path ${a.path} does not exist` })
+  out.sort((a, b) => (a.file === b.file ? a.line - b.line : a.file < b.file ? -1 : 1))
+  return { missing: out, runtime }
 }
 
 const FIXTURES = [
@@ -120,14 +137,45 @@ const FIXTURES = [
   { name: 'react-vite-supabase-upstream', packs: 'react-vite', layers: 'supabase,upstream-owned' },
 ]
 
+// A doc names a state file the project's .gitignore ignores: `runtime`, not missing. Once it is not ignored, missing.
+// Returns the number of problems.
+function gitignoredFixture() {
+  const dir = mkdtempSync(join(tmpdir(), 'kit-links-gitignored-'))
+  let bad = 0
+  const say = (ok, msg) => { if (!ok) { console.error(`gitignored: ${msg}`); bad++ } }
+  try {
+    spawnSync('git', ['init', '-q'], { cwd: dir })
+    writeFileSync(join(dir, 'kit.config.json'), JSON.stringify({ project: { name: 'links-gitignored' }, stack: { packs: [] }, commands: { build: 'build', lint: 'lint', test: 'test' }, hooks: { shellPath: 'bash' } }))
+    const r = spawnSync(process.execPath, [join(kit, 'tools', 'install.mjs'), '--target', dir, '--packs', ''], { encoding: 'utf8' })
+    if (r.status !== 0) {
+      say(false, `install exited ${r.status}: ${(r.stdout + r.stderr).trim().split('\n').pop()}`)
+      return bad
+    }
+    writeFileSync(join(dir, 'docs', 'agent', 'tunnel-state.md'), '# Tunnel state\n\nThe tunnel writes `.claude/tunnel-state.json` while it runs.\n')
+    const gi = join(dir, '.gitignore')
+    const base = existsSync(gi) ? readFileSync(gi, 'utf8') : ''
+    writeFileSync(gi, `${base}\n.claude/tunnel-state.json\n`)
+    const a = linkReport(dir)
+    say(a.missing.length === 0 && a.runtime.length === 1 && a.runtime[0].path === '.claude/tunnel-state.json', `an ignored .claude/tunnel-state.json must be 1 runtime, 0 missing (got ${a.missing.length} missing, ${a.runtime.length} runtime)`)
+    writeFileSync(gi, base)
+    const b = linkReport(dir)
+    say(b.missing.length === 1 && /\.claude\/tunnel-state\.json does not exist/.test(b.missing[0]?.what ?? '') && b.runtime.length === 0, `a not-ignored .claude/tunnel-state.json must be missing (got ${b.missing.length} missing, ${b.runtime.length} runtime)`)
+    console.log(`${'gitignored-runtime-path'.padEnd(30)} ${bad ? `${bad} problems` : '0 missing, 1 runtime'}`)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+  return bad
+}
+
 function main() {
   const argv = process.argv.slice(2)
   const t = argv.indexOf('--target')
   if (t >= 0) {
     const dir = resolve(argv[t + 1] ?? '.')
-    const probs = linkProblems(dir)
+    const { missing: probs, runtime } = linkReport(dir)
     for (const p of probs) console.error(`${p.file}:${p.line}: ${p.what}`)
-    console.log(`WORKFLOW_LINK_CHECK: ${probs.length ? 'FAIL' : 'ok'} — ${probs.length} missing in ${dir}`)
+    for (const r of runtime) console.log(`runtime  ${r.file}:${r.line}: ${r.path} is gitignored (written at run time)`)
+    console.log(`WORKFLOW_LINK_CHECK: ${probs.length ? 'FAIL' : 'ok'} — ${probs.length} missing${runtime.length ? `, ${runtime.length} runtime (gitignored)` : ''} in ${dir}`)
     process.exit(probs.length ? 1 : 0)
   }
   let total = 0
@@ -146,7 +194,8 @@ function main() {
     }
     rmSync(dir, { recursive: true, force: true })
   }
-  console.log(`WORKFLOW_LINK_CHECK: ${total ? 'FAIL' : 'ok'} — ${FIXTURES.length} fixtures (packs [], angular, angular without Cursor, node-express, angular + node-express, react-vite, react-vite + supabase + upstream-owned), ${total} missing`)
+  total += gitignoredFixture()
+  console.log(`WORKFLOW_LINK_CHECK: ${total ? 'FAIL' : 'ok'} — ${FIXTURES.length + 1} fixtures (packs [], angular, angular without Cursor, node-express, angular + node-express, react-vite, react-vite + supabase + upstream-owned, a gitignored runtime path), ${total} missing`)
   process.exit(total ? 1 : 0)
 }
 

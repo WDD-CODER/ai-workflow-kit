@@ -84,7 +84,7 @@ Redirect stubs for palette discoverability ship with the optional Cursor layer (
 | Skill | Trigger | Key connections | Cursor `.mdc` |
 | --- | --- | --- | --- |
 | `save-plan` | Plan Contract pasted / "save the plan" / plan not yet under `plans/` | runs `scripts/plan-name-similarity.mjs`; writes `plans/NNN-slug.plan.md` + `.claude/todo.md`; `.claude/.plan-write-ack` handshake with `plan-write-guard.sh`; mid-flight brief↔plan sync in `reference/mid-flight-sync.md` | `save-plan-must-use-skill` |
-| `brief-detection` | 3+ structured H2 markers in first message | gates execution → routes to `/feat` (option b) or discussion | `brief-detection-must-use-skill` |
+| `brief-detection` | a pasted Plan Contract or structured brief (H2 markers), or a feature request in prose in the main folder | gates it: a = Architect + PM review, nothing saved · b = `/plan` → save-plan → a Worker claims it with `take-plan` · c = discussion | `brief-detection-must-use-skill` |
 | `github-sync` | session start, once per day | `scripts/github-sync-gate.mjs` (injected gate); writes `notes/github-sync/YYYY-MM-DD.md` | `github-sync-must-use-skill` — best-effort, no `SessionStart`-hook equivalent in Cursor |
 | `preflight` | before dev server / browser / DB workflows | `scripts/preflight.mjs` | `preflight-must-use-skill` |
 | `techdebt` | before PR / audit | `scripts/techdebt-report.mjs` (rolling 7 reports + trend) | `techdebt-must-use-skill` |
@@ -308,7 +308,7 @@ Durable learning in session (decision/gotcha/pattern)
 save-plan    --runs-->     plan-name-similarity.mjs; --writes--> plans/*, .claude/todo.md, .plan-write-ack
 plan-write-guard.sh --gates--> Write/Edit on plans/*.plan.md; --runs--> plan-name-similarity.mjs
 branch-guard.sh     --gates--> all Write/Edit (blocks main)
-brief-detection     --gates--> structured pasted briefs; --routes--> /feat | discussion
+brief-detection     --gates--> pasted briefs and prose feature requests; --routes--> review | /plan -> save-plan -> take-plan | discussion
 job-validation      --gates--> marking any [x]; --requires--> Human done / ship Y / Tier 1 evidence
 brain-capture.md    --gates--> any docs/brain write (shown, then auto-writes; "no brain" opts out)
 standards-git.md    --gates--> post-push (Merge Gate, mandatory)
