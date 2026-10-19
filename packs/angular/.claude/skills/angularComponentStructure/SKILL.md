@@ -16,7 +16,11 @@ Every component class reads the same way, top to bottom, so any agent or develop
   selector: 'recipe-card',            // kebab-case, no app- prefix unless it collides with native HTML
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
+<!-- KIT:if project.icons.component -->
+  imports: [TranslatePipe, {{project.icons.component}}],
+<!-- KIT:else -->
   imports: [TranslatePipe, IconComponent],
+<!-- KIT:end -->
   templateUrl: './recipe-card.component.html',
   styleUrl: './recipe-card.component.scss',
 })
@@ -55,7 +59,15 @@ Why CRDUL and not alphabetical: the verbs map to the data flow a reader is traci
 ## When you create a component
 
 - Four files: `.ts`, `.html`, `.scss`, `.spec.ts` (skip `.spec.ts` during iterative plan work — specs are written when the unit is finalized or on request, per `docs/agent/standards-angular.md`).
+<!-- KIT:if project.icons.registry -->
+<!-- KIT:if project.icons.library -->
+- Register every {{project.icons.library}} icon the template uses in `{{project.icons.registry}}` before using it — an unregistered icon renders nothing and fails silently.
+<!-- KIT:else -->
+- Register every icon the template uses in `{{project.icons.registry}}` before using it — an unregistered icon renders nothing and fails silently.
+<!-- KIT:end -->
+<!-- KIT:else -->
 - Register every icon the template uses with the project icon registry before using it — an unregistered icon renders nothing and fails silently.
+<!-- KIT:end -->
 - Styles follow `cssLayer` (it activates on its own when you touch the `.scss`).
 - User-facing strings go through the project translation pipe + `{{project.i18nFile}}`; that file is append-only.
 

@@ -14,7 +14,7 @@
  *     ownership.upstreamPaths, never from hand-written overrides);
  *   - the rendered CI: no `--prefix` with nothing after it, a server job only with a backend, ESLint on the changed
  *     files only for the upstream-owned copy;
- *   - adoption-report → no fail row;
+ *   - adoption-report → no fail row, and its frontend row prints the command a slot starts the dev server with;
  *   - the first commit runs the git hooks (core.hooksPath=.husky, no husky, no --no-verify) and reaches origin.
  * --e2e: then `tools/e2e-check.mjs --project <fixture>` on the react-vite and upstream-owned fixtures (Vite slot server,
  * /pull-copy, Planner close-out, …).
@@ -117,6 +117,10 @@ for (const kind of only ? [only] : Object.keys(KINDS)) {
   check(at('the first commit runs the git hooks (no husky, no --no-verify) and reaches origin'), c.status === 0 && !/cannot spawn/.test(c.out) && p.status === 0, tail(c.out + p.out))
   const report = tool('adoption-report.mjs', '--target', fx.dir)
   check(at('adoption-report: no fail row'), report.status === 0 && /ADOPTION_REPORT: ok/.test(report.out), report.out.split('\n').filter((l) => /\sfail\s/.test(l)).concat(tail(report.out)).join(' | '))
+  // The report's frontend row is the command slot-serve runs (the shared fe-command.mjs builder), {port} left as is.
+  const feRow = (report.out.split(/\r?\n/).find((l) => l.startsWith('frontend dev server')) ?? '').trimEnd()
+  const feWant = kind === 'angular' ? 'npm exec -- ng serve -c slot --port {port}' : 'npm run dev -- --port {port} --strictPort'
+  check(at(`adoption-report frontend row: ${feWant}`), /^frontend dev server\s+ok\s+/.test(feRow) && feRow.endsWith(`  ${feWant}`), feRow)
   if (kind !== 'angular') e2eTargets.push([kind, fx.dir])
 }
 

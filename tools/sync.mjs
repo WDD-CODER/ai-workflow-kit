@@ -2,7 +2,7 @@
  * kit-sync — show what a newer kit would change in an installed project, then STOP.
  *
  *   node tools/sync.mjs --target <dir> [--ref <tag>] [--source github:<owner>/<repo> | --source <kit folder>]
- *                       [--packs a,b] [--layers a,b] [--apply]
+ *                       [--packs a,b] [--layers a,b] [--apply] [--prune]
  *
  * Source: --source, else the source + ref recorded in .kit/install.json, else the kit these tools run from.
  * --ref <tag> upgrades (or downgrades) a github source; --apply then records the new source/ref/commit.
@@ -18,7 +18,11 @@
  *   kit-update        project file untouched since install, kit changed   -> overwritten on --apply
  *   local-only        project edited it, kit unchanged                    -> kept
  *   conflict          both changed (or untracked file differs)            -> kept, resolve by hand
- *   removed-from-kit  installed earlier, no longer shipped                -> kept, delete by hand if unwanted
+ *   removed-from-kit  installed earlier, no longer shipped                -> kept, delete by hand if unwanted (or --prune)
+ *   pruned            a removed-from-kit record sync drops on --apply: the file is already gone (always), or --prune
+ *                     deleted it (a managed file unchanged since install)
+ *   released          --prune: a removed-from-kit file that was edited, or a seed: kept on disk, record dropped (the
+ *                     project's own file from then on)
  *   deleted-locally   installed earlier, missing now                      -> kept missing
  *   override          listed in kit.config.json `overrides`, or matched   -> never written, not a conflict
  *                     by an ownership.upstreamPaths glob (upstream-owned)
@@ -29,14 +33,21 @@
  *   ignored           a missing path the project's git ignores           -> never written
  * When the project owns AGENTS.md (an override, or present and not kit-installed) the kit's rules come as
  * AGENTS.workflow.md (managed) instead.
+ * --prune (with --apply) cleans up the files the kit stopped shipping: a managed file unchanged since install (its hash
+ * managed file is deleted and its record dropped; an edited managed file or any seed stays on disk and only its
+ * record is dropped (`released`: the project's own file from then on). Overrides and upstream-owned paths are never
+ * touched, nor a record outside the target or one that differs from a shipped path only in letter case (a case-only
+ * rename: its record is dropped, the file left alone). Line endings are ignored when comparing (a CRLF checkout of an
+ * unchanged file still counts as unchanged). Without --prune nothing on disk is deleted; a dry-run prints what --prune
+ * would do.
  * --apply that writes scripts/package.json also runs npm install inside scripts/ when the project has
  * scripts/package-lock.json (the lockfile is the project's; this keeps it in step with the kit's package.json).
  * Exit 0 always for a completed report; 1 on a usage or config error; 2 when a commands.* value is a full
  * command instead of an npm script name (nothing written).
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'fs'
 import { spawnSync } from 'child_process'
-import { resolve, join, dirname } from 'path'
+import { resolve, join, dirname, relative, isAbsolute, sep } from 'path'
 import { resolveSource } from './lib/source.mjs'
 import {
   KIT_ROOT, readJson, sha256, resolveConfig, planFiles, parseArgs, readOverrides, isHook, markHooksExecutable, commandProblems,
@@ -45,7 +56,7 @@ import {
 
 let args
 try {
-  args = parseArgs(process.argv.slice(2), { target: 'value', source: 'value', ref: 'value', packs: 'value', layers: 'value', apply: 'bool' })
+  args = parseArgs(process.argv.slice(2), { target: 'value', source: 'value', ref: 'value', packs: 'value', layers: 'value', apply: 'bool', prune: 'bool' })
 } catch (e) {
   console.error(`KIT_SYNC: FAIL — ${e.message}`)
   process.exit(1)
@@ -69,6 +80,7 @@ let plan
 let feNote
 let beNote
 let overrides
+let explicitOverrides
 let kitRoot
 let origin
 try {
@@ -82,7 +94,8 @@ try {
   }))
   const vals = resolveConfig({ kitRoot, project, packs, layers, target })
   // Upstream-owned paths (ownership.upstreamPaths) count as overrides.
-  overrides = withUpstream(readOverrides(project), vals, ['AGENTS.md'])
+  explicitOverrides = readOverrides(project)
+  overrides = withUpstream(explicitOverrides, vals, ['AGENTS.md'])
   const bad = commandProblems(vals)
   if (bad.length > 0) {
     for (const m of bad) console.error(`KIT_SYNC: STOP — ${m}`)
@@ -93,7 +106,8 @@ try {
   beNote = backendNote(vals, target)
   const agentsWorkflow = ownsAgents({ target, overrides, recorded: inst.files ?? {} })
   plan = planFiles({ kitRoot, packs, layers, cursor: inst.cursor, yesChef: inst.yesChef, vals, agentsWorkflow })
-  overrides = withUpstream(overrides, vals, plan.files.map((f) => f.dest))
+  // Recorded paths too: a file the kit stopped shipping that is upstream-owned is never pruned.
+  overrides = withUpstream(overrides, vals, [...plan.files.map((f) => f.dest), ...Object.keys(inst.files ?? {})])
 } catch (e) {
   console.error(`KIT_SYNC: FAIL — ${e.message}`)
   process.exit(1)
@@ -148,14 +162,55 @@ for (const f of plan.files) {
     record[f.dest] = { sha256: nextHash, kind: f.kind, source: f.source }
   } else if (state === 'same') record[f.dest] = { sha256: nextHash, kind: f.kind, source: f.source }
 }
-for (const dest of Object.keys(inst.files)) if (!planned.has(dest) && !overrides.has(dest)) rows.push({ dest, state: 'removed-from-kit' })
+// Records of files the kit no longer ships. Already gone: the record is dropped (nothing to keep). --prune: an unchanged
+// managed file is deleted, an edited one or a seed is left to the project (record dropped). Overrides and upstream-owned
+// paths are never touched, nor a path outside the target.
+const pruneNotes = []
+const plannedLower = new Map([...planned].map((d) => [d.toLowerCase(), d]))
+const sameText = (text, hash) => sha256(text) === hash || sha256(text.replace(/\r\n/g, '\n')) === hash
+for (const dest of Object.keys(inst.files)) {
+  if (planned.has(dest) || overrides.has(dest)) continue
+  const rec = inst.files[dest]
+  const file = resolve(target, dest)
+  const when = args.apply ? '' : ' (on --apply)'
+  const rel = relative(target, file)
+  if (isAbsolute(dest) || isAbsolute(rel) || rel === '..' || rel.startsWith(`..${sep}`)) {
+    pruneNotes.push(`NOTE ${dest} is recorded in .kit/install.json but lies outside the project: left alone (remove the record by hand)`)
+    continue
+  }
+  // A case-only rename (the kit now ships `Foo.md` where `foo.md` was recorded): on a case-insensitive file system both
+  // names are the shipped file. Drop the old record, never touch the file.
+  const renamed = plannedLower.get(dest.toLowerCase())
+  if (renamed) {
+    rows.push({ dest, state: 'pruned', note: `case-only rename of ${renamed}: record dropped, file left alone${when}` })
+    if (args.apply) delete record[dest]
+    continue
+  }
+  if (!existsSync(file)) {
+    rows.push({ dest, state: 'pruned', note: `already deleted: record dropped${when}` })
+    if (args.apply) delete record[dest]
+    continue
+  }
+  const unchanged = rec.kind !== 'seed' && sameText(readFileSync(file, 'utf8'), rec.sha256)
+  const action = unchanged ? 'deleted (unchanged since install)' : `kept, record dropped (${rec.kind === 'seed' ? 'a seed' : 'edited'}: the project's own file now)`
+  if (!args.prune) {
+    rows.push({ dest, state: 'removed-from-kit' })
+    pruneNotes.push(`NOTE --prune would ${unchanged ? 'delete' : 'keep'} ${dest}: ${action}`)
+    continue
+  }
+  rows.push({ dest, state: unchanged ? 'pruned' : 'released', note: `${action}${when}` })
+  if (!args.apply) continue
+  if (unchanged) rmSync(file)
+  delete record[dest]
+}
 // An AGENTS.md override is what sends the kit's rules to AGENTS.workflow.md: a known path.
-const unknownOverrides = [...overrides.keys()].filter((p) => !planned.has(p) && !(p === 'AGENTS.md' && planned.has(AGENTS_WORKFLOW)))
+const unknownOverrides = [...explicitOverrides.keys()].filter((p) => !planned.has(p) && !(p === 'AGENTS.md' && planned.has(AGENTS_WORKFLOW)))
 
-const order = ['new', 'kit-update', 'conflict', 'local-only', 'deleted-locally', 'removed-from-kit', 'override', 'ignored']
+const order = ['new', 'kit-update', 'conflict', 'local-only', 'deleted-locally', 'removed-from-kit', 'pruned', 'released', 'override', 'ignored']
 const count = (s) => rows.filter((r) => r.state === s).length
-for (const s of order) for (const r of rows.filter((x) => x.state === s)) console.log(`${s.padEnd(16)} ${r.dest}`)
+for (const s of order) for (const r of rows.filter((x) => x.state === s)) console.log(`${s.padEnd(16)} ${r.dest}${r.note ? ` — ${r.note}` : ''}`)
 for (const n of skippedSeeds) console.log(n)
+for (const n of pruneNotes) console.log(n)
 for (const p of unknownOverrides) console.log(`NOTE override ${p} is not a file this kit ships — remove it from kit.config.json`)
 if (feNote) console.log(feNote)
 if (beNote) console.log(beNote)
@@ -199,5 +254,7 @@ console.log(
   `KIT_SYNC: ${args.apply ? 'applied' : 'dry-run'} — ${count('new')} new, ${count('kit-update')} kit-update, ${count('conflict')} conflicts, ` +
     `${count('local-only')} local-only, ${count('deleted-locally')} deleted-locally, ${count('removed-from-kit')} removed-from-kit, ${count('override')} overrides` +
     (count('ignored') ? `, ${count('ignored')} ignored` : '') +
+    (count('pruned') ? `, ${count('pruned')} pruned` : '') +
+    (count('released') ? `, ${count('released')} released` : '') +
     (args.apply ? '' : ' (nothing written; re-run with --apply to write new + kit-update)'),
 )

@@ -16,7 +16,11 @@ paths:
 * **Architecture**: Adapter Pattern via `IStorageAdapter`. Standalone Components + `inject()`.
 * **Reactivity**: Signals only. `data_ = signal()`, public `.asReadonly()`. No BehaviorSubject.
 * **API**: Use `input()`, `output()`, `model()` — no `@Input`/`@Output`.
+<!-- KIT:if docs.domainSummary -->
+* **Logic**: {{docs.domainSummary}}.
+<!-- KIT:else -->
 * **Logic**: project-specific domain rules live in `{{docs.domainStandards}}`, not here.
+<!-- KIT:end -->
 * **Syntax**: Path aliases `@services/*`, no `any`, single quotes in TS, double quotes in HTML, no semicolons.
 * **Naming**: Selectors kebab-case; `app-` prefix only for native HTML collisions. Filename matches selector. Classes PascalCase; boolean flags `is`/`has`.
 * **Utils**: Put shared helpers in `src/app/core/services/util.service.ts` (or `core/utils/`); no one-off helpers in components. Utilities must be pure (same inputs → same outputs; no I/O or mutation of arguments/shared state).

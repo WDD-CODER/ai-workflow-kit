@@ -9,6 +9,70 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-19
+
+Follow-ups from the first v1.2.0 syncs: the CI unit-test job can be softened or turned off, sync cleans up the files a
+release stopped shipping, the adoption report prints the real slot frontend command, and four optional config keys let a
+project keep its own wording in the angular pack and `/review-it` without an override.
+
+### What a project must do
+
+Nothing. Every new key is optional, and with none set every rendered file is the same as in v1.2.0 except
+`scripts/lib/slot-procs.mjs` (`kit-update`, same behaviour) and the new `scripts/lib/fe-command.mjs` (`new`). Sync
+(`kit-sync -Ref v1.3.0`, then `-Apply`) and commit both.
+
+A project that keeps its own classification of the kit's `scripts/` files (a manifest or an ownership list its own
+check reads) must register `scripts/lib/fe-command.mjs` there (a core, copied file), or that check reports it as
+unclassified.
+
+### Overrides you can drop
+
+Set the key, drop the `overrides` entry, run sync, and check the rendered file (a file that differs from your copy is a
+`conflict`: take the kit's version, or keep the override).
+
+- `.github/workflows/ci.yml`, kept only because the test job could not pass (no test script, or the test command fails
+  on code you do not own): set `ci.testMode` to `skip` (no test job) or `if-present` (passes when there is no such
+  script).
+- `.claude/skills/cssLayer/SKILL.md` (angular pack), kept for a "the UI is right-to-left" line: `project.uiDirection:
+  "rtl"` (the line names `project.uiLocale` when it is set: a display phrase such as `Arabic RTL`, not a locale code).
+- `docs/agent/standards-angular.md`, kept for a project-specific **Logic** line: `docs.domainSummary` (the line becomes
+  `* **Logic**: <summary>.`).
+- `.claude/commands/review-it.md`, kept for a log-query step: `commands.logQuery` (the full command that prints the
+  errors logged since the plan started) adds a **Logs** check and its table row.
+- `.claude/skills/angularComponentStructure/SKILL.md`, kept for the icon library: `project.icons.library`,
+  `project.icons.component`, `project.icons.registry` (the same keys fill the icon line of `docs/agent/conventions.md`).
+  A copy that also words the translation line differently keeps its override, or takes the kit's line.
+- A `removed-from-kit` row for a file you already deleted disappears on the next `-Apply` (the record is dropped).
+
+### Added
+- `ci.testMode` (`run` default | `if-present` | `skip`): `run` renders the test job as before (byte-identical),
+  `if-present` runs `npm run --if-present <commands.test>`, `skip` renders no `test` job and nothing needs it. Install and
+  sync refuse any other value (exit 2), like the other `ci.*` modes. The adoption report's CI row names the mode and fails
+  when the job and the mode disagree.
+- `kit-sync --prune` (`kit-sync.ps1 -Prune`): with `--apply`, a managed file the kit no longer ships that is unchanged
+  since install (its hash equals the record) is deleted and its record dropped; an edited one or a seed stays on disk and
+  only its record is dropped (`released`). A CRLF checkout of an unchanged file counts as unchanged. Never touched:
+  overrides, upstream-owned paths, a record outside the project, and a record that differs from a shipped path only in
+  letter case (a case-only rename: its record is dropped, the file stays). Without `--prune` nothing is deleted, and a
+  dry-run prints what `--prune` would do. The summary line gains `N pruned` and `N released`.
+- Optional wording keys, unset = the v1.2.0 lines: `commands.logQuery` (`/review-it` Logs check), `project.uiDirection`
+  (`rtl` | `ltr`; refused otherwise), `project.icons.library` / `component` / `registry`, `docs.domainSummary`.
+  Install and sync refuse a `commands.logQuery` with `|` or a backtick (it is shown in a Markdown table and code span).
+- `scripts/lib/fe-command.mjs`: the pure builder of the slot frontend command (`frontendCommand`), used by
+  `slot-procs.mjs` (`frontendArgs`) and by `tools/adoption-report.mjs`.
+- Checks: `install-check` renders `ci.testMode` run / if-present / skip (actionlint in kit CI), refuses bad `ci.testMode`
+  and `project.uiDirection` values, runs `sync --prune` on unchanged / edited / seed / override / missing records, imports
+  each fixture's rendered `slot-procs.mjs` to check `frontendArgs`, and checks each wording key set and unset;
+  `acceptance-check` checks the adoption report's frontend row on the Angular and React-Vite fixtures.
+
+### Changed
+- `kit-sync --apply` drops the record of a `removed-from-kit` file that is already gone (it showed as
+  `removed-from-kit` on every run).
+
+### Fixed
+- `adoption-report`: the `frontend dev server` row printed `npm run <commands.dev> -- <slots.fePortArgs>` and ignored
+  `slots.feExec`; it now prints the command a slot runs (angular pack: `npm exec -- ng serve -c slot --port {port}`).
+
 ## [1.2.0] - 2026-10-19
 
 The core no longer assumes a stack: "core + stack pack + layers". The frontend dev server, CI jobs, style rules,
@@ -447,7 +511,8 @@ Phases 4 to 6A, never tagged. Projects installed from a local kit folder.
 Phases 1 and 2, before this repository existed: the workflow was extracted from its source project into a
 stack-neutral `core/` with `{{placeholder}}` config keys and a leak check.
 
-[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.3.0
 [1.2.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.2.0
 [1.0.5]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.5
 [1.0.4]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.0.4

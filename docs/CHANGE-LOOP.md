@@ -41,6 +41,10 @@ From the kit folder (or any kit checkout):
 
 - `conflict` rows are never overwritten. Resolve each by hand: take the kit's version, or declare the path an
   override with a reason. Never edit `.kit/install.json` to make a conflict go away.
+- `removed-from-kit` rows are files the release no longer ships; they stay until you decide. Add `-Prune` to the
+  `-Apply` run to delete the ones unchanged since install (an edited one or a seed stays, `released` as the project's
+  own file);
+  the dry-run lists what `-Prune` would do. A record whose file is already gone is dropped on every `-Apply`.
 - Then, on a branch in the project, build and run its checks, and `/ship` the result as one commit:
   `chore(kit): sync ai-workflow-kit vX.Y.Z`. `.kit/install.json` is part of that commit.
 - To see the result as the project uses it: `node tools/adoption-report.mjs --target ..\my-app` (each workflow part

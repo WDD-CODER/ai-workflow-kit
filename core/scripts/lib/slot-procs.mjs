@@ -24,6 +24,7 @@ import { createHash } from 'crypto'
 import { resolve, dirname, join, basename } from 'path'
 import { fileURLToPath } from 'url'
 import { ports } from './slot.mjs'
+import { frontendCommand } from './fe-command.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 export const repoRoot = resolve(__dirname, '..', '..')
@@ -70,10 +71,9 @@ export function hasFrontend(root = repoRoot) {
   }
 }
 
-/** npm arguments that start the frontend dev server on `port`. */
+/** npm arguments that start the frontend dev server on `port` (built by fe-command.mjs, shared with the kit's report). */
 export function frontendArgs(port) {
-  const extra = FE_PORT_ARGS.map((a) => a.replace(/\{port\}/g, String(port)))
-  return FE_EXEC.length ? ['exec', '--', ...FE_EXEC, ...extra] : ['run', FE_SCRIPT, '--', ...extra]
+  return frontendCommand({ script: FE_SCRIPT, exec: FE_EXEC, portArgs: FE_PORT_ARGS, port })
 }
 
 const run = (cmd, args) => {

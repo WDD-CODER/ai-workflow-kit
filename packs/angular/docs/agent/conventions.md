@@ -39,4 +39,12 @@
 * Canonical identifiers (units, categories and similar registries): resolve user input to the existing key through the translation service; never store the translated label as the ID.
 * If no matching key exists: prompt for the key, then add the label to the dictionary.
 * Reuse one shared "missing translation key" modal; do not build a second one.
+<!-- KIT:if project.icons.registry -->
+<!-- KIT:if project.icons.library -->
+* {{project.icons.library}} icons used in templates must be registered in `{{project.icons.registry}}` before use.
+<!-- KIT:else -->
+* Icons used in templates must be registered in `{{project.icons.registry}}` before use.
+<!-- KIT:end -->
+<!-- KIT:else -->
 * Icons used in templates must be registered with the project's icon registry before use.
+<!-- KIT:end -->
