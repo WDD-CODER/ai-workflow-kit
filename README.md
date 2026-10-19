@@ -249,14 +249,15 @@ node tools/acceptance-check.mjs --e2e                                  # Angular
 `node tools/e2e-check.mjs --project ..\my-app` runs the e2e cycle on a scratch copy of a real installed project
 (slots borrow its `node_modules` through junctions, removed with `rmdir`; nothing reaches GitHub), including the slot
 dev server and, with an `upstream` remote, `/pull-copy`. It stops before cloning with `install dependencies in <path>
-first` when the project or its `scripts/` has no `node_modules`, or one that lacks most declared packages (a broken install). It copies the backend's untracked
-`<paths.serverRoot>.env` into the scratch slots, as the slot setup does; without that file the slot dev server cases
-are `SKIP` with the reason. `node tools/adoption-report.mjs --target ..\my-app` lists each workflow part with `ok` /
+first` when the project or its `scripts/` has no `node_modules`, or one that lacks most declared packages (a broken
+install). It copies the backend's `<paths.serverRoot>.env` (when git ignores it) into the scratch slots, as the slot
+setup does, and deletes the copies when the run ends, also on Ctrl+C; without that file the slot dev server cases are
+`SKIP` with the reason. `node tools/adoption-report.mjs --target ..\my-app` lists each workflow part with `ok` /
 `warn` / `fail`.
 
 `install-check` also runs `actionlint` on every workflow it renders when `actionlint` is on the PATH (or `ACTIONLINT`
 names it); kit CI installs a pinned, checksum-verified release and sets `KIT_REQUIRE_ACTIONLINT=1`.
-`node tools/workflow-link-check.mjs --target ..my-app` checks an installed project; a path a doc names that does not
+`node tools/workflow-link-check.mjs --target ..\my-app` checks an installed project; a path a doc names that does not
 exist but the project's `.gitignore` ignores (a log written at run time) is counted as `runtime`, not missing.
 
 `KIT_LEAK_TERMS="name,email,host"` adds private terms to any leak-check run without putting them in this

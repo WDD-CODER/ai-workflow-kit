@@ -206,3 +206,55 @@ PR). P7's merge/tag and S1/S2 wait for Dandan.
   --related, --scope), PowerShell wrappers (relative + absolute paths), …, 0 problems`; `E2E_CHECK: ok — 42 cases
   passed`; `WORKFLOW_LINK_CHECK: ok — 8 fixtures (…, a gitignored runtime path), 0 missing`;
   `ACCEPTANCE_CHECK: ok — 122 checks passed (angular, react-vite, upstream-owned, e2e --project)`.
+
+### PR #29 review fixes
+Independent review at `0fe761f`: no high findings. Fixed on the same branch:
+1. (medium) **Wrappers, trailing slash:** `-Target 'foodVibe1.0\'` made the quoted argument end in `\"`, so the
+   arguments after it were swallowed. Old wrapper (`cc53018`), dry-run: `kit-sync target: C:\coding
+   projects\Cursor\foodVibe1.0\` / `KIT_SYNC: FAIL — unexpected argument: projects\Cursor\ai-workflow-kit-wt-1`. New
+   `Resolve-KitPath`: `GetUnresolvedProviderPathFromPSPath` (PowerShell's own resolution: relative, absolute,
+   drive-relative `C:name`, root-relative `\name`, low 8), then `GetFullPath`, then `TrimEnd('\','/')` unless it is a
+   drive root. Same command now: `kit-sync target: C:\coding projects\Cursor\foodVibe1.0` / `KIT_SYNC: dry-run — 0 new,
+   6 kit-update, …`. install-check (Windows): install with an absolute target + trailing slash in a folder with a space,
+   drift with relative / relative + trailing slash / absolute / drive-relative / root-relative targets (each must print
+   the resolved folder), sync dry-run, and `-Target <folder>\ -Apply` must reach `KIT_SYNC: applied`.
+2. (medium) **`--scope` with a bare folder** gave `none`. A path without a glob now counts as `x` and `x/**`; glob pairs
+   meet only when a sample path built from either side's literal folder and file pattern matches both (low 11):
+   `*.md` meets only top-level Markdown files, `src/app/*.ts` does not meet `src/app/items/**`. install-check cases vs
+   `src/app/items/**`: overlap for `src/app/items/badge.ts`, `src/app/items`, `src/app/items/`, `src/**`; none for
+   `src/app/*.ts`, `*.md`, `server/routes/x.js`, `src/app/items-old/**`.
+3. (medium) **Option a on a brief:** `/plan` gains "On a brief": check codebase facts, Human decisions, testability and
+   overlap only; plan sections are not gaps until `/plan`; no `fixed:` lines. brief-detection's option a row points at it.
+4. (medium) **Overlap noise:** a listed plan stays an `open:` line only when it may be the same work or shares a file;
+   the rest go on one `checked: <plan numbers>` line (added to the output block; `no gaps` may keep a `checked:` line).
+5. (medium) **Default output restored:** rebuilt from the v1.3.0 file; stemming only with `--stem` or `--related`; the
+   scope search only with `--scope` (a bare `--scope` with `--file` reads that plan's block). FoodVibe copy, old vs new,
+   no flags, text and `--json`: identical for "Recipes list", "favourite recipes filter", "export ingredient list as
+   shopping list", "Favorites button", "one soft delete model", "dropdown add option", and `--file=plans/407-…`.
+   install-check compares the default output on a fixture with the text v1.3.0 prints there (3 queries) and checks
+   `--file` alone prints no `PLAN_SCOPE_OVERLAP` / `PLAN_RELATED`. `/plan`'s command (`--related --scope=…`) is
+   unchanged; `--related` implies `--stem`.
+6. (low) **Prose gate exceptions:** a request phrased as a question ("Can you add …? …") is a question: answer it and
+   offer the gate in one line if it is a change request. A small change (one file, a typo, a one-line fix) gets no
+   gate; in the main folder say in one line that code changes are made in a slot (`/feat` or a plan). Two example rows
+   added; install-check accepts `none (…)` rows and checks both rules.
+7. (low) **"Before any tool call" vs `git branch`:** the gate now runs "before any other tool call"; the main-folder test
+   reads the SessionStart line (`IDLE SLOT` / `WORKER` = a slot) or runs `git branch --show-current`, the one read-only
+   call allowed before the gate.
+9. (low) **e2e env copies:** copied only when `git check-ignore` reports the file ignored; every copy is deleted when the
+   run ends (exit handler), on SIGINT/SIGTERM/SIGHUP/SIGBREAK (the message says the secrets were deleted), and before a
+   scratch folder is kept (`--keep`, or a junction that could not be removed), with a line saying it held them.
+13. (low) `\u2014\u2013` and `\u0590-\u05ff` escapes are back (the file is rebuilt from v1.3.0); README
+   `--target ..my-app` → `--target ..\my-app`.
+- Skipped: 10 (workspace false positive), as agreed — not changed.
+
+Evidence after the fixes (local, Windows): `LEAK_CHECK: ok — 161 files, 0 leaks` / `47 files, 0 leaks` / `3 files, 0
+leaks`; `PACK_CHECK: ok — 3 packs, 2 layers, 8 contract keys used by core (each provided), 0 problems`;
+`INSTALL_CHECK: ok — 5 fixtures, …, Planner docs, plan-name-similarity (default = v1.3.0, --stem, --related, --scope),
+PowerShell wrappers (relative, absolute, trailing slash, drive- and root-relative), …, 0 problems`;
+`WORKFLOW_LINK_CHECK: ok — 8 fixtures (…), 0 missing`; `E2E_CHECK: ok — 42 cases passed`; `ACCEPTANCE_CHECK: ok — 122
+checks passed (angular, react-vite, upstream-owned, e2e --project)`; `e2e-check --project ../foodVibe1.0` → `E2E:
+copying server/.env … ; the copies are deleted when the run ends.` / `E2E_CHECK: ok — 40 cases passed`;
+`--project ../agentdesk-wt-1` → `E2E_CHECK: ok — 44 cases passed`. Sync dry-runs unchanged: FoodVibe `KIT_SYNC: dry-run —
+0 new, 6 kit-update, 0 conflicts, 26 local-only, 0 deleted-locally, 0 removed-from-kit, 17 overrides`; agentdesk
+`KIT_SYNC: dry-run — 0 new, 6 kit-update, 0 conflicts, 9 local-only, 0 deleted-locally, 0 removed-from-kit, 8 overrides`.
