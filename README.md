@@ -23,7 +23,7 @@ Clone the kit once (any folder), then install a tagged release into your project
 ```powershell
 git clone https://github.com/WDD-CODER/ai-workflow-kit.git
 cd ai-workflow-kit
-.\kit-install.ps1 -Target ..\my-app -Source github:WDD-CODER/ai-workflow-kit -Ref v1.2.0 -Packs angular -Cursor
+.\kit-install.ps1 -Target ..\my-app -Source github:WDD-CODER/ai-workflow-kit -Ref v1.3.0 -Packs angular -Cursor
 ```
 
 Not sure which packs fit? Leave `-Packs` out: the installer detects the stack (see [Packs and layers](#packs-and-layers)),
@@ -76,7 +76,9 @@ prints what it found and why, and installs it only after `-Yes`.
 - **CI for code the project does not own.** `ci.lintScope: "changed"` lints only the changed
   `*.ts *.tsx *.js *.jsx *.mjs *.cjs` files (PR base; a push: the commit before it), `ci.appAuditMode: "report"` writes
   the app's `npm audit` to the job summary and a warning instead of failing, and `ci.install` replaces `npm ci`
-  (e.g. `npm install --no-audit --no-fund` for a lockfile the project can't fix). The workflow scripts' own
+  (e.g. `npm install --no-audit --no-fund` for a lockfile the project can't fix). `ci.testMode` shapes the unit-test job:
+  `run` (default) runs `npm run <commands.test>`, `if-present` runs it with `--if-present` (no such script = pass),
+  `skip` renders no test job (e.g. a copy whose `package.json` is upstream's and has no tests). The workflow scripts' own
   dependencies (kit-managed) are audited report-only, and `kit-sync --apply` refreshes `scripts/package-lock.json` when it
   updates them. Kit-managed files are never linted by the changed-files lint. No backend
   (`paths.serverRoot` empty) = no `server-tests` job and no server step; install and sync print a `NOTE` when
@@ -126,17 +128,24 @@ Adding a pack or layer to an installed project: `kit-sync -Packs react-vite -Lay
 ```powershell
 .\kit-sync.ps1  -Target ..\my-app                 # dry-run from the recorded source + ref, writes nothing
 .\kit-sync.ps1  -Target ..\my-app -Apply          # write only new + kit-update files
+.\kit-sync.ps1  -Target ..\my-app -Apply -Prune   # also delete the files the kit stopped shipping (unchanged ones)
 ```
 
 States: `new`, `kit-update` (written on `-Apply`), `local-only`, `conflict` (never overwritten — resolve by
 hand), `removed-from-kit`, `deleted-locally`, `override`, `ignored` (missing, and the project's git ignores
-it: never written). Drift-check reports such a file as `ignored`, not `missing`.
+it: never written), `pruned`. Drift-check reports an ignored file as `ignored`, not `missing`.
+
+Files the kit stopped shipping (`removed-from-kit`) stay on disk. A record whose file is already gone is dropped on
+every `-Apply` (`pruned`). `-Prune` (with `-Apply`) cleans up the rest: a managed file unchanged since install is
+deleted; an edited one or a seed stays and only its record is dropped (`local-only`: the project's own file from
+then on). Overrides are never touched, and without `-Prune` nothing is deleted. A dry-run prints what `-Prune`
+would do.
 
 ## Upgrade to another release
 
 ```powershell
-.\kit-sync.ps1  -Target ..\my-app -Ref v1.2.0          # what would v1.2.0 change? writes nothing
-.\kit-sync.ps1  -Target ..\my-app -Ref v1.2.0 -Apply   # apply it and record ref v1.2.0 in install.json
+.\kit-sync.ps1  -Target ..\my-app -Ref v1.3.0          # what would v1.3.0 change? writes nothing
+.\kit-sync.ps1  -Target ..\my-app -Ref v1.3.0 -Apply   # apply it and record ref v1.3.0 in install.json
 ```
 
 Read the release's CHANGELOG entry first. A ref that does not exist fails with `ref <tag> not found` and
@@ -152,7 +161,7 @@ A project that carries the workflow files but has no `.kit/install.json` (copied
 the file existed):
 
 ```powershell
-.\kit-install.ps1 -Target ..\my-app -Adopt -Source github:WDD-CODER/ai-workflow-kit -Ref v1.2.0
+.\kit-install.ps1 -Target ..\my-app -Adopt -Source github:WDD-CODER/ai-workflow-kit -Ref v1.3.0
 ```
 
 `-Adopt` writes only `.kit/install.json`: the hash of every managed file and every present seed, the declared
@@ -202,7 +211,7 @@ drift-check accepts any content. An override naming a file the kit does not ship
 | `layers/supabase/`, `layers/upstream-owned/` | Layers: add-ons that are not a stack. `layer.json` takes the optional fields of `pack.json` (no standards doc); layers apply after the packs. |
 | `layers/cursor/` | Optional Cursor layer (`.cursor/commands`, rules, `mcp.json` without raw Playwright). |
 | `templates/` | Skeletons: `AGENTS.md`, `CLAUDE.md`, `docs/brain/*`, `docs/project/*`, `.gitignore`, `.mcp.json`, `.nvmrc`; `templates/cursor/` only with `-Cursor`. |
-| `kit.config.json` | Every key a placeholder can name. `slots.fePorts/bePorts` are base ports (slot N = base + N); `paths.srcRoot/serverRoot` end with `/`; `paths.planChecks` (default `docs/project/plan-checks.md`) is the project's own planning checklist, which `/plan`'s Architect + PM review adds when the file exists — optional, never written by the kit. `commands.*` are npm script names; `commands.dev` + `slots.feExec`, `slots.fePortArgs`, `slots.feMatcher`, `slots.feEnvFile` describe the slot frontend dev server (filled by a stack pack); `project.i18nFile` may be a file, glob or folder (`src/locales/`); `security.sensitivePaths` as a regex string replaces `ship-prep`'s built-in sensitive paths, as a list of globs adds to them; `tools.browser` left at its default is not named in `AGENTS.md`; `ci.install` (default `npm ci`), `ci.lintScope` (`all` / `changed`) and `ci.appAuditMode` (`enforce` / `report`) shape the CI workflows, and an empty `paths.serverRoot` renders no backend job or step; `stack.packs` / `stack.layers` name the stack, `ownership.upstreamPaths` the upstream-owned files. The `$comment` scaffold documents every key. |
+| `kit.config.json` | Every key a placeholder can name. `slots.fePorts/bePorts` are base ports (slot N = base + N); `paths.srcRoot/serverRoot` end with `/`; `paths.planChecks` (default `docs/project/plan-checks.md`) is the project's own planning checklist, which `/plan`'s Architect + PM review adds when the file exists — optional, never written by the kit. `commands.*` are npm script names; `commands.dev` + `slots.feExec`, `slots.fePortArgs`, `slots.feMatcher`, `slots.feEnvFile` describe the slot frontend dev server (filled by a stack pack); `project.i18nFile` may be a file, glob or folder (`src/locales/`); `security.sensitivePaths` as a regex string replaces `ship-prep`'s built-in sensitive paths, as a list of globs adds to them; `tools.browser` left at its default is not named in `AGENTS.md`; `ci.install` (default `npm ci`), `ci.lintScope` (`all` / `changed`), `ci.appAuditMode` (`enforce` / `report`) and `ci.testMode` (`run` / `if-present` / `skip`) shape the CI workflows, and an empty `paths.serverRoot` renders no backend job or step; `stack.packs` / `stack.layers` name the stack, `ownership.upstreamPaths` the upstream-owned files. Optional project wording (unset = the generic lines): `commands.logQuery` (a full command) adds a Logs check to `/review-it`; `project.uiDirection: "rtl"` makes the angular styling skill say the UI is right-to-left (naming `project.uiLocale`); `project.icons.library` / `component` / `registry` name the icon library in the angular component skill and conventions; `docs.domainSummary` replaces the angular standards doc's pointer to `docs.domainStandards` with a one-line list of the domain rules. The `$comment` scaffold documents every key. |
 | `kit.json` | Kit version (semver), recorded into each install. |
 | `tools/install.mjs`, `tools/sync.mjs`, `tools/drift-check.mjs` | Installer, sync and drift check. |
 | `tools/lib/kit.mjs`, `tools/lib/source.mjs` | Render/plan engine; release fetch + cache. |
