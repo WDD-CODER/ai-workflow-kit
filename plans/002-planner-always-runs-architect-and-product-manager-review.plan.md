@@ -85,8 +85,8 @@ CHANGELOG `[1.1.0]` Added: templates, `paths.planChecks`, review section. "What 
 - [x] R3: Let each project add its own planning checks without forking the command — paths.planChecks config key, scaffold, parameters doc — `kit.config.json`, `templates/**`, `docs/**`
 - [x] R4: Describe the current roles instead of the old three-agent setup — workflow-map roles, README_WORKFLOW title and intro, skills.md note — `core/docs/agent/workflow-map.md`, `core/README_WORKFLOW.md`, `core/.claude/commands/skills.md`
 - [x] R5: Run the kit checks, open the kit PR and release v1.1.0 — leak-check, pack-check, install-check; CHANGELOG; tag after Dandan's go — kit repo — done: checks, CHANGELOG, PR #24; release moved to v1.2.0 (plan 006), not done here
-- [ ] R6: Move FoodVibe's own planning checks into a project file before syncing — Hebrew values, Entity contract, icons, RTL, Zod; kit.config paths.planChecks — `../foodVibe1.0/docs/agent/plan-checks.md`, `../foodVibe1.0/kit.config.json`
-- [ ] R7: Sync FoodVibe to v1.1.0 and ship it — dry-run, take kit templates, Apply, ng build, kit-owned check, /ship — `../foodVibe1.0/.kit/install.json` + files kit-sync writes
+- [x] R6: Move FoodVibe's own planning checks into a project file before syncing — Hebrew values, Entity contract, icons, RTL, Zod; kit.config paths.planChecks — `../foodVibe1.0/docs/agent/plan-checks.md`, `../foodVibe1.0/kit.config.json`
+- [x] R7: Sync FoodVibe to v1.1.0 and ship it — dry-run, take kit templates, Apply, ng build, kit-owned check, /ship — `../foodVibe1.0/.kit/install.json` + files kit-sync writes
 - [ ] R8: Try the review on a pasted brief and on a new idea in the Planner — Dandan's two checks from Goals — Planner session
 
 ## Out of Scope

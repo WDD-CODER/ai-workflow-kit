@@ -78,7 +78,7 @@ Thinking outside the box is expected; writing outside it requires explicit conse
 - [x] V5: Add an adoption report that shows which workflow parts are installed and working — adoption-report tool — `tools/adoption-report.mjs`
 - [x] V6: Run the acceptance test on Angular, React-Vite and upstream-owned fixtures in kit CI — fixtures + CI matrix (Linux + Windows) — `tools/fixtures/**`, `.github/workflows/**`
 - [x] V7: Release v1.2.0 with clear upgrade notes — CHANGELOG what-to-do, kit.json, README packs/layers section; tag after Dandan's go — kit repo (run 006: no tag — the tag waits for merge point 1)
-- [ ] V8: Sync FoodVibe to v1.2.0 and ship it — dry-run, Apply, ng build, kit-owned and manifest checks, /ship — `../foodVibe1.0/.kit/install.json` + files kit-sync writes (after merge point 1: plan 006 A7)
+- [x] V8: Sync FoodVibe to v1.2.0 and ship it — dry-run, Apply, ng build, kit-owned and manifest checks, /ship — `../foodVibe1.0/.kit/install.json` + files kit-sync writes (after merge point 1: plan 006 A7)
 - [ ] V9: Have the React project drop its forked files and delete the hand-off — adopting project syncs v1.2.0 and removes Appendix A overrides; delete the kit handoff folder after Dandan's go — `handoff/` (after merge point 1: plan 006 A8)
 - [x] V10: Make the installer detect the project stack and install only the matching packs — pack.json detect rules, proposal + confirm, refuse when nothing matches, install-check cases for both stacks — `tools/install.mjs`, `tools/lib/**`, `packs/*/pack.json`, `kit-install.ps1`, `tools/install-check.mjs`
 

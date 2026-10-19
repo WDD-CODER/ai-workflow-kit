@@ -1,6 +1,6 @@
 # Plan 001 — Kit Patch Fixes for Hooks, Session Start and CI from the React-Vite Adoption
 
-Status: active
+Status: done
 Snapshot: b0ba42501af952fc23566a1885fab53af57e6686
 
 ## Problem Statement
@@ -84,7 +84,7 @@ Thinking outside the box is expected; writing outside it requires explicit conse
 - [x] P6: Make todo-sync explain the missing repo setting and clean up its branch — delete branch on failure, ::error line, install output + README first-time setup — `core/.github/workflows/todo-sync.yml`, `tools/install.mjs`, `README.md`
 - [x] P7: Fix stale paths and leftovers from the retired agent personas — security-grep name, todo-archive folder, generic example plans, docs-refresh subagent type, garbled security step — `core/.claude/skills/save-plan/SKILL.md`, `core/docs/agent/workflow-map.md`, `core/.claude/commands/{auto-solve,docs-refresh,security}.md`
 - [x] P8: Run all kit checks, open the kit PR and release v1.0.5 — leak-check, pack-check, install-check, e2e-check; CHANGELOG; tag after Dandan's go — kit repo
-- [ ] P9: Sync FoodVibe to v1.0.5 and ship it — kit-sync dry-run (0 conflicts), Apply, ng build, kit-owned check, /ship — `../foodVibe1.0/.kit/install.json` + files kit-sync writes
+- [x] P9: Sync FoodVibe to v1.0.5 and ship it — kit-sync dry-run (0 conflicts), Apply, ng build, kit-owned check, /ship — `../foodVibe1.0/.kit/install.json` + files kit-sync writes
 
 ## Out of Scope
 Planner role change (002); stack-neutral core, CI config keys, dev server by config (003, 004); React-Vite pack and upstream-owned layer (005); hand-off I-28 (guards mod, tracked under FoodVibe plan 409).

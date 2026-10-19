@@ -1,6 +1,6 @@
 # Plan 004 — Kit Stack-Neutral Core Part 2: CI, Commands and Tech-Debt Rules by Pack
 
-Status: draft
+Status: done
 Snapshot: b0ba42501af952fc23566a1885fab53af57e6686
 
 ## Problem Statement

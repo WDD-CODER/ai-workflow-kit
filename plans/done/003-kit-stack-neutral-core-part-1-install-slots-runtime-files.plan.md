@@ -1,6 +1,6 @@
 # Plan 003 — Kit Stack-Neutral Core Part 1: Install, Slots and Runtime Files
 
-Status: draft
+Status: done
 Snapshot: b0ba42501af952fc23566a1885fab53af57e6686
 
 ## Problem Statement
