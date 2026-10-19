@@ -18,7 +18,8 @@
  * Before anything is cloned, the run stops with "install dependencies in <path> first" when the project (or its
  * scripts/) has no node_modules, or one that lacks most declared packages (an interrupted install): the slots could not
  * start anything. A few missing packages are only a NOTE. The backend's env file
- * (<paths.serverRoot>.env, untracked) is copied into each scratch slot, as the slot setup (worktree-setup) does for a
+ * (<paths.serverRoot>.env, when the project's git ignores it) is copied into each scratch slot, as the slot setup
+ * (worktree-setup) does for a
  * real slot; when the project has none, the slot dev server cases are reported SKIP with the reason, not FAIL.
  * Cases: the plan commit runs the hooks; pre-push refuses code on main; claim, second claim refused, scope guard
  * (in scope, out of scope, a hotspot, an upstream-owned path); the frontend dev server from config (started, kept,
@@ -440,14 +441,27 @@ function unlinkAll() {
 }
 // An interrupted run (Ctrl+C, a CI timeout, a kill) still removes the links: a later recursive delete of the temp
 // folder (PowerShell 5 `Remove-Item -Recurse` follows junctions) would otherwise empty the project's node_modules.
+// Secrets copied into the scratch slots (the backend env file): deleted when the run ends, however it ends.
+const envCopies = []
+function dropEnvCopies() {
+  const left = []
+  for (const f of envCopies.splice(0)) {
+    try { rmSync(f, { force: true }) } catch { /* reported below */ }
+    if (existsSync(f)) left.push(f)
+  }
+  if (left.length) console.error(`E2E: could not delete the copied env file(s) ${left.join(', ')} — delete them by hand`)
+}
 process.on('exit', () => {
+  dropEnvCopies()
   if (junctions.length && !unlinkAll()) console.error(`E2E: junctions still in ${root}: ${junctions.join(', ')} — remove each with rmdir before deleting the folder`)
 })
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK']) {
   try {
     process.on(sig, () => {
       unlinkAll()
-      console.error(`E2E: interrupted (${sig}); node_modules links removed${junctions.length ? ` except ${junctions.join(', ')}` : ''}. Scratch folder: ${root}`)
+      const hadEnv = envCopies.length > 0
+      dropEnvCopies()
+      console.error(`E2E: interrupted (${sig}); node_modules links removed${junctions.length ? ` except ${junctions.join(', ')}` : ''}${hadEnv ? '; the copied env files (secrets) were deleted' : ''}. Scratch folder: ${root}`)
       process.exit(130)
     })
   } catch { /* signal not supported on this platform */ }
@@ -511,19 +525,23 @@ function projectMain(here) {
   const friend = join(root, 'friend')
   delete env.GITHUB_TOKEN // nothing here may reach GitHub
   delete env.GH_TOKEN
-  // The backend env file the slot setup copies into every real slot (worktree-setup): untracked, so the clone lacks it.
+  // The backend env file the slot setup copies into every real slot (worktree-setup): ignored by git, so the clone lacks
+  // it. Only a file git ignores is copied (an untracked file that is not ignored is not the slot setup's env file).
   const serverRoot = String(vals['paths.serverRoot'] ?? '').replace(/\\/g, '/')
   const envFiles = serverRoot && existsSync(join(here, serverRoot, 'package.json')) ? [`${serverRoot}.env`] : []
   const untracked = envFiles.filter((f) => git(here, 'ls-files', '--error-unmatch', f).status !== 0)
-  const envCopy = untracked.filter((f) => existsSync(join(here, f)))
+  const envCopy = untracked.filter((f) => existsSync(join(here, f)) && git(here, 'check-ignore', '-q', f).status === 0)
   const envMissing = untracked.filter((f) => !existsSync(join(here, f)))
-  if (envCopy.length) console.log(`E2E: copying ${envCopy.join(', ')} from ${here} into the scratch slots, as the slot setup does for a real slot${keep ? ' (--keep leaves the copies in the scratch folder)' : ''}.`)
+  if (envCopy.length) console.log(`E2E: copying ${envCopy.join(', ')} from ${here} into the scratch slots, as the slot setup does for a real slot; the copies are deleted when the run ends.`)
   // A slot borrows the project's installed dependencies; a recorded lockfile hash tells take-plan not to reinstall.
   const prepareSlot = (dir, n) => {
     writeFileSync(join(dir, '.worktree-root'), proj)
     writeFileSync(join(dir, '.worktree-port'), String(feBase + n))
     mkdirSync(join(dir, '.claude'), { recursive: true })
-    for (const f of envCopy) copyFileSync(join(here, f), join(dir, f))
+    for (const f of envCopy) {
+      copyFileSync(join(here, f), join(dir, f))
+      envCopies.push(join(dir, f))
+    }
     for (const [sub, hashName] of [['.', '.last-npm-install-hash'], ['scripts', '.last-npm-install-hash-scripts']]) {
       if (link(join(here, sub, 'node_modules'), join(dir, sub, 'node_modules')) && existsSync(join(dir, sub, 'package-lock.json'))) {
         writeFileSync(join(dir, '.claude', hashName), sha(join(dir, sub, 'package-lock.json')))
@@ -754,6 +772,10 @@ if (projectArg) {
   }
 }
 console.log(results.join('\n'))
+if (envCopies.length) {
+  dropEnvCopies()
+  if (keep || !rootRemovable) console.log(`E2E: the scratch folder held copies of the backend env file (secrets); they were deleted.`)
+}
 if (keep) console.log(`E2E: kept ${root}`)
 else if (!rootRemovable) console.log(`E2E: left ${root} in place (a junction is still there; remove it with rmdir, then the folder)`)
 else {
