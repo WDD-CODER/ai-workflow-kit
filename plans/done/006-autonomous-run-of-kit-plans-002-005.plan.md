@@ -1,6 +1,6 @@
 # Plan 006 — Autonomous Run of Kit Plans 002–005 with One Merge Point
 
-Status: active
+Status: done
 Snapshot: bf4e45d8b2c65accf957056adfca2e3135e301b2
 
 ## Problem Statement
@@ -109,7 +109,7 @@ reported at the merge point.
 - [x] A6: Release v1.2.0 after the merge — tag the last merge commit, GitHub release, install proof — kit repo
 - [x] A7: Sync FoodVibe to v1.2.0 in one PR — 002 R6 plan-checks move, dry-run, Apply, ng build, kit checks — `../foodVibe1.0-wt-N`
 - [x] A8: Sync agentdesk to v1.2.0 and drop the overrides the kit now covers — 005 V9, port anything left — `../agentdesk-wt-N`
-- [ ] A9: Ask Dandan to merge the project PRs and run the human checks — merge point 2, one list — PRs
+- [x] A9: Ask Dandan to merge the project PRs and run the human checks — merge point 2, one list — PRs
 
 ## Out of Scope
 New work beyond plans 002–005; the guards mod (hand-off I-28); upstream fixes in the friend's repo
@@ -133,3 +133,12 @@ New work beyond plans 002–005; the guards mod (hand-off I-28); upstream fixes 
 - A7: FoodVibe PR #424 (`3987dc66`): v1.0.2 → v1.2.0, template lines moved to `docs/agent/plan-checks.md`, `scripts/package-lock.json` committed, 0 overrides dropped (5 backport candidates listed in the PR). Planner re-check: sync 0/0/0, drift ok, 9/9 CI green. Dandan said `merge`: merged as `ccf06865`; FoodVibe main pulled, `npm ci` in `scripts/`; wt-1 detached idle, branch deleted. Kit follow-up: adoption-report shows the Angular frontend command as `npm run start -- -c slot --port {port}` instead of the real `ng serve` args (display only).
 - A8: agentdesk PR #11 on `WDD-CODER/agent-desk-flow-clone` (`87b343154`): v1.0.3 → v1.2.0, packs `[react-vite]`, layers `[supabase, upstream-owned]`, overrides 26 → 8, no upstream-owned file in the diff. Planner re-check: sync 0 conflicts, drift ok, 8/8 CI green. `/pull-copy` is now tracked (the kit version); the Human's ignored copy in the agentdesk main folder was backed up to the scratchpad (`agentdesk-pull-copy.backup.md`) because a pull would replace it. Kit follow-ups: no way to skip/soften the CI test job when there is no `test` script (agentdesk keeps a `ci.yml` override for it); sync never removes stale records (`.prettierrc.json`); adoption-report shows the Angular frontend command wrong.
 - A9: merge point 2 sent.
+
+### A9 — Merge point 2 and the human checks (2026-10-19, run by the Planner at Dandan's request)
+- Merged by Dandan: agentdesk #11 (`e32c373`), then after plan 007: FoodVibe #425 (`77550e79`), agentdesk #12 (`8efb192d`). Both main folders pulled, `npm ci` in `scripts/`; slots detached on `origin/main`; sync branches deleted.
+- Actions setting: `can_approve_pull_request_reviews=true` in both repos (API). todo-sync dispatched in both: success, `PLAN_CLOSE: nothing to close` (PR path not exercised).
+- SessionStart: wired in both `.claude/settings.json`; in each idle slot the hook prints `IDLE SLOT: ask the Human which plan to execute.` as valid JSON. WORKER line: e2e `SessionStart JSON parses (worker with a state file)`.
+- Hooks on commit: pre-commit runs in both slots (`PLAN_LEDGER: OK`); e2e: plan commit, take-plan claim commit and Worker commit all run the hooks; both sync PR commits ran them.
+- FoodVibe `execute plan` + dev server + `/ship`: real slot wt-1 `SLOT_SERVE: be=3001 started, fe=4201 started` (HTTP 200 both), second call `kept`, `slot-stop` freed the port. e2e `--project ../foodVibe1.0`: 37/40 — take-plan claim, ship-prep lane/scope/baseline, Worker commit + push pass; the 3 fails are the scratch clone (no `server/.env` → backend "no db connection") and a FoodVibe doc link to the gitignored runtime file `.claude/remote.log` (`docs/agent/remote-port.md:21`, pre-existing).
+- agentdesk `/pull-copy`: e2e `--project ../agentdesk-wt-1` `E2E_CHECK: ok — 44 cases passed` (rebase replays our commits, force-push refused by pre-push, conflict path aborts cleanly). The first run from the main folder failed 3 cases only because that folder has no `node_modules` (`vite` missing).
+- Plan 002 R8 (Planner review): validated by an agent simulation, not a live session — `/plan` path produces the review and PM checklist unprompted; a header-style brief reaches it after option b. Gaps found → kit follow-up: a prose brief never reaches the review; option a skips it; option b says "execute one milestone" against the Planner never executing; `/plan` asks for milestones + Verify the PRD template lacks; dead "Q&A format" reference; no `## Execution Notes` section in the PRD template; hotspot list misses `dictionary.json`; plan-name-similarity ignores closed plans in range folders.

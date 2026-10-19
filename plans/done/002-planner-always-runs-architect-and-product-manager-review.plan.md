@@ -1,6 +1,6 @@
 # Plan 002 — Planner Always Runs the Architect and Product Manager Review
 
-Status: draft
+Status: done
 Snapshot: b0ba42501af952fc23566a1885fab53af57e6686
 
 ## Problem Statement
@@ -87,7 +87,7 @@ CHANGELOG `[1.1.0]` Added: templates, `paths.planChecks`, review section. "What 
 - [x] R5: Run the kit checks, open the kit PR and release v1.1.0 — leak-check, pack-check, install-check; CHANGELOG; tag after Dandan's go — kit repo — done: checks, CHANGELOG, PR #24; release moved to v1.2.0 (plan 006), not done here
 - [x] R6: Move FoodVibe's own planning checks into a project file before syncing — Hebrew values, Entity contract, icons, RTL, Zod; kit.config paths.planChecks — `../foodVibe1.0/docs/agent/plan-checks.md`, `../foodVibe1.0/kit.config.json`
 - [x] R7: Sync FoodVibe to v1.1.0 and ship it — dry-run, take kit templates, Apply, ng build, kit-owned check, /ship — `../foodVibe1.0/.kit/install.json` + files kit-sync writes
-- [ ] R8: Try the review on a pasted brief and on a new idea in the Planner — Dandan's two checks from Goals — Planner session
+- [x] R8: Try the review on a pasted brief and on a new idea in the Planner — Dandan's two checks from Goals — Planner session
 
 ## Out of Scope
 Restoring agent persona files; forced alternative designs; the React-Vite hand-off work (001, 003–005).

@@ -1,6 +1,6 @@
 # Plan 007 — Kit Follow-ups: CI Test Mode, Sync Prune, Adoption-Report Fix, FoodVibe Backports
 
-Status: draft
+Status: done
 Snapshot: d83bae1
 
 ## Problem Statement
