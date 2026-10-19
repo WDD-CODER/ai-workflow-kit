@@ -1,12 +1,14 @@
 ---
 name: brief-detection
-description: Recognizes a pasted Plan Contract, a structured brief, or a feature request written in plain prose in the user's message, and gates it before any tool call — a Plan Contract goes to the Planner protocol or save-plan; a brief or a feature request gets the a/b/c choice (refine it with the Architect + PM review / plan it with /plan / just discuss). Use whenever a message has markdown H2 headers like `## Goal`, `## Scope`, `## Steps`, `## Rules`, `## Done when`, `## Milestones`, `## Atomic Sub-tasks` or a `# Plan` title, and whenever a message in the main folder asks in a few sentences to build, add, change, fix or remove something in the product — from any source (human paste, Cursor, another agent).
+description: Recognizes a pasted Plan Contract, a structured brief, or a feature request written in plain prose in the user's message, and gates it before any other tool call — a Plan Contract goes to the Planner protocol or save-plan; a brief or a feature request gets the a/b/c choice (refine it with the Architect + PM review / plan it with /plan / just discuss). Use whenever a message has markdown H2 headers like `## Goal`, `## Scope`, `## Steps`, `## Rules`, `## Done when`, `## Milestones`, `## Atomic Sub-tasks` or a `# Plan` title, and whenever a message in the main folder asks in a few sentences to build, add, change, fix or remove something in the product — from any source (human paste, Cursor, another agent).
 user-invocable: false
 ---
 
 # Brief Detection Gate
 
 Source-agnostic: it does not matter who sent the brief. The point of the gate is that a pasted plan or a feature request is a *proposal* until the Human says otherwise. Acting on it on sight has cost whole sessions, and so has skipping the review.
+
+**Main folder or slot?** Several rules below depend on it. The SessionStart context tells you: an `IDLE SLOT` or `WORKER` line means a `{{slots.nameFormat}}` slot. Without that line, run `git branch --show-current` — the one tool call this gate allows before it is done (read-only). `main` in a folder with no `.worktree-root` file is the main folder.
 
 ## 1. Plan Contract shape check (always first)
 
@@ -44,7 +46,8 @@ Count these H2 headers (case-insensitive) in the user's message:
 
 It is never a feature request when it is:
 
-- a question, or chat about the product;
+- a question, or chat about the product — also a request phrased as a question ("Can you add X? …"): answer it, and offer the gate in one line if it turns out to be a change request;
+- a small change: one file, a typo or a one-line fix ("Fix the typo in the header."). In the main folder, say in one line that code changes are made in a slot (`/feat`, or a plan), without the gate;
 - a slash command, or `execute plan NNN`;
 - a request to run, check, explain or review something;
 - an answer to a question you just asked;
@@ -60,6 +63,8 @@ When unsure, do not gate.
 | We need to export the order list as a CSV file. The warehouse prints it every morning. | feature request |
 | Why does the order total round 0.5 up to 1? | none |
 | Run the tests and tell me what fails. | none |
+| Can you add a dark mode toggle? The header has room for it. | none (a question) |
+| Fix the typo in the header. It says "Ordres". | none (a small change) |
 | Can you explain how the slot ports are chosen? I keep mixing them up. | none |
 
 ## 3. Gate output (terse, no preamble)
@@ -87,7 +92,7 @@ Stop and wait. Anything other than an explicit `b` or `c` ("yes", "go", blank) m
 
 | Choice | Then |
 | --- | --- |
-| a | Run the **Architect + PM review** in `.claude/commands/plan.md` on the brief as written, including its overlap check. Print the `ARCHITECT + PM REVIEW` block, then ask its `open:` questions. Save nothing and write no plan. When the gaps are settled, offer **b**. |
+| a | Run the **Architect + PM review** in `.claude/commands/plan.md` on the brief as written (its "On a brief" rules: codebase facts, Human decisions, testability, overlap). Print the `ARCHITECT + PM REVIEW` block, then ask its `open:` questions. Save nothing and write no plan. When the gaps are settled, offer **b**. |
 | b | **Main folder (Planner):** run `/plan` with the brief. `/plan` reviews it, the Human approves it, and save-plan saves and pushes it. End with `/plan`'s hand-off: a Worker claims the plan in a free slot with `take-plan` ("execute plan NNN"). The Planner does not start the work. **In a slot (Worker):** if the brief belongs to this slot's plan, add its tasks to that plan (save-plan's mid-flight sync) and stay inside the plan's scope. Otherwise say it needs a plan from the main folder. |
 | c | Acknowledge it and treat it as documentation. No review, no plan. |
 

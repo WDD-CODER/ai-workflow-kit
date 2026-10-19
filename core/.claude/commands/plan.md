@@ -73,8 +73,9 @@ mid-brief inside a slot goes through save-plan only. Check against the real code
   scope globs, comma-separated>"`. It searches open and closed plans: by title (`PLAN_SIMILARITY`), by
   text (`PLAN_RELATED`), and the open plans' Read-Write Scope for the same files (`PLAN_SCOPE_OVERLAP`).
   For a brief, use its one-line goal as the title. No scope yet: leave out `--scope`.
-- Read each plan it lists. Unless the draft already names that plan, each one is an `open:` line:
-  "same work as `<path>`?" or "shares `<files>` with `<path>` (Status: …)".
+- Read each plan it lists. Keep a plan as an `open:` line only when it may be the same work ("same work as
+  `<path>`?") or shares a file with the draft ("shares `<files>` with `<path>` (Status: …)"), unless the draft
+  already names it. List every other plan you read on one line: `checked: <plan numbers>`.
 
 **Output** — one block, printed before the plan is saved. One line per gap:
 
@@ -82,11 +83,18 @@ mid-brief inside a slot goes through save-plan only. Check against the real code
 ARCHITECT + PM REVIEW
 fixed: <gap> → <what you changed>
 open: <gap> — <question for the Human>
+checked: <plan numbers the overlap search listed that are not the same work>
 ```
 
 - `fixed:` is a gap you closed in the draft yourself. List every one, also on a plan you wrote.
 - `open:` is a gap that needs the Human: a decision, a missing fact, or a possible overlap.
-- Print `no gaps` only when there is no `fixed:` line and no `open:` line.
+- Print `no gaps` only when there is no `fixed:` line and no `open:` line (a `checked:` line can stay).
+
+**On a brief (option a at the `brief-detection` gate)** there is no plan file yet. Check only: what the brief
+assumes about the codebase (files, behaviour, services exist on `origin/{{git.mainBranch}}`), the decisions
+that belong to the Human, whether the result can be tested, and the overlap search. Plan sections (Read-Write
+Scope, Architecture Impact, Out of Scope, `scope-check --arch`) are not gaps until `/plan` writes the plan. Print
+`open:` and `checked:` lines only — no `fixed:` lines, because nothing is written.
 
 A received plan is reviewed, not rewritten: the Planner fixes only the obvious mechanical gaps (paths,
 titles, tags) as `fixed:` lines and asks the rest as `open:` lines. It applies the fixes the Human
