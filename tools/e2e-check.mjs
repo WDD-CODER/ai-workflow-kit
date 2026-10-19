@@ -166,7 +166,8 @@ function main() {
 
   // 4. Worker: slot, claim, guards, ship-prep, push.
   // Slot provisioning as the worktree-setup skill does it: root deps + the workflow scripts' own deps.
-  const provision = (dir) => npm(dir, 'npm install --prefer-offline --no-audit --no-fund && npm install --prefix scripts --prefer-offline --no-audit --no-fund')
+  const scriptsInstall = (dir) => npm(join(dir, 'scripts'), 'npm install --prefer-offline --no-audit --no-fund')
+  const provision = (dir) => { npm(dir, 'npm install --prefer-offline --no-audit --no-fund'); scriptsInstall(dir) }
   git(proj, 'worktree', 'add', '-q', '--detach', slot, 'origin/main')
   provision(slot)
   writeFileSync(join(slot, '.worktree-root'), proj)
@@ -283,14 +284,14 @@ function main() {
     overrides: [{ path: '.gitignore', reason: 'e2e: the project keeps its own .gitignore' }],
   }, null, 2) + '\n')
   const ownInst = node(own, join(kit, 'tools', 'install.mjs'), '--target', own, '--source', kit)
-  npm(own, 'npm install --prefix scripts --prefer-offline --no-audit --no-fund')
+  scriptsInstall(own)
   mkdirSync(join(own, 'plans'), { recursive: true })
   writeFileSync(join(own, planRel), plan.replace(`Snapshot: ${snap}\n`, ''))
   git(own, 'add', '-A')
   git(own, 'commit', '-q', '-m', 'chore: install the workflow kit, plan 001')
   git(own, 'push', '-q', ownOrigin, 'main')
   sh('git', ['clone', '-q', ownOrigin, ownSlot], root)
-  npm(ownSlot, 'npm install --prefix scripts --prefer-offline --no-audit --no-fund')
+  scriptsInstall(ownSlot)
   writeFileSync(join(ownSlot, '.worktree-root'), own)
   writeFileSync(join(ownSlot, '.worktree-port'), String(FE_BASE + 1))
   const ownTp = node(ownSlot, 'scripts/take-plan.mjs', '001')

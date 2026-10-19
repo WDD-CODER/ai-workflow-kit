@@ -20,7 +20,8 @@
  * "a .cursor/ folder exists".
  * A path the target's git ignores is not written (SKIP-IGNORED). When the project owns AGENTS.md (an override,
  * or present and not kit-installed), the kit's rules go to AGENTS.workflow.md (managed) and CLAUDE.md imports both.
- * The workflow scripts' dependencies are in scripts/package.json: --install-deps runs npm install --prefix scripts.
+ * The workflow scripts' dependencies are in scripts/package.json: --install-deps runs npm install inside scripts/ (not
+ * `npm install --prefix scripts`: npm 10 then runs the root package's lifecycle scripts, e.g. a husky prepare).
  * In a git repository the runtime ignore list is added to .git/info/exclude (scripts/local-excludes.mjs).
  * Exit 0 ok, 1 error, 2 required config keys missing or a commands.* value that is a full command (nothing written).
  */
@@ -209,7 +210,7 @@ if (existsSync(pkgFile)) {
   if (absent.length > 0) log(`NOTE package.json has no script(s): ${absent.join(', ')} — the workflow runs them with npm run`)
 } else log('NOTE no package.json yet — create one with the build/lint/test scripts before the first /ship')
 // devDependencies the installed files import (bare specifiers) plus the hook runners. The workflow scripts'
-// own dependencies live in the kit-managed scripts/package.json (installed with npm install --prefix scripts),
+// own dependencies live in the kit-managed scripts/package.json (installed by npm install inside scripts/),
 // so a project never has to add them to its own package.json.
 const BUILTIN = new Set(builtinModules)
 const scriptsPkg = plan.files.find((f) => f.dest === 'scripts/package.json')
@@ -226,10 +227,10 @@ for (const f of plan.files) {
 }
 if (scriptsPkg && !overrides.has('scripts/package.json')) {
   if (args['install-deps'] && !args['dry-run']) {
-    const r = spawnSync('npm install --prefix scripts --no-audit --no-fund', { cwd: target, stdio: 'inherit', shell: true })
-    log(r.status === 0 ? 'NOTE installed the workflow scripts\' dependencies (npm install --prefix scripts); commit scripts/package-lock.json'
-      : 'NOTE npm install --prefix scripts failed; run it again before using the workflow scripts')
-  } else log('NOTE the workflow scripts\' dependencies are in scripts/package.json — run: npm install --prefix scripts  (or re-run with --install-deps), then commit scripts/package-lock.json')
+    const r = spawnSync('npm install --no-audit --no-fund', { cwd: join(target, 'scripts'), stdio: 'inherit', shell: true })
+    log(r.status === 0 ? 'NOTE installed the workflow scripts\' dependencies (npm install in scripts/); commit scripts/package-lock.json'
+      : 'NOTE npm install in scripts/ failed; run it again before using the workflow scripts')
+  } else log('NOTE the workflow scripts\' dependencies are in scripts/package.json — run npm install inside scripts/  (or re-run with --install-deps), then commit scripts/package-lock.json')
 }
 const hasHusky = plan.files.some((f) => f.dest.startsWith('.husky/'))
 if (hasHusky) deps.add('husky')

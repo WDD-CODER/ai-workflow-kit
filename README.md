@@ -53,7 +53,7 @@ cd ai-workflow-kit
   (`"prepare": "husky"`, then `npm run prepare`) or without it (`git config core.hooksPath .husky`). The
   installer stages them as executable (`git add --chmod=+x`); lint-staged runs only when it is installed.
 - **Workflow script dependencies.** The scripts' own npm dependencies (`picomatch`) are in the kit-managed
-  `scripts/package.json`, so the project's `package.json` needs none of them: run `npm install --prefix scripts`
+  `scripts/package.json`, so the project's `package.json` needs none of them: run `npm install` inside `scripts/`
   (or install with `-InstallDeps`) and commit `scripts/package-lock.json`. Slots reinstall them when that
   lockfile changes (`take-plan`, `slot-serve`).
 - **Runtime files.** Slot markers, logs and install hashes are listed once, in `scripts/local-excludes.mjs`;

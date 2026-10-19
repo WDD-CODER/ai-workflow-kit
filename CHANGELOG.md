@@ -67,11 +67,12 @@ What a project must do:
 1. Every `commands.*` value in `kit.config.json` must be an npm **script name** (`"build"`), not a command
    (`"npm run build"`, which rendered as `npm run npm run build`). Install and sync now stop with exit 2 and name
    the value to use; change it, then re-run. `commands.lintStaged` stays a full command.
-2. After the sync, run `npm install --prefix scripts` once in the main folder and commit
+2. After the sync, run `npm install` inside `scripts/` once in the main folder and commit
    `scripts/package-lock.json`. The workflow scripts' dependency (`picomatch`) now lives in the kit-managed
    `scripts/package.json`; slots reinstall it when that lockfile changes. Until the lockfile exists, the scripts
    still find `picomatch` in the root `node_modules` when it is there. A CI job that runs the workflow scripts
-   from a clean checkout without the root install needs `npm install --prefix scripts` too.
+   from a clean checkout without the root install needs that install too. (Not `npm install --prefix scripts`: npm 10 then runs the root
+   package's lifecycle scripts, e.g. a `prepare: husky` that is not installed yet.)
 3. A project that keeps its own `AGENTS.md` (an `overrides` entry) gets `AGENTS.workflow.md` as a `new` file:
    add the line `@AGENTS.workflow.md` under `@AGENTS.md` in `CLAUDE.md` (a seed, so sync does not change it).
 4. A project without the angular pack whose slot frontend started only because
@@ -90,7 +91,7 @@ What a project must do:
   longer refused with "uncommitted or untracked changes".
 - `scripts/package.json` (kit-managed, `picomatch` ^4.0.7; its `type` mirrors the root `package.json`, so the
   project's own `scripts/*.js` keep their module type). `install --install-deps` runs
-  `npm install --prefix scripts`; `take-plan` and `slot-serve` install it when `scripts/package-lock.json`
+  `npm install` inside `scripts/`; `take-plan` and `slot-serve` install it when `scripts/package-lock.json`
   changes (hash in `.claude/.last-npm-install-hash-scripts`); the root devDependency note no longer lists it.
 - `AGENTS.workflow.md`: when the project owns `AGENTS.md` (in `overrides`, or present and not installed by the
   kit), the kit's `AGENTS.md` skeleton is rendered there as a managed file with a header saying who owns what,

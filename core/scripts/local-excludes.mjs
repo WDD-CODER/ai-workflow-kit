@@ -41,7 +41,7 @@ export const RUNTIME_IGNORES = [
   '.claude/.last-npm-install-hash-server',
   '.claude/.last-npm-install-hash-scripts',
   '.claude/sessions/',
-  // Workflow script dependencies (npm install --prefix scripts)
+  // Workflow script dependencies (npm install inside scripts/)
   'scripts/node_modules/'
 ]
 // KIT:runtime-ignores-end
