@@ -105,8 +105,8 @@ reported at the merge point.
 - [x] A2: Run plan 003 on top of 002 and open its PR — N0–N9; FoodVibe safety check N8; review pass — `feat/003-neutral-core-runtime`
 - [x] A3: Run plan 004 on top of 003 and open its PR — M0–M9; FoodVibe safety check M8; review pass — `feat/004-neutral-core-ci-commands`
 - [x] A4: Run plan 005 on top of 004 and open its PR — V0–V7 and V10 without the tag; review pass — `feat/005-react-vite-pack`
-- [ ] A5: Ask Dandan to merge the four kit PRs, with a summary of each — merge point 1 — PRs
-- [ ] A6: Release v1.2.0 after the merge — tag the last merge commit, GitHub release, install proof — kit repo
+- [x] A5: Ask Dandan to merge the four kit PRs, with a summary of each — merge point 1 — PRs
+- [x] A6: Release v1.2.0 after the merge — tag the last merge commit, GitHub release, install proof — kit repo
 - [ ] A7: Sync FoodVibe to v1.2.0 in one PR — 002 R6 plan-checks move, dry-run, Apply, ng build, kit checks — `../foodVibe1.0-wt-N`
 - [ ] A8: Sync agentdesk to v1.2.0 and drop the overrides the kit now covers — 005 V9, port anything left — `../agentdesk-wt-N`
 - [ ] A9: Ask Dandan to merge the project PRs and run the human checks — merge point 2, one list — PRs
@@ -127,3 +127,6 @@ New work beyond plans 002–005; the guards mod (hand-off I-28); upstream fixes 
 - Release number decision (Planner, to confirm at merge point 1): `v2.0.0` — 002/003 need project action, which the kit's semver rule calls major. 005's PR sets kit.json to 2.0.0.
 - A4: PR #27 (`feat/005-react-vite-pack`, base 004 branch; `221d666`, `55ee0d7`, `9352542`, review fixes `14c9eff`), CI green; Planner re-ran checks: ok (e2e 42, link check 7 fixtures 0 missing, acceptance 118). Review: 0 high, 3 medium (stack record config vs install.json; detection false positives; junction cleanup on interrupt), 4 low — all fixed, plus the pre-existing `.cursor/` refs without the Cursor layer. kit.json 2.0.0; CHANGELOG `[2.0.0]` with one "What a project must do" list. FoodVibe dry-run: 3 new, 27 kit-update, only the two template conflicts.
 - A5: merge point 1 sent to Dandan (merge #24 → #27 in order, merge commits, not squash).
+- A5: Dandan chose `merge all, v1.2.0`. Release renumbered to 1.2.0 on the 005 branch (`2eaab31`). Merged #24 (`f1ea73f`), #25 (`ff1ee1e`), #26 (`ddca9eb`), #27 (`85294d6`). Snag: `gh pr merge 24 --delete-branch` deleted the 002 branch and GitHub CLOSED #25 instead of retargeting; restored the branch at `1c931af`, reopened #25 and set its base to `main` via the API, then merged the rest without `--delete-branch`, retargeting each next PR to `main` and waiting for CI. Lesson: for stacked PRs, retarget the next PR before deleting the merged branch.
+- A6: CI on `main` green at `85294d6`; tagged `v1.2.0`, GitHub release published; install from `github:…@v1.2.0` records ref `v1.2.0`, commit `85294d6`.
+- Leftovers: merged remote branches `feat/002…005` and their local branches still exist (the delete command was denied; not worked around). The kit slot `../ai-workflow-kit-wt-1` is still on `feat/005-react-vite-pack`.
