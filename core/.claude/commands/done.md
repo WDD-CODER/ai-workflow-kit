@@ -14,33 +14,38 @@ Do not Read .claude/todo.md in full.
 
 1. Identify the job just completed (this chat / Human-named task).
 2. Run `node scripts/todo-query.mjs open` (add `--plan NNN` when the job maps to a known plan) and find matching open `[ ]` items — and the plan's Atomic Sub-tasks (same IDs when present).
-3. Read the plan's Done-when tags (`job-validation.md` Path B). **All `[auto]`:** run each check, print the `VERIFIED BY AGENT` block (raw command + output), mark with `node scripts/todo-query.mjs mark --line N[,N…] --auto-verified` (plan file only inside a `{{slots.nameFormat}}` slot), run step 4's archive, and **do not wait**. **Any `[human]`/untagged item:** print `VERIFIED BY AGENT` on top (if any `[auto]`), then the close-out block (HOW TO VALIDATE with a card for only the `[human]` items, then JOB DONE) and **wait** (unless the Human’s invoking message already contains a validation phrase: `done` / `mark done` / `mark it` / `verified` / `approved` / `LGTM for this job`):
+3. Read the plan's Done-when tags (`job-validation.md` Path B). **All `[auto]`:** run each check, print the `VERIFIED BY AGENT` block (raw command + output), mark with `node scripts/todo-query.mjs mark --line N[,N…] --auto-verified` (plan file only inside a `{{slots.nameFormat}}` slot), run step 4's archive, and **do not wait**. **Any `[human]`/untagged item:** first run "Servers first" (`job-validation.md`: start the servers — `node scripts/slot-serve.mjs` in a slot — and make every page URL in the cards answer; no app check → no servers), then print `VERIFIED BY AGENT` on top (if any `[auto]`), then the close-out block (HOW TO VALIDATE with a card for only the `[human]` items, then JOB DONE) and **wait** (unless the Human’s invoking message already contains a validation phrase: `done` / `mark done` / `mark it` / `verified` / `approved` / `LGTM for this job`):
 
 ```text
-HOW TO VALIDATE — {N} checks · app: {url or window} · reply: done | not yet | verify
+HOW TO VALIDATE — {N} checks on {P} pages · reply: done | not yet | failed: <numbers> | verify
+
+▸ {Page name} — {full URL}   (checks ①–②)
 ① {plain title}
    WHY     {what changed and what this check proves}
-   WHERE   {window / page — and how to get there}
+   WHERE   {spot on the page and what to click}
    SETUP   {only when needed}
    DO      {action}  — or —  paste:  {exact text}
    SEE ✓   {success}
    FAIL ✗  {failure}
 ② …
 
+▸ Outside the app — {exact window}   (check ③)
+③ …
+
 JOB DONE — awaiting your validation
 Matched todos (still [ ]):
   - …
-Reply: done  |  not yet  |  verify  |  edit list
+Reply: done  |  not yet  |  failed: <numbers>  |  verify  |  edit list
 ```
 
-Card rules: `docs/agent/job-validation.md` → **Card rules**. Never omit HOW TO VALIDATE (use a one-line no-user-visible-effect note if needed).
+Card rules: `docs/agent/job-validation.md` → **Format** and **Card rules** (grouped by page in click order, numbers run on). Never omit HOW TO VALIDATE (use a one-line no-user-visible-effect note if needed). No `/ship`, PR or merge until the Human answered.
 
 4. On **`done`** (or equivalent validation phrase):
    - Mark matching items `[x]` via `node scripts/todo-query.mjs mark --line N[,N…]`
    - Run `node scripts/todo-archive.mjs` to move any fully-`[x]` plan sections into `.claude/todo-archive/NNN.md` volumes (max 300 lines)
    - If committing in this turn → stage todo/plan files with that commit
    - Else → leave marks on disk and report: `Todo: marked [x] (uncommitted — include in next commit)`
-5. On **`not yet`** → leave `[ ]`; ask what remains.
+5. On **`not yet`** → leave `[ ]`; ask what remains. On **`failed: <numbers>`** → leave `[ ]`; fix those checks, re-check, re-show only their cards; wait again.
 6. On **`edit list`** → revise matches; re-show block; wait again.
 7. On **`verify`** → walk checklist items per job-validation optional agent-verify; re-show JOB DONE; wait.
 

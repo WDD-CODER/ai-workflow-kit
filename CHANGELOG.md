@@ -9,6 +9,29 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+The validation hand-off moves to the end of the work: a finished plan with `[human]` items now ends with the
+servers running and HOW TO VALIDATE cards grouped by page, before any `/ship`, PR or merge.
+
+### What a project must do
+
+Nothing. Sync and commit. Rendered files that change (`kit-update`): `docs/agent/job-validation.md`,
+`.claude/commands/take-plan.md`, `.claude/commands/ship.md`, `.claude/commands/done.md`, `AGENTS.md` and, with the
+Cursor layer, `.cursor/commands/done.md` and `.cursor/commands/ship.md`. No config key is new. A project that
+overrides one of these files can copy the new "Servers first", Format and Close-out text by hand.
+
+### Changed
+- `job-validation.md`: a Core rule for the hand-off (cards only when a human is needed, only once the work is
+  finished, before `/ship`, a PR or a merge; after the merge only when merges are pre-approved). "Servers first" is a
+  hard step: every page URL in the cards answers before they are shown. Cards are grouped by page in click order
+  (`▸ page — full URL` lines, numbers running on, a last group for checks outside the app); the header's `app:` field
+  is gone. New reply word `failed: <numbers>`.
+- `/take-plan`: a final step "Close-out" — `[auto]` evidence, then servers, cards and the wait before `/ship`; also
+  for several plans run in one session.
+- `/ship` Phase 4 and `/done`: with `[human]` items and no answered cards, the gate starts the servers and shows the
+  cards first. **Y** alone is commit/push consent and no longer validates `[human]` items (`done Y` answers both).
+- Cursor layer `/done` and `/ship`: the same rules spelled out, since Cursor has no hook that checks them.
+- `AGENTS.md`: the Job validation rule names the hand-off; `/ship` **Y** alone no longer counts as validation.
+
 ## [1.3.1] - 2026-10-19
 
 The Planner's Architect + PM review now reaches every brief, including a feature request written in plain prose, and
