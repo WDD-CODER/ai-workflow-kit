@@ -55,7 +55,7 @@ core/docs/agent/job-validation.md
 core/.claude/commands/take-plan.md
 core/.claude/commands/ship.md
 core/.claude/commands/done.md
-core/AGENTS.md
+templates/AGENTS.md
 layers/cursor/.cursor/commands/done.md
 layers/cursor/.cursor/commands/ship.md
 CHANGELOG.md
@@ -87,7 +87,7 @@ apply the changes below to that text.
 - [ ] V4: Add the hand-off as the last step of every executed plan — take-plan gets a final "Close-out" step: [auto] evidence, then (when [human] items) slot-serve + cards + wait, before /ship; pre-approved merges exception; also applies when several plans run in one session — core/.claude/commands/take-plan.md
 - [ ] V5: Stop the ship gate from counting Y as validation when no cards were shown — Phase 4 wording and the page-grouped card format; VALIDATED BY HUMAN unchanged — core/.claude/commands/ship.md, core/.claude/commands/done.md
 - [ ] V6: Give Cursor the same rules, since it has no global hook — layers/cursor/.cursor/commands/done.md, layers/cursor/.cursor/commands/ship.md
-- [ ] V7: Point the always-loaded rules at the hand-off — one line in the Job validation hard rule: servers up, page-grouped cards, before ship/merge — core/AGENTS.md
+- [ ] V7: Point the always-loaded rules at the hand-off — one line in the Job validation hard rule: servers up, page-grouped cards, before ship/merge — templates/AGENTS.md
 - [ ] V8: Release and bring it into FoodVibe — CHANGELOG entry, kit PR, release tag on Dandan's go, then kit-sync -Ref <tag> -Apply in FoodVibe and /ship there — CHANGELOG.md
 
 ## Out of Scope
