@@ -3,7 +3,7 @@
     "version": "1.3.1"
   },
   "source": "local:.",
-  "commit": "4a144ccbe4f8173015c2e9a8f04f3f14f5782e0f",
+  "commit": "397630b4fe63b9aa6eb9ee11b0c29a5f8dc7744c",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -525,7 +525,7 @@
       "source": "core/scripts/lib/plan-scope.mjs"
     },
     "scripts/lib/slot-procs.mjs": {
-      "sha256": "18477abb1fc6744724d4dc03d9d9d1f4551605625a16e54bf9a85a4c64c66135",
+      "sha256": "80faf2d723863722e5fe679db426f185d80a7b4b0d41f228f33ce64da2c289e3",
       "kind": "managed",
       "source": "core/scripts/lib/slot-procs.mjs"
     },
@@ -655,7 +655,7 @@
       "source": "core/scripts/ship-prep.mjs"
     },
     "scripts/slot-serve.mjs": {
-      "sha256": "c3aea7a9bbc481b8ac189b2510a575eb731193cfb27bb33e053dbfff0e705586",
+      "sha256": "1c9a54aa768b1df2dc710b925a8d35d99cbd77a0eacd456b20246ce68e6305f5",
       "kind": "managed",
       "source": "core/scripts/slot-serve.mjs"
     },
@@ -665,7 +665,7 @@
       "source": "core/scripts/slot-stop.mjs"
     },
     "scripts/take-plan.mjs": {
-      "sha256": "ce775946bfe6733be05d430e364beed6f5074c71e464a2f0c5cd3dd8c13de5e2",
+      "sha256": "96e92b2ccd3ff399485e7b94d1d884f5cd78e11d3152d21e9522eabd3a80dfa8",
       "kind": "managed",
       "source": "core/scripts/take-plan.mjs"
     },

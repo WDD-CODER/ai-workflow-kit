@@ -58,6 +58,14 @@ key `models.build` (default `sonnet`) is optional; a project that turned the rou
   `ship-prep.mjs` runs the scope gate in a slot **or** on such a branch (a branch that names no plan: no gate, as
   before).
 
+### Fixed
+- `slot-serve.mjs` and `take-plan.mjs` install a folder's packages when they are missing (no
+  `node_modules/.package-lock.json`), not only when its lockfile changed: a stale `.last-npm-install-hash-*` no
+  longer hides a missing `server/node_modules`. They print `npm install ran in <label> (packages missing|lockfile
+  changed)`, and a failed install names the exact command to run by hand. New pure check `installNeed(dir,
+  hashPath)` in `scripts/lib/slot-procs.mjs`. Rendered files that change (`kit-update`): `scripts/lib/slot-procs.mjs`,
+  `scripts/slot-serve.mjs`, `scripts/take-plan.mjs`.
+
 The validation hand-off moves to the end of the work: a finished plan with `[human]` items now ends with the
 servers running and HOW TO VALIDATE cards grouped by page, before any `/ship`, PR or merge.
 

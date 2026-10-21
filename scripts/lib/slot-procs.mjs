@@ -483,21 +483,60 @@ export function installDirs(root = repoRoot) {
   return out
 }
 
-/** npm install when package-lock.json changed since the last install here. Returns true when it ran. */
-export function npmInstallIfChanged(dir, hashFileName, root = repoRoot) {
-  const lockPath = join(dir, 'package-lock.json')
-  if (!existsSync(lockPath)) return false
-  const hashPath = join(root, '.claude', hashFileName)
-  const newHash = createHash('sha256').update(readFileSync(lockPath)).digest('hex')
-  const oldHash = existsSync(hashPath) ? readFileSync(hashPath, 'utf8').trim() : null
-  if (newHash === oldHash) return false
+const lockHash = (lockPath) => createHash('sha256').update(readFileSync(lockPath)).digest('hex')
 
-  // Windows: npm.cmd needs a shell, and a shell must get one command string, not an args array (DEP0190).
-  if (isWin) execSync('npm install', { cwd: dir, stdio: 'ignore' })
-  else execFileSync('npm', ['install'], { cwd: dir, stdio: 'ignore' })
+/**
+ * Whether `dir` needs an npm install, without side effects: null (no lockfile, or the lockfile is unchanged since
+ * the last install and the packages are there), 'changed' (no hash file at `hashPath`, or the lockfile's hash
+ * differs) or 'missing' (hash matches, the lockfile lists packages, but <dir>/node_modules or its .package-lock.json
+ * is absent - a stale hash must not hide packages that were never installed or were removed).
+ */
+export function installNeed(dir, hashPath) {
+  const lockPath = join(dir, 'package-lock.json')
+  if (!existsSync(lockPath)) return null
+  const oldHash = existsSync(hashPath) ? readFileSync(hashPath, 'utf8').trim() : null
+  if (lockHash(lockPath) !== oldHash) return 'changed'
+  if (lockHasDeps(lockPath) && !existsSync(join(dir, 'node_modules', '.package-lock.json'))) return 'missing'
+  return null
+}
+
+/**
+ * Whether a package-lock.json lists any package besides the root: v2/v3 `packages` keys other than "", or v1
+ * `dependencies`. npm never creates node_modules for a lockfile with none, so 'missing' would repeat forever.
+ * An unreadable lockfile counts as having packages (the install then reports the real problem).
+ */
+function lockHasDeps(lockPath) {
+  try {
+    const lock = JSON.parse(readFileSync(lockPath, 'utf8'))
+    if (lock.packages && typeof lock.packages === 'object') return Object.keys(lock.packages).some((k) => k !== '')
+    return Boolean(lock.dependencies && Object.keys(lock.dependencies).length)
+  } catch {
+    return true
+  }
+}
+
+/** The words for an installNeed reason in the install messages. */
+export const installReason = (need) => (need === 'missing' ? 'packages missing' : 'lockfile changed')
+
+/**
+ * npm install when installNeed says so. Returns the reason ('changed' | 'missing', truthy) when it ran, else false.
+ * A failed install throws an Error whose first line names the exact command to run by hand.
+ */
+export function npmInstallIfChanged(dir, hashFileName, root = repoRoot) {
+  const hashPath = join(root, '.claude', hashFileName)
+  const need = installNeed(dir, hashPath)
+  if (!need) return false
+
+  try {
+    // Windows: npm.cmd needs a shell, and a shell must get one command string, not an args array (DEP0190).
+    if (isWin) execSync('npm install', { cwd: dir, stdio: 'ignore' })
+    else execFileSync('npm', ['install'], { cwd: dir, stdio: 'ignore' })
+  } catch (e) {
+    throw new Error(`${String(e.message).split('\n')[0]} - run \`npm install\` in ${dir} by hand`)
+  }
   mkdirSync(dirname(hashPath), { recursive: true })
-  writeFileSync(hashPath, newHash)
-  return true
+  writeFileSync(hashPath, lockHash(join(dir, 'package-lock.json')))
+  return need
 }
 
 /**
