@@ -6,12 +6,12 @@
  *   node scripts/orch-state.mjs init       --run <name> [--started <iso>]   run branch + merge folder + status.json
  *   node scripts/orch-state.mjs order      --run <name> --plans <NNN,NNN>  waves from plan-order (merged plans left out)
  *   node scripts/orch-state.mjs done       --run <name>                     plans merged into the run branch (from git)
- *   node scripts/orch-state.mjs plan-info  --run <name> --plan <NNN>        path, branch, start tier, [human] items
+ *   node scripts/orch-state.mjs plan-info  --run <name> --plan <NNN>        path, branch, start tier, [human] and [ui] items
  *   node scripts/orch-state.mjs worktree   --run <name> --plan <NNN>        the builder's folder on its plan branch
  *   node scripts/orch-state.mjs diff       --run <name> --plan <NNN>        changed files vs the run branch, sensitive?
  *   node scripts/orch-state.mjs set        --run <name> --plan <NNN> [--state s] [--round n] [--tier t] [--sha x]
  *                                          [--role r --model m --effort e | --roles r=m/e,r2=m2/e2] [--reason "<text>"]
- *                                          [--card "<title>" --card-status s --page <url> --shots a.png,b.png]
+ *                                          [--card "<title>" --card-status s --page <url> --shots a.png,b.png --via script|browser]
  *   node scripts/orch-state.mjs handoff    --run <name> --plan <NNN> --step s --check c --tail t --tried x
  *                                          the hand-off file a fresh judgment-tier builder reads
  *   node scripts/orch-state.mjs note       --run <name> [--plan <NNN>] --text "<decision>"
@@ -34,6 +34,7 @@ import { resolve, dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import { findOpenPlan } from './lib/plan-paths.mjs'
 import { planNumber, planTitle, mergeSubjectRe } from './lib/plan-deps.mjs'
+import { uiItems } from './lib/done-when.mjs'
 import { runNameProblem, PLAN_STATES, planBranch, startTier, humanItems, freeGb, formatReport } from './lib/orch-run.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -289,7 +290,7 @@ const commands = {
     const path = planPath(nnn)
     const text = readFileSync(join(root, path), 'utf8')
     const { tier, invariants } = startTier(text)
-    const info = { ok: true, nnn, path, title: planTitle(text), branch: planBranch(path, nnn), worktree: builderFolder(run, nnn).replace(/\\/g, '/'), startTier: tier, invariants, humanItems: humanItems(text) }
+    const info = { ok: true, nnn, path, title: planTitle(text), branch: planBranch(path, nnn), worktree: builderFolder(run, nnn).replace(/\\/g, '/'), startTier: tier, invariants, humanItems: humanItems(text), uiItems: uiItems(text) }
     const status = readStatus(run)
     if (status) {
       // plan-info starts each attempt at a plan: an earlier attempt (a relaunch) moves to `earlier`, so state, round,
@@ -380,12 +381,15 @@ const commands = {
         p.models[m[1]] = { model: m[2], ...(m[3] ? { effort: m[3] } : {}) }
       }
     }
-    // --card "<title>" --card-status pass --page "<url>" --shots a.png,b.png: one orch-ui card result, the evidence the
-    // run report groups by page. The same card title again replaces the earlier result.
+    // --card "<title>" --card-status pass --page "<url>" --shots a.png,b.png --via script|browser: one [ui] card result
+    // (its script or the browser agent), the evidence the run report groups by page. `unchecked`: a card no script could
+    // check while the browser step was off. The same card title again replaces the earlier result.
     if (args.card && args.card !== true) {
       const status = String(args['card-status'] ?? '')
-      if (!['pass', 'fail', 'plan-drift'].includes(status)) fail(`--card-status "${status}" — allowed: pass, fail, plan-drift`)
-      const card = { card: String(args.card), status, page: args.page && args.page !== true ? String(args.page) : '', screenshots: args.shots && args.shots !== true ? String(args.shots).split(',').filter(Boolean) : [], round: p.round }
+      if (!['pass', 'fail', 'plan-drift', 'unchecked'].includes(status)) fail(`--card-status "${status}" — allowed: pass, fail, plan-drift, unchecked`)
+      const via = args.via && args.via !== true ? String(args.via) : 'browser'
+      if (!['script', 'browser', 'none'].includes(via)) fail(`--via "${via}" — allowed: script, browser, none`)
+      const card = { card: String(args.card), status, via, page: args.page && args.page !== true ? String(args.page) : '', screenshots: args.shots && args.shots !== true ? String(args.shots).split(',').filter(Boolean) : [], round: p.round }
       p.uiCards = [...(p.uiCards ?? []).filter((c) => c.card !== card.card), card]
     }
     p.freeDiskGb = diskGb()

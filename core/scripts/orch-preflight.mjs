@@ -15,6 +15,16 @@
  *   settings     the workflow, the /orchestrate command, the role agents and the state script are installed
  *   run          --run <name>: no run of that name is live (status.json phase running, updated in the last 2 hours)
  * --env-only runs disk, database and packages only (the retry check after an environment failure).
+ *
+ *   node scripts/orch-preflight.mjs --ui [--pages <url,url>] [--login <url>] [--api <url>]
+ *
+ * --ui is the check before any browser step of a [ui] card (docs/agent/orchestrator.md), and runs only these:
+ *   ui server    each page's origin answers below 500 (--pages: the cards' page URLs; SKIP when none is given)
+ *   ui login     the QA login answers 2xx/3xx (--login or ORCH_UI_LOGIN_URL; a POST of {username,password} from
+ *                ORCH_QA_USER / ORCH_QA_PASSWORD when both are set, else a GET; never printed; SKIP when no URL)
+ *   ui backend   the backend (--api or ORCH_UI_API_URL) answers a request sent with the first page's Origin, and allows
+ *                that origin when it is another origin (Access-Control-Allow-Origin); SKIP when no URL
+ * A FAIL adds `uiBlocked: true`: the orchestrator stops before the browser agent, with no fix round spent.
  * The last line is `ORCH_JSON {"ok":…,"problems":[…]}`. Exit 0 when nothing FAILed, else 1.
  */
 import { existsSync, readFileSync, statfsSync } from 'fs'
@@ -22,7 +32,7 @@ import { spawnSync } from 'child_process'
 import { resolve, dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import net from 'net'
-import { freeGb, runNameProblem } from './lib/orch-run.mjs'
+import { freeGb, runNameProblem, serverProblem, loginProblem, crossOriginProblem } from './lib/orch-run.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = resolve(__dirname, '..')
@@ -130,10 +140,70 @@ function live() {
   ok('run')
 }
 
-disk()
-await database()
-packages()
-if (!envOnly) {
+// ---- --ui: the environment of a browser step ---------------------------------------------------------------------
+const UI_TIMEOUT_MS = 5 * 1000
+async function ask(url, init = {}) {
+  try {
+    const res = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(UI_TIMEOUT_MS), ...init })
+    return { status: res.status, allowOrigin: res.headers.get('access-control-allow-origin') ?? '' }
+  } catch (e) {
+    return { error: e?.cause?.code ?? e?.name ?? 'no answer' }
+  }
+}
+
+const originOf = (url) => {
+  try {
+    return new URL(url).origin
+  } catch {
+    return null
+  }
+}
+
+async function uiChecks() {
+  const pages = String(flag('--pages') ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+  if (!pages.length) skip('ui server', 'no page URL given (--pages)')
+  else {
+    const byOrigin = new Map(pages.map((p) => [originOf(p) ?? p, p]))
+    const found = []
+    for (const p of byOrigin.values()) {
+      const why = serverProblem(p, originOf(p) ? await ask(p) : null)
+      if (why) found.push(why)
+    }
+    if (found.length) bad('ui server', found.join('; '))
+    else ok('ui server')
+  }
+  const login = flag('--login') ?? process.env.ORCH_UI_LOGIN_URL ?? ''
+  if (!login) skip('ui login', 'no login URL (--login or ORCH_UI_LOGIN_URL)')
+  else {
+    // The QA user comes from the environment (.env, loaded by the project); it is sent, never printed.
+    const user = process.env.ORCH_QA_USER
+    const pass = process.env.ORCH_QA_PASSWORD
+    const res = !originOf(login) ? { error: 'not a URL' } : user && pass
+      ? await ask(login, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: user, password: pass }) })
+      : await ask(login)
+    const why = loginProblem(login, res)
+    if (why) bad('ui login', why)
+    else ok('ui login')
+  }
+  const api = flag('--api') ?? process.env.ORCH_UI_API_URL ?? ''
+  if (!api) skip('ui backend', 'no backend URL (--api or ORCH_UI_API_URL)')
+  else {
+    const origin = originOf(pages[0] ?? '')
+    const res = originOf(api) ? await ask(api, origin ? { headers: { origin } } : {}) : null
+    const why = crossOriginProblem(pages[0] ?? '', api, res)
+    if (why) bad('ui backend', why)
+    else ok('ui backend')
+  }
+}
+
+const uiOnly = argv.includes('--ui')
+if (uiOnly) await uiChecks()
+else {
+  disk()
+  await database()
+  packages()
+}
+if (!envOnly && !uiOnly) {
   devServer()
   identity()
   remote()
@@ -143,5 +213,5 @@ if (!envOnly) {
 }
 for (const r of results) console.log(`${r.status.padEnd(4)} ${r.name}${r.why ? `: ${r.why}` : ''}`)
 const problems = results.filter((r) => r.status === 'FAIL').map((r) => `${r.name}: ${r.why}`)
-console.log(`ORCH_JSON ${JSON.stringify({ ok: problems.length === 0, problems, ...(problems.length ? { envFailure: true } : {}) })}`)
+console.log(`ORCH_JSON ${JSON.stringify({ ok: problems.length === 0, problems, ...(problems.length ? { envFailure: true } : {}), ...(problems.length && uiOnly ? { uiBlocked: true } : {}) })}`)
 process.exit(problems.length ? 1 : 0)

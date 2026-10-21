@@ -1,6 +1,6 @@
 # Plan 018 — UI Validation Tier: Done-When Items Checked by a Script First, a Browser Only for Failures
 
-Status: draft
+Status: active
 Snapshot: 3511799
 Depends-on: 014
 
@@ -71,6 +71,9 @@ docs/agent/**
 .claude/workflows/**
 scripts/**
 CHANGELOG.md
+core/scripts/orch-state.mjs
+core/scripts/scope-check.mjs
+.kit/install.json
 ```
 
 ## Read Scope
@@ -122,13 +125,13 @@ per commit: `ok` or `conflict: <what>`. STOP for a go only on a `conflict`.
 
 These are the plan's milestones: a Worker does them in order and ticks each one after it is checked.
 
-- [ ] A1: Define the UI tag so a plan can say which Done-when items a script can check — meaning, how it differs from auto and human, who may tag it — core/docs/agent/job-validation.md, core/.claude/references/prd-template.md
-- [ ] A2: Teach the plan saving lint and the ship command about the UI tag, so such plans are accepted and handled — tag accepted, bad spellings rejected, ship treats UI items as agent-checked with evidence — core/.claude/skills/save-plan/SKILL.md, core/.claude/commands/ship.md, core/.claude/commands/done.md
-- [ ] A3: Make the builder write one end-to-end test per UI item that saves a screenshot — uses the project's e2e command, short test per card, screenshot path recorded in the result — core/.claude/agents/orch-builder.md
-- [ ] A4: Check the environment before any browser step and stop with the reason when it is blocked — servers, login, cross-origin reachability; does not consume a fix round — core/scripts/orch-preflight.mjs, core/.claude/workflows/orchestrate.js
-- [ ] A5: Let the browser validator look only at failures and unscriptable cards, and keep plan drift apart from bugs — pre-checked skip list, known-findings list, pass/fail/plan-drift verdicts — core/.claude/agents/orch-ui.md
-- [ ] A6: Show the screenshot grid grouped by page in the run report — drift section separate — core/.claude/workflows/orchestrate.js, core/docs/agent/orchestrator.md
-- [ ] A7: Prove it on the orchestrator fixture and sync the installed copies — one passing and one failing scripted card, three blocked-environment cases, tag lint tests; sync --apply; CHANGELOG entry — tools/fixtures/orchestrator/, tools/orchestrator-e2e.mjs, tools/test/ui-tier.test.mjs, CHANGELOG.md
+- [x] A1: Define the UI tag so a plan can say which Done-when items a script can check — meaning, how it differs from auto and human, who may tag it — core/docs/agent/job-validation.md, core/.claude/references/prd-template.md
+- [x] A2: Teach the plan saving lint and the ship command about the UI tag, so such plans are accepted and handled — tag accepted, bad spellings rejected, ship treats UI items as agent-checked with evidence — core/.claude/skills/save-plan/SKILL.md, core/.claude/commands/ship.md, core/.claude/commands/done.md
+- [x] A3: Make the builder write one end-to-end test per UI item that saves a screenshot — uses the project's e2e command, short test per card, screenshot path recorded in the result — core/.claude/agents/orch-builder.md
+- [x] A4: Check the environment before any browser step and stop with the reason when it is blocked — servers, login, cross-origin reachability; does not consume a fix round — core/scripts/orch-preflight.mjs, core/.claude/workflows/orchestrate.js
+- [x] A5: Let the browser validator look only at failures and unscriptable cards, and keep plan drift apart from bugs — pre-checked skip list, known-findings list, pass/fail/plan-drift verdicts — core/.claude/agents/orch-ui.md
+- [x] A6: Show the screenshot grid grouped by page in the run report — drift section separate — core/.claude/workflows/orchestrate.js, core/docs/agent/orchestrator.md
+- [x] A7: Prove it on the orchestrator fixture and sync the installed copies — one passing and one failing scripted card, three blocked-environment cases, tag lint tests; sync --apply; CHANGELOG entry — tools/fixtures/orchestrator/, tools/orchestrator-e2e.mjs, tools/test/ui-tier.test.mjs, CHANGELOG.md
 
 ## Technical Considerations
 - Dependencies: plans 013 (`orch-ui`, `orch-builder`), 014 (workflow, preflight, fixture), 009 (cards by page); the
@@ -153,3 +156,31 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 ## Execution Notes
 Review (Planner, 2026-10-21): fixed — brief's "plan 015" renumbered 018; Q2 (Playwright for scripted cards, built-in
 browser for the failure look) accepted. Checked: 009, 013, 014, 016.
+
+- scope extended: core/scripts/orch-state.mjs — `set --card` must store who checked a card (`--via script|browser`)
+  and accept `unchecked`, and status.json is written only by this script (orchestrator, no Human available)
+- scope extended: core/scripts/scope-check.mjs — the save-plan shape lint needs a command (`--tags --plan=<p>`); the
+  lint rule itself lives in the new scripts/lib/done-when.mjs (orchestrator, no Human available)
+- scope extended: .kit/install.json — rewritten by `node tools/sync.mjs --target . --apply` (file hashes), committed as other plan branches do (orchestrator, no Human available)
+- Decision (most conservative): a blocked UI environment parks the plan (no fix round, no retry); the Human fixes the environment and relaunches. Plan drift does not fail the plan and sends nothing back to the builder; it is a run note and its own report section.
+- Decision: the gate runs each card's own test command (one per `[ui]` card, from the builder's `uiCards`), not the whole `commands.e2e` suite, so one failed card goes to the browser agent instead of failing the gate. With the UI step off (`args.ui` not set) a failed card script is a `major` finding for the builder and an unscriptable card is recorded `unchecked` for the Human.
+- Decision: the UI login/backend URLs come from `args.uiLogin` / `args.uiApi` or `ORCH_UI_LOGIN_URL` / `ORCH_UI_API_URL`; the QA user from `ORCH_QA_USER` / `ORCH_QA_PASSWORD` (sent, never printed). `/orchestrate` was not changed (out of scope): a project sets the env vars.
+- Evidence (worktree C:/coding projects/Cursor/ai-workflow-kit-orch-018, 2026-10-21):
+  - `node scripts/scope-check.mjs --drift --plan=<this plan>` → REALITY: clean (Step 0 skipped)
+  - `node tools/sync.mjs --target . --apply` → exit 0, KIT_SYNC: applied
+  - `npm run build` → exit 0, PACK_CHECK: ok · `npm run lint` → exit 0, LEAK_CHECK: ok — 27 files, 0 leaks · `npm run test` → exit 0, WORKFLOW_LINK_CHECK: ok · `npm run e2e` → exit 0, ACCEPTANCE_CHECK: ok — 122 checks passed
+  - `node tools/e2e-check.mjs` → exit 0, E2E_CHECK: ok — 53 cases passed (incl. "[ui] tier tests pass against the installed scripts" and the orchestrator e2e)
+  - `node tools/orchestrator-e2e.mjs` → exit 0, ORCHESTRATOR_E2E: ok — 51 cases passed (delta: passing script card in status.json + grid, never reaches orch-ui; failing card to orch-ui with PRE_CHECKED + KNOWN_FINDINGS, plan drift in its own section; ui-down / ui-login / ui-cors parked round 0 with the reason, orch-ui not called)
+  - `node --test tools/test/ui-tier.test.mjs` → # pass 7, # fail 0 (accepts `[ui]`, rejects `[ui` / `[UI]` / untagged; `scope-check --tags` exit 0 / 1)
+  - `grep -l "[ui]" core/docs/agent/job-validation.md core/.claude/skills/save-plan/SKILL.md core/.claude/references/prd-template.md core/.claude/commands/ship.md` → lists all four, exit 0
+  - `node tools/install-check.mjs`, `leak-check`, `pack-check`, `workflow-link-check`, `acceptance-check --e2e` → each exit 0 · `node tools/drift-check.mjs --target .` → KIT_DRIFT: ok — 0 undeclared differences
+  - `node scripts/scope-check.mjs --tags --plan=<this plan>` → DONE_WHEN_TAGS: ok
+- Left for the Human: the [human] item (a real project with 3 UI cards) and the kit PR / release with 013 and 014.
+- Checker round 1 (2026-10-21):
+  - major fixed — the orchestrator now holds the plan's own [ui] items against the builder's `uiCards`: `orch-state.mjs plan-info` returns `uiItems` (from `scripts/lib/done-when.mjs`), and `ui()` in `core/.claude/workflows/orchestrate.js` adds every item no card covers (normalised text, equal or contained) as a card with no script, with a run note. With `args.ui` it goes to the browser agent; without, it is recorded `unchecked` (via none) and reaches the Human in the run report.
+  - Decision (conservative): a card "covers" an item when the lower-cased, quote-stripped texts are equal or one contains the other; anything else is treated as left out, so an item is never silently dropped.
+  - minor fixed — `uiItems` accepts `[X]` as well as `[x]` (same as `doneWhenTagProblems`); it is no longer test-only (imported by `core/scripts/orch-state.mjs`).
+  - New e2e case: plan 405, run "epsilon" (UI step off) — the builder reports one of two [ui] items; `node tools/orchestrator-e2e.mjs` → exit 0, ORCHESTRATOR_E2E: ok — 54 cases passed (PASS "epsilon: 405 merged; … the left-out [ui] item is recorded unchecked", PASS "epsilon: a run note names the [ui] item the builder left out", PASS "epsilon: the run report hands the left-out [ui] item to the Human").
+  - `node --test tools/test/ui-tier.test.mjs` → exit 0, pass 7, fail 0 (incl. a `- [X] [ui]` item).
+  - `node tools/sync.mjs --target . --apply` → exit 0, KIT_SYNC: applied — 3 kit-update.
+  - `npm run build` → exit 0, PACK_CHECK: ok · `npm run lint` → exit 0, LEAK_CHECK: ok · `npm run test` → exit 0, WORKFLOW_LINK_CHECK: ok · `npm run e2e` → exit 0, ACCEPTANCE_CHECK: ok — 122 checks passed · `node tools/e2e-check.mjs` → exit 0, E2E_CHECK: ok — 53 cases passed · `node tools/drift-check.mjs --target .` → exit 0, KIT_DRIFT: ok — 0 undeclared differences.

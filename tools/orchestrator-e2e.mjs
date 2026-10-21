@@ -17,13 +17,19 @@
  * wave; escalation (judgment start tier, ESCALATE → fresh judgment builder with the hand-off file, second finding →
  * judgment); a relaunch rebuilds the done set from git and redoes no merged plan; the workflow script has no file,
  * git or clock call; every state write is an orch-state.mjs command.
+ * The [ui] tier (plan 018), against a local test server this script starts as a child process (killed at the end): a
+ * passing card script lands in status.json and the report grid with its screenshot and never reaches the browser
+ * agent; a failing one goes to the browser agent with the pre-checked list and comes back as plan drift, reported in
+ * its own section with no severity; a page server down, a failing login and a backend the page's origin cannot reach
+ * each stop before the browser agent with the reason in status.json and no fix round.
  * The scripts' package (picomatch) is copied from --deps-from, else from the kit's own scripts/node_modules, else
  * installed with npm (network). Exit 0 = every case passed, 1 = failures (one line per case).
  */
 import { writeFileSync, readFileSync, mkdtempSync, mkdirSync, rmSync, existsSync, realpathSync, cpSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve, dirname } from 'path'
-import { spawnSync } from 'child_process'
+import { spawnSync, spawn } from 'child_process'
+import net from 'net'
 import { fileURLToPath } from 'url'
 import { PLANS, fileName } from './fixtures/orchestrator/plans.mjs'
 
@@ -41,6 +47,7 @@ const env = {
   GIT_TERMINAL_PROMPT: '0',
 }
 delete env.ORCH_FREE_GB
+for (const k of ['ORCH_UI_LOGIN_URL', 'ORCH_UI_API_URL', 'ORCH_QA_USER', 'ORCH_QA_PASSWORD']) delete env[k]
 const results = []
 let failed = 0
 const check = (name, ok, evidence) => {
@@ -132,6 +139,23 @@ function stubRunner(t) {
 const MODEL_OF = (opts) => opts.model ?? (opts.agentType ? { 'orch-builder': 'sonnet', 'orch-readiness': 'opus', 'orch-gate': 'haiku', 'kit-runner': 'haiku' }[opts.agentType] ?? 'sonnet' : 'session-model')
 const base = (role, opts) => ({ role, model: MODEL_OF(opts), effort: opts.effort ?? 'medium' })
 
+// The [ui] cards each 4xx builder reports (pages on the local test server; UI is set once the server is up).
+const UI = { base: '', dead: '', api: '' }
+const PASS_TEST = 'node -e "process.exit(0)"'
+const FAIL_TEST = 'node -e "process.exit(1)"'
+const UI_CARDS = {
+  '401': () => [
+    { card: 'Save shows Saved', page: `${UI.base}/settings`, test: PASS_TEST, screenshot: 'screens/401-1.png' },
+    { card: 'Error shows Error', page: `${UI.base}/settings`, test: FAIL_TEST, screenshot: 'screens/401-2.png' },
+    { card: 'The colour looks right', page: `${UI.base}/settings` },
+  ],
+  '402': () => [{ card: 'Home shows Hello', page: `${UI.dead}/`, test: FAIL_TEST, screenshot: 'screens/402-1.png' }],
+  '403': () => [{ card: 'Account shows the name', page: `${UI.base}/account`, test: FAIL_TEST, screenshot: 'screens/403-1.png' }],
+  '404': () => [{ card: 'List shows items', page: `${UI.base}/list` }],
+  // 405 has two [ui] items; the builder reports a card for the first only.
+  '405': () => [{ card: 'Save shows Saved', page: 'https://app.example/profile', test: PASS_TEST, screenshot: 'screens/405-1.png' }],
+}
+
 function stubBuilder(t, opts) {
   const nnn = /(\d{3})-/.exec(t.BRANCH)[1]
   const n = bump(`builder ${nnn}`)
@@ -145,7 +169,7 @@ function stubBuilder(t, opts) {
   const c = git(wt, 'commit', '-q', '-m', `feat(${nnn}): attempt ${n}`)
   const p = git(wt, 'push', '-q', '-u', 'origin', t.BRANCH)
   if (c.status !== 0 || p.status !== 0) return { ...r, status: 'blocked', blocker: `stub commit/push failed: ${tail(c.out + p.out)}` }
-  return { ...r, status: 'built', headSha: git(wt, 'rev-parse', 'HEAD').stdout.trim() }
+  return { ...r, status: 'built', headSha: git(wt, 'rev-parse', 'HEAD').stdout.trim(), ...(UI_CARDS[nnn] ? { uiCards: UI_CARDS[nnn]() } : {}) }
 }
 
 function stubGate(t, opts, nnn) {
@@ -193,12 +217,21 @@ async function agent(prompt, opts = {}) {
   const type = opts.agentType ?? null
   const nnn = (/plan (\d{3})/.exec(prompt) ?? [])[1] ?? null
   const role = type ?? (/\.claude\/agents\/(orch-[\w-]+)\.md/.exec(prompt) ?? [])[1]
-  calls.push({ type, role, nnn, model: opts.model ?? null, label: opts.label, mode: t.MODE ?? null, tier: t.TIER ?? null, handoff: t.HANDOFF ?? null, findings: t.FINDINGS ? json(t.FINDINGS) : null })
+  calls.push({ type, role, nnn, model: opts.model ?? null, label: opts.label, mode: t.MODE ?? null, tier: t.TIER ?? null, handoff: t.HANDOFF ?? null, findings: t.FINDINGS ? json(t.FINDINGS) : null, cards: t.CARDS ? json(t.CARDS) : null, pre: t.PRE_CHECKED ? json(t.PRE_CHECKED) : null, known: t.KNOWN_FINDINGS ? json(t.KNOWN_FINDINGS) : null, commands: t.COMMANDS ? json(t.COMMANDS) : null })
   if (type === 'kit-runner') return stubRunner(t)
   if (role === 'orch-builder') return stubBuilder(t, opts)
+  if (type === 'orch-gate' && /^ui-gate /.test(opts.label ?? '')) {
+    // The [ui] cards' own tests: pass or fail by the exit code the test command names.
+    return { ...base('orch-gate', opts), results: json(t.COMMANDS).map((c) => (/exit\(0\)/.test(c) ? { command: c, status: 'pass' } : { command: c, status: 'fail', tail: 'stub: expected "Error", page shows "Problem"' })) }
+  }
   if (type === 'orch-gate') return stubGate(t, opts, nnn)
   if (['orch-check-plan', 'orch-check-bugs', 'orch-check-rules', 'orch-security'].includes(type)) return stubFinder(type, opts, nnn)
   if (type === 'orch-verify') return stubVerify(t, opts)
+  if (type === 'orch-ui' && t.CARDS) {
+    // The browser look: an "Error" card shows other wording (plan drift); the rest pass.
+    const cards = json(t.CARDS).map((c, i) => ({ card: c.card, page: c.page, status: /Error/.test(c.card) ? 'plan-drift' : 'pass', screenshots: [`screens/${nnn}-browser-${i + 1}.png`] }))
+    return { ...base('orch-ui', opts), cards, pass: cards.every((c) => c.status === 'pass') }
+  }
   if (type === 'orch-ui') return { ...base('orch-ui', opts), cards: [{ card: '1 Saved shows', status: 'pass', page: 'https://app.example/settings', screenshots: [`screens/${nnn}-1.png`] }], pass: true }
   if (type === 'orch-merge') return stubMerge(t, opts)
   if (type === 'orch-readiness') return { ...base('orch-readiness', opts), plans: [{ plan: t.PLAN, state: 'ready', questions: [], envNeeds: [], commands: ['node --test', 'git reset --hard HEAD'] }] }
@@ -232,6 +265,44 @@ async function runWorkflow(args) {
   const fn = new AsyncFunction('agent', 'parallel', 'pipeline', 'phase', 'log', 'args', 'budget', 'workflow', 'Date', 'Math', 'require', 'process', src)
   const budget = { total: null, spent: () => 0, remaining: () => Infinity }
   return fn(agent, parallel, pipeline, () => {}, () => {}, args, budget, () => { throw new Error('nested workflow') }, GuardDate, GuardMath, undefined, undefined)
+}
+
+// The local test server for the [ui] cases: pages answer 200, /login-bad 401, /api-cors allows the caller's origin,
+// /api-nocors sends no Access-Control-Allow-Origin. A child process, because the stub runner blocks this one; it exits
+// on its own after 10 minutes if it is not killed.
+const UI_SERVER = `import http from 'http'
+const s = http.createServer((req, res) => {
+  if (req.url.startsWith('/login-bad')) { res.writeHead(401); return res.end('no') }
+  if (req.url.startsWith('/api-cors')) { res.writeHead(200, { 'access-control-allow-origin': req.headers.origin ?? '*' }); return res.end('{}') }
+  if (req.url.startsWith('/api-nocors')) { res.writeHead(200); return res.end('{}') }
+  res.writeHead(200, { 'content-type': 'text/html' }); res.end('<h1>ok</h1>')
+})
+s.listen(0, () => console.log('PORT ' + s.address().port))
+setTimeout(() => process.exit(0), 10 * 60 * 1000)
+`
+function startUiServer() {
+  const file = join(root, 'ui-server.mjs')
+  writeFileSync(file, UI_SERVER)
+  const child = spawn(process.execPath, [file], { stdio: ['ignore', 'pipe', 'inherit'] })
+  return new Promise((done, fail) => {
+    let buf = ''
+    child.stdout.on('data', (d) => {
+      buf += d
+      const m = /PORT (\d+)/.exec(buf)
+      if (m) done({ child, port: Number(m[1]) })
+    })
+    child.once('exit', (code) => fail(new Error(`the UI test server exited (${code})`)))
+  })
+}
+// A port nothing listens on: bind, read, close.
+function deadPort() {
+  return new Promise((done) => {
+    const s = net.createServer()
+    s.listen(0, '127.0.0.1', () => {
+      const { port } = s.address()
+      s.close(() => done(port))
+    })
+  })
 }
 
 // ------------------------------------------------------------------------------------------------------- the cases
@@ -313,10 +384,57 @@ async function main() {
   check('gamma: 302 merged with its UI card (page, status, screenshot) in status.json', sg.plans['302']?.state === 'merged' && sg.plans['302'].uiCards.length === 1 && card.page === 'https://app.example/settings' && card.status === 'pass' && card.screenshots[0] === 'screens/302-1.png', JSON.stringify(sg.plans['302']?.uiCards))
   const gReport = join(proj, '.claude', 'orchestrator-runs', 'gamma.md')
   const rg = existsSync(gReport) ? readFileSync(gReport, 'utf8') : ''
-  check('gamma: the report groups the validation list by page with the evidence', rg.includes('### https://app.example/settings\n\n1. 302: 1 Saved shows — UI check pass in round 0; evidence: `screens/302-1.png`') && rg.includes('2. 302 UI checked and auth code: Open work/302.txt'), (rg.split('## What only the Human can do')[1] ?? rg).slice(0, 400))
+  check('gamma: the report groups the validation list by page with the evidence', rg.includes('### https://app.example/settings\n\n| # | Card | Verdict | Screenshot |\n| --- | --- | --- | --- |\n| 1 | 302: 1 Saved shows | pass — browser, round 0 | [![1 Saved shows](screens/302-1.png)](screens/302-1.png) |') && rg.includes('2. 302 UI checked and auth code: Open work/302.txt'), (rg.split('## What only the Human can do')[1] ?? rg).slice(0, 400))
   const sec = calls.filter((c) => c.type === 'orch-security').map((c) => c.nnn)
   check('gamma: orch-security runs for added auth code in a plain path, and only there', sec.length > 0 && sec.every((n) => n === '302'), JSON.stringify(sec))
   check('beta: origin/main unchanged', git(origin, 'rev-parse', 'main').stdout.trim() === mainBefore, 'main moved')
+
+  // Run epsilon (UI step off): a [ui] item the builder reported no card for is still recorded and reaches the Human.
+  const e = await runWorkflow({ mode: 'run', run: 'epsilon', plans: ['405'], startedAt: '2026-01-04T12:00:00.000Z', root: proj })
+  const se = JSON.parse(readFileSync(join(proj, '.claude', 'orchestrator-runs', 'epsilon', 'status.json'), 'utf8'))
+  const eCard = (title) => (se.plans['405']?.uiCards ?? []).find((c) => c.card === title)
+  check('epsilon: 405 merged; its reported card passed by script, the left-out [ui] item is recorded unchecked', e?.ok === true && se.plans['405']?.state === 'merged' && eCard('Save shows Saved')?.status === 'pass' && eCard('Save shows Saved').via === 'script' && eCard('Profile shows the avatar')?.status === 'unchecked' && eCard('Profile shows the avatar').via === 'none', JSON.stringify(se.plans['405']?.uiCards))
+  check('epsilon: a run note names the [ui] item the builder left out', (se.notes ?? []).some((n) => n.plan === '405' && /builder reported no card for 1 \[ui\] item\(s\).*Profile shows the avatar/.test(n.text)), JSON.stringify(se.notes))
+  const re = readFileSync(join(proj, '.claude', 'orchestrator-runs', 'epsilon.md'), 'utf8')
+  check('epsilon: the run report hands the left-out [ui] item to the Human', /\d+\. 405: Profile shows the avatar — a \[ui\] card no script could check and the browser step was off/.test(re), (re.split('## What only the Human can do')[1] ?? re).slice(0, 400))
+
+  // The [ui] tier: a local test server (a child process) for the pages, the login and the backend.
+  const server = await startUiServer()
+  try {
+    UI.base = `http://127.0.0.1:${server.port}`
+    UI.api = `http://localhost:${server.port}`
+    UI.dead = `http://127.0.0.1:${await deadPort()}`
+    const d = await runWorkflow({ mode: 'run', run: 'delta', plans: ['401'], ui: true, uiLogin: `${UI.base}/login-ok`, uiApi: `${UI.api}/api-cors`, startedAt: '2026-01-05T00:00:00.000Z', root: proj })
+    const sd = JSON.parse(readFileSync(join(proj, '.claude', 'orchestrator-runs', 'delta', 'status.json'), 'utf8'))
+    const cardOf = (title) => (sd.plans['401']?.uiCards ?? []).find((c) => c.card === title)
+    const passCard = cardOf('Save shows Saved')
+    check('delta: 401 merged in round 0 with one builder (plan drift costs no fix round)', d?.ok === true && sd.plans['401']?.state === 'merged' && sd.plans['401'].round === 0 && builderCalls('401').length === 1, JSON.stringify(sd.plans['401']))
+    check('delta: the passing script card is in status.json with its screenshot, checked by script', passCard?.status === 'pass' && passCard.via === 'script' && passCard.screenshots[0] === 'screens/401-1.png' && passCard.page === `${UI.base}/settings`, JSON.stringify(passCard))
+    const uiGate = calls.filter((c) => c.nnn === '401' && /^ui-gate /.test(c.label ?? ''))
+    check('delta: the gate runs the two card scripts (the unscripted card has none)', uiGate.length === 1 && uiGate[0].commands?.length === 2, JSON.stringify(uiGate.map((c) => c.commands)))
+    const look = calls.filter((c) => c.type === 'orch-ui' && c.nnn === '401')
+    check('delta: the browser agent gets only the failed and the unscripted card, never the passing one', look.length === 1 && JSON.stringify(look[0].cards?.map((c) => c.card)) === JSON.stringify(['Error shows Error', 'The colour looks right']) && look[0].cards[0].scriptFailed === true, JSON.stringify(look[0]?.cards))
+    check('delta: the browser agent gets the "pre-checked, skip" list and the known finding', JSON.stringify(look[0]?.pre) === JSON.stringify(['Save shows Saved']) && (look[0]?.known ?? []).some((k) => /^Error shows Error: its script failed/.test(k)), JSON.stringify({ pre: look[0]?.pre, known: look[0]?.known }))
+    check('delta: the browser verdicts are in status.json (plan drift, pass), checked by browser', cardOf('Error shows Error')?.status === 'plan-drift' && cardOf('Error shows Error').via === 'browser' && cardOf('The colour looks right')?.status === 'pass' && cardOf('The colour looks right').via === 'browser', JSON.stringify(sd.plans['401']?.uiCards))
+    check('delta: the UI environment check ran before the browser step', runnerCommands.some((c) => c.startsWith(`node scripts/orch-preflight.mjs --ui --pages ${UI.base}/settings --login `)), runnerCommands.filter((c) => /--ui/.test(c)).join(' | '))
+    const dr = readFileSync(join(proj, '.claude', 'orchestrator-runs', 'delta.md'), 'utf8')
+    const grid = (dr.split(`### ${UI.base}/settings`)[1] ?? '').split('\n### ')[0]
+    const drift = (dr.split('### Plan drift')[1] ?? '').split('\n### ')[0].split('\n## ')[0]
+    check('delta: the report grid shows the passing card with its screenshot under its page', grid.includes('| 401: Save shows Saved | pass — script, round 0 | [![Save shows Saved](screens/401-1.png)](screens/401-1.png) |') && grid.includes('| 401: The colour looks right | pass — browser, round 0 |'), grid.slice(0, 400))
+    check('delta: plan drift has its own section, no severity, not in the grid', drift.includes('401: Error shows Error') && !/\b(?:blocker|major|minor|nit)\b/.test(drift) && !grid.includes('Error shows Error'), drift.slice(0, 300))
+    for (const [run, nnn, args, why] of [
+      ['ui-down', '402', {}, /ui server: dev server http:\/\/127\.0\.0\.1:\d+ does not answer/],
+      ['ui-login', '403', { uiLogin: `${UI.base}/login-bad` }, /ui login: login http:\S+\/login-bad answered 401/],
+      ['ui-cors', '404', { uiApi: `${UI.api}/api-nocors` }, /ui backend: backend http:\/\/localhost:\d+ is cross-origin unreachable from http:\/\/127\.0\.0\.1:\d+ \(Access-Control-Allow-Origin: missing\)/],
+    ]) {
+      const r = await runWorkflow({ mode: 'run', run, plans: [nnn], ui: true, ...args, startedAt: '2026-01-06T00:00:00.000Z', root: proj })
+      const sx = JSON.parse(readFileSync(join(proj, '.claude', 'orchestrator-runs', run, 'status.json'), 'utf8'))
+      const p = sx.plans[nnn]
+      check(`${run}: ${nnn} stops before the browser agent with the reason in status.json, no fix round`, p?.state === 'parked' && p.round === 0 && /^UI environment blocked before the browser step: /.test(p.reason ?? '') && why.test(p.reason) && !!r?.parked?.includes(nnn) && builderCalls(nnn).length === 1 && calls.filter((c) => c.type === 'orch-ui' && c.nnn === nnn).length === 0, JSON.stringify(p))
+    }
+  } finally {
+    server.child.kill()
+  }
 
   // Every state write went through orch-state.mjs (the runner ran nothing else).
   const other = runnerCommands.filter((c) => !/^node scripts\/orch-(state|preflight)\.mjs /.test(`${c} `))
@@ -332,7 +450,7 @@ for (const line of results) console.log(line)
 const total = results.filter((l) => /^(PASS|FAIL)/.test(l)).length
 if (keep) console.log(`kept: ${root}`)
 else {
-  for (const run of ['alpha', 'beta', 'gamma']) {
+  for (const run of ['alpha', 'beta', 'gamma', 'epsilon', 'delta', 'ui-down', 'ui-login', 'ui-cors']) {
     git(proj, 'worktree', 'remove', '--force', join(root, `orch-app-orch-merge-${run}`))
   }
   try {

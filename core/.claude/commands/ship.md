@@ -125,17 +125,22 @@ HOW TO VALIDATE — {N} checks on {P} pages · reply: done | not yet | failed: <
 Approve? (Y / merge / edit list / abort)   # Y = commit + push (+ PR); only "merge" merges; with cards above: "done Y"
 ~~~
 
-Every Done-when item `[auto]` → replace HOW TO VALIDATE with:
+Every Done-when item `[auto]` or `[ui]` → replace HOW TO VALIDATE with:
 
 ~~~text
 VERIFIED BY AGENT
   - ✓ [auto] {item} — `{command}` → {output / exit code}
+  - ✓ [ui] {item} — `{its e2e test}` → pass; screenshot `{path}`
 ~~~
+
+A `[ui]` item is agent-checked with evidence: its own short e2e test (the project's e2e command, `commands.e2e`) passing, plus the
+screenshot path (`docs/agent/job-validation.md` Tier 1b). A `[ui]` item whose test fails, or that no test can check,
+falls back to `[human]` (`⚠ [ui→human] {item} — {why}`) and gets a card; a plan-drift result is listed apart, not as a bug.
 
 Phase 4 shows exactly one of these, never none:
 - **VALIDATED BY HUMAN** — the Human already answered the HOW TO VALIDATE cards in this session (end-of-job close-out, `/done`, or a validation word such as `done` / `verified` / `approved`). List each card with the reply word. **Never repeat cards the Human already answered** — the commit gate records validation, it does not re-run it.
 - **HOW TO VALIDATE** — `[human]` items and no answered cards in this session: the close-out was skipped, so this gate shows the cards first. Run "Servers first" (`job-validation.md`: every page URL answers), then the cards grouped by page per `docs/agent/job-validation.md` → Format and Card rules; happy path + any edge/failure rule introduced; one line if no user-visible effect. Say in the tree that **Y** alone does not validate them: commit/push waits for a validation word (`done`, `verified`, `approved` — `done Y` answers both). `not yet` / `failed: <numbers>` → no commit; fix and re-show.
-- **VERIFIED BY AGENT** — every Done-when item is `[auto]`.
+- **VERIFIED BY AGENT** — every Done-when item is `[auto]` or `[ui]` with its evidence.
 A mix (some cards answered, some not) shows VALIDATED BY HUMAN with the unanswered cards repeated beneath it. Rules: `docs/agent/job-validation.md` → "When that moment is".
 
 Matching open todos: list *before* Y (still `[ ]`). On **Y**, mark `[x]` and stage in the **same** commit — never a second push for checkboxes. Chat-only jobs (no ship): `docs/agent/job-validation.md` Path B / `/done`.

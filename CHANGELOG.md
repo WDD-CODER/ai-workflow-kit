@@ -25,8 +25,26 @@ The orchestrator is opt-in: nothing runs until `/orchestrate`. New rendered file
 `scripts/lib/orch-run.mjs`; changed: `.claude/commands/commands.md`, `scripts/local-excludes.mjs` (adds
 `.claude/orchestrator-runs/` to the runtime ignores). New optional config keys `orchestrator.runBranchPrefix`
 (default `orch/`), `orchestrator.maxFixRounds` (default `2`) and `orchestrator.minFreeDiskGb` (default `5`).
+The `[ui]` Done-when tag is optional: existing `[auto]` / `[human]` plans keep working. Rendered files that change:
+`docs/agent/job-validation.md`, `docs/agent/orchestrator.md`, `.claude/skills/save-plan/SKILL.md`,
+`.claude/references/prd-template.md`, `.claude/commands/ship.md`, `.claude/commands/done.md`,
+`.claude/agents/orch-builder.md`, `.claude/agents/orch-ui.md`, `.claude/workflows/orchestrate.js`,
+`scripts/orch-preflight.mjs`, `scripts/orch-state.mjs`, `scripts/scope-check.mjs`, `scripts/lib/orch-run.mjs`; new:
+`scripts/lib/done-when.mjs`.
 
 ### Added
+- The `[ui]` validation tier: a Done-when item a script can check in the running app (one page, one
+  action, one asserted text or element, a screenshot) sits between `[auto]` and `[human]`
+  (`docs/agent/job-validation.md` Tier 1b). The save-plan shape lint is now a command,
+  `node scripts/scope-check.mjs --tags --plan=<p>` (`DONE_WHEN_TAGS: ok`; `[ui`, `[UI]` and untagged items are
+  rejected). In the orchestrator the builder writes one short e2e test per `[ui]` item and reports `uiCards`; a gate
+  runs them; a passing card is recorded with its screenshot and never reaches the browser agent; `orch-ui` sees only
+  failed or unscriptable cards, with a "pre-checked — skip" list and the known findings, and returns pass / fail /
+  plan-drift. Before any browser step `orch-preflight.mjs --ui` checks the pages' servers, the QA login and the
+  backend from the page's origin; a blocked environment parks the plan with the reason and costs no fix round. The
+  run report shows a screenshot grid per page, plan drift in its own section with no severity, and the cards no one
+  could check for the Human. Tests: `tools/test/ui-tier.test.mjs` (in `e2e-check`) and five new cases in
+  `tools/orchestrator-e2e.mjs`.
 - The orchestrator workflow (opt-in): `/orchestrate 451-457` runs saved plans unattended into one run branch
   `orch/<run>` — never into `main`; the Human merges the run branch. Readiness first (`plan-order --json` waves, one
   `orch-readiness` agent per plan, `scripts/orch-preflight.mjs`), every open question asked in one batch and written

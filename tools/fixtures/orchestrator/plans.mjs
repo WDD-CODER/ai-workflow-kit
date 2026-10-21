@@ -14,8 +14,16 @@
  *   run "gamma" — the UI step on (args.ui), escalation then a judgment failure, auth code in a plain path
  *     301  its first builder returns ESCALATE, then its gate fails → parked at round 1 (judgment + escalated)
  *     302  adds an auth-token line to work/302.txt → orch-security runs; its UI card lands in the report by page
+ *   the [ui] tier (plan 018), each against a local test server the e2e starts:
+ *     401  run "delta": three [ui] cards — one script passes (never reaches the browser agent), one script fails (the
+ *          browser agent gets it with the pre-checked list and calls it plan drift), one has no script (browser: pass)
+ *     402  run "ui-down": its card's page server does not answer → stops before the browser agent, no fix round
+ *     403  run "ui-login": the QA login answers 401 → stops before the browser agent, no fix round
+ *     404  run "ui-cors": the backend does not allow the page's origin → stops before the browser agent, no fix round
+ *     405  run "epsilon" (UI step off): the builder reports a card for one of its two [ui] items only → the left-out
+ *          item is still recorded (`unchecked`) and reaches the Human in the run report
  */
-const plan = ({ nnn, title, deps = [], inv = 'INV-none: preserves — a toy plan' }) => `# Plan ${nnn} — ${title}
+const plan = ({ nnn, title, deps = [], inv = 'INV-none: preserves — a toy plan', ui = [] }) => `# Plan ${nnn} — ${title}
 
 Status: active
 Depends-on: ${deps.length ? deps.join(', ') : 'none'}
@@ -23,7 +31,8 @@ Depends-on: ${deps.length ? deps.join(', ') : 'none'}
 ## Goals & Success Criteria
 - [auto] work/${nnn}.txt exists
 - [human] Open work/${nnn}.txt and see the line "attempt"
-
+${ui.map((u) => `- [ui] ${u}
+`).join('')}
 ## Read-Write Scope
 
 \`\`\`scope
@@ -50,6 +59,11 @@ export const PLANS = {
   '204': plan({ nnn: '204', title: 'Escalates' }),
   '301': plan({ nnn: '301', title: 'Escalates then fails on judgment' }),
   '302': plan({ nnn: '302', title: 'UI checked and auth code' }),
+  '401': plan({ nnn: '401', title: 'UI cards scripted then browser', ui: ['Save shows Saved', 'Error shows Error', 'The colour looks right'] }),
+  '402': plan({ nnn: '402', title: 'UI page server down', ui: ['Home shows Hello'] }),
+  '403': plan({ nnn: '403', title: 'UI login failing', ui: ['Account shows the name'] }),
+  '404': plan({ nnn: '404', title: 'UI backend cross origin', ui: ['List shows items'] }),
+  '405': plan({ nnn: '405', title: 'UI item the builder left out', ui: ['Save shows Saved', 'Profile shows the avatar'] }),
 }
 
 export const fileName = (nnn) => {

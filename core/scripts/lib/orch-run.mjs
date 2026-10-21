@@ -44,34 +44,94 @@ export function humanItems(planText) {
 /** Free space in GB (one decimal) from a statfs result. */
 export const freeGb = (st) => Math.floor((Number(st.bavail) * Number(st.bsize)) / 1e8) / 10
 
+// ---- UI environment (orch-preflight.mjs --ui) ----------------------------------------------------------------------
+// Each takes what a request returned — { status, allowOrigin } or { error } — and says what blocks the browser step.
+const originOf = (url) => {
+  try {
+    return new URL(url).origin
+  } catch {
+    return null
+  }
+}
+
+/** A page's dev server: any answer below 500 means it is up. */
+export function serverProblem(pageUrl, res) {
+  const origin = originOf(pageUrl)
+  if (!origin) return `page ${JSON.stringify(pageUrl)} is not a URL`
+  if (res?.error) return `dev server ${origin} does not answer (${res.error}) — start it (node scripts/slot-serve.mjs or the project's dev command)`
+  if (!(res?.status < 500)) return `dev server ${origin} answered ${res?.status} — fix the server error first`
+  return null
+}
+
+/** The QA login: 2xx or 3xx is a working login; 401/403 or anything else blocks every card behind it. */
+export function loginProblem(loginUrl, res) {
+  if (res?.error) return `login ${loginUrl} does not answer (${res.error})`
+  if (!(res?.status >= 200 && res.status < 400)) return `login ${loginUrl} answered ${res?.status} — check the QA user in .env (ORCH_QA_USER / ORCH_QA_PASSWORD)`
+  return null
+}
+
+/** The backend, asked with the page's Origin: it must answer, and allow that origin when it is another origin. */
+export function crossOriginProblem(pageUrl, apiUrl, res) {
+  const page = originOf(pageUrl)
+  const api = originOf(apiUrl)
+  if (!api) return `backend ${JSON.stringify(apiUrl)} is not a URL`
+  if (res?.error) return `backend ${api} does not answer (${res.error}) — start it`
+  if (!(res?.status < 500)) return `backend ${api} answered ${res?.status}`
+  if (page && page !== api && res.allowOrigin !== '*' && res.allowOrigin !== page) {
+    return `backend ${api} is cross-origin unreachable from ${page} (Access-Control-Allow-Origin: ${res.allowOrigin || 'missing'}) — allow the dev origin`
+  }
+  return null
+}
+
+const cell = (s) => String(s ?? '').replace(/\|/g, '/').replace(/\r?\n/g, ' ')
+const shotCell = (c) => ((c.screenshots ?? []).length
+  ? c.screenshots.map((s) => `[![${cell(c.card).replace(/[[\]]/g, '')}](${s})](${s})`).join(' ')
+  : 'no screenshot')
+
 /**
- * The validation list of the merged plans, one group per page in plan order, numbers running on across groups.
- * A group lists the orch-ui card results checked on that page (status, round, screenshot paths — the evidence). The
- * plans' `[human]` items, which name no page, close the list, per plan.
+ * The validation list of the merged plans, numbers running on across groups:
+ * - a screenshot grid per page (plan order): one row per checked `[ui]` card — title, verdict (who checked it: the
+ *   card's script or the browser agent, and the round) and a thumbnail link to each screenshot;
+ * - PLAN-DRIFT in its own section (the plan says X, the app has Y — no severity, not a bug);
+ * - the `[ui]` cards no one checked and the plans' `[human]` items, which name no page, per plan.
  */
 export function validationList(mergedPlans) {
   const pages = new Map()
+  const drift = []
+  const unchecked = []
   for (const p of mergedPlans) {
     for (const c of p.uiCards ?? []) {
-      const page = c.page || `page not named (plan ${p.nnn})`
-      if (!pages.has(page)) pages.set(page, [])
-      pages.get(page).push({ ...c, nnn: p.nnn })
+      const card = { ...c, nnn: p.nnn }
+      if (c.status === 'plan-drift') drift.push(card)
+      else if (c.status === 'unchecked') unchecked.push(card)
+      else {
+        const page = c.page || `page not named (plan ${p.nnn})`
+        if (!pages.has(page)) pages.set(page, [])
+        pages.get(page).push(card)
+      }
     }
   }
   const human = mergedPlans.filter((p) => (p.humanItems ?? []).length)
-  if (!pages.size && !human.length) return ['- nothing to validate', '']
+  if (!pages.size && !drift.length && !unchecked.length && !human.length) return ['- nothing to validate', '']
   let n = 0
   const out = []
   for (const [page, cards] of pages) {
-    out.push(`### ${page}`, '')
-    for (const c of cards) {
+    out.push(`### ${page}`, '', '| # | Card | Verdict | Screenshot |', '| --- | --- | --- | --- |')
+    for (const c of cards) out.push(`| ${++n} | ${c.nnn}: ${cell(c.card)} | ${c.status} — ${c.via ?? 'browser'}, round ${c.round ?? 0} | ${shotCell(c)} |`)
+    out.push('')
+  }
+  if (drift.length) {
+    out.push('### Plan drift — the plan says X, the app has Y (not a bug; update the card or the plan)', '')
+    for (const c of drift) {
       const shots = (c.screenshots ?? []).length ? c.screenshots.map((s) => `\`${s}\``).join(', ') : 'no screenshot'
-      out.push(`${++n}. ${c.nnn}: ${c.card} — UI check ${c.status} in round ${c.round ?? 0}; evidence: ${shots}`)
+      out.push(`${++n}. ${c.nnn}: ${c.card} — on ${c.page || 'a page not named'}; evidence: ${shots}`)
     }
     out.push('')
   }
-  if (human.length) {
-    out.push(pages.size ? '### Not checked by the run — the plans\' [human] items' : '### The plans\' [human] items (no UI check ran)', '')
+  if (unchecked.length || human.length) {
+    const any = pages.size || drift.length
+    out.push(any ? '### Not checked by the run — the plans\' [human] items' : '### The plans\' [human] items (no UI check ran)', '')
+    for (const c of unchecked) out.push(`${++n}. ${c.nnn}: ${c.card} — a [ui] card no script could check and the browser step was off; on ${c.page || 'a page not named'}`)
     for (const p of human) for (const h of p.humanItems) out.push(`${++n}. ${p.nnn} ${p.title ?? ''}: ${h}`)
     out.push('')
   }

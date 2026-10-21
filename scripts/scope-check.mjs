@@ -11,6 +11,7 @@
  *   node scripts/scope-check.mjs --arch --plan=<path>                   (BLOCK)
  *   node scripts/scope-check.mjs --arch --diff=<base> [--plan=<path>]   (WARN, exit 0)
  *   node scripts/scope-check.mjs --deps --plan=<path>
+ *   node scripts/scope-check.mjs --tags --plan=<path>
  *
  * A path matching ownership.upstreamPaths (kit.config.json) is never in scope: --file prints "SCOPE: upstream <path>".
  *
@@ -24,6 +25,10 @@
  * --deps checks the plan declares what it needs first: "DEPENDS_ON: ok" (exit 0) when it has a "Depends-on:" line
  * ("Depends-on: none" counts), "DEPENDS_ON: missing" (exit 1) when it has none — legacy prose prerequisites are still
  * read by plan-order and take-plan, but a new plan says it in the header (scripts/lib/plan-deps.mjs).
+ *
+ * --tags is the save-plan shape lint for Done-when tags (scripts/lib/done-when.mjs): "DONE_WHEN_TAGS: ok" (exit 0)
+ * when every Done-when item starts with [auto], [ui] or [human]; else one line per bad item (no tag, an unclosed
+ * "[ui", a wrong spelling such as "[UI]") and exit 1.
  *
  * --arch reads the architecture invariants registry (docs/brain/invariants.md; see
  * scripts/lib/invariants.mjs). With --plan: exit 1 when the plan's scope touches an
@@ -43,6 +48,7 @@ import { activePlanPath, branchPlanPath } from './lib/slot.mjs'
 import { extractScopeGlobs } from './lib/plan-scope.mjs'
 import { listOpenPlans, OPEN_PLAN_DIRS } from './lib/plan-paths.mjs'
 import { parseDependsOn, parseProsePrerequisites } from './lib/plan-deps.mjs'
+import { doneWhenTagProblems } from './lib/done-when.mjs'
 import { parseInvariants, checkPlanArch, diffArchWarnings, decisionWithoutAdr, parseAddedLines } from './lib/invariants.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -319,14 +325,27 @@ function cmdDeps(args) {
   console.log(`DEPENDS_ON: ok${deps.length ? ` (${deps.join(', ')})` : ' (none)'}`)
 }
 
+function cmdTags(args) {
+  if (!args.plan || args.plan === true) fail('--tags requires --plan=<path>')
+  const planPath = normalize(args.plan)
+  const problems = doneWhenTagProblems(readPlanFile(planPath))
+  if (problems.length) {
+    console.log('DONE_WHEN_TAGS: bad')
+    for (const p of problems) console.log(`  ${planPath} ${p}`)
+    process.exit(1)
+  }
+  console.log('DONE_WHEN_TAGS: ok')
+}
+
 const args = parseArgs(process.argv.slice(2))
 
 if (args.arch && args.diff) cmdArchDiff(args)
 else if (args.arch && args.plan) cmdArchPlan(args)
 else if (args.arch) fail('--arch needs --plan=<p> or --diff=<base>')
 else if (args.deps) cmdDeps(args)
+else if (args.tags) cmdTags(args)
 else if (args.file) cmdFile(args)
 else if (args.diff) cmdDiff(args)
 else if (args.overlap) cmdOverlap(args)
 else if (args.drift) cmdDrift(args)
-else fail('usage: --file=<p> | --diff=<base> | --overlap --plan=<p> | --drift [--plan=<p>] | --arch --plan=<p> | --arch --diff=<base> | --deps --plan=<p>')
+else fail('usage: --file=<p> | --diff=<base> | --overlap --plan=<p> | --drift [--plan=<p>] | --arch --plan=<p> | --arch --diff=<base> | --deps --plan=<p> | --tags --plan=<p>')
