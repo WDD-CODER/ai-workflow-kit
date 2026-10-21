@@ -41,6 +41,8 @@ export const RUNTIME_IGNORES = [
   '.claude/.last-npm-install-hash-server',
   '.claude/.last-npm-install-hash-scripts',
   '.claude/sessions/',
+  // Orchestrator runs: live status.json and the local copy of each run report (the run branch keeps the record)
+  '.claude/orchestrator-runs/',
   // Workflow script dependencies (npm install inside scripts/)
   'scripts/node_modules/'
 ]

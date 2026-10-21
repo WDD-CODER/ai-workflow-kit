@@ -895,6 +895,59 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   rmSync(mb, { recursive: true, force: true })
 }
 
+// orchestrator.* (docs/agent/orchestrator.md): the installer ships the workflow folder, the /orchestrate command and
+// the run rules; the three keys render with their defaults; a project value renders; a bad value is refused naming
+// the key (install exit 2, nothing written; sync STOP).
+{
+  const od = tmp('orch-default')
+  writeFileSync(join(od, 'kit.config.json'), JSON.stringify(CORE_CFG))
+  const r = run('install.mjs', ['--target', od])
+  if (r.status !== 0) fail(`install for the orchestrator files: exit ${r.status}, ${(r.stdout + r.stderr).trim().split('\n').pop()}`)
+  else {
+    for (const f of ['.claude/workflows/orchestrate.js', '.claude/commands/orchestrate.md', 'docs/agent/orchestrator.md', 'scripts/orch-state.mjs', 'scripts/orch-preflight.mjs', 'scripts/lib/orch-run.mjs']) {
+      if (!existsSync(join(od, f))) fail(`orchestrator: install did not copy ${f}`)
+    }
+    const wf = read(od, '.claude/workflows/orchestrate.js')
+    if (!wf.includes('const MAX_FIX_ROUNDS = 2') || !wf.includes('const RUN_PREFIX = "orch/"')) fail('orchestrator: orchestrate.js does not render maxFixRounds 2 / runBranchPrefix "orch/"')
+    if (/\{\{[\w.|]+\}\}/.test(wf)) fail(`orchestrator: orchestrate.js keeps a placeholder: ${/\{\{[\w.|]+\}\}/.exec(wf)[0]}`)
+    if (!read(od, 'scripts/orch-state.mjs').includes('const MIN_FREE_GB = 5')) fail('orchestrator: orch-state.mjs does not render minFreeDiskGb 5')
+    const doc = read(od, 'docs/agent/orchestrator.md')
+    if (!doc.includes('| `runBranchPrefix` | `orch/` |') || !doc.includes('| `maxFixRounds` | `2` |') || !doc.includes('| `minFreeDiskGb` | `5` |')) fail('orchestrator: orchestrator.md does not name the default settings')
+    if (!/^\.claude\/orchestrator-runs\/$/m.test(read(od, '.gitignore'))) fail('orchestrator: the rendered .gitignore does not ignore .claude/orchestrator-runs/')
+  }
+  rmSync(od, { recursive: true, force: true })
+
+  const op = tmp('orch-project')
+  writeFileSync(join(op, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, orchestrator: { runBranchPrefix: 'runs/', maxFixRounds: 3, minFreeDiskGb: 10 } }))
+  const p = run('install.mjs', ['--target', op])
+  if (p.status !== 0) fail(`install with project orchestrator values: exit ${p.status}`)
+  else if (!read(op, '.claude/workflows/orchestrate.js').includes('const MAX_FIX_ROUNDS = 3') || !read(op, '.claude/workflows/orchestrate.js').includes('const RUN_PREFIX = "runs/"') || !read(op, 'scripts/orch-state.mjs').includes('const MIN_FREE_GB = 10')) fail('orchestrator: project values do not render')
+  rmSync(op, { recursive: true, force: true })
+
+  const bad = [
+    [{ runBranchPrefix: 'Orch' }, 'orchestrator.runBranchPrefix is "Orch" — it must be lower-case letters, digits, dots, dashes and slashes ending with "/"'],
+    [{ runBranchPrefix: 'main/' }, 'orchestrator.runBranchPrefix is "main/"'],
+    [{ maxFixRounds: 0 }, 'orchestrator.maxFixRounds is 0 — it must be a whole number from 1 to 5'],
+    [{ maxFixRounds: '2' }, 'orchestrator.maxFixRounds is "2" — it must be a whole number from 1 to 5'],
+    [{ minFreeDiskGb: -1 }, 'orchestrator.minFreeDiskGb is -1 — it must be a number of GB from 0 to 1000'],
+  ]
+  for (const [orch, msg] of bad) {
+    const ob = tmp('orch-bad')
+    writeFileSync(join(ob, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, orchestrator: orch }))
+    const b = run('install.mjs', ['--target', ob])
+    if (b.status !== 2 || !b.stderr.includes(msg) || files(ob).length !== 1) fail(`install with orchestrator ${JSON.stringify(orch)}: exit ${b.status}, ${b.stderr.trim().split('\n')[0]}`)
+    rmSync(ob, { recursive: true, force: true })
+  }
+  // sync refuses a bad value too, naming the key.
+  const os = tmp('orch-sync')
+  writeFileSync(join(os, 'kit.config.json'), JSON.stringify(CORE_CFG))
+  run('install.mjs', ['--target', os])
+  writeFileSync(join(os, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, orchestrator: { maxFixRounds: 9 } }))
+  const s = run('sync.mjs', ['--target', os, '--apply'])
+  if (s.status !== 2 || !s.stderr.includes('KIT_SYNC: STOP — orchestrator.maxFixRounds is 9')) fail(`sync with orchestrator.maxFixRounds 9: exit ${s.status}, ${s.stderr.trim().split('\n')[0]}`)
+  rmSync(os, { recursive: true, force: true })
+}
+
 // models.* (docs/agent/model-routing.md): the tiers render into the agent and forked-skill frontmatter; no inline
 // command carries a `model:` (a model switch breaks the prompt cache); all tiers inherit = routing off; a value that is
 // not a model alias or a claude- id is refused like a bad ci.* mode.

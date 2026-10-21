@@ -20,8 +20,35 @@ outside a slot too. Rendered files that change (`kit-update`): `scripts/scope-ch
 `.claude/commands/review-it.md`, `.claude/agents/kit-runner.md`, `docs/agent/model-routing.md`,
 `docs/agent/workflow-map.md`; new: eleven `.claude/agents/orch-*.md` and `docs/agent/agent-roles.md`. A new config
 key `models.build` (default `sonnet`) is optional; a project that turned the routing off (every tier `inherit`) sets `models.build: "inherit"` too.
+The orchestrator is opt-in: nothing runs until `/orchestrate`. New rendered files: `.claude/workflows/orchestrate.js`,
+`.claude/commands/orchestrate.md`, `docs/agent/orchestrator.md`, `scripts/orch-state.mjs`, `scripts/orch-preflight.mjs`,
+`scripts/lib/orch-run.mjs`; changed: `.claude/commands/commands.md`, `scripts/local-excludes.mjs` (adds
+`.claude/orchestrator-runs/` to the runtime ignores). New optional config keys `orchestrator.runBranchPrefix`
+(default `orch/`), `orchestrator.maxFixRounds` (default `2`) and `orchestrator.minFreeDiskGb` (default `5`).
 
 ### Added
+- The orchestrator workflow (opt-in): `/orchestrate 451-457` runs saved plans unattended into one run branch
+  `orch/<run>` — never into `main`; the Human merges the run branch. Readiness first (`plan-order --json` waves, one
+  `orch-readiness` agent per plan, `scripts/orch-preflight.mjs`), every open question asked in one batch and written
+  into the plans' Execution Notes, then `go`. Per plan: builder → gate → finders in parallel → verifier → security
+  (sensitive paths only) → UI validator (when turned on) → merger, one merge at a time with the checks before the
+  push. `pass` is computed from the verified problem lists, never taken from a model; a plan whose Architecture
+  Impact names an invariant other than `INV-none` starts on the judgment tier; a persisting failure, an `ESCALATE` or a
+  second finding starts a fresh judgment-tier builder from the hand-off file; `orchestrator.maxFixRounds` rounds, then
+  the plan is parked and its wave is the last. Environment failures (disk, database, network) cost no fix round: the
+  plan pauses, the environment check runs and the plan is retried once. Rules: `docs/agent/orchestrator.md`.
+- `.claude/workflows/orchestrate.js` (the installer ships the workflows folder): no file, git or clock access; every
+  such step is `scripts/orch-state.mjs` run by the mechanical runner — run branch, merge folder, builder folders,
+  `status.json` after every step (state, round, tier, sha, model per agent, free disk), hand-off files, and the report
+  (`docs/orchestrator/runs/<run>/report.md` on the run branch, copied to the gitignored
+  `.claude/orchestrator-runs/<run>.md`). Git is the ledger: a relaunch rebuilds the merged plans from the anchored
+  subjects `Merge <branch> into orch/<run> (plan NNN)` and redoes none.
+- `orchestrator.runBranchPrefix`, `orchestrator.maxFixRounds`, `orchestrator.minFreeDiskGb`: install and sync refuse a
+  bad value naming the key.
+- `tools/orchestrator-e2e.mjs`: the installed workflow run end to end on a scratch project with stub role agents
+  (diamond in wave order, fix-then-pass, an environment failure that costs no round, `pass: true` next to a `major`
+  treated as a fail, a parked plan stopping the wave, escalation, a relaunch rebuilt from git);
+  `tools/test/orchestrator.test.mjs` for the pure rules and the config validation. Both run in `e2e-check`.
 - Role agents for the orchestrator, each with a pinned model and effort from `models.*`: `orch-readiness`
   (judgment), `orch-builder` (new `models.build` tier, escalation to judgment; no Agent or SendMessage tool),
   `orch-gate` and `orch-report` (mechanical), the finders `orch-check-plan`, `orch-check-bugs`, `orch-check-rules`,
