@@ -1,0 +1,11 @@
+{
+  "name": "ai-workflow-kit",
+  "private": true,
+  "description": "The kit's own checks, run by the installed workflow (/ship build, lint, test gates).",
+  "scripts": {
+    "build": "node tools/pack-check.mjs",
+    "lint": "node tools/leak-check.mjs && node tools/leak-check.mjs --root packs --project-only && node tools/leak-check.mjs --root README.md --root CHANGELOG.md --root docs/CHANGE-LOOP.md --root docs/project --root docs/brain --project-only",
+    "test": "node tools/install-check.mjs && node tools/workflow-link-check.mjs",
+    "e2e": "node tools/acceptance-check.mjs --e2e"
+  }
+}

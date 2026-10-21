@@ -1,0 +1,61 @@
+{
+  "$comment": "The kit's own project config (the kit installed into itself). kit.config.json at the root is the scaffold every project starts from, so install, sync and drift-check read this file first. Solo flow: plans on main, work on feat/NNN-<slug> in the same folder, /ship. No slots or app servers are used.",
+  "project": {
+    "name": "ai-workflow-kit"
+  },
+  "stack": {
+    "packs": [],
+    "layers": [],
+    "name": "Node.js 18+ ESM tools (no app, no database)",
+    "backend": "none (no backend)"
+  },
+  "commands": {
+    "build": "build",
+    "lint": "lint",
+    "test": "test",
+    "e2e": "e2e"
+  },
+  "ci": {
+    "install": "npm ci"
+  },
+  "hooks": {
+    "shellPath": "C:/Program Files/Git/bin/bash.exe"
+  },
+  "plans": {
+    "openDirs": [
+      "plans"
+    ]
+  },
+  "security": {
+    "sensitivePaths": [
+      "tools/lib/source.mjs",
+      "core/scripts/pre-commit-secret-scan.mjs"
+    ]
+  },
+  "overrides": [
+    {
+      "path": ".gitattributes",
+      "reason": "the kit repo keeps its own"
+    },
+    {
+      "path": ".gitignore",
+      "reason": "the kit repo keeps its own; the runtime ignores were added to it by hand (plan 016)"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "reason": "the kit's CI is .github/workflows/leak-check.yml"
+    },
+    {
+      "path": ".github/workflows/security.yml",
+      "reason": "the kit's CI is .github/workflows/leak-check.yml"
+    },
+    {
+      "path": ".github/workflows/todo-sync.yml",
+      "reason": "solo flow: no .claude/todo.md ledger"
+    },
+    {
+      "path": ".github/workflows/brain-capture-reminder.yml",
+      "reason": "the kit's CI is .github/workflows/leak-check.yml"
+    }
+  ]
+}

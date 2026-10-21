@@ -16,12 +16,18 @@ jobs:
         run: node tools/leak-check.mjs
       - name: Packs must not name the project
         run: node tools/leak-check.mjs --root packs --project-only
-      - name: README and CHANGELOG must not name the project
-        run: node tools/leak-check.mjs --root README.md --root CHANGELOG.md --root docs --project-only
+      # docs/agent/ is not scanned here: it is the kit's installed copy of core/docs/agent (rendered with the kit's own
+      # .kit/config.json values), and core/ is scanned in full by the first step.
+      - name: README, CHANGELOG and the kit's own docs must not name the project
+        run: node tools/leak-check.mjs --root README.md --root CHANGELOG.md --root docs/CHANGE-LOOP.md --root docs/project --root docs/brain --project-only
       - name: Mods must not name the project (their tests are fixtures and are not scanned)
         run: node tools/leak-check.mjs --root mods/README.md --root mods/SECURITY.md --root mods/fleet/hooks --root mods/guards/hooks --root mods/ship-pilot/hooks --root mods/fleet/.claude-plugin/plugin.json --root mods/guards/.claude-plugin/plugin.json --root mods/ship-pilot/.claude-plugin/plugin.json --root .claude-plugin --project-only
       - name: Packs must satisfy the pack contract
         run: node tools/pack-check.mjs
+      # The kit is installed into itself (.kit/config.json): a change to core/, packs/, layers/ or templates/ must come
+      # with `node tools/sync.mjs --target . --apply` in the same PR.
+      - name: The kit's installed copy equals its sources
+        run: node tools/drift-check.mjs --target .
       # actionlint, pinned by version and checksum, lints every workflow install-check renders.
       - name: Install actionlint (pinned)
         env:

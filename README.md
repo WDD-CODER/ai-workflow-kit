@@ -231,6 +231,22 @@ drift-check accepts any content. An override naming a file the kit does not ship
   (default: Git for Windows' bash when present, else `bash`).
 - No raw Playwright MCP is installed anywhere.
 
+## The kit uses itself
+
+The kit repo has the workflow installed into itself, like any project (`.kit/install.json`, source `local:.`). Its
+own config is `.kit/config.json`: install, sync and drift-check read it before `kit.config.json`, which here is the
+scaffold every project starts from. Any project whose `kit.config.json` is something else can do the same.
+
+- `scripts/`, `.claude/` (commands, skills, agents, references), `docs/agent/`, `docs/brain/` and
+  `README_WORKFLOW.md` are rendered copies. Edit the source under `core/`, `packs/`, `layers/` or `templates/`,
+  then run `node tools/sync.mjs --target . --apply` in the same branch. CI runs `node tools/drift-check.mjs --target .`
+  and fails a PR whose copy differs.
+- The kit works **solo**, not Planner/Worker: `/plan` saves the plan on `main`, the work happens on
+  `feat/NNN-<slug>` in the same folder, then `/ship`. No slots. `/ship` holds a numbered plan branch to that plan's
+  Read-Write Scope also outside a slot.
+- `npm run build` / `lint` / `test` / `e2e` run the kit's own checks (root `package.json`).
+- One-time per clone: turn the git hooks on (`git config core.hooksPath .husky`) and run `npm install` in `scripts/`.
+
 ## Layout
 
 | path | what |
@@ -265,7 +281,7 @@ Exit 0 = clean. CI runs all of them.
 ```
 node tools/leak-check.mjs                                              # core, layers, templates: no framework/project names
 node tools/leak-check.mjs --root packs --project-only                  # packs: no project names
-node tools/leak-check.mjs --root README.md --root CHANGELOG.md --root docs --project-only
+node tools/leak-check.mjs --root README.md --root CHANGELOG.md --root docs/CHANGE-LOOP.md --root docs/project --root docs/brain --project-only
 node tools/pack-check.mjs                                              # every pack and layer meets the pack.json contract
 node tools/install-check.mjs                                           # installs fixtures; sync, drift, detection, local + GitHub sources (offline)
 node tools/e2e-check.mjs                                               # a fresh project through plan -> take-plan -> ship -> merge -> close-out
@@ -302,7 +318,7 @@ repo.
 ## Releasing
 
 1. All kit work merged to `main`; CI green on `main`.
-2. Private-data sweep: `KIT_LEAK_TERMS="<your names, emails, hosts>" node tools/leak-check.mjs --root core --root packs --root layers --root templates --root tools --root README.md --root CHANGELOG.md --root docs --project-only`
+2. Private-data sweep: `KIT_LEAK_TERMS="<your names, emails, hosts>" node tools/leak-check.mjs --root core --root packs --root layers --root templates --root tools --root README.md --root CHANGELOG.md --root docs/CHANGE-LOOP.md --root docs/project --root docs/brain --project-only`
    — only the declared detection lists and generic defaults may show.
 3. On a release branch: bump `kit.json` `version`, move `## [Unreleased]` into `## [X.Y.Z] - <date>` in
    `CHANGELOG.md` (and the compare links), PR, merge.

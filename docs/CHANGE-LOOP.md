@@ -17,6 +17,9 @@ kit branch + PR  ->  merge  ->  tag vX.Y.Z + GitHub release  ->  project: kit-sy
 - Run the checks (`node tools/leak-check.mjs`, the `--project-only` runs, `pack-check`, `install-check`,
   `e2e-check`, `workflow-link-check`, `acceptance-check --e2e`; the README's **Checks**), open a PR, and merge once CI
   is green.
+- The kit is installed into itself: after editing a source, run `node tools/sync.mjs --target . --apply` and commit
+  the re-rendered copies in the same PR (CI's `drift-check --target .` fails otherwise). Kit plans run solo: plan on
+  `main`, work on `feat/NNN-<slug>` in the kit folder, `/ship` (README: **The kit uses itself**).
 
 ## 2. Cut a release
 

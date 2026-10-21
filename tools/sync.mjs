@@ -52,6 +52,7 @@ import { resolveSource } from './lib/source.mjs'
 import {
   KIT_ROOT, readJson, sha256, resolveConfig, planFiles, parseArgs, readOverrides, isHook, markHooksExecutable, commandProblems,
   ownsAgents, ignoredPaths, AGENTS_WORKFLOW, frontendNote, presentAlternative, backendNote, withUpstream, splitList,
+  projectConfigPath, configLabel,
 } from './lib/kit.mjs'
 
 let args
@@ -72,7 +73,8 @@ if (!existsSync(installFile)) {
   process.exit(1)
 }
 const inst = readJson(installFile)
-const cfgFile = join(target, 'kit.config.json')
+const cfgFile = projectConfigPath(target)
+const cfgName = configLabel(target, cfgFile)
 const project = existsSync(cfgFile) ? readJson(cfgFile) : {}
 const packs = args.packs != null ? splitList(args.packs) : inst.packs ?? []
 const layers = args.layers != null ? splitList(args.layers) : inst.layers ?? []
@@ -99,7 +101,7 @@ try {
   const bad = commandProblems(vals)
   if (bad.length > 0) {
     for (const m of bad) console.error(`KIT_SYNC: STOP — ${m}`)
-    console.error('Fix kit.config.json, then re-run. Nothing was written.')
+    console.error(`Fix ${cfgName}, then re-run. Nothing was written.`)
     process.exit(2)
   }
   feNote = frontendNote(vals)
@@ -211,7 +213,7 @@ const count = (s) => rows.filter((r) => r.state === s).length
 for (const s of order) for (const r of rows.filter((x) => x.state === s)) console.log(`${s.padEnd(16)} ${r.dest}${r.note ? ` — ${r.note}` : ''}`)
 for (const n of skippedSeeds) console.log(n)
 for (const n of pruneNotes) console.log(n)
-for (const p of unknownOverrides) console.log(`NOTE override ${p} is not a file this kit ships — remove it from kit.config.json`)
+for (const p of unknownOverrides) console.log(`NOTE override ${p} is not a file this kit ships — remove it from ${cfgName}`)
 if (feNote) console.log(feNote)
 if (beNote) console.log(beNote)
 if (inst.kit?.version !== readJson(join(kitRoot, 'kit.json')).version) {
@@ -238,7 +240,7 @@ if (args.apply) {
     const cfg = readJson(cfgFile)
     cfg.stack = { ...(cfg.stack ?? {}), ...(args.packs != null ? { packs } : {}), ...(args.layers != null ? { layers } : {}) }
     writeFileSync(cfgFile, JSON.stringify(cfg, null, 2) + '\n', 'utf8')
-    console.log(`NOTE kit.config.json: stack.packs=[${(cfg.stack.packs ?? []).join(', ')}] stack.layers=[${(cfg.stack.layers ?? []).join(', ')}]`)
+    console.log(`NOTE ${cfgName}: stack.packs=[${(cfg.stack.packs ?? []).join(', ')}] stack.layers=[${(cfg.stack.layers ?? []).join(', ')}]`)
   }
   // scripts/package.json is the kit's, scripts/package-lock.json the project's: refresh the lockfile with the new
   // dependencies, or `npm ci` inside scripts/ (CI, slots) fails on the sync PR. Inside scripts/, never --prefix (npm 10).

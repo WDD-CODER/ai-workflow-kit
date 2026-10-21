@@ -1,0 +1,51 @@
+#!/usr/bin/env sh
+# pre-push — Planner-Worker workflow guard.
+# A push to origin/main may only touch open plans (plans/<name>.plan.md, plans/design/<name>.plan.md), closed
+# plans in a range folder (plans/300-400/<name>.plan.md, moved there by plan-close.mjs), .claude/todo.md or
+# .claude/todo-archive/*.md (the Planner's admin bypass, see AGENTS.md). Everything else goes through a
+# branch + PR. Human-only override: git push --no-verify.
+
+set -e
+
+ZERO="0000000000000000000000000000000000000000"
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$remote_ref" = "refs/heads/main" ] || continue
+
+  if [ "$remote_sha" = "$ZERO" ]; then
+    # First push of the branch to an empty remote (a new repository): nothing to compare against yet.
+    git rev-parse -q --verify "origin/main" >/dev/null || continue
+    base="origin/main"
+  else
+    base="$remote_sha"
+  fi
+
+  BAD=""
+  for f in $(git diff --name-only "$base" "$local_sha"); do
+    if printf '%s\n' "$f" | grep -Eq '^(plans)/[^/]+\.plan\.md$'; then
+      continue
+    fi
+    # Closed plans: plan-close.mjs files them under plans/<range>/ (e.g. plans/300-400/).
+    if printf '%s\n' "$f" | grep -Eq '^plans/[0-9]+-[0-9]+/[^/]+\.plan\.md$'; then
+      continue
+    fi
+    if [ "$f" = ".claude/todo.md" ]; then
+      continue
+    fi
+    # todo-archive.mjs volumes — the Planner's archive step writes these alongside todo.md
+    if printf '%s\n' "$f" | grep -Eq '^\.claude/todo-archive/[^/]+\.md$'; then
+      continue
+    fi
+    BAD="$BAD
+  - $f"
+  done
+
+  if [ -n "$BAD" ]; then
+    echo "PRE_PUSH: refusing push to main - files outside plans/[design/|<range>/]<name>.plan.md, .claude/todo.md and .claude/todo-archive/:$BAD"
+    echo "Code changes go through a branch and PR (see AGENTS.md's Planner-Worker workflow)."
+    echo "Human-only override: git push --no-verify"
+    exit 1
+  fi
+done
+
+exit 0
