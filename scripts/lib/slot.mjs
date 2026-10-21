@@ -76,7 +76,11 @@ export function activePlanPath() {
 export function scopedPlanPath(branch = git(['branch', '--show-current'])) {
   if (isSlot()) return activePlanPath()
   if (!branch || branch === 'main' || branch === 'master') return null
-  return activePlanPath() ?? branchPlanPath(branch)
+  // Same rule as guard.mjs scopedPlan: a .worktree-plan whose file is missing is ignored, never returned.
+  const p = join(repoRoot, '.worktree-plan')
+  const marked = existsSync(p) ? readFileSync(p, 'utf8').replace(/\r?\n+$/, '').trim() : ''
+  if (marked && existsSync(join(repoRoot, marked))) return marked
+  return branchPlanPath(branch)
 }
 
 /** Every wt-N worktree: { slot, path, branch (null if detached), detached, plan }. */

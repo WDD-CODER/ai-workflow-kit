@@ -12,7 +12,7 @@
 //   proj-free/   not a slot, branch chore/free (names no plan)
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, cpSync, existsSync, realpathSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, cpSync, existsSync, realpathSync } from 'node:fs'
 import { join, resolve, basename, relative, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { spawnSync } from 'node:child_process'
@@ -198,17 +198,22 @@ test('a branch that names no plan has no plan scope; main still refuses', () => 
   assert.equal(onMain.decision, 'deny', onMain.out)
 })
 
-test('ship-prep holds the orch merge folder to the plan its .worktree-plan names', () => {
-  writeFileSync(join(orch, 'notes.md'), 'outside\n')
+test('scopedPlanPath (the /ship scope gate) names the plan an orch merge folder .worktree-plan holds, and agrees with the hook on a missing one', async () => {
+  const scoped = (dir) => spawnSync(process.execPath, [join(dir, 'scripts', 'lib', 'slot.mjs'), '--scoped-plan'], { cwd: dir, encoding: 'utf8' })
+  const r = scoped(orch)
+  assert.equal(r.status, 0, `${r.stdout}${r.stderr}`)
+  assert.match(r.stdout, /^plans\/001-alpha\.plan\.md$/m)
+  assert.equal(scoped(free).stdout.trim(), '')
+  // A stale .worktree-plan (its file is gone) on orch/<run>: neither /ship nor the hook applies a plan.
+  const { scopedPlan } = await import(pathToFileURL(join(orch, 'scripts', 'lib', 'guard.mjs')).href)
+  const marker = join(orch, '.worktree-plan')
+  const saved = readFileSync(marker, 'utf8')
+  writeFileSync(marker, 'plans/099-gone.plan.md')
   try {
-    // The scratch repo has no origin: compare against main itself.
-    const r = spawnSync(process.execPath, [join(orch, 'scripts', 'lib', 'slot.mjs'), '--scoped-plan'], { cwd: orch, encoding: 'utf8' })
-    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`)
-    assert.match(r.stdout, /^plans\/001-alpha\.plan\.md$/m)
-    const none = spawnSync(process.execPath, [join(free, 'scripts', 'lib', 'slot.mjs'), '--scoped-plan'], { cwd: free, encoding: 'utf8' })
-    assert.equal(none.stdout.trim(), '')
+    assert.equal(scoped(orch).stdout.trim(), '')
+    assert.equal(scopedPlan(orch, 'orch/run-1'), null)
   } finally {
-    rmSync(join(orch, 'notes.md'), { force: true })
+    writeFileSync(marker, saved)
   }
 })
 
@@ -270,4 +275,9 @@ test('bashWrites: redirects, heredocs, tee, sed -i, cp/mv, cd and bash -c; quote
     assert.deepEqual(bashWrites('echo x > y.txt', posixCwd).map((t) => t.path.toLowerCase()), [join(cwd, 'y.txt').toLowerCase()])
   }
   assert.deepEqual(paths('echo x > "$HOME_NOT_KNOWN/x"'), ['?$HOME_NOT_KNOWN/x'])
+  // A cd the guard cannot follow makes the folder unknown: later relative targets fail closed until a resolvable cd.
+  assert.deepEqual(paths('cd "$WT" && echo x > README.md'), ['?README.md'])
+  assert.deepEqual(paths('cd $(git rev-parse --show-toplevel)/../x && echo x > f.txt && tee g.txt'), ['?f.txt', '?g.txt'])
+  assert.deepEqual(paths('cd "$WT" && bash -c "echo x > h.txt"'), ['?h.txt'])
+  assert.deepEqual(paths(`cd "$WT" && cd "${cwd.split(sep).join('/')}" && echo x > k.txt`), ['k.txt'])
 })

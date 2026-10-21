@@ -280,18 +280,21 @@ export function lex(cmd) {
 const SEPARATORS = new Set(['\n', '&&', '||', ';', ';;', '|', '&', '(', ')'])
 const PREFIXES = new Set(['sudo', 'command', 'builtin', 'exec', 'nohup', 'time', 'env', 'xargs', 'nice'])
 
-/** Absolute path for a shell word, or null when it cannot be resolved (a variable or command substitution left). */
+/** Absolute path for a shell word, or null when it cannot be resolved (a variable or command substitution left, or a
+ *  relative word while the shell's folder is unknown: cwd null after a `cd` the guard could not follow). */
 export function resolveWord(word, cwd, env = process.env) {
   let w = word.w
   if (word.dyn) {
     w = w.replace(/\$(?:\{(HOME|TMPDIR|TMP|TEMP|PWD)\}|(HOME|TMPDIR|TMP|TEMP|PWD)(?![A-Za-z0-9_]))/g, (m, a, b) => {
       const v = a || b
-      return v === 'PWD' ? cwd : env[v] ?? m
+      return (v === 'PWD' ? cwd : env[v]) ?? m
     })
     if (/[$`]/.test(w)) return null
   }
   if (w === '~' || w.startsWith('~/')) w = (env.HOME || env.USERPROFILE || '~') + w.slice(1)
-  return resolve(nativePath(cwd, env), nativePath(w, env))
+  const native = nativePath(w, env)
+  if (cwd == null) return isAbsolute(native) ? resolve(native) : null
+  return resolve(nativePath(cwd, env), native)
 }
 
 /** A Git Bash path (/c/x, /tmp/x) as a Windows path; unchanged elsewhere. */
@@ -306,7 +309,7 @@ export function nativePath(p, env = process.env) {
 /** Files a Bash command writes: [{ path }] or [{ unresolved: '<word>' }]. */
 export function bashWrites(command, cwd, env = process.env) {
   const targets = []
-  let dir = nativePath(cwd, env)
+  let dir = cwd == null ? null : nativePath(cwd, env) // null: unknown folder (a cd the guard could not follow)
   const add = (word, d) => {
     if (!word || DEV_SINKS.has(word.w)) return
     const p = resolveWord(word, d, env)
@@ -326,8 +329,9 @@ export function bashWrites(command, cwd, env = process.env) {
     const args = argv.slice(1)
     const plain = args.filter((a) => !a.w.startsWith('-') || a.w === '-')
     if (name === 'cd' || name === 'pushd') {
-      const p = plain[0] ? resolveWord(plain[0], dir, env) : env.HOME
-      if (p) dir = p
+      // A target the guard cannot resolve makes the folder unknown: every later relative target is unresolved
+      // (fail closed) until a cd to a path it can resolve.
+      dir = (plain[0] ? resolveWord(plain[0], dir, env) : env.HOME) || null
       return
     }
     if ((name === 'bash' || name === 'sh') && args.some((a) => a.w === '-c')) {

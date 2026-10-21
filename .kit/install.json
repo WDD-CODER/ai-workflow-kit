@@ -3,7 +3,7 @@
     "version": "1.3.1"
   },
   "source": "local:.",
-  "commit": "4a144ccbe4f8173015c2e9a8f04f3f14f5782e0f",
+  "commit": "25a9a4b22bf6ec0f91bd5464f9b64fc356fd0228",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -440,7 +440,7 @@
       "source": "core/scripts/lib/fe-command.mjs"
     },
     "scripts/lib/guard.mjs": {
-      "sha256": "78493f286d1b12943e59d91eadf754c8e5ef0e948ec538f682199be3df8b789a",
+      "sha256": "911f1c91080b14c0b3fc7444f6a557eab41068944df42039d37086201c3bb1ac",
       "kind": "managed",
       "source": "core/scripts/lib/guard.mjs"
     },
@@ -475,7 +475,7 @@
       "source": "core/scripts/lib/slot-procs.mjs"
     },
     "scripts/lib/slot.mjs": {
-      "sha256": "88cfb1374e1073855c607c4b6285bc554ff1c3b834d24f6f81f463df3bb10179",
+      "sha256": "b97cc189ddb39fbb847b4a4aee2017bcdfe9d7464eb689a3a92cf47c3962eb65",
       "kind": "managed",
       "source": "core/scripts/lib/slot.mjs"
     },
