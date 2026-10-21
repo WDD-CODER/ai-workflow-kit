@@ -3,7 +3,7 @@
     "version": "1.3.1"
   },
   "source": "local:.",
-  "commit": "0bf851ca43caa09914f3dc780ae5685da8a52daf",
+  "commit": "4a144ccbe4f8173015c2e9a8f04f3f14f5782e0f",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -145,7 +145,7 @@
       "source": "core/.claude/references/prd-template.md"
     },
     ".claude/settings.json": {
-      "sha256": "25db99f97756f2343f268bc2cbd23c9142bc8b62372952ef83bd297aa016426b",
+      "sha256": "b87f6df7402f75e8c3896fd911437274494aa04de9192dce54c2ed3c530599a5",
       "kind": "managed",
       "source": "core/.claude/settings.json"
     },
@@ -265,7 +265,7 @@
       "source": "core/docs/agent/ship-regular.md"
     },
     "docs/agent/standards-git.md": {
-      "sha256": "53c438bab9d9c0130ab29573893229fa7da66cfb0d658fe588280d33dbb577e6",
+      "sha256": "cc7d953d7e4f2e160164c0f42d0bfa23eff07b6a9f8c85c773d58406fa412512",
       "kind": "managed",
       "source": "core/docs/agent/standards-git.md"
     },
@@ -275,7 +275,7 @@
       "source": "core/docs/agent/standards-security.md"
     },
     "docs/agent/workflow-map.md": {
-      "sha256": "a8f2cf7a5f4d0f107b65387177cacbc2160d3ee555a799f7f6c32a32ca3872f2",
+      "sha256": "716a0810366dc54e22166d8a0d958deb9d3673370a3f02064252aead775f1542",
       "kind": "managed",
       "source": "core/docs/agent/workflow-map.md"
     },
@@ -410,7 +410,7 @@
       "source": "core/scripts/brain-review-check.mjs"
     },
     "scripts/branch-guard.sh": {
-      "sha256": "b33dee21fd794850f097b618524751d7535bdbe6915e2c35f647b06aad8e5584",
+      "sha256": "fbf971734db38d517a7cc1d6661f450826e7f89c85afed353b23d00828a8c2a2",
       "kind": "managed",
       "source": "core/scripts/branch-guard.sh"
     },
@@ -438,6 +438,11 @@
       "sha256": "773c2497736c1e70b4a2d5753e94a67d53dc19ce2aa97c79db51fe19c8290d56",
       "kind": "managed",
       "source": "core/scripts/lib/fe-command.mjs"
+    },
+    "scripts/lib/guard.mjs": {
+      "sha256": "78493f286d1b12943e59d91eadf754c8e5ef0e948ec538f682199be3df8b789a",
+      "kind": "managed",
+      "source": "core/scripts/lib/guard.mjs"
     },
     "scripts/lib/invariants.mjs": {
       "sha256": "f898bc3371c485d7120816366e245716f1199c9349c31d5601c1afc112350c55",
@@ -470,7 +475,7 @@
       "source": "core/scripts/lib/slot-procs.mjs"
     },
     "scripts/lib/slot.mjs": {
-      "sha256": "7a336fb5871ed9636f03d7a5170885f83177b1fe0868a194e81d7998219bffb0",
+      "sha256": "88cfb1374e1073855c607c4b6285bc554ff1c3b834d24f6f81f463df3bb10179",
       "kind": "managed",
       "source": "core/scripts/lib/slot.mjs"
     },
@@ -560,7 +565,7 @@
       "source": "core/scripts/scope-check.mjs"
     },
     "scripts/scope-guard.sh": {
-      "sha256": "e855b46a9f383935906e13d77284ac3a838e61f82b555b0be665070e4f87165f",
+      "sha256": "ecdca657fb30fb49e8f18fac8e0df3f276bfcc8a8e7de8543607014bb8ab566d",
       "kind": "managed",
       "source": "core/scripts/scope-guard.sh"
     },
@@ -590,7 +595,7 @@
       "source": "core/scripts/session-state-path.mjs"
     },
     "scripts/ship-prep.mjs": {
-      "sha256": "2f7d27c300e79a39da87de318ef5e03b5b41dbb65b709a4331d11d4b7bd7646a",
+      "sha256": "89b008f0529f159326c654a6b6890307c2cd2edfdfab5ac6b47678004c2ad997",
       "kind": "managed",
       "source": "core/scripts/ship-prep.mjs"
     },

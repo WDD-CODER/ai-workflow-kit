@@ -58,6 +58,21 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"C:/Program Files/Git/bin/bash.exe\" \"${CLAUDE_PROJECT_DIR}/scripts/branch-guard.sh\"",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "\"C:/Program Files/Git/bin/bash.exe\" \"${CLAUDE_PROJECT_DIR}/scripts/scope-guard.sh\"",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "SessionStart": [

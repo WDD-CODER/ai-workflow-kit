@@ -38,6 +38,22 @@ outside a slot too. Rendered files that change (`kit-update`): `scripts/scope-ch
 - `scope-check.mjs`: with no `--plan` and no slot plan, a `<type>/NNN-<slug>` branch's plan is the plan.
   `ship-prep.mjs` runs the scope gate in a slot **or** on such a branch (a branch that names no plan: no gate, as
   before).
+- Write guards judge the file being written, whoever launched the agent. Tests first
+  (`tools/test/guards.test.mjs`, also run by `tools/e2e-check.mjs`): a main-folder session writing into a slot was
+  already judged by the slot's guard; what failed, and is fixed:
+  - **Bash writes are guarded.** `.claude/settings.json` runs `branch-guard.sh` and `scope-guard.sh` on `Bash` too;
+    redirects, heredocs, `tee`, `sed -i` / `perl -i`, `cp` / `mv` / `install` targets and `touch` get the same path
+    rules, read-only commands pass, and a target the guard cannot resolve (`$VAR`, `$(...)`) is refused where a write
+    needs a check.
+  - **Merge folders are held to their plan.** Outside a slot, a branch other than `main` that names a plan —
+    `.worktree-plan` (e.g. an `orch/<run>` merge folder) or `<type>/NNN-<slug>` — is scope-guarded; `ship-prep.mjs`
+    uses the same rule (`scopedPlanPath` in `scripts/lib/slot.mjs`, `--scoped-plan` prints it).
+  - **Runtime files on `main`.** `.claude/sessions/**`, `.claude/.session-state-path` and `.claude/.plan-write-ack`
+    are no longer refused by the branch guard.
+  - **Speed.** Both guards are one node process (`scripts/lib/guard.mjs`): the branch and git dirs are read from files,
+    no git call on the allow path (`KIT_GUARD_TRACE=1` prints `GUARD_GIT_CALLS: <n>`), no python. Rendered files that
+    change: `scripts/scope-guard.sh`, `scripts/branch-guard.sh`, `scripts/lib/slot.mjs`, `scripts/ship-prep.mjs`,
+    `.claude/settings.json` (`kit-update`); `scripts/lib/guard.mjs` (`new`).
 
 The validation hand-off moves to the end of the work: a finished plan with `[human]` items now ends with the
 servers running and HOW TO VALIDATE cards grouped by page, before any `/ship`, PR or merge.

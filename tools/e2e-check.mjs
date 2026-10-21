@@ -45,7 +45,9 @@
  * SessionStart prints valid JSON on each branch (idle slot, worker without and with a session-state file);
  * plan order (plan 011): tools/test/plan-order.test.mjs against the installed scripts, plan-order adds an open
  * dependency to the order, take-plan refuses a plan whose Depends-on: plan is not merged (NOT_READY) and takes one
- * whose dependency is closed.
+ * whose dependency is closed;
+ * write guards (plan 017): tools/test/guards.test.mjs against the installed scripts (a main-folder session writing
+ * into a slot, main, runtime files, Bash writes, merge folders, run time).
  * Exit 0 = every case passed, 1 = failures (one line per case).
  */
 import { writeFileSync, readFileSync, mkdtempSync, mkdirSync, rmSync, existsSync, readdirSync, realpathSync, symlinkSync, lstatSync, copyFileSync } from 'fs'
@@ -160,6 +162,9 @@ function main() {
   // Plan order (plan 011): the unit and fixture tests, run against this project's installed scripts/.
   const pot = spawnSync(process.execPath, ['--test', '--test-reporter=tap', join(kit, 'tools', 'test', 'plan-order.test.mjs')], { cwd: proj, env: { ...env, PLAN_ORDER_ROOT: proj }, encoding: 'utf8' })
   check('plan-order tests pass against the installed scripts (node --test tools/test/plan-order.test.mjs)', pot.status === 0 && /# fail 0/.test(`${pot.stdout}`), tail(`${pot.stdout}${pot.stderr}`))
+  // Write guards (plan 017): the hook scripts, run on a scratch repo built from this project's installed scripts/.
+  const gt = spawnSync(process.execPath, ['--test', '--test-reporter=tap', join(kit, 'tools', 'test', 'guards.test.mjs')], { cwd: proj, env: { ...env, GUARDS_ROOT: proj }, encoding: 'utf8' })
+  check('write-guard tests pass against the installed scripts (node --test tools/test/guards.test.mjs)', gt.status === 0 && /# fail 0/.test(`${gt.stdout}`), tail(`${gt.stdout}${gt.stderr}`))
   npm(proj, 'npm run -s prepare')
   git(proj, 'add', '-A')
   const c0 = git(proj, 'commit', '-q', '-m', 'chore: install the workflow kit')
