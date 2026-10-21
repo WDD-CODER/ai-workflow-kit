@@ -3,7 +3,7 @@
     "version": "1.3.1"
   },
   "source": "local:.",
-  "commit": "387d666b20a798992feabf1492009278d937d093",
+  "commit": "383a7ccbbd7b375aa85857ccd155e6982bf163ad",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -250,7 +250,7 @@
       "source": "core/.claude/skills/worktree-setup/SKILL.md"
     },
     ".claude/workflows/orchestrate.js": {
-      "sha256": "bd809a9ffb28f939617a6090f8285f1ef60be71d2143db314b452b112442f379",
+      "sha256": "6dd1a3930893cd32cc3daf25e8ac827b8621f244528199ff6a01cece336cdd0d",
       "kind": "managed",
       "source": "core/.claude/workflows/orchestrate.js"
     },
@@ -325,7 +325,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "6306b358cab42e0e46f3c016e04a7c2657b5630da7c063a48a30a2036a509788",
+      "sha256": "20df6affdda61b6a8587c2833e3b46fb14ae0e32b6a08006ae9675b00f555dc2",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -525,7 +525,7 @@
       "source": "core/scripts/lib/fe-command.mjs"
     },
     "scripts/lib/guard.mjs": {
-      "sha256": "911f1c91080b14c0b3fc7444f6a557eab41068944df42039d37086201c3bb1ac",
+      "sha256": "4f73884bf82dc68cdd9250f93b3304d79ec213e373e58eb4a83cd83841b8fe08",
       "kind": "managed",
       "source": "core/scripts/lib/guard.mjs"
     },
@@ -535,7 +535,7 @@
       "source": "core/scripts/lib/invariants.mjs"
     },
     "scripts/lib/orch-run.mjs": {
-      "sha256": "6d8e9533027ce52063d979106f3f711c6672f5761bf4fd8c1ac4ea88514162b2",
+      "sha256": "8aa702d8deabd410efd805a3b06cbcd7a8d3501a20c79e77c861fcedbc235dd4",
       "kind": "managed",
       "source": "core/scripts/lib/orch-run.mjs"
     },
@@ -590,7 +590,7 @@
       "source": "core/scripts/orch-preflight.mjs"
     },
     "scripts/orch-state.mjs": {
-      "sha256": "26c0fb1cab514d962170256664a215e4743caa0de05abba07b37111890d69849",
+      "sha256": "37bbdaa4e736eca5b65fc813f7d3d7d3e815fb03b015bf37152475ee6d7eb992",
       "kind": "managed",
       "source": "core/scripts/orch-state.mjs"
     },

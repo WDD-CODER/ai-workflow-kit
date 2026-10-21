@@ -4,6 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { join, resolve } from 'path'
+import { spawnSync } from 'child_process'
 import { pathToFileURL, fileURLToPath } from 'url'
 import { orchestratorProblems, commandProblems } from '../lib/kit.mjs'
 
@@ -91,4 +92,50 @@ test('orchestrator.* config: defaults pass, bad values name the key', () => {
   assert.match(bad('orchestrator.minFreeDiskGb', '5')[0], /^orchestrator\.minFreeDiskGb is "5"/)
   // install and sync read the problems through commandProblems
   assert.ok(commandProblems({ ...ok, 'orchestrator.maxFixRounds': 0, 'models.mechanical': 'haiku', 'models.analysis': 'sonnet', 'models.judgment': 'inherit', 'models.build': 'sonnet' }).some((m) => m.startsWith('orchestrator.maxFixRounds is 0')))
+})
+
+test('plan branch: the slug is lower-case letters, digits and dashes only; any other branch is refused', () => {
+  assert.equal(lib.planBranch('plans/451-Add_$(rm -rf x);The `parser`.plan.md', '451'), 'feat/451-add-rm-rf-x')
+  assert.equal(lib.planBranch('plans/452-"; touch pwned #.plan.md', '452'), 'feat/452-touch-pwned')
+  assert.equal(lib.planBranch('plans/453-$$$.plan.md', '453'), 'feat/453-plan')
+  for (const b of ['feat/451-add-the-parser', 'feat/12-x']) assert.equal(lib.planBranchProblem(b), null)
+  for (const b of ['feat/451-Add', 'feat/451-a;b', 'feat/451-a b', 'fix/451-a', 'feat/451-', 'feat/x-a', '--upload-pack=x', undefined]) assert.match(lib.planBranchProblem(b), /does not match/)
+})
+
+test('added-code check: a failed or cut-off git diff counts as sensitive (fail closed)', () => {
+  const re = /auth/i
+  const out = '+++ b/src/a.js\n+const auth = 1\n+++ b/src/b.js\n+const x = 1'
+  assert.deepEqual(lib.addedCodeFiles({ status: 0, out }, re), { failed: false, files: ['src/a.js'] })
+  assert.deepEqual(lib.addedCodeFiles({ status: 0, out }, re, ['src/a.js']), { failed: false, files: [] })
+  assert.equal(lib.addedCodeFiles({ status: 128, out: '' }, re).failed, true)
+  assert.equal(lib.addedCodeFiles({ status: 0, out, truncated: true }, re).failed, true)
+  assert.equal(lib.addedCodeFiles(null, re).failed, true)
+})
+
+test('[ui] card values: page an http(s) URL, card not starting with "-", safe screenshot paths', () => {
+  assert.equal(lib.uiCardProblem({ card: 'Save shows Saved', page: 'https://app.example/settings', shots: ['screens/1.png'] }), null)
+  assert.equal(lib.uiCardProblem({ card: 'x', page: '' }), null)
+  assert.match(lib.uiCardProblem({ card: '--state=merged' }), /^card/)
+  assert.match(lib.uiCardProblem({ card: ' -x' }), /^card/)
+  for (const page of ['file:///etc/passwd', 'javascript:alert(1)', 'https://a.example/$(id)', 'http://a b']) assert.match(lib.uiCardProblem({ card: 'x', page }), /^page/)
+  for (const shot of ['-rf', '../x.png', 'a;b.png', 'a b.png', '$(id).png']) assert.match(lib.uiCardProblem({ card: 'x', shots: [shot] }), /^screenshot/)
+})
+
+test('orch-state.mjs: unknown flags (--root among them), a value that looks like a flag and unsafe card values are refused', () => {
+  const run = (...a) => spawnSync(process.execPath, [join(root, 'scripts', 'orch-state.mjs'), ...a], { cwd: root, encoding: 'utf8' })
+  const refused = (r, re) => {
+    assert.notEqual(r.status, 0, `${r.stdout}${r.stderr}`)
+    assert.match(r.stdout, re)
+  }
+  refused(run('disk', '--bogus=1'), /unknown flag --bogus/)
+  refused(run('disk', '--root=C:/elsewhere'), /unknown flag --root/)
+  refused(run('disk', '--root', '..'), /unknown flag --root/)
+  refused(run('set', '--run', 'x', '--card', '--state=merged'), /--card needs a value/)
+  refused(run('set', '--run', 'x', '--plan', '001', 'extra'), /unexpected argument "extra"/)
+  refused(run('set', '--run=x', '--plan=001', '--card=-x', '--card-status=pass'), /card "-x"/)
+  refused(run('set', '--run=x', '--plan=001', '--card=ok', '--card-status=pass', '--page=file:///etc/passwd'), /page "file:\/\/\/etc\/passwd"/)
+  refused(run('set', '--run=x', '--plan=001', '--card=ok', '--card-status=pass', '--shots=a.png,-rf'), /screenshot "-rf"/)
+  const ok = run('disk', '--min=0')
+  assert.equal(ok.status, 0, `${ok.stdout}${ok.stderr}`)
+  assert.match(ok.stdout, /^ORCH_JSON \{"ok":true/m)
 })

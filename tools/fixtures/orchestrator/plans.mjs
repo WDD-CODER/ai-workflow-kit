@@ -22,6 +22,9 @@
  *     404  run "ui-cors": the backend does not allow the page's origin → stops before the browser agent, no fix round
  *     405  run "epsilon" (UI step off): the builder reports a card for one of its two [ui] items only → the left-out
  *          item is still recorded (`unchecked`) and reaches the Human in the run report
+ *   run "zeta" (security follow-up)
+ *     501  extra check commands allowlisted; its first gate leaves a check out (a fail); its builder reports [ui] card
+ *          values that must not be recorded (a title starting with "-", a non-http page, an unsafe screenshot path)
  */
 const plan = ({ nnn, title, deps = [], inv = 'INV-none: preserves — a toy plan', ui = [] }) => `# Plan ${nnn} — ${title}
 
@@ -64,6 +67,7 @@ export const PLANS = {
   '403': plan({ nnn: '403', title: 'UI login failing', ui: ['Account shows the name'] }),
   '404': plan({ nnn: '404', title: 'UI backend cross origin', ui: ['List shows items'] }),
   '405': plan({ nnn: '405', title: 'UI item the builder left out', ui: ['Save shows Saved', 'Profile shows the avatar'] }),
+  '501': plan({ nnn: '501', title: 'Security follow-up inputs' }),
 }
 
 export const fileName = (nnn) => {

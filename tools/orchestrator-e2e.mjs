@@ -98,6 +98,9 @@ function setup() {
 const calls = []
 const runnerCommands = []
 let phase2 = false
+// Run zeta (the security follow-up): the next gate call leaves out its last result; the builder of 501 reports cards
+// with values set must refuse.
+let gateDrop = false
 const count = {}
 const bump = (key) => (count[key] = (count[key] ?? 0) + 1)
 
@@ -169,13 +172,18 @@ function stubBuilder(t, opts) {
   const c = git(wt, 'commit', '-q', '-m', `feat(${nnn}): attempt ${n}`)
   const p = git(wt, 'push', '-q', '-u', 'origin', t.BRANCH)
   if (c.status !== 0 || p.status !== 0) return { ...r, status: 'blocked', blocker: `stub commit/push failed: ${tail(c.out + p.out)}` }
-  return { ...r, status: 'built', headSha: git(wt, 'rev-parse', 'HEAD').stdout.trim(), ...(UI_CARDS[nnn] ? { uiCards: UI_CARDS[nnn]() } : {}) }
+  const cards = nnn === '501' ? [{ card: '--state=merged', page: 'https://app.example/x' }, { card: 'Bad page', page: 'file:///etc/passwd' }, { card: 'Bad shot', page: 'https://app.example/y', test: PASS_TEST, screenshot: '-rf' }] : UI_CARDS[nnn]?.()
+  return { ...r, status: 'built', headSha: git(wt, 'rev-parse', 'HEAD').stdout.trim(), ...(cards ? { uiCards: cards } : {}) }
 }
 
 function stubGate(t, opts, nnn) {
   const n = bump(`gate ${nnn}`)
   const fail = (nnn === '102' && n === 1) || (nnn === '202' && !phase2) || nnn === '301'
   const cmds = json(t.COMMANDS)
+  if (gateDrop) {
+    gateDrop = false
+    return { ...base('orch-gate', opts), results: cmds.slice(0, -1).map((c) => ({ command: c, status: 'pass' })), pass: true }
+  }
   return { ...base('orch-gate', opts), results: cmds.map((c, i) => (fail && i === 0 ? { command: c, status: 'fail', tail: 'stub: 1 failing test' } : { command: c, status: 'pass' })), pass: !fail }
 }
 
@@ -398,6 +406,24 @@ async function main() {
   const re = readFileSync(join(proj, '.claude', 'orchestrator-runs', 'epsilon.md'), 'utf8')
   check('epsilon: the run report hands the left-out [ui] item to the Human', /\d+\. 405: Profile shows the avatar — a \[ui\] card no script could check and the browser step was off/.test(re), (re.split('## What only the Human can do')[1] ?? re).slice(0, 400))
 
+  // Run zeta (security follow-up): extra check commands are allowlisted, a gate that leaves a check out fails, and
+  // [ui] card values that could become flags or reach a shell are not recorded; orch-state takes --key=value only.
+  gateDrop = true
+  const zBuilders = builderCalls('501').length
+  const z = await runWorkflow({ mode: 'run', run: 'zeta', plans: ['501'], startedAt: '2026-01-04T18:00:00.000Z', root: proj,
+    checks: { '501': ['npm run build', 'npm run nosuch', 'node tools/ok-check.mjs --quick', 'node --test tests/a.test.mjs', 'node -e "1"', 'node tools/x.mjs; rm -rf /', 'echo hi > x', 'git reset --hard HEAD'] } })
+  const sz = JSON.parse(readFileSync(join(proj, '.claude', 'orchestrator-runs', 'zeta', 'status.json'), 'utf8'))
+  const zGates = calls.filter((c) => c.type === 'orch-gate' && c.nnn === '501' && /^gate /.test(c.label ?? '')).slice(-2)
+  check('zeta: only allowlisted extra checks reach the gate (npm run <known script>, node tools/…, node --test)', JSON.stringify(zGates[0]?.commands) === JSON.stringify(['npm run build', 'npm run lint', 'npm run test', 'node tools/ok-check.mjs --quick', 'node --test tests/a.test.mjs']), JSON.stringify(zGates[0]?.commands))
+  const dropNote = (sz.notes ?? []).filter((n) => n.plan === '501' && /^check command dropped, not run: /.test(n.text)).map((n) => n.text).join(' | ')
+  check('zeta: each dropped check command is named in a run note with its reason', ['npm run nosuch', 'node -e', 'rm -rf', 'echo hi', 'reset --hard'].every((c) => dropNote.includes(c)) && /no script nosuch in package.json/.test(dropNote), dropNote)
+  check('zeta: a gate result left out is a fail (fix round 1), not a pass', z?.ok === true && sz.plans['501']?.state === 'merged' && sz.plans['501'].round === 1 && builderCalls('501').length === zBuilders + 2 && /the gate returned no result for this check/.test(JSON.stringify(builderCalls('501').at(-1)?.findings ?? [])), JSON.stringify({ round: sz.plans['501']?.round, f: builderCalls('501').at(-1)?.findings }))
+  const zCards = (sz.plans['501']?.uiCards ?? []).map((c) => c.card)
+  const cardNotes = (sz.notes ?? []).filter((n) => /\[ui\] card not recorded/.test(n.text)).map((n) => n.text).join(' | ')
+  check('zeta: a card title starting with "-", a non-http page and an unsafe screenshot path are not recorded', zCards.length === 0 && /starts with - or is empty/.test(cardNotes) && /not an http\(s\) URL/.test(cardNotes) && /not a safe relative path/.test(cardNotes) && sz.plans['501'].state === 'merged', `${JSON.stringify(zCards)} ${cardNotes}`)
+  const zSets = runnerCommands.filter((c) => c.startsWith('node scripts/orch-state.mjs set ') && c.includes('--run=zeta'))
+  check('zeta: every orch-state argument is one --key=value token', zSets.length > 0 && runnerCommands.filter((c) => c.startsWith('node scripts/orch-state.mjs ')).every((c) => words(c).slice(3).every((w) => /^--[a-z-]+=/.test(w))), zSets[0] ?? 'none')
+
   // The [ui] tier: a local test server (a child process) for the pages, the login and the backend.
   const server = await startUiServer()
   try {
@@ -450,7 +476,7 @@ for (const line of results) console.log(line)
 const total = results.filter((l) => /^(PASS|FAIL)/.test(l)).length
 if (keep) console.log(`kept: ${root}`)
 else {
-  for (const run of ['alpha', 'beta', 'gamma', 'epsilon', 'delta', 'ui-down', 'ui-login', 'ui-cors']) {
+  for (const run of ['alpha', 'beta', 'gamma', 'epsilon', 'zeta', 'delta', 'ui-down', 'ui-login', 'ui-cors']) {
     git(proj, 'worktree', 'remove', '--force', join(root, `orch-app-orch-merge-${run}`))
   }
   try {

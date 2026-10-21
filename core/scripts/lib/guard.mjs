@@ -14,7 +14,10 @@
  *   - a Bash command is read for the files it writes (redirects, heredocs, tee, sed -i / perl -i, cp/mv/install
  *     targets, touch; `cd` and `bash -c` are followed) and each target gets the same rule. This is best-effort — it
  *     cannot parse every shell construct — so a target it cannot resolve (a `$VAR` or `$(...)` path) is refused
- *     wherever a write would need a check (fail closed). /ship's scope gate and CI drift-check stay the backstop.
+ *     when this folder, the shell's folder or any worktree of the repository is guarded (fail closed). /ship's scope
+ *     gate and CI drift-check stay the backstop.
+ *   - a check that cannot run (empty/unparseable input, no file path, an error, a sibling guard with no answer, a
+ *     scope check that crashes) refuses the write when the folder concerned is guarded, and allows it otherwise.
  *
  * Plan scope applies in a slot with an active plan (.worktree-port + .worktree-plan) and, outside a slot, on any
  * branch other than {{git.mainBranch}} that names a plan: `.worktree-plan` (a run's merge folder, e.g. orch/<run>) or a
@@ -23,7 +26,7 @@
  * Speed (the hook limit is 10 s; Git Bash start-up on Windows is slow): one node process, the branch and git dirs
  * read from files, no git call on the allow path. KIT_GUARD_TRACE=1 prints `GUARD_GIT_CALLS: <n>` to stderr.
  */
-import { readFileSync, existsSync, statSync } from 'fs'
+import { readFileSync, readdirSync, existsSync, statSync } from 'fs'
 import { spawnSync } from 'child_process'
 import { join, resolve, dirname, relative, isAbsolute, basename } from 'path'
 import { fileURLToPath } from 'url'
@@ -313,7 +316,8 @@ export function bashWrites(command, cwd, env = process.env) {
   const add = (word, d) => {
     if (!word || DEV_SINKS.has(word.w)) return
     const p = resolveWord(word, d, env)
-    targets.push(p ? { path: p } : { unresolved: word.w })
+    // An unresolved target keeps the shell's folder at that point (null when unknown): the guard judges it too.
+    targets.push(p ? { path: p } : { unresolved: word.w, dir: d })
   }
   const toks = lex(command)
   let cmd = []
@@ -453,7 +457,8 @@ function delegate(mode, targetRoot, file) {
   try {
     d = JSON.parse(out.trim().split(/\r?\n/).pop())
   } catch {}
-  if (!d) return allow(mode === 'scope' ? `SCOPE_GUARD: check failed (no answer from ${targetRoot}) - /ship scope gate will verify` : '')
+  // No answer (crash, timeout, garbage): judge the file by the local rule for that worktree (fail closed).
+  if (!d) return localFallback(mode, worktreeOf(targetRoot) || { root: targetRoot, gitDir: join(targetRoot, '.git'), commonDir: join(targetRoot, '.git') }, file, `no answer from the guard of ${targetRoot}`)
   return d.permission === 'deny' ? deny(d.agent_message || `${mode} guard of ${targetRoot} denied ${file}`) : allow(d.agent_message || '')
 }
 
@@ -486,7 +491,22 @@ function scopeRule(here, file, branch) {
   if (/^SCOPE: out/m.test(out)) {
     return deny(`SCOPE_GUARD: ${rel} is outside this plan's Read-Write Scope (${plan}, branch ${branch || 'detached'}). Reading is fine; writing is not. ${approvedRoute(rel)}`)
   }
-  return kit.owned ? kitDeny() : allow(`SCOPE_GUARD: check failed (${out.trim()}) - /ship scope gate will verify`)
+  // The scope check itself failed (crash, missing script, no verdict) on a folder with an active plan: fail closed.
+  return kit.owned ? kitDeny() : deny(`SCOPE_GUARD: the scope check failed for ${rel} (${out.trim() || `exit ${r.status}`}) - write refused until it runs. Fix the check (scripts/scope-check.mjs, scripts/node_modules: npm ci) and retry.`)
+}
+
+/** Is this repo-relative path one that stays writable on {{git.mainBranch}} (plans, the todo list, runtime files)? */
+const mainAllowed = (rel) => OPEN_PLAN_RE.test(rel) || rel === '.claude/todo.md' || RUNTIME_ON_MAIN.some((re) => re.test(rel))
+
+/**
+ * The decision when the real check could not run (another worktree's guard gave no answer, or the delegation depth
+ * is used up): allow only when that worktree is not guarded, or the file is one main keeps writable (fail closed).
+ */
+function localFallback(mode, wt, file, why) {
+  if (!folderGuarded(mode, wt)) return allow()
+  if (mode === 'branch' && mainAllowed(toPosix(relative(wt.root, file)))) return allow()
+  const tag = mode === 'scope' ? 'SCOPE_GUARD' : 'BRANCH_GUARD'
+  return deny(`${tag}: cannot check ${toPosix(file)} (${why}) and ${wt.root} is guarded - write refused (fail closed). Retry from a session in that folder.`)
 }
 
 function branchRule(here, file, branch, tool) {
@@ -515,8 +535,9 @@ function decideFile(mode, here, file, tool) {
   if (!wt) return allow()
   if (!same(wt.root, here.root)) {
     // Another worktree of this repository: its own guard decides. Another repository: not ours.
-    if (same(wt.commonDir, here.commonDir) && Number(process.env.KIT_GUARD_DEPTH || 0) < 2) return delegate(mode, wt.root, file)
-    return allow()
+    if (!same(wt.commonDir, here.commonDir)) return allow()
+    if (Number(process.env.KIT_GUARD_DEPTH || 0) < 2) return delegate(mode, wt.root, file)
+    return localFallback(mode, wt, file, 'delegation depth used up')
   }
   const branch = currentBranch(here)
   return mode === 'scope' ? scopeRule(here, file, branch) : branchRule(here, file, branch, tool)
@@ -537,6 +558,38 @@ function folderGuarded(mode, wt) {
   const branch = currentBranch(wt)
   if (mode === 'scope') return !!scopedPlan(wt.root, branch)
   return MAIN_BRANCHES.includes(branch) && !existsSync(join(wt.root, '.worktree-port'))
+}
+
+/** Every worktree of the repository whose git common dir is `commonDir`, read from files (no git process). */
+function repoWorktrees(commonDir) {
+  const out = []
+  if (basename(commonDir) === '.git') out.push({ root: dirname(commonDir), gitDir: commonDir, commonDir })
+  let names = []
+  try {
+    names = readdirSync(join(commonDir, 'worktrees'))
+  } catch {}
+  for (const n of names) {
+    const gitDir = join(commonDir, 'worktrees', n)
+    const dotGit = readTrim(join(gitDir, 'gitdir'))
+    if (dotGit) out.push({ root: dirname(resolve(nativePath(dotGit))), gitDir, commonDir })
+  }
+  return out
+}
+
+/** A shell target the guard cannot resolve may land anywhere: refuse it when `here`, the shell's folder at that point
+ *  or any worktree of this repository is guarded (fail closed). */
+function unresolvedGuarded(mode, here, dir) {
+  const guarded = (wt) => {
+    try {
+      return folderGuarded(mode, wt)
+    } catch {
+      return true
+    }
+  }
+  if (guarded(here)) return true
+  const dirWt = dir ? worktreeOf(existingAncestor(resolve(dir))) : null
+  if (dirWt && same(dirWt.commonDir, here.commonDir) && guarded(dirWt)) return true
+  return repoWorktrees(here.commonDir).some((wt) => existsSync(wt.root) && guarded(wt))
 }
 
 function filesOf(ti) {
@@ -572,9 +625,7 @@ export function decide(mode, input, here) {
   for (const t of targets) {
     let r
     if (t.unresolved !== undefined) {
-      const cwdWt = worktreeOf(existingAncestor(resolve(cwd)))
-      const wt = cwdWt && same(cwdWt.commonDir, here.commonDir) ? cwdWt : here
-      r = folderGuarded(mode, wt)
+      r = unresolvedGuarded(mode, here, t.dir)
         ? deny(`${mode === 'scope' ? 'SCOPE_GUARD' : 'BRANCH_GUARD'}: cannot tell which file this shell command writes (${t.unresolved}). Write to a literal path, or use the Write/Edit tool so the guard can check it.`)
         : allow()
     } else {
@@ -606,18 +657,24 @@ const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(imp
 if (isMain) {
   const mode = process.argv[2] === 'branch' ? 'branch' : 'scope'
   const scriptsRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
+  const tag = mode === 'scope' ? 'SCOPE_GUARD' : 'BRANCH_GUARD'
+  const here = worktreeOf(scriptsRoot) || { root: scriptsRoot, gitDir: join(scriptsRoot, '.git'), commonDir: join(scriptsRoot, '.git') }
+  // Nothing could be judged (empty or unparseable input, no file path, an error): refuse when this folder is guarded,
+  // allow only when it is not (fail closed).
+  const unjudged = (why) => {
+    let guarded = true
+    try {
+      guarded = folderGuarded(mode, here)
+    } catch {}
+    return guarded ? deny(`${tag}: cannot check this write (${why}) and ${here.root} is guarded - write refused (fail closed).`) : allow()
+  }
   let result
   try {
     const input = await readStdin(1000)
-    const here = worktreeOf(scriptsRoot) || { root: scriptsRoot, gitDir: join(scriptsRoot, '.git'), commonDir: join(scriptsRoot, '.git') }
-    const inSlot = existsSync(join(scriptsRoot, '.worktree-port')) && existsSync(join(scriptsRoot, '.worktree-plan'))
     result = input.trim() ? decide(mode, input, here) : null
-    if (!result) {
-      // No tool input / no file in it: nothing to judge. In a slot the /ship scope gate is the backstop.
-      result = mode === 'scope' && inSlot ? allow('SCOPE_GUARD: check failed (no file path in tool input) - /ship scope gate will verify') : allow()
-    }
+    if (!result) result = unjudged(input.trim() ? 'unparseable tool input or no file path in it' : 'empty tool input')
   } catch (e) {
-    result = allow(`${mode === 'scope' ? 'SCOPE_GUARD' : 'BRANCH_GUARD'}: check failed (${e && e.message}) - /ship scope gate will verify`)
+    result = unjudged(`check failed: ${e && e.message}`)
   }
   emit(result)
   if (process.env.KIT_GUARD_TRACE === '1') process.stderr.write(`GUARD_GIT_CALLS: ${gitCalls}\n`)
