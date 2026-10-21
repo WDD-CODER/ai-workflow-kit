@@ -134,13 +134,13 @@ Re-read `auto-solve.md` Phase 2–4, `ship.md` Phase 1, `review-it.md` step 3 an
     `take-plan` and `auto-solve` Phase 3 — all on the main model.
 
 ## Atomic Sub-tasks
-- [ ] R1: One place to choose models — `models` key with defaults and validation, install-check fixtures — kit.config.json, tools/lib/kit.mjs, tools/install-check.mjs
-- [ ] R2: Write down the routing rules once — tiers, no inline model switch, ESCALATE, re-check rule, hand-off file — core/docs/agent/model-routing.md
-- [ ] R3: Add the cheap agents — kit-runner, kit-prevalidate, git-agent model line — core/.claude/agents/**
-- [ ] R4: Send build runs and evidence gathering to the cheap agents — ship Phase 1, auto-solve Phase 2–4, review-it step 3, docs-refresh — core/.claude/commands/*.md, core/docs/agent/ship-regular.md
-- [ ] R5: Run github-sync and techdebt in a forked agent and hand questions back to the main session — core/.claude/skills/github-sync/SKILL.md, core/.claude/skills/techdebt/SKILL.md
-- [ ] R6: Warn at session start when an environment variable overrides the agent models — core/scripts/session-startup.sh
-- [ ] R7: Update the workflow map and the CLAUDE.md addendum — core/docs/agent/workflow-map.md, templates/CLAUDE.md
+- [x] R1: One place to choose models — `models` key with defaults and validation, install-check fixtures — kit.config.json, tools/lib/kit.mjs, tools/install-check.mjs
+- [x] R2: Write down the routing rules once — tiers, no inline model switch, ESCALATE, re-check rule, hand-off file — core/docs/agent/model-routing.md
+- [x] R3: Add the cheap agents — kit-runner, kit-prevalidate, git-agent model line — core/.claude/agents/**
+- [x] R4: Send build runs and evidence gathering to the cheap agents — ship Phase 1, auto-solve Phase 2–4, review-it step 3, docs-refresh — core/.claude/commands/*.md, core/docs/agent/ship-regular.md
+- [x] R5: Run github-sync and techdebt in a forked agent and hand questions back to the main session — core/.claude/skills/github-sync/SKILL.md, core/.claude/skills/techdebt/SKILL.md
+- [x] R6: Warn at session start when an environment variable overrides the agent models — core/scripts/session-startup.sh
+- [x] R7: Update the workflow map and the CLAUDE.md addendum — core/docs/agent/workflow-map.md, templates/CLAUDE.md
 - [ ] R8: Release and compare in FoodVibe — CHANGELOG entry, kit PR, tag on Dandan's go, kit-sync -Ref <tag> -Apply, the same work once with tiers on and once all inherit, /usage both, /ship there — CHANGELOG.md
 
 ## Out of Scope
@@ -151,3 +151,17 @@ Re-read `auto-solve.md` Phase 2–4, `ship.md` Phase 1, `review-it.md` step 3 an
 - Cursor layer (`layers/cursor/`): Cursor picks models in its own UI.
 
 ## Execution Notes
+- 2026-10-21: R1–R7 done on `feat/012-model-routing-per-task`. Checks: leak-check (3 runs), pack-check, install-check
+  (new `models.*` block: defaults, project id, all-inherit, refused `gpt-4`, no `model:` on an inline command),
+  workflow-link-check, acceptance-check --e2e pass. e2e-check fails 1 of 42 ("first push to an empty remote": a git
+  `push negotiation failed` warning) on unmodified `main` too in this cloud session — environment, not this plan.
+- `ship-regular.md` needed no change (its review stays inline); it stays in scope for Step 0 only.
+- Open PR #32 (plan 009) also edits `ship.md` (Phase 4 cards) and `CHANGELOG.md` `[Unreleased]`: a test merge of #32 into
+  this branch is clean for `ship.md`; the second PR to merge resolves `[Unreleased]` by keeping both entries.
+- For plan 013 (orchestrator, parallel session) — decided by Dandan 2026-10-21:
+  - Implementer escalation: Sonnet first; on failure it writes the hand-off file (`docs/agent/model-routing.md`
+    rule 5) and a fresh Opus implementer continues from that file + plan + `git diff`, never the Sonnet transcript;
+    an Opus failure stops the run and goes to the Human. No model switch inside one session.
+  - What counts as a failure: a first reviewer finding goes back to the same Sonnet implementer (small fix, it holds
+    the context); escalation to Opus when the checks still fail, when Sonnet returns `ESCALATE`, or on a second reviewer
+    finding.

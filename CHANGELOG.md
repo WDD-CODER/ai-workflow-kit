@@ -9,6 +9,33 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+Model routing per task. Steps that only run commands or gather evidence now go to sub-agents on a cheaper
+model; planning, review, fixes and code writing stay on the main session's model. New `docs/agent/model-routing.md`
+holds the rules: no `model:` on an inline command (a model switch re-reads the whole conversation uncached, twice),
+delegate only when a step reads a lot and returns little, `ESCALATE: <reason>` instead of a guess, the main session
+re-checks any agent result that skips work or blocks a merge, and one hand-off file format for passing a failed step
+to a stronger agent.
+
+- New config key `models` (`mechanical` = `haiku`, `analysis` = `sonnet`, `judgment` = `inherit`). A value must be
+  `haiku`, `sonnet`, `opus`, `fable`, `inherit` or a full model id starting `claude-`; install and sync refuse anything
+  else. All three `inherit` turns the routing off.
+- New agents `.claude/agents/kit-runner.md` (mechanical: runs commands, returns exit codes and verbatim error lines)
+  and `.claude/agents/kit-prevalidate.md` (analysis: auto-solve's DONE / TODO / BLOCKED table). `git-agent` gets the
+  mechanical tier.
+- `/ship` Phase 1, `auto-solve` Phase 4 and `/review-it` step 3 hand their commands to `kit-runner`; `auto-solve`
+  Phase 2 uses `kit-prevalidate` and re-checks every DONE row; `auto-solve` Phase 3's parallel agents name
+  `model: "inherit"`; `/docs-refresh`'s agent call passes the analysis tier.
+- `github-sync` (mechanical) and `techdebt` (analysis) run as forked skills. A question the fork cannot ask comes
+  back as an `ASK:` line, and the main session asks it.
+- SessionStart prints a `MODEL_ROUTING:` line when `CLAUDE_CODE_SUBAGENT_MODEL` or
+  `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` would override the agent files' models.
+
+### What a project must do
+
+Nothing. Sync and commit; the defaults apply. To change a tier, set `models.<tier>` in `kit.config.json`; to keep
+every step on the main model, set all three to `inherit`. `templates/CLAUDE.md` is a seed, so an existing project's
+`CLAUDE.md` does not get the new pointer to `docs/agent/model-routing.md` (optional to add by hand).
+
 ## [1.3.1] - 2026-10-19
 
 The Planner's Architect + PM review now reaches every brief, including a feature request written in plain prose, and
