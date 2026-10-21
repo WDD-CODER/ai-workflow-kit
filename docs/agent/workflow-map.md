@@ -112,13 +112,20 @@ Every `orch-*` agent follows `docs/agent/agent-roles.md`: non-interactive, evide
 
 | Event | Script | Effect |
 | --- | --- | --- |
-| PreToolUse (Edit\|Write\|MultiEdit) | `scripts/branch-guard.sh` | **blocks writes on `main`**, except the Planner's `plans/*.plan.md` / `.claude/todo.md` admin-bypass |
+| PreToolUse (Edit\|Write\|MultiEdit, Bash) | `scripts/branch-guard.sh` | **blocks writes on `main`**, except the Planner's `plans/*.plan.md` / `.claude/todo.md` admin-bypass and gitignored runtime files (`.claude/sessions/**`, `.claude/.session-state-path`, `.claude/.plan-write-ack`); a slot on `main` auto-switches to a session branch |
 | PreToolUse (Edit\|Write\|MultiEdit) | `scripts/plan-write-guard.sh` | gates **new** `plans/*.plan.md` writes: runs similarity check; denies when similar plans exist unless `.claude/.plan-write-ack` names the target; existing-plan edits always allowed |
-| PreToolUse (Edit\|Write\|MultiEdit) | `scripts/scope-guard.sh` | inside a `wt-N` slot with an active plan, denies a write outside that plan's `## Read-Write Scope` (`SCOPE_GUARD:` message); silent allow outside a slot, in an idle slot, or on an internal check failure — the `/ship` scope gate is the backstop |
+| PreToolUse (Edit\|Write\|MultiEdit, Bash) | `scripts/scope-guard.sh` | denies a write outside the plan's `## Read-Write Scope` (`SCOPE_GUARD:` message, with the `approved: <path>` route) in a `wt-N` slot with an active plan **and**, outside a slot, on a branch other than `main` that names a plan (`.worktree-plan` — a run's merge folder — or `<type>/NNN-<slug>`); silent allow elsewhere or on an internal check failure — the `/ship` scope gate is the backstop |
 | SessionStart (startup) | `scripts/session-startup.sh` | loads previous session-state; sets `.claude/.session-state-path` save target; injects `PLANNER:` / `WORKER: plan=…` / `IDLE SLOT:` via `scripts/lib/slot.mjs --describe` (see slot model below) |
 | PostToolUse (Edit\|Write) | `scripts/session-manifest-hook.py` | records this-session file touches (multi-worktree staging safety); refreshes this slot's liveness heartbeat |
 | PreCompact | `scripts/pre-compact-reminder.sh` | reminds the agent to save state before compaction |
 | Stop | `scripts/handoff-check.sh` | handoff completeness check at turn end; releases this slot's liveness lock |
+
+Both write guards run `scripts/lib/guard.mjs` (one node process) and judge **the file being written**, not the folder
+the session started in: a file in another worktree of the repo is judged by that worktree's own guard. On `Bash` they
+judge the files the command writes — redirects (`>`, `>>`, heredocs), `tee`, `sed -i` / `perl -i`, `cp` / `mv` /
+`install` targets, `touch`, following `cd` and `bash -c`; read-only commands pass. The detector is best-effort: a
+target it cannot resolve (`$VAR`, `$(...)`) is refused where a write needs a check, and `node -e` or a script that
+writes files is not seen — `/ship`'s scope gate and CI drift-check stay the backstop.
 
 **Cursor runs none of these hooks.** Its equivalent enforcement is advisory `.mdc` rules + the shared pre-commit/pre-push
 hooks below — the `/ship` scope gate and `.husky/pre-push` are what make scope enforcement hold for Cursor too, since it
@@ -179,7 +186,8 @@ Claude Code backs this up in `.claude/settings.json`: `permissions.deny` refuses
 | `brain-capture-comment.mjs` | PR sticky brain-capture comment |
 | `pre-commit-secret-scan.mjs` (+ stack-pack checks) | pre-commit hooks (source of truth for enforcement per `AGENTS.md`) |
 | `prune-merged-worktrees.sh`, `prune-old-sessions.sh` | `/cleanup` |
-| `lib/slot.mjs` | `session-startup.sh` (`--describe`), `scope-check.mjs`, `ship-prep.mjs`, `take-plan.mjs`; `--list` for the Planner protocol |
+| `lib/slot.mjs` | `session-startup.sh` (`--describe`), `scope-check.mjs`, `ship-prep.mjs` (`scopedPlanPath`), `take-plan.mjs`; `--list` for the Planner protocol; `--scoped-plan` prints the plan whose scope governs this folder |
+| `lib/guard.mjs` | `scope-guard.sh`, `branch-guard.sh` — the write-guard rules for Edit/Write and Bash; `KIT_GUARD_TRACE=1` prints `GUARD_GIT_CALLS: <n>` |
 | `session-state-path.mjs` | `session-startup.sh`, `handoff-check.sh`, `write-session-state.mjs` — one resolver, no duplicated logic |
 | `scope-check.mjs` | `scope-guard.sh` (`--file`), `ship-prep.mjs` (`--diff`, `--arch --diff` warn), the Planner protocol (`--overlap`, `--deps`), save-plan Shape lint (`--arch --plan` block, `--deps`), `/review-it` step 2 (`--arch --diff`), `take-plan.mjs` + `take-plan.md` (`--drift`) |
 | `lib/invariants.mjs` | `scope-check.mjs --arch` and `take-plan.mjs` (pre-claim architecture gate, judged against the main branch): parses `docs/brain/invariants.md` and a plan's `## Architecture Impact` |
@@ -317,7 +325,8 @@ Durable learning in session (decision/gotcha/pattern)
 /brief       --writes-->   .claude/sessions/{id}/brief.md; --reads--> plans/* (parent)
 save-plan    --runs-->     plan-name-similarity.mjs; --writes--> plans/*, .claude/todo.md, .plan-write-ack
 plan-write-guard.sh --gates--> Write/Edit on plans/*.plan.md; --runs--> plan-name-similarity.mjs
-branch-guard.sh     --gates--> all Write/Edit (blocks main)
+branch-guard.sh     --gates--> all Write/Edit and Bash writes (blocks main)
+scope-guard.sh      --gates--> all Write/Edit and Bash writes (plan scope); --runs--> scope-check.mjs --file
 brief-detection     --gates--> pasted briefs and prose feature requests; --routes--> review | /plan -> save-plan -> take-plan | discussion
 job-validation      --gates--> marking any [x]; --requires--> Human done / ship Y / Tier 1 evidence
 brain-capture.md    --gates--> any docs/brain write (shown, then auto-writes; "no brain" opts out)

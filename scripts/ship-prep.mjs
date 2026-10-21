@@ -15,7 +15,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { resolve, dirname, join } from 'path'
 import { fileURLToPath } from 'url'
-import { isSlot, listSlots, branchPlanPath } from './lib/slot.mjs'
+import { isSlot, listSlots, scopedPlanPath } from './lib/slot.mjs'
 import { isOpenPlanPath } from './lib/plan-paths.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -263,8 +263,9 @@ function classify() {
 
   const wtCount = worktreeCount()
   const inSlot = isSlot()
-  // Outside a slot, a numbered plan branch (feat/NNN-<slug>) is still held to its plan's scope.
-  const scopeReport = inSlot || branchPlanPath(branch) ? scopeDiffReport() : null
+  // Outside a slot, a branch that names a plan (feat/NNN-<slug>, or a merge folder's .worktree-plan) is still held to
+  // its plan's scope: the same rule the scope-guard hook uses (lib/slot.mjs scopedPlanPath).
+  const scopeReport = inSlot || scopedPlanPath(branch) ? scopeDiffReport() : null
   const archWarnings = archDiffReport()
   const manifestOverlap = inSlot
     ? { no_manifest: noManifest, files: [...thisChatFiles], overlaps: [] }
@@ -327,8 +328,9 @@ function checkBaselineReport() {
 
   const wtCount = worktreeCount()
   const inSlot = isSlot()
-  // Outside a slot, a numbered plan branch (feat/NNN-<slug>) is still held to its plan's scope.
-  const scopeReport = inSlot || branchPlanPath(branch) ? scopeDiffReport() : null
+  // Outside a slot, a branch that names a plan (feat/NNN-<slug>, or a merge folder's .worktree-plan) is still held to
+  // its plan's scope: the same rule the scope-guard hook uses (lib/slot.mjs scopedPlanPath).
+  const scopeReport = inSlot || scopedPlanPath(branch) ? scopeDiffReport() : null
   const archWarnings = archDiffReport()
   const manifestOverlap = inSlot
     ? { no_manifest: false, files: [], overlaps: [] }
