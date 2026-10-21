@@ -83,7 +83,10 @@ For each checkbox in the plan:
 
 **Step 1b — Browser budget cap:** Phase 2 browser invocation is capped at 5 {{tools.browser}} actions per plan (goto + snapshot + up to 3 additional inspection actions). If more than 5 are needed to verify the plan's assumptions, stop and surface the gap instead of continuing.
 
-**Step 2 — Code inspection:** Read the target file, check if the described change already exists.
+**Step 2 — Code inspection:** hand the plan path and its open checkboxes (with line numbers) to the `kit-prevalidate` agent (`.claude/agents/kit-prevalidate.md`). It returns the table below. Then, inline:
+- **Re-check every `DONE` row** at its cited `file:line` (read only those lines). A row whose line does not show the change → `TODO`. A `DONE` skips work, so it is never taken on the agent's word (`docs/agent/model-routing.md` rule 4).
+- `ESCALATE` rows → decide them yourself (read the file, or ask the user if the checkbox has two readings).
+- The UI-detection browser step (Step 1) stays inline; merge its snapshot summary into the Evidence column.
 
 Mark each checkbox as:
 - `DONE` — already implemented in code
@@ -112,7 +115,7 @@ Mark each checkbox as:
 ## Phase 3 — Execute
 
 Use parallelism heuristics (persona orchestration retired) to determine parallelism:
-- Tasks targeting **different files** → run in parallel via Agent tool
+- Tasks targeting **different files** → run in parallel via Agent tool, with `model: "inherit"` (code writing stays on the main model — `docs/agent/model-routing.md`)
 - Tasks with **dependencies or same file** → run sequentially
 
 Execute all `TODO` tasks.
@@ -133,19 +136,17 @@ After each task: update checkbox in `.claude/todo.md` to `[x]`.
 
 **Logging requirement** — Silent skipping is forbidden. If Phase 4 is skipped, the reason must appear explicitly in the Phase 5 report. A Phase 5 report with no Phase 4 entry is invalid.
 
-Run validation checklist:
-```bash
-npm run {{commands.build}} 2>&1 | tee /tmp/build-output.txt
-if grep -q "ERROR" /tmp/build-output.txt; then
-  echo "BUILD FAILED — errors detected:"
-  grep "ERROR" /tmp/build-output.txt
-  exit 1
-fi
-```
+Run the validation checklist through the `kit-runner` agent (`.claude/agents/kit-runner.md`): hand it these two commands and use its `RUN` / `FAILED` block as the Phase 4 evidence:
 
 ```bash
-npm run {{commands.lint}} 2>/dev/null || echo "No lint configured"
+npm run {{commands.build}}
+npm run {{commands.lint}}
 ```
+
+- Build `FAILED` → the Error Handling rule below (stop, show the error lines it copied).
+- Lint exits non-zero because no lint script exists (`Missing script`) → report `lint: N/A`.
+- Lint `FAILED` for any other reason → a Phase 4 failure: stop, show the error lines it copied, do not auto-fix (same as a build failure).
+- `ESCALATE` → run the two commands inline yourself.
 
 If plan touched UI/layout:
 - Read `.worktree-port` (fallback {{slots.fePorts}})

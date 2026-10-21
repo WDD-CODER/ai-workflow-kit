@@ -12,12 +12,39 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 The validation hand-off moves to the end of the work: a finished plan with `[human]` items now ends with the
 servers running and HOW TO VALIDATE cards grouped by page, before any `/ship`, PR or merge.
 
+Model routing per task. Steps that only run commands or gather evidence now go to sub-agents on a cheaper
+model; planning, review, fixes and code writing stay on the main session's model. New `docs/agent/model-routing.md`
+holds the rules: no `model:` on an inline command (a model switch re-reads the whole conversation uncached, twice),
+delegate only when a step reads a lot and returns little, `ESCALATE: <reason>` instead of a guess, the main session
+re-checks any agent result that skips work or blocks a merge, and one hand-off file format for passing a failed step
+to a stronger agent.
+
+- New config key `models` (`mechanical` = `haiku`, `analysis` = `sonnet`, `judgment` = `inherit`). A value must be
+  `haiku`, `sonnet`, `opus`, `fable`, `inherit` or a full model id starting `claude-`; install and sync refuse anything
+  else. All three `inherit` turns the routing off.
+- New agents `.claude/agents/kit-runner.md` (mechanical: runs commands, returns exit codes and verbatim error lines)
+  and `.claude/agents/kit-prevalidate.md` (analysis: auto-solve's DONE / TODO / BLOCKED table). `git-agent` gets the
+  mechanical tier.
+- `/ship` Phase 1, `auto-solve` Phase 4 and `/review-it` step 3 hand their commands to `kit-runner`; `auto-solve`
+  Phase 2 uses `kit-prevalidate` and re-checks every DONE row; `auto-solve` Phase 3's parallel agents name
+  `model: "inherit"`; `/docs-refresh`'s agent call passes the analysis tier.
+- `github-sync` (mechanical) and `techdebt` (analysis) run as forked skills. A question the fork cannot ask comes
+  back as an `ASK:` line, and the main session asks it. On a rebase conflict github-sync now runs `git rebase --abort`
+  before stopping (it used to leave the conflict in place), so the checkout is never left mid-rebase.
+- In Cursor (no sub-agents) `/ship` and `/review-it` run those commands inline, as before.
+- SessionStart prints a `MODEL_ROUTING:` line when `CLAUDE_CODE_SUBAGENT_MODEL` or
+  `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` would override the agent files' models.
+
 ### What a project must do
 
 Nothing. Sync and commit. Rendered files that change (`kit-update`): `docs/agent/job-validation.md`,
 `.claude/commands/take-plan.md`, `.claude/commands/ship.md`, `.claude/commands/done.md`, `AGENTS.md` and, with the
-Cursor layer, `.cursor/commands/done.md` and `.cursor/commands/ship.md`. No config key is new. A project that
+Cursor layer, `.cursor/commands/done.md` and `.cursor/commands/ship.md`. A project that
 overrides one of these files can copy the new "Servers first", Format and Close-out text by hand.
+
+Model routing: nothing either; the new config key `models` has defaults. To change a tier, set `models.<tier>` in `kit.config.json`; to keep
+every step on the main model, set all three to `inherit`. `templates/CLAUDE.md` is a seed, so an existing project's
+`CLAUDE.md` does not get the new pointer to `docs/agent/model-routing.md` (optional to add by hand).
 
 ### Changed
 - `job-validation.md`: a Core rule for the hand-off (cards only when a human is needed, only once the work is

@@ -2,9 +2,15 @@
 name: techdebt
 description: Tech-debt audit for {{project.name}} — dead code, duplicated logic, style-rule violations (banned state types, untyped escape hatches, lint rules), oversized components or modules, leftover TODO/FIXME and security leftovers — written as a dated report with a 7-report trend. Use before a PR, after a large feature, at session end, from `/refactor`, by the nightly maintenance job, or when the user says "audit", "tech debt", "cleanup", "dead code" or "check todos".
 allowed-tools: Bash(node scripts/techdebt-report.mjs *) Bash(npm run {{commands.lint}} *)
+context: fork
+model: {{models.analysis}}
 ---
 
 # techdebt
+
+In Claude Code this runs in a forked sub-agent on the `analysis` model tier (`docs/agent/model-routing.md`), so the
+main session does not read the whole scope itself. The fork cannot ask the Human anything: a question goes into the
+report's findings.
 
 Produces `.claude/techdebt-reports/techdebt-<today>.md`. The folder keeps the newest 7 so the Trend section can show whether debt is shrinking; the script owns that bookkeeping so you never compute dates or decide what to delete.
 
@@ -73,7 +79,7 @@ full-project | working-tree (file list)
 
 ## 4. Hand-off
 
-- Open findings that need a plan → append `[ ]` items under a `### Tech Debt` heading in `.claude/todo.md` (Planner only; a Worker lists them in the report and in its PR description instead).
+- Open findings that need a plan → append `[ ]` items under a `### Tech Debt` heading in `.claude/todo.md` only when `node scripts/lib/slot.mjs --describe` prints `PLANNER: main folder`; in a slot (a Worker) list them in the report instead, for the PR description.
 <!-- KIT:if stack.docsMapSkill -->
 - Folder maps stale after deletions → run `{{stack.docsMapSkill}}`.
 <!-- KIT:end -->
