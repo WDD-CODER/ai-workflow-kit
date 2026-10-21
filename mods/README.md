@@ -43,10 +43,10 @@ Also recommended, as-is, from Anthropic: `claude plugin marketplace add anthropi
 | fleet | Heartbeat (seconds) | 30 | Registry + git facts refresh. |
 | fleet | Stop slot ports on exit | off | Runs `scripts/slot-stop.mjs` when the session ends in a slot (never while `/remote` is live). |
 | fleet | Context warning (%) | 70 | When the health band appears. |
-| fleet | Front-end / back-end port base | 0 / 0 | Slot N = base + N. 0 = the project's `kit.config.json` `slots.fePorts` / `slots.bePorts`; neither set = the port features stay off. |
+| fleet | Front-end / back-end port base | 0 / 0 | Slot N = base + N. 0 = the bases the kit rendered into `scripts/lib/slot.mjs` (`slots.fePorts` / `slots.bePorts`), else `kit.config.json`; none found = the port features stay off. |
 | guards | Session-state chars injected | 1500 | 0 turns the injection off. |
 | guards | Scope guard fails open | on | Same as today's shell guard. Turn off to fail closed. |
-| guards | Append-only hotspots | empty | Comma-separated; every plan may append to these. Empty = the project's `kit.config.json` `paths.hotspots` and `project.i18nFile`. |
+| guards | Append-only hotspots | empty | Comma-separated; every plan may append to these. Empty = the list the kit rendered into `scripts/scope-check.mjs` (`paths.hotspots`, `project.i18nFile`, the stack pack's defaults). |
 | ship-pilot | PR poll (seconds) | 60 | 0 = only on `/pr` and after each turn. |
 | ship-pilot | Main branch | main | |
 | ship-pilot | Phone push URL | empty | Same style as fleet's; receives "checks green/failed". |

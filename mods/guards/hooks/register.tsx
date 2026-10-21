@@ -212,6 +212,20 @@ export function hotspotsFromKitConfig(text: string | null): string[] {
     .map(x => (x.endsWith('/') ? `${x}**` : x))
 }
 
+/**
+ * The hotspots the kit rendered into the project's scripts/scope-check.mjs (`const HOTSPOTS = [ '…', … ]`): the
+ * resolved list, stack-pack defaults included, so guards allows exactly what /ship's scope check allows. [] when
+ * the file or the block is missing.
+ */
+export function hotspotsFromScopeCheck(text: string | null): string[] {
+  const block = (text ?? '').match(/const HOTSPOTS = \[([\s\S]*?)\]/)?.[1]
+  if (!block) return []
+  return [...block.matchAll(/'((?:[^'\\]|\\.)*)'/g)]
+    .map(m => m[1]!.replace(/\\(.)/g, '$1').trim())
+    .filter(Boolean)
+    .map(x => (x.endsWith('/') ? `${x}**` : x))
+}
+
 async function loadContext($: EngineInterface): Promise<Ctx> {
   const root = await $.session.cwd()
   const isSlot = await $.fs.exists(`${root}/.worktree-port`)
@@ -247,7 +261,9 @@ async function loadContext($: EngineInterface): Promise<Ctx> {
         void logEvent($, 'scope.widen-ignored', { added: widened })
       }
     }
-    const hotspots = HOTSPOTS.length ? HOTSPOTS : hotspotsFromKitConfig(await readText($, `${root}/kit.config.json`))
+    // The option, else the kit's rendered list, else the raw kit.config.json (a checkout without the kit scripts).
+    const rendered = HOTSPOTS.length ? [] : hotspotsFromScopeCheck(await readText($, `${root}/scripts/scope-check.mjs`))
+    const hotspots = HOTSPOTS.length ? HOTSPOTS : rendered.length ? rendered : hotspotsFromKitConfig(await readText($, `${root}/kit.config.json`))
     const always = [planPath, `docs/session-state-${sanitizeBranch(branch)}.md`, '.claude/sessions/**', '.worktree-*', 'docs/brain/**', ...hotspots, ...GENERATED]
     scope = [...always, ...globs].map(globToRegExp)
   }

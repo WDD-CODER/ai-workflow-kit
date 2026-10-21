@@ -824,6 +824,10 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     if (mkt?.source?.source !== 'github' || mkt?.source?.repo !== 'WDD-CODER/ai-workflow-kit' || mkt?.autoUpdate !== true) fail(`mods: settings.json marketplace entry is ${JSON.stringify(mkt)}`)
     for (const m of ['fleet', 'guards', 'ship-pilot']) if (st.enabledPlugins?.[`${m}@ai-workflow-kit-mods`] !== true) fail(`mods: settings.json does not enable ${m}`)
     if (st.enabledPlugins?.['security-guidance@claude-plugins-official'] !== true) fail('mods: settings.json lost security-guidance')
+    // The contract the mods read: fleet parses the port bases from scripts/lib/slot.mjs, guards the hotspot list from
+    // scripts/scope-check.mjs (mods/fleet, mods/guards). A change to either rendered shape must change the mods too.
+    if (!/return\s*\{\s*fe:\s*\d+\s*\+\s*n\s*,\s*be:\s*\d+\s*\+\s*n\s*\}/.test(read(mm, 'scripts/lib/slot.mjs'))) fail('mods: scripts/lib/slot.mjs no longer renders `return { fe: <n> + n, be: <n> + n }` (fleet reads it)')
+    if (!/const HOTSPOTS = \[[^\]]*\]/.test(read(mm, 'scripts/scope-check.mjs'))) fail('mods: scripts/scope-check.mjs no longer renders `const HOTSPOTS = [ … ]` (guards reads it)')
     const again = run('sync.mjs', ['--target', mm])
     const touched = again.stdout.split('\n').filter((l) => l.includes('.claude/settings.json'))
     if (again.status !== 0 || touched.length) fail(`mods: sync right after install: exit ${again.status}, ${touched.join(' | ')}`)

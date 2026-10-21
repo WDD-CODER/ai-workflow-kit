@@ -105,9 +105,11 @@ per the generated types). A newer source version → bring that one in and note 
 2. **Marketplace at the kit root:** `.claude-plugin/marketplace.json`, name `ai-workflow-kit-mods`, owner as today,
    `plugins[].source` = `./mods/<mod>`, descriptions as today. Versions live in each `plugin.json` only (never also in
    the marketplace entry).
-3. **Project defaults instead of one project's values:** guards reads its hotspots and fleet its port bases from the
-   project's `kit.config.json` (`paths.hotspots`, `project.i18nFile`, `slots.fePorts`, `slots.bePorts`) when the
-   matching `userConfig` value is empty; the `userConfig` defaults become `""` / `0` (= use the project's). No
+3. **Project defaults instead of one project's values:** guards reads its hotspots and fleet its port bases from what
+   the kit rendered for the project when the matching `userConfig` value is empty — `scripts/scope-check.mjs`'s
+   `HOTSPOTS` and `scripts/lib/slot.mjs`'s port bases (the resolved values, stack-pack defaults included, so the mods
+   agree with the kit's own checks), else the raw `kit.config.json` (`paths.hotspots`, `project.i18nFile`,
+   `slots.fePorts`, `slots.bePorts`); install-check guards that rendered shape; the `userConfig` defaults become `""` / `0` (= use the project's). No
    `kit.config.json` and no `userConfig` value → no hotspots, and fleet's port features stay off. Tests cover both
    sources. Bumps: guards 0.2.0, ship-pilot 0.4.0 (unchanged code apart from removing project values, if any).
 4. **Config key `mods`** in `kit.config.json`: `enabled` (list of mod names, default `[]`, each one of `fleet`,
@@ -126,7 +128,9 @@ per the generated types). A newer source version → bring that one in and note 
    `$.clock.after(resetsAt - now, …)`; on fire, notify `5-hour window refreshed — full limit available again` in this
    session (no cross-session marker, no phone push — Dandan, 2026-10-21), and re-arm the 95% notice. A changed
    `resetsAt` cancels and re-schedules the timer.
-8. **CI:** `.github/workflows/leak-check.yml` adds `node tools/leak-check.mjs --root mods --project-only`. The
+8. **CI:** `.github/workflows/leak-check.yml` adds a `--project-only` leak-check of the mods' hooks, manifests, README
+   and SECURITY and the root marketplace (not the mods' tests: fixtures whose ports and plan numbers are the formats
+   under test). The
    `claude plugin validate` / `test` runs are documented in the README's **Checks** (the CI runner has no Claude Code
    CLI); the Worker runs them and pastes the output in Execution Notes.
 9. **Updates, documented in the README (new section "Mods"):** a mod change bumps its `plugin.json` version and ships
@@ -165,6 +169,13 @@ per the generated types). A newer source version → bring that one in and note 
   block: enabled, none, refused names/repo, sync no-op and update), workflow-link-check pass.
 - Leak-check scans the mods' hooks, manifests, README and SECURITY, not their tests: the tests are fixtures whose port
   numbers and plan numbers are the formats under test.
+- Independent review (separate agent, opus): 4 should-fix + 4 nits, all fixed — port bases and hotspots now come from
+  the kit-rendered `scripts/lib/slot.mjs` / `scripts/scope-check.mjs` (a null `slots.fePorts` or a pack's default
+  hotspots used to disagree with the kit), the port bases are re-read by `/fleet` and `/ports` after a module reload,
+  the 95% notice has one flag per window (a 7-day window at 95% no longer re-notifies after each 5-hour refresh), a
+  reset more than a day away shows the clock time without a countdown, `withMods` adds the marketplace even without an
+  `enabledPlugins` key, the `planFiles` JSDoc is back above it, FR3/FR8 match the implementation. Tests: fleet 34,
+  guards 15, ship-pilot 14 pass.
 - Found, not fixed (out of scope): ship-pilot registers `/pr`, a name Claude Code ships, so `$.command.register`
   refuses it (`claude plugin validate mods/ship-pilot` warns). Follow-up: rename it (e.g. `/pr-status`).
 - `mods/README.md` was rewritten for any project (install from the marketplace, project defaults, examples without

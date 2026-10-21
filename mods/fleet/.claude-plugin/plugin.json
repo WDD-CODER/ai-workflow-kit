@@ -38,13 +38,13 @@
     "fePortBase": {
       "type": "number",
       "title": "Front-end port base",
-      "description": "Slot N serves the front end on base + N; the main folder on base. 0 = the project's kit.config.json slots.fePorts.",
+      "description": "Slot N serves the front end on base + N; the main folder on base. 0 = the base the kit rendered into scripts/lib/slot.mjs (slots.fePorts).",
       "default": 0
     },
     "bePortBase": {
       "type": "number",
       "title": "Back-end port base",
-      "description": "Slot N serves the back end on base + N. 0 = the project's kit.config.json slots.bePorts.",
+      "description": "Slot N serves the back end on base + N. 0 = the base the kit rendered into scripts/lib/slot.mjs (slots.bePorts).",
       "default": 0
     }
   },

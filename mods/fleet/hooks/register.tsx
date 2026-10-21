@@ -56,6 +56,15 @@ const slotOf = (cwd: string) => {
   return { slot: n, fe: n && PORT_BASE_FE ? PORT_BASE_FE + n : null, be: n && PORT_BASE_BE ? PORT_BASE_BE + n : null }
 }
 
+/**
+ * The port bases the kit rendered into the project's scripts/lib/slot.mjs (`return { fe: 4300 + n, be: 3100 + n }`):
+ * the resolved values, kit defaults included. 0 when the file or the line is missing.
+ */
+export function portsFromSlotScript(text: string | null): { fe: number; be: number } {
+  const m = (text ?? '').match(/return\s*\{\s*fe:\s*(\d+)\s*\+\s*n\s*,\s*be:\s*(\d+)\s*\+\s*n\s*\}/)
+  return m ? { fe: Number(m[1]), be: Number(m[2]) } : { fe: 0, be: 0 }
+}
+
 /** slots.fePorts / bePorts from a project's kit.config.json text; 0 for a missing or unreadable value. */
 export function portsFromKitConfig(text: string | null): { fe: number; be: number } {
   try {
@@ -70,10 +79,11 @@ export function portsFromKitConfig(text: string | null): { fe: number; be: numbe
 const pad2 = (n: number) => String(n).padStart(2, '0')
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-/** '2h10m' / '45m' until a time; null once it has passed. */
+/** '2h10m' / '45m' until a time; '' when it is more than a day away (the clock time says it); null once it has passed. */
 export function untilText(iso: string, nowMs: number): string | null {
   const ms = Date.parse(iso) - nowMs
   if (!Number.isFinite(ms) || ms <= 0) return null
+  if (ms > 24 * 60 * 60_000) return ''
   const mins = Math.ceil(ms / 60000)
   return mins >= 60 ? `${Math.floor(mins / 60)}h${pad2(mins % 60)}m` : `${mins}m`
 }
@@ -88,13 +98,13 @@ export function clockText(iso: string, nowMs: number): string {
 /** Status line suffix '↻14:30 (2h10m)'; '' when unknown or passed. */
 export function resetShort(iso: string | null, nowMs: number): string {
   const left = iso ? untilText(iso, nowMs) : null
-  return iso && left ? ` ↻${clockText(iso, nowMs)} (${left})` : ''
+  return iso && left !== null ? ` ↻${clockText(iso, nowMs)}${left ? ` (${left})` : ''}` : ''
 }
 
 /** '(resets 14:30, in 2h10m)'; '' when unknown or passed. */
 export function resetLong(iso: string | null, nowMs: number): string {
   const left = iso ? untilText(iso, nowMs) : null
-  return iso && left ? ` (resets ${clockText(iso, nowMs)}, in ${left})` : ''
+  return iso && left !== null ? ` (resets ${clockText(iso, nowMs)}${left ? `, in ${left}` : ''})` : ''
 }
 
 const minutes = (ms: number) => Math.max(0, Math.round(ms / 60000))
@@ -114,7 +124,9 @@ let ttlMs = 60 * 60000
 let warnAt = 70
 let me: FleetSession | null = null
 let heartbeat: Timer | null = null
-let notifiedLimit = false
+/** The 95% notice, once per window: the 5-hour flag re-arms when that window refreshes, the 7-day one per session. */
+let notified5h = false
+let notified7d = false
 /** The refresh notice timer for one five-hour window (resetFor = that window's resetsAt). */
 let resetTimer: Timer | null = null
 let resetFor: string | null = null
@@ -270,11 +282,15 @@ const refreshHealth = async ($: EngineInterface) => {
   const who = me ? `${roleOf(me)} · ` : ''
   $.ui.status(`${badge}${model} · ${who}${cache} · ctx ${h.ctxPercent}%${five2}${lim} · ≈$${h.usd.toFixed(2)}${git2}`)
   scheduleRefresh($, h.fiveHourResetsAt, now)
-  if (!notifiedLimit && ((h.fiveHour ?? 0) >= 95 || (h.sevenDay ?? 0) >= 95)) {
-    notifiedLimit = true
-    const when = (h.fiveHour ?? 0) >= 95 ? resetLong(h.fiveHourResetsAt, now) : resetLong(h.sevenDayResetsAt, now)
-    await notify($, `A usage window is at 95%${when}.`, 'fleet')
-    void logEvent($, 'limit.95', { fiveHour: h.fiveHour, sevenDay: h.sevenDay })
+  if (!notified5h && (h.fiveHour ?? 0) >= 95) {
+    notified5h = true
+    await notify($, `The 5-hour usage window is at 95%${resetLong(h.fiveHourResetsAt, now)}.`, 'fleet')
+    void logEvent($, 'limit.95', { window: 'five_hour', fiveHour: h.fiveHour })
+  }
+  if (!notified7d && (h.sevenDay ?? 0) >= 95) {
+    notified7d = true
+    await notify($, `The 7-day usage window is at 95%${resetLong(h.sevenDayResetsAt, now)}.`, 'fleet')
+    void logEvent($, 'limit.95', { window: 'seven_day', sevenDay: h.sevenDay })
   }
 }
 
@@ -291,10 +307,23 @@ const scheduleRefresh = ($: EngineInterface, iso: string | null, nowMs: number) 
 const windowRefreshed = async ($: EngineInterface, iso: string) => {
   if (resetFor !== iso) return
   resetTimer = null
-  notifiedLimit = false // the 95% notice can fire again in the new window
+  notified5h = false // the 5-hour 95% notice can fire again in the new window
   await notify($, '5-hour window refreshed — full limit available again.', 'fleet', false)
   void logEvent($, 'limit.refreshed', { resetsAt: iso })
   await refreshHealth($)
+}
+
+/**
+ * The port bases when fleet's options leave them at 0: the kit-rendered scripts/lib/slot.mjs, else kit.config.json.
+ * Called at session start and again by /fleet and /ports, since a reload (a /config change) starts the module over
+ * without a session.start.
+ */
+const ensurePorts = async ($: EngineInterface, cwd: string) => {
+  if (PORT_BASE_FE && PORT_BASE_BE) return
+  const rendered = portsFromSlotScript(await readText($, `${cwd}/scripts/lib/slot.mjs`))
+  const raw = rendered.fe && rendered.be ? rendered : portsFromKitConfig(await readText($, `${cwd}/kit.config.json`))
+  PORT_BASE_FE = Number(options.fePortBase) || raw.fe
+  PORT_BASE_BE = Number(options.bePortBase) || raw.be
 }
 
 const handoffPath = async ($: EngineInterface, cwd: string, branch: string) => {
@@ -533,6 +562,8 @@ export const register: Register = (on, rawOptions) => {
   PORT_BASE_BE = Number(options.bePortBase) || 0
   resetTimer = null
   resetFor = null
+  notified5h = false
+  notified7d = false
 
   // -- session lifecycle ---------------------------------------------------
 
@@ -550,11 +581,7 @@ export const register: Register = (on, rawOptions) => {
     const now = await $.clock.now()
     const cwd = await $.session.cwd()
     const id = await $.session.id()
-    if (!Number(options.fePortBase) || !Number(options.bePortBase)) {
-      const kit = portsFromKitConfig(await readText($, `${cwd}/kit.config.json`))
-      PORT_BASE_FE = Number(options.fePortBase) || kit.fe
-      PORT_BASE_BE = Number(options.bePortBase) || kit.be
-    }
+    await ensurePorts($, cwd)
     const facts = await gitFacts($, cwd)
     const plan = await readText($, `${cwd}/.worktree-plan`)
     const { slot, fe, be } = slotOf(cwd)
@@ -684,6 +711,7 @@ export const register: Register = (on, rawOptions) => {
     }
     const rows = await liveSessions($, now)
     const cwd = me?.cwd ?? (await $.session.cwd())
+    await ensurePorts($, cwd)
     const worktrees = await git($, ['worktree', 'list', '--porcelain'], cwd)
     const seen = new Set(rows.map(r => normalize(r.cwd)))
     const lines: string[] = ['slot  plan  branch                         state      ports       session']
@@ -717,6 +745,7 @@ export const register: Register = (on, rawOptions) => {
 
   on('command.run', { command: 'ports' }, async $ => {
     const cwd = me?.cwd ?? (await $.session.cwd())
+    await ensurePorts($, cwd)
     if (!PORT_BASE_FE || !PORT_BASE_BE) return { text: 'fleet: no port bases — set slots.fePorts and slots.bePorts in kit.config.json, or fleet\'s port options in /config.' }
     const isWin = /^[a-z]:\//i.test(cwd.replace(/\\/g, '/'))
     let out = ''

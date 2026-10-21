@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { hotspotsFromKitConfig } from '../hooks/register'
+import { hotspotsFromKitConfig, hotspotsFromScopeCheck } from '../hooks/register'
 
 type Loose = (event: string, hook: (...args: never[]) => unknown) => unknown
 
@@ -267,4 +267,11 @@ test('hotspots come from kit.config.json: paths.hotspots plus project.i18nFile, 
   expect(hotspotsFromKitConfig(null)).toEqual([])
   expect(hotspotsFromKitConfig('{ broken')).toEqual([])
   expect(hotspotsFromKitConfig(JSON.stringify({ project: { name: 'x' } }))).toEqual([])
+})
+
+test('hotspots from the kit-rendered scope-check.mjs (pack defaults included) win over the raw kit.config.json', () => {
+  const rendered = "const HOTSPOTS = [\n  'public/i18n/',\n  'src/styles.scss', 'src/app/app.routes.ts'\n].filter(Boolean)"
+  expect(hotspotsFromScopeCheck(rendered)).toEqual(['public/i18n/**', 'src/styles.scss', 'src/app/app.routes.ts'])
+  expect(hotspotsFromScopeCheck("const HOTSPOTS = [\n  '',\n  ''\n].filter(Boolean)")).toEqual([])
+  expect(hotspotsFromScopeCheck(null)).toEqual([])
 })

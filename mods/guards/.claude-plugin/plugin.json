@@ -19,7 +19,7 @@
     "hotspots": {
       "type": "string",
       "title": "Append-only hotspots",
-      "description": "Comma-separated repo-relative files every plan may append to (never rewrite). Empty = the project's kit.config.json paths.hotspots and project.i18nFile.",
+      "description": "Comma-separated repo-relative files every plan may append to (never rewrite). Empty = the list the kit rendered into scripts/scope-check.mjs (paths.hotspots, project.i18nFile and the stack pack's defaults).",
       "default": ""
     }
   },

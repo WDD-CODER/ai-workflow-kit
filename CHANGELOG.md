@@ -44,9 +44,10 @@ on every machine and a mod change reaches those machines with a kit release.
   (`autoUpdate: true`) and one `enabledPlugins` entry per mod into `.claude/settings.json`.
 - fleet 0.4.0: the status line shows when the 5-hour window resets (`5h 62% ↻14:30 (2h10m)`), `/health` and the
   limit notices name both reset times, and every session shows a notice when the 5-hour window refreshes (the 95%
-  notice is re-armed for the new window). Port bases come from `slots.fePorts` / `slots.bePorts` when fleet's own
-  options are empty; neither set = the port features stay off.
-- guards 0.2.0: its append-only hotspots come from `paths.hotspots` and `project.i18nFile` when its option is empty.
+  notice is re-armed for the new window). Port bases come from the kit-rendered `scripts/lib/slot.mjs` when fleet's own
+  options are empty. The 95% notice fires once per window.
+- guards 0.2.0: its append-only hotspots come from the kit-rendered `scripts/scope-check.mjs` (the same list `/ship`'s
+  scope check uses) when its option is empty.
 - ship-pilot 0.4.0: no behaviour change (one shared copy from the marketplace).
 - CI runs `leak-check` on the mods (their tests are fixtures and are not scanned). Cloud sessions do not get the mods.
 

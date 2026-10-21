@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { TestBody } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { clockText, portsFromKitConfig, resetLong, resetShort, shipBadge, untilText } from '../hooks/register'
+import { clockText, portsFromKitConfig, portsFromSlotScript, resetLong, resetShort, shipBadge, untilText } from '../hooks/register'
 
 type Loose = (event: string, hook: (...args: never[]) => unknown) => unknown
 
@@ -429,4 +429,40 @@ test('refresh notice: once per window in this session, re-scheduled when resetsA
   expect(toasts.filter(t => t.includes('refreshed')).length).toBe(2)
   await clock.advance(H)
   expect(toasts.filter(t => t.includes('refreshed')).length).toBe(2)
+})
+
+test('port bases: the kit-rendered slot.mjs wins over a null kit.config.json value', async ($, on) => {
+  expect(portsFromSlotScript('export function ports() {\n  return { fe: 4300 + n, be: 3100 + n }\n}')).toEqual({ fe: 4300, be: 3100 })
+  expect(portsFromSlotScript(null)).toEqual({ fe: 0, be: 0 })
+  mock.clock(on, { now: NOW })
+  mock.store(on)
+  world(on, '/work/app-wt-2', undefined, undefined, undefined, {
+    '/work/app-wt-2/kit.config.json': JSON.stringify({ slots: { fePorts: null, bePorts: null } }),
+    '/work/app-wt-2/scripts/lib/slot.mjs': '  return { fe: 5100 + n, be: 6100 + n }',
+  })
+  await $.session.start(start('/work/app-wt-2'))
+  const { text } = await $.command.run(run('fleet'))
+  expect(text).toMatch(/5102\/6102/)
+})
+
+test('a 7-day window held at 95% is announced once, not again after each 5-hour refresh', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  mock.store(on)
+  const toasts: string[] = []
+  limits = [
+    { kind: 'five_hour', percentUsed: 40, resetsAt: at(H) },
+    { kind: 'seven_day', percentUsed: 96, resetsAt: at(3 * 24 * H) },
+  ]
+  world(on, '/work/app', undefined, toasts)
+  await $.session.start(start('/work/app'))
+  expect(toasts.filter(t => t.includes('7-day usage window is at 95%')).length).toBe(1)
+  expect(toasts.join()).toMatch(/7-day usage window is at 95% \(resets (Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d\d:\d\d\)/)
+  await clock.advance(H + 1000)
+  limits = [
+    { kind: 'five_hour', percentUsed: 5, resetsAt: at(6 * H) },
+    { kind: 'seven_day', percentUsed: 96, resetsAt: at(3 * 24 * H) },
+  ]
+  await $.turn.complete({ text: '' } as never)
+  expect(toasts.filter(t => t.includes('refreshed')).length).toBe(1)
+  expect(toasts.filter(t => t.includes('7-day usage window is at 95%')).length).toBe(1)
 })

@@ -147,8 +147,8 @@ each mod does and its options: `mods/README.md`.
   `ai-workflow-kit-mods` at the new versions, then `claude plugin marketplace remove <old name>`. Removing a marketplace
   also uninstalls what came from it and deletes its saved options: re-enter fleet's phone push URL in `/config` if you
   had one.
-- The mods read the project's `paths.hotspots`, `project.i18nFile` and `slots.fePorts` / `slots.bePorts` from
-  `kit.config.json`; their own `/config` options override those.
+- The mods read the project's hotspots and port bases from the files the kit rendered (`scripts/scope-check.mjs`,
+  `scripts/lib/slot.mjs`), so they match the kit's own checks; their own `/config` options override those.
 
 ## Sync (see what a newer kit changes)
 

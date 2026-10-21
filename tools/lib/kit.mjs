@@ -606,10 +606,6 @@ export function markHooksExecutable(target, dests) {
   return r.status === 0 ? `NOTE staged ${dests.join(', ')} as executable (git add --chmod=+x)` : `NOTE could not stage the hooks as executable; run: git add --chmod=+x ${dests.join(' ')}`
 }
 
-/**
- * Plan every file the kit would install: [{ dest, kind, source, content }] (content rendered).
- * `vals` is the output of resolveConfig.
- */
 /** The Claude Code mods the kit's own marketplace serves (`.claude-plugin/marketplace.json`, `mods/<name>/`). */
 export const MODS = ['fleet', 'guards', 'ship-pilot']
 export const MODS_MARKETPLACE = 'ai-workflow-kit-mods'
@@ -623,14 +619,20 @@ export function withMods(text, vals) {
   if (!enabled.length) return text
   const s = JSON.parse(text)
   const out = {}
+  const marketplace = { [MODS_MARKETPLACE]: { source: { source: 'github', repo: String(vals['mods.marketplaceRepo']) }, autoUpdate: true } }
   for (const [k, v] of Object.entries(s)) {
-    if (k === 'enabledPlugins') out.extraKnownMarketplaces = { [MODS_MARKETPLACE]: { source: { source: 'github', repo: String(vals['mods.marketplaceRepo']) }, autoUpdate: true } }
-    out[k] = v
+    if (k === 'enabledPlugins') out.extraKnownMarketplaces = { ...(s.extraKnownMarketplaces ?? {}), ...marketplace }
+    if (k !== 'extraKnownMarketplaces') out[k] = v
   }
+  if (!out.extraKnownMarketplaces) out.extraKnownMarketplaces = { ...(s.extraKnownMarketplaces ?? {}), ...marketplace }
   out.enabledPlugins = { ...(s.enabledPlugins ?? {}), ...Object.fromEntries(enabled.map((m) => [`${m}@${MODS_MARKETPLACE}`, true])) }
   return `${JSON.stringify(out, null, 2)}\n`
 }
 
+/**
+ * Plan every file the kit would install: [{ dest, kind, source, content }] (content rendered).
+ * `vals` is the output of resolveConfig.
+ */
 export function planFiles({ kitRoot, packs, layers = [], cursor, yesChef, vals, agentsWorkflow = false }) {
   const units = selectedUnits(kitRoot, packs, layers)
   // Builtin for KIT:if: the Cursor layer is installed (set = not empty).
