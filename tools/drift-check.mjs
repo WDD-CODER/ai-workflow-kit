@@ -26,7 +26,7 @@
 import { readFileSync, existsSync } from 'fs'
 import { resolve, join } from 'path'
 import { resolveSource } from './lib/source.mjs'
-import { KIT_ROOT, readJson, resolveConfig, planFiles, parseArgs, readOverrides, ownsAgents, ignoredPaths, AGENTS_WORKFLOW, splitList, withUpstream } from './lib/kit.mjs'
+import { KIT_ROOT, readJson, resolveConfig, planFiles, parseArgs, readOverrides, ownsAgents, ignoredPaths, AGENTS_WORKFLOW, splitList, withUpstream, projectConfigPath, configLabel } from './lib/kit.mjs'
 
 const die = (m) => {
   console.error(`KIT_DRIFT: FAIL — ${m}`)
@@ -43,7 +43,8 @@ if (!args.target) die('--target <dir> is required')
 const target = resolve(args.target)
 if (!existsSync(target)) die(`${target} does not exist`)
 
-const cfgFile = join(target, 'kit.config.json')
+const cfgFile = projectConfigPath(target)
+const cfgName = configLabel(target, cfgFile)
 const project = existsSync(cfgFile) ? readJson(cfgFile) : {}
 const instFile = join(target, '.kit', 'install.json')
 const inst = existsSync(instFile) ? readJson(instFile) : null
@@ -95,9 +96,9 @@ const shipped = new Set(plan.files.map((f) => f.dest))
 if (shipped.has(AGENTS_WORKFLOW)) shipped.add('AGENTS.md') // its override is what sends the rules to AGENTS.workflow.md
 for (const s of ['drift', 'missing', 'ignored']) for (const r of rows.filter((x) => x.state === s)) console.log(`${s.padEnd(9)} ${r.dest}`)
 if (args.verbose) for (const r of rows.filter((x) => x.state === 'override')) console.log(`override  ${r.dest} — ${overrides.get(r.dest)}`)
-for (const p of overrides.keys()) if (!shipped.has(p)) console.log(`NOTE override ${p} is not a file this kit ships — remove it from kit.config.json`)
+for (const p of overrides.keys()) if (!shipped.has(p)) console.log(`NOTE override ${p} is not a file this kit ships — remove it from ${cfgName}`)
 const notSet = [...plan.report.notSet].sort()
-if (notSet.length > 0) console.log(`NOTE not set in kit.config.json (rendered "(not set)"): ${notSet.join(', ')}`)
+if (notSet.length > 0) console.log(`NOTE not set in ${cfgName} (rendered "(not set)"): ${notSet.join(', ')}`)
 if (plan.report.unknown.size > 0) console.log(`NOTE unknown placeholders: ${[...plan.report.unknown].sort().join(', ')}`)
 
 const n = (s) => rows.filter((r) => r.state === s).length

@@ -202,6 +202,20 @@ function main() {
   check('pre-push refuses a code change on main', bad.status !== 0 && /PRE_PUSH: refusing/.test(bad.out), tail(bad.out))
   git(proj, 'reset', '-q', '--hard', 'origin/main')
 
+  // 3b. Solo work in the Planner folder: a numbered plan branch (no slot) is still held to its plan's scope at /ship;
+  // a branch that names no plan gets no scope gate.
+  git(proj, 'switch', '-q', '-c', 'feat/001-hello-solo')
+  writeFileSync(join(proj, 'notes.md'), 'outside plan 001\n')
+  git(proj, 'add', 'notes.md')
+  git(proj, 'commit', '-q', '--no-verify', '-m', 'chore: a file outside the plan scope')
+  const solo = node(proj, 'scripts/ship-prep.mjs')
+  check('outside a slot, ship-prep holds a numbered plan branch to its plan scope', /scope: out/.test(solo.out) && /- notes\.md/.test(solo.out), tail(solo.out))
+  git(proj, 'switch', '-q', '-c', 'chore/solo-no-plan')
+  const noPlan = node(proj, 'scripts/ship-prep.mjs')
+  check('outside a slot, a branch that names no plan has no scope gate', noPlan.status === 0 && !/scope: /.test(noPlan.out), tail(noPlan.out))
+  git(proj, 'switch', '-q', 'main')
+  git(proj, 'branch', '-q', '-D', 'feat/001-hello-solo', 'chore/solo-no-plan')
+
   // 4. Worker: slot, claim, guards, ship-prep, push.
   // Slot provisioning as the worktree-setup skill does it: root deps + the workflow scripts' own deps.
   const scriptsInstall = (dir) => npm(join(dir, 'scripts'), 'npm install --prefer-offline --no-audit --no-fund')

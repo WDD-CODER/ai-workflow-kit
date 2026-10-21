@@ -673,6 +673,47 @@ else {
   if (moved.status !== 1 || !moved.stderr.includes('tag v9.9.9 moved')) fail(`a moved tag was not refused: ${moved.stderr.trim()}`)
 }
 
+// .kit/config.json: the project config of a project whose kit.config.json is something else (the kit repo: its
+// scaffold). Install, sync and drift-check read it before kit.config.json; install leaves kit.config.json alone.
+{
+  const dk = tmp('dotkit-config')
+  const scaffold = JSON.stringify({ $comment: 'not this project\'s config', project: { name: 'scaffold-name' } })
+  writeFileSync(join(dk, 'kit.config.json'), scaffold)
+  mkdirSync(join(dk, '.kit'), { recursive: true })
+  const dkCfg = (name) => writeFileSync(join(dk, '.kit', 'config.json'), JSON.stringify({ ...CORE_CFG, project: { name } }))
+  dkCfg('dotkit-app')
+  const r = run('install.mjs', ['--target', dk])
+  const agents = r.status === 0 ? read(dk, 'AGENTS.md') : ''
+  if (r.status !== 0 || !agents.includes('dotkit-app') || agents.includes('scaffold-name')) fail(`install with .kit/config.json: exit ${r.status}, AGENTS.md names ${agents.includes('dotkit-app') ? 'dotkit-app' : 'not dotkit-app'}: ${(r.stdout + r.stderr).trim().split('\n').pop()}`)
+  if (read(dk, 'kit.config.json') !== scaffold) fail('install with .kit/config.json rewrote kit.config.json')
+  const s = run('sync.mjs', ['--target', dk])
+  if (s.status !== 0 || !/dry-run — 0 new, 0 kit-update, 0 conflicts/.test(s.stdout)) fail(`sync with .kit/config.json right after install: ${(s.stdout + s.stderr).trim().split('\n').pop()}`)
+  const d = run('drift-check.mjs', ['--target', dk])
+  if (d.status !== 0) fail(`drift-check with .kit/config.json right after install: exit ${d.status}, ${d.stdout.trim().split('\n').pop()}`)
+  dkCfg('dotkit-renamed')
+  const s2 = run('sync.mjs', ['--target', dk])
+  if (!/dry-run — 0 new, [1-9]\d* kit-update/.test(s2.stdout)) fail(`sync did not see a value changed in .kit/config.json: ${s2.stdout.trim().split('\n').pop()}`)
+  rmSync(dk, { recursive: true, force: true })
+}
+
+// The kit installed into itself (source folder = target): install.json records "local:." (no machine path), and
+// sync / drift-check resolve it against the target.
+{
+  const self = tmp('self-install')
+  for (const p of ['core', 'packs', 'layers', 'templates', 'kit.json', 'kit.config.json', '.gitattributes']) cpSync(join(kit, p), join(self, p), { recursive: true })
+  mkdirSync(join(self, '.kit'), { recursive: true })
+  // The kit keeps its own .gitattributes (install skips an existing one; without the override drift-check flags it).
+  writeFileSync(join(self, '.kit', 'config.json'), JSON.stringify({ ...CORE_CFG, project: { name: 'self-kit' }, overrides: [{ path: '.gitattributes', reason: 'the kit repo keeps its own' }] }))
+  const r = run('install.mjs', ['--target', self, '--source', self])
+  const src = r.status === 0 ? JSON.parse(read(self, '.kit/install.json')).source : null
+  if (r.status !== 0 || src !== 'local:.') fail(`self-install: exit ${r.status}, recorded source ${src}, expected local:.: ${(r.stdout + r.stderr).trim().split('\n').pop()}`)
+  const d = run('drift-check.mjs', ['--target', self])
+  if (d.status !== 0) fail(`drift-check of a self-install: exit ${d.status}, ${d.stdout.trim().split('\n').pop()}`)
+  const s = run('sync.mjs', ['--target', self])
+  if (s.status !== 0 || !/dry-run — 0 new, 0 kit-update, 0 conflicts/.test(s.stdout)) fail(`sync of a self-install: ${(s.stdout + s.stderr).trim().split('\n').pop()}`)
+  rmSync(self, { recursive: true, force: true })
+}
+
 // commands.* take npm script names: a full command ("npm run build") is refused with exit 2 by install (nothing
 // written) and by sync (install.json untouched), with the script name to use instead.
 {
@@ -1155,4 +1196,4 @@ if (problems.length > 0) {
   console.error(`INSTALL_CHECK: FAIL — ${problems.length} problems`)
   process.exit(1)
 }
-console.log(`INSTALL_CHECK: ok — ${fixtures.length} fixtures, ${haveActionlint ? `actionlint on ${actionlinted} rendered workflows` : 'actionlint not installed (skipped)'}, CI renders (ci.testMode run / if-present / skip), link check, re-install no-op, sync dry-run/apply/prune, overrides, drift-check, adopt, promoted seeds, /plan load paths, Planner docs, plan-name-similarity (default = v1.3.0, --stem, --related, --scope), ${powershell ? 'PowerShell wrappers (relative, absolute, trailing slash, drive- and root-relative)' : 'PowerShell wrappers skipped (no Windows PowerShell)'}, local + github sources, stack detection, upstream-owned layer, 0 problems`)
+console.log(`INSTALL_CHECK: ok — ${fixtures.length} fixtures, ${haveActionlint ? `actionlint on ${actionlinted} rendered workflows` : 'actionlint not installed (skipped)'}, CI renders (ci.testMode run / if-present / skip), link check, re-install no-op, sync dry-run/apply/prune, overrides, drift-check, adopt, promoted seeds, /plan load paths, Planner docs, plan-name-similarity (default = v1.3.0, --stem, --related, --scope), ${powershell ? 'PowerShell wrappers (relative, absolute, trailing slash, drive- and root-relative)' : 'PowerShell wrappers skipped (no Windows PowerShell)'}, local + github sources, stack detection, upstream-owned layer, .kit/config.json, self-install (local:.), 0 problems`)

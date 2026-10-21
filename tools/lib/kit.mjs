@@ -465,6 +465,22 @@ export function withUpstream(overrides, vals, dests) {
   return out
 }
 
+/**
+ * The project's own config file: --config, else <target>/.kit/config.json, else <target>/kit.config.json.
+ * .kit/config.json is for a project whose kit.config.json is something else (the kit repo: its scaffold).
+ */
+export function projectConfigPath(target, arg) {
+  if (arg) return resolve(arg)
+  const dotKit = join(target, '.kit', 'config.json')
+  return existsSync(dotKit) ? dotKit : join(target, 'kit.config.json')
+}
+
+/** A config path as messages name it: relative to the target when inside it. */
+export function configLabel(target, file) {
+  const rel = relative(target, file)
+  return (rel && !rel.startsWith('..') ? rel : file).replace(/\\/g, '/')
+}
+
 /** Effective flat config: project > pack defaults > kit defaults, then computed defaults. */
 export function resolveConfig({ kitRoot, project, packs, layers = [], target, platform = process.platform, nodeVersion = process.versions.node }) {
   const base = flatten(readJson(join(kitRoot, 'kit.config.json')))

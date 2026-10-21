@@ -4,3 +4,33 @@ node_modules/
 *.log
 .DS_Store
 Thumbs.db
+
+# The kit installed into itself (plan 016): runtime files of the installed workflow, never committed
+# Worktree slot state (Planner-Worker workflow)
+.worktree-port
+.worktree-root
+.worktree-plan
+.worktree-cleanup
+.claude/.slot-pids
+.claude/.slot-plan-start
+.claude/logs/
+.claude/*.log
+
+# Claude Code local config and runtime state (never commit)
+.claude/settings.local.json
+.claude/worktrees/
+.claude/.plan-write-ack
+.claude/.session-state-path
+.claude/.ship-baseline
+.claude/.session-lock
+.claude/.last-npm-install-hash
+.claude/.last-npm-install-hash-server
+.claude/.last-npm-install-hash-scripts
+.claude/sessions/
+
+# Workflow script dependencies (npm install inside scripts/)
+scripts/node_modules/
+
+# Session hand-offs written by the workflow (may name other projects)
+docs/session-state-*.md
+.claude/handoff-previous.md

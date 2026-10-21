@@ -114,7 +114,9 @@ function fetchTag({ owner, repo, ref, log }) {
 /** How a local kit path is written into a project's install.json: relative to the project when possible. */
 function localLabel(kitRoot, target) {
   const rel = relative(target, kitRoot)
-  return `local:${(rel && !isAbsolute(rel) ? rel : kitRoot).replace(/\\/g, '/')}`
+  // The kit installed into itself: "local:." (no machine path in a committed install.json).
+  if (rel === '') return 'local:.'
+  return `local:${(!isAbsolute(rel) ? rel : kitRoot).replace(/\\/g, '/')}`
 }
 
 /**

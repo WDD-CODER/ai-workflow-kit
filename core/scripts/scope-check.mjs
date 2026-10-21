@@ -13,7 +13,8 @@
  *
  * A path matching ownership.upstreamPaths (kit.config.json) is never in scope: --file prints "SCOPE: upstream <path>".
  *
- * --plan defaults to the active slot's .worktree-plan. Exit 1 on a missing
+ * --plan defaults to the active slot's .worktree-plan, else (outside a slot) the plan a numbered branch
+ * names (feat/NNN-<slug>). Exit 1 on a missing
  * plan / scope block, on --file/--diff finding an out-of-scope file, on
  * --overlap finding a shared glob with another active plan, or on --drift
  * finding an in-scope commit since the plan's Snapshot (or, without one, since
@@ -33,7 +34,7 @@ import { execFileSync } from 'child_process'
 import { resolve, dirname, join, relative, isAbsolute } from 'path'
 import { fileURLToPath } from 'url'
 import picomatch from 'picomatch'
-import { activePlanPath } from './lib/slot.mjs'
+import { activePlanPath, branchPlanPath } from './lib/slot.mjs'
 import { extractScopeGlobs } from './lib/plan-scope.mjs'
 import { listOpenPlans, OPEN_PLAN_DIRS } from './lib/plan-paths.mjs'
 import { parseInvariants, checkPlanArch, diffArchWarnings, decisionWithoutAdr, parseAddedLines } from './lib/invariants.mjs'
@@ -114,8 +115,9 @@ function extractField(planText, name) {
 
 function resolvePlanPath(args) {
   if (args.plan) return normalize(args.plan)
-  const active = activePlanPath()
-  if (!active) fail('no --plan given and no active plan for this slot (.worktree-plan missing)')
+  // A slot's .worktree-plan; outside a slot, the plan a numbered branch names (feat/NNN-<slug> -> plans/NNN-*.plan.md).
+  const active = activePlanPath() ?? branchPlanPath(git(['branch', '--show-current']))
+  if (!active) fail('no --plan given, no active plan for this slot (.worktree-plan missing) and no plan named by the branch')
   return normalize(active)
 }
 

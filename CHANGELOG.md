@@ -9,6 +9,26 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+The kit uses its own workflow: it is installed into the kit repo and works solo (plan on `main`, build on a
+`feat/NNN-<slug>` branch in the same folder, `/ship`).
+
+### What a project must do
+
+Nothing. Two optional changes reach projects with the next sync: `.kit/config.json`, when present, is read before
+`kit.config.json` by install, sync and drift-check; and `/ship` checks the plan scope of a `feat/NNN-<slug>` branch
+outside a slot too. Rendered files that change (`kit-update`): `scripts/scope-check.mjs`, `scripts/ship-prep.mjs`.
+
+### Added
+- `.kit/config.json` project config, read before `kit.config.json` (for a project whose `kit.config.json` is
+  something else; messages name the file used). A kit installed into itself records its source as `local:.`.
+- The kit repo carries the installed workflow (`.kit/config.json`, a root `package.json` that runs the checks), and
+  CI runs `drift-check --target .` so the installed copy always equals the sources.
+
+### Changed
+- `scope-check.mjs`: with no `--plan` and no slot plan, a `<type>/NNN-<slug>` branch's plan is the plan.
+  `ship-prep.mjs` runs the scope gate in a slot **or** on such a branch (a branch that names no plan: no gate, as
+  before).
+
 The validation hand-off moves to the end of the work: a finished plan with `[human]` items now ends with the
 servers running and HOW TO VALIDATE cards grouped by page, before any `/ship`, PR or merge.
 

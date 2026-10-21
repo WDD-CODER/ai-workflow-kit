@@ -78,6 +78,7 @@ tools/drift-check.mjs
 tools/lib/kit.mjs
 tools/lib/source.mjs
 tools/install-check.mjs
+tools/e2e-check.mjs
 core/scripts/scope-check.mjs
 core/scripts/ship-prep.mjs
 .kit/**
@@ -168,13 +169,13 @@ the path to the scope block and retry. Never `--force` an install or sync over a
    section "The kit uses itself".
 
 ## Atomic Sub-tasks
-- [ ] S1: Let a project keep its kit settings in .kit/config.json, read the same way by install, sync and drift-check — projectConfigPath helper, messages name the file used, install-check case — tools/lib/kit.mjs, tools/install.mjs, tools/sync.mjs, tools/drift-check.mjs, tools/install-check.mjs
-- [ ] S2: Record a self-install's source as local:. so no machine path is committed — tools/lib/source.mjs, tools/install.mjs
-- [ ] S3: Check the plan scope at /ship on a numbered plan branch outside a slot — scope-check finds the plan from the branch name, ship-prep runs the gate, install-check case — core/scripts/scope-check.mjs, core/scripts/ship-prep.mjs, tools/install-check.mjs
-- [ ] S4: Give the kit its own settings and npm scripts — .kit/config.json, package.json, .gitignore
-- [ ] S5: Install the kit into its own repo and commit the copy — node tools/install.mjs --target . (no --force), scripts/ npm install, docs/project/* written by hand — .kit/**, AGENTS.md, CLAUDE.md, README_WORKFLOW.md, .claude/**, scripts/**, docs/agent/**, docs/brain/**, docs/project/**, .husky/**, .editorconfig, .nvmrc, .mcp.json, .vscode/settings.json
-- [ ] S6: Fail a PR whose installed copy differs from the source — drift-check step, plus the one-time proof on a test branch — .github/workflows/leak-check.yml
-- [ ] S7: Write down the solo flow and how the kit uses itself — plans/README.md, docs/CHANGE-LOOP.md, README.md, CHANGELOG.md
+- [x] S1: Let a project keep its kit settings in .kit/config.json, read the same way by install, sync and drift-check — projectConfigPath helper, messages name the file used, install-check case — tools/lib/kit.mjs, tools/install.mjs, tools/sync.mjs, tools/drift-check.mjs, tools/install-check.mjs
+- [x] S2: Record a self-install's source as local:. so no machine path is committed — tools/lib/source.mjs, tools/install.mjs
+- [x] S3: Check the plan scope at /ship on a numbered plan branch outside a slot — scope-check finds the plan from the branch name, ship-prep runs the gate, install-check case — core/scripts/scope-check.mjs, core/scripts/ship-prep.mjs, tools/install-check.mjs
+- [x] S4: Give the kit its own settings and npm scripts — .kit/config.json, package.json, .gitignore
+- [x] S5: Install the kit into its own repo and commit the copy — node tools/install.mjs --target . (no --force), scripts/ npm install, docs/project/* written by hand — .kit/**, AGENTS.md, CLAUDE.md, README_WORKFLOW.md, .claude/**, scripts/**, docs/agent/**, docs/brain/**, docs/project/**, .husky/**, .editorconfig, .nvmrc, .mcp.json, .vscode/settings.json
+- [x] S6: Fail a PR whose installed copy differs from the source — drift-check step, plus the one-time proof on a test branch — .github/workflows/leak-check.yml
+- [x] S7: Write down the solo flow and how the kit uses itself — plans/README.md, docs/CHANGE-LOOP.md, README.md, CHANGELOG.md
 
 ## Out of Scope
 - Slots, `/take-plan`, slot servers and `.claude/todo.md` in the kit repo (the files are installed; the kit does not
@@ -188,3 +189,19 @@ the path to the scope block and retry. Never `--force` an install or sync over a
 - 2026-10-21, decided by Dandan (Architect + PM review of this plan): build after plan 015 (PR #34) merges; the four
   project CI workflows stay out of the kit repo; plan numbers 011, 013, 014 stay with the orchestrator brief, and its
   guards / UI tier / eval plans become 017 / 018 / 019. Solo flow instead of Planner/Worker in the kit repo.
+- 2026-10-21, built on `feat/016-kit-uses-its-own-workflow` from `origin/main` `39e8453` (after #34 and #35), by hand
+  in the folder `ai-workflow-kit-wt-1` (the main folder stayed on `main`).
+  - Step 0: plan 015 merged; sync/drift-check read only `kit.config.json` (confirmed); a self-install recorded the
+    absolute folder (`localLabel` fell back to the path when `relative()` is empty) → fixed to `local:.`; the
+    installed `kit-owned` check judges installed files only (`core/` edits are not refused); `main` not protected.
+  - Scope added before building, by the plan author: `tools/e2e-check.mjs`. The S3 test needs the scripts'
+    dependencies (`picomatch`), which only `e2e-check` installs; `install-check` runs offline without them.
+  - Overrides beyond FR4: `.gitattributes` and `.gitignore` (both the kit's own, present before the install;
+    without them drift-check / sync flag them).
+  - `AGENTS.md` and `CLAUDE.md` are seeds: `AGENTS.md` got the kit's solo-flow and "edit sources, not copies" rules in
+    place of the Planner-Worker lines.
+  - The docs leak-check run no longer scans `docs/agent/` (the installed copy of `core/docs/agent`, already scanned by
+    the core run; rendered with this repo's default ports it reported 4200). It scans `docs/CHANGE-LOOP.md`,
+    `docs/project`, `docs/brain`. CI, `npm run lint` and the README's check list changed together.
+  - S6 proof done locally instead of on a test branch: one line appended to `core/docs/agent/standards-git.md` →
+    `drift-check --target .` exit 1 (`1 drift`), reverted → `ok`.

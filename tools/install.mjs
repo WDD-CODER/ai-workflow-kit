@@ -9,7 +9,8 @@
  * Source: a tagged GitHub release (fetched into a per-user cache, see lib/source.mjs), a local kit folder,
  * or (no --source) the kit these tools run from. .kit/install.json records source, ref and commit.
  *
- * Config: --config file, else <target>/kit.config.json, else the kit defaults plus the packs' defaults.
+ * Config: --config file, else <target>/.kit/config.json, else <target>/kit.config.json, else the kit defaults plus
+ *   the packs' defaults (.kit/config.json: a project whose kit.config.json is something else, e.g. the kit repo).
  * Never overwrites an existing file unless --force (reported SKIP-EXISTING). Paths in kit.config.json `overrides`
  * are never written, even with --force (reported SKIP-OVERRIDE). Writes <target>/.kit/install.json
  * (commit it: kit-sync reads it) and, when absent, <target>/kit.config.json with the effective config.
@@ -44,7 +45,7 @@ import { resolveSource } from './lib/source.mjs'
 import {
   KIT_ROOT, REQUIRED, isEmpty, readJson, sha256, resolveConfig, planFiles, parseArgs, unflatten, NOT_SET, readOverrides, isHook,
   markHooksExecutable, commandProblems, ownsAgents, ignoredPaths, AGENTS_WORKFLOW, frontendNote, presentAlternative, backendNote,
-  detectStack, splitList, withUpstream,
+  detectStack, splitList, withUpstream, projectConfigPath, configLabel,
 } from './lib/kit.mjs'
 
 let args
@@ -65,14 +66,17 @@ const target = resolve(args.target)
 const log = (s) => console.log(s)
 
 let projectCfg = {}
-const cfgFile = args.config ? resolve(args.config) : join(target, 'kit.config.json')
+const cfgFile = projectConfigPath(target, args.config)
+// Where the effective config is written: the project's own file (kit.config.json when --config names another).
+const ownCfgFile = args.config ? join(target, 'kit.config.json') : cfgFile
+const cfgName = configLabel(target, ownCfgFile)
 if (existsSync(cfgFile)) projectCfg = readJson(cfgFile)
 else if (args.config) {
   console.error(`KIT_INSTALL: FAIL — config not found: ${cfgFile}`)
   process.exit(1)
 }
 if (args.adopt) {
-  const why = !existsSync(join(target, 'kit.config.json')) ? 'kit.config.json not found in the target'
+  const why = !existsSync(cfgFile) ? 'kit.config.json (or .kit/config.json) not found in the target'
     : existsSync(join(target, '.kit', 'install.json')) ? '.kit/install.json already exists; use kit-sync'
     : args.force || args.config ? '--adopt takes no --force or --config' : null
   if (why) {
@@ -254,19 +258,19 @@ const installJson = JSON.stringify(
 if (!args['dry-run']) {
   mkdirSync(join(target, '.kit'), { recursive: true })
   writeFileSync(join(target, '.kit', 'install.json'), installJson, 'utf8')
-  if (!existsSync(join(target, 'kit.config.json'))) {
+  if (!existsSync(ownCfgFile)) {
     const effective = { $comment: 'Effective config written by kit-install; edit freely, kit-sync reads it.', ...unflatten(vals) }
     for (const k of Object.keys(effective.kit ?? {})) delete effective.kit[k]
     delete effective.kit
-    writeFileSync(join(target, 'kit.config.json'), JSON.stringify(effective, null, 2) + '\n', 'utf8')
-    log('WRITE kit.config.json')
+    writeFileSync(ownCfgFile, JSON.stringify(effective, null, 2) + '\n', 'utf8')
+    log(`WRITE ${cfgName}`)
   } else if (recordStack) {
     // The detected stack, confirmed with --yes: the project's own config names it from now on.
-    const cfgPath = join(target, 'kit.config.json')
+    const cfgPath = ownCfgFile
     const cfg = readJson(cfgPath)
     cfg.stack = { ...(cfg.stack ?? {}), packs, layers }
     writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + '\n', 'utf8')
-    log(`WRITE kit.config.json (stack.packs=[${packs.join(', ')}], stack.layers=[${layers.join(', ')}])`)
+    log(`WRITE ${cfgName} (stack.packs=[${packs.join(', ')}], stack.layers=[${layers.join(', ')}])`)
   }
 }
 
