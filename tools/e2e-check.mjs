@@ -49,7 +49,8 @@
  * agent evals (plan 019): tools/test/agent-eval.test.mjs scores the installed agents with a stub runner;
  * write guards (plan 017): tools/test/guards.test.mjs against the installed scripts (a main-folder session writing
  * into a slot, main, runtime files, Bash writes, merge folders, run time); the orchestrator: tools/test/orchestrator.test.mjs
- * against the installed scripts and tools/orchestrator-e2e.mjs (the installed workflow run with stub role agents).
+ * against the installed scripts and tools/orchestrator-e2e.mjs (the installed workflow run with stub role agents);
+ * the [ui] tier (plan 018): tools/test/ui-tier.test.mjs against the installed scripts (tag lint, UI preflight, grid).
  * Exit 0 = every case passed, 1 = failures (one line per case).
  */
 import { writeFileSync, readFileSync, mkdtempSync, mkdirSync, rmSync, existsSync, readdirSync, realpathSync, symlinkSync, lstatSync, copyFileSync } from 'fs'
@@ -177,6 +178,8 @@ function main() {
   // The orchestrator: its pure rules against the installed scripts, then a whole run with stub role agents.
   const ot = spawnSync(process.execPath, ['--test', '--test-reporter=tap', join(kit, 'tools', 'test', 'orchestrator.test.mjs')], { cwd: proj, env: { ...env, ORCH_ROOT: proj }, encoding: 'utf8' })
   check('orchestrator tests pass against the installed scripts (node --test tools/test/orchestrator.test.mjs)', ot.status === 0 && /# fail 0/.test(`${ot.stdout}`), tail(`${ot.stdout}${ot.stderr}`))
+  const ut = spawnSync(process.execPath, ['--test', '--test-reporter=tap', join(kit, 'tools', 'test', 'ui-tier.test.mjs')], { cwd: proj, env: { ...env, UI_TIER_ROOT: proj }, encoding: 'utf8' })
+  check('[ui] tier tests pass against the installed scripts (node --test tools/test/ui-tier.test.mjs)', ut.status === 0 && /# fail 0/.test(`${ut.stdout}`), tail(`${ut.stdout}${ut.stderr}`))
   const oe = node(kit, join(kit, 'tools', 'orchestrator-e2e.mjs'), '--deps-from', join(proj, 'scripts', 'node_modules'))
   check('orchestrator run end to end with stub agents (node tools/orchestrator-e2e.mjs)', oe.status === 0 && /ORCHESTRATOR_E2E: ok/.test(oe.out), tail(oe.out))
   npm(proj, 'npm run -s prepare')

@@ -11,7 +11,7 @@
  *   node scripts/orch-state.mjs diff       --run <name> --plan <NNN>        changed files vs the run branch, sensitive?
  *   node scripts/orch-state.mjs set        --run <name> --plan <NNN> [--state s] [--round n] [--tier t] [--sha x]
  *                                          [--role r --model m --effort e | --roles r=m/e,r2=m2/e2] [--reason "<text>"]
- *                                          [--card "<title>" --card-status s --page <url> --shots a.png,b.png]
+ *                                          [--card "<title>" --card-status s --page <url> --shots a.png,b.png --via script|browser]
  *   node scripts/orch-state.mjs handoff    --run <name> --plan <NNN> --step s --check c --tail t --tried x
  *                                          the hand-off file a fresh judgment-tier builder reads
  *   node scripts/orch-state.mjs note       --run <name> [--plan <NNN>] --text "<decision>"
@@ -380,12 +380,15 @@ const commands = {
         p.models[m[1]] = { model: m[2], ...(m[3] ? { effort: m[3] } : {}) }
       }
     }
-    // --card "<title>" --card-status pass --page "<url>" --shots a.png,b.png: one orch-ui card result, the evidence the
-    // run report groups by page. The same card title again replaces the earlier result.
+    // --card "<title>" --card-status pass --page "<url>" --shots a.png,b.png --via script|browser: one [ui] card result
+    // (its script or the browser agent), the evidence the run report groups by page. `unchecked`: a card no script could
+    // check while the browser step was off. The same card title again replaces the earlier result.
     if (args.card && args.card !== true) {
       const status = String(args['card-status'] ?? '')
-      if (!['pass', 'fail', 'plan-drift'].includes(status)) fail(`--card-status "${status}" — allowed: pass, fail, plan-drift`)
-      const card = { card: String(args.card), status, page: args.page && args.page !== true ? String(args.page) : '', screenshots: args.shots && args.shots !== true ? String(args.shots).split(',').filter(Boolean) : [], round: p.round }
+      if (!['pass', 'fail', 'plan-drift', 'unchecked'].includes(status)) fail(`--card-status "${status}" — allowed: pass, fail, plan-drift, unchecked`)
+      const via = args.via && args.via !== true ? String(args.via) : 'browser'
+      if (!['script', 'browser', 'none'].includes(via)) fail(`--via "${via}" — allowed: script, browser, none`)
+      const card = { card: String(args.card), status, via, page: args.page && args.page !== true ? String(args.page) : '', screenshots: args.shots && args.shots !== true ? String(args.shots).split(',').filter(Boolean) : [], round: p.round }
       p.uiCards = [...(p.uiCards ?? []).filter((c) => c.card !== card.card), card]
     }
     p.freeDiskGb = diskGb()

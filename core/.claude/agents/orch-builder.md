@@ -22,9 +22,16 @@ rules in `docs/agent/agent-roles.md` (non-interactive, evidence, deny list, sche
 4. Write real tests for the plan's `[auto]` Done-when items. Run the project checks and every `[auto]` command; all
    must pass before you return `built`. A check that fails for an environment reason (network, a temp folder in use)
    is rerun once, and you say so.
-5. Tick each Atomic Sub-task you finished, add the evidence lines (command → exit code, key output) under
+5. For each `[ui]` Done-when item (`docs/agent/job-validation.md` Tier 1b) write **one short end-to-end test** with
+   the project's e2e command (`commands.e2e`; Playwright when the project has none): open the item's page, do its one
+   action, assert the quoted text or element, save one screenshot under `screens/` named after the plan and item
+   (`screens/<NNN>-<n>.png`). Run it. Report every `[ui]` item in `uiCards`: `card` (the item, short), `page` (the full
+   URL), `test` (the exact command that runs only this test) and `screenshot` (its path). An item no script can
+   check gets no `test` — the browser agent looks at it. Never re-tag an item. The gate reruns each test; the
+   browser agent sees only failed or unscripted cards. The QA login comes from `.env`; never read or print it.
+6. Tick each Atomic Sub-task you finished, add the evidence lines (command → exit code, key output) under
    `## Execution Notes`. Never tick a `[human]` item.
-6. Commit the paths you changed (named, never everything blindly), check `git status` is clean, push your branch.
+7. Commit the paths you changed (named, never everything blindly), check `git status` is clean, push your branch.
 
 ## On a retry
 
@@ -54,7 +61,11 @@ file (`docs/agent/model-routing.md` rule 5) before you return and name it in `ev
     "node --test tests/parser.test.mjs -> exit 0, # pass 6, # fail 0",
     "src/parser.mjs:12 — new parseHeader()"
   ],
-  "decisions": ["Kept the old flag as an alias (most conservative option)."]
+  "decisions": ["Kept the old flag as an alias (most conservative option)."],
+  "uiCards": [
+    { "card": "Save shows Saved", "page": "http://localhost:5173/settings", "test": "npx playwright test e2e/ui/001-1.spec.ts", "screenshot": "screens/001-1.png" },
+    { "card": "The colours match the brand", "page": "http://localhost:5173/" }
+  ]
 }
 ```
 

@@ -13,7 +13,7 @@ branch himself.
 | Command | `.claude/commands/orchestrate.md` | Starts a run from a clean turn: readiness, the batched questions, `go`, the run, the final instructions |
 | Workflow | `.claude/workflows/orchestrate.js` | Readiness, ordering, the per-plan pipeline, the fix loop, the wave gate. No file, git or clock access |
 | State | `scripts/orch-state.mjs` | Every file, git and time step the workflow needs: run branch, merge folder, builder folders, `status.json`, hand-off files, the report |
-| Preflight | `scripts/orch-preflight.mjs` | Environment checks before the run and before a retry: disk, database, packages, dev server, git identity, remote, main folder, settings, a live run |
+| Preflight | `scripts/orch-preflight.mjs` | Environment checks before the run and before a retry: disk, database, packages, dev server, git identity, remote, main folder, settings, a live run; `--ui` before any browser step: the pages' servers, the QA login, the backend from the page's origin |
 | Role agents | `.claude/agents/orch-*.md` | One job each; shared contract in `docs/agent/agent-roles.md` |
 | Runner | `.claude/agents/kit-runner.md` | Runs the state and preflight commands for the workflow (mechanical tier) |
 
@@ -39,7 +39,8 @@ branch himself.
    - gate (`orch-gate`): the project checks plus the plan's own check commands from readiness;
    - finders in parallel (`orch-check-plan`, `orch-check-bugs`, `orch-check-rules`, and `orch-security` only when the
      diff touches a sensitive path or its added lines name auth, permission, password, token or role code), then `orch-verify` on every candidate;
-   - UI validator (`orch-ui`) only when the run is started with the UI step on;
+   - the `[ui]` cards (below): each card's own e2e test, run by a gate; the UI validator (`orch-ui`) only for a
+     failed or unscriptable card, and only when the run is started with the UI step on (`args.ui`);
    - merger (`orch-merge`), one at a time: `git merge --no-ff --no-commit`, the checks, then the commit
      `Merge <plan branch> into orch/<run> (plan NNN)` and the push. A conflict or a failing check aborts the
      merge (`git merge --abort`) and goes back to the builder as a problem.
@@ -47,6 +48,26 @@ branch himself.
 5. **Report.** `orch-state.mjs finish` writes `docs/orchestrator/runs/<run>/report.md` and a copy of `status.json` to
    the run branch, and copies the report to `.claude/orchestrator-runs/<run>.md` in the main folder (gitignored), so
    it opens without a branch switch.
+
+## The [ui] cards
+
+A plan's `[ui]` Done-when items (`docs/agent/job-validation.md` Tier 1b) are checked cheapest first:
+
+1. **Script.** The builder writes one short e2e test per item that saves a screenshot, and returns `uiCards`: card,
+   page, test command, screenshot path. A gate (`orch-gate`, label `ui-gate`) runs each test. A pass is recorded in
+   `status.json` with `via: script` and its screenshot, and never reaches the browser agent.
+2. **Environment.** Before any browser step, `orch-preflight.mjs --ui --pages <the cards' pages> [--login <url>]
+   [--api <url>]` (`args.uiLogin` / `args.uiApi`, or `ORCH_UI_LOGIN_URL` / `ORCH_UI_API_URL`; the QA user comes from
+   `ORCH_QA_USER` / `ORCH_QA_PASSWORD` in the environment and is never printed). A page server that does not
+   answer, a login that fails or a backend the page's origin cannot reach **stops before the browser agent**: the plan
+   is parked with the reason in `status.json`, and no fix round is spent.
+3. **Browser.** `orch-ui` gets only the failed and unscriptable cards (`CARDS`), the "pre-checked — skip" list
+   (`PRE_CHECKED`) and the known findings (`KNOWN_FINDINGS`: the failed scripts' output, earlier rounds' UI
+   findings). Verdicts: `pass`, `fail` (a `major` finding back to the builder) or `plan-drift` — the plan says X,
+   the app has Y: no severity, no fix round, its own section of the report.
+
+With the UI step off, a failed script is a finding for the builder, and a card no script can check is kept as
+`unchecked` for the Human.
 
 ## Pass, fix rounds and escalation
 
@@ -91,7 +112,9 @@ branch himself.
 ## The report
 
 Merged, parked and why; the decisions agents took; the models each agent ran on; what only the Human can do — one
-validation list grouped by page, numbers running on: each `orch-ui` card result of a merged plan under the page it was
-checked on, with its status, round and screenshot paths as evidence (kept in `status.json` as `uiCards`), then every
-`[human]` item of the merged plans, which name no page, per plan — and a decision for each parked plan; and the
+validation list, numbers running on: a **screenshot grid per page** (one row per `[ui]` card of a merged plan: title,
+verdict with who checked it — script or browser — and the round, and a thumbnail link to each screenshot; kept in
+`status.json` as `uiCards`), then **plan drift** in its own section (no severity, not a bug: update the card or the
+plan), then the `[ui]` cards no one could check and every `[human]` item of the merged plans, which name no page, per
+plan — still shown to the Human as cards — and a decision for each parked plan; and the
 PowerShell lines that open the pull request of the run branch. The end-of-run message prints the report path and those lines.

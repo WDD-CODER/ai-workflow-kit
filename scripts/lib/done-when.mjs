@@ -1,0 +1,45 @@
+/**
+ * Done-when tags — the shape rule for a plan's Done-when items (docs/agent/job-validation.md), shared by
+ * scripts/scope-check.mjs --tags (the save-plan shape lint) and the orchestrator. Pure: callers pass the plan text.
+ */
+/** The plan's `[ui]` items (Goals / Done-when), verbatim without the tag, in file order. */
+export function uiItems(planText) {
+  const out = []
+  for (const line of String(planText).replace(/\r\n/g, '\n').split('\n')) {
+    const m = /^\s*[-*]\s*(?:\[[ x]\]\s*)?\[ui\]\s*(.+)$/.exec(line)
+    if (m) out.push(m[1].trim())
+  }
+  return out
+}
+
+/** The tags a Done-when item may start with (docs/agent/job-validation.md). Lower case, exactly as written. */
+export const DONE_WHEN_TAGS = ['auto', 'ui', 'human']
+
+/**
+ * The save-plan shape lint for Done-when tags: every top-level bullet of a `## Goals & Success Criteria`,
+ * `## Success Criteria` or `## Done when` section starts with `[auto]`, `[ui]` or `[human]` (after an optional `[ ]` /
+ * `[x]` box). Returns one problem line per bad item: no tag, an unclosed tag (`[ui`) or a wrong spelling (`[UI]`).
+ */
+export function doneWhenTagProblems(planText) {
+  const problems = []
+  let inSection = false
+  const lines = String(planText).replace(/\r\n/g, '\n').split('\n')
+  lines.forEach((line, i) => {
+    if (/^#{1,6}\s/.test(line)) {
+      inSection = /^##\s+.*(?:success criteria|done[- ]when)/i.test(line)
+      return
+    }
+    if (!inSection) return
+    const m = /^[-*]\s+(?:\[[ xX]\]\s+)?(.*)$/.exec(line)
+    if (!m) return
+    const body = m[1].trim()
+    const tag = /^\[([^\]\s]*)\]/.exec(body)
+    if (tag && DONE_WHEN_TAGS.includes(tag[1])) return
+    let why
+    if (tag) why = `tag [${tag[1]}] is not one of ${DONE_WHEN_TAGS.map((t) => `[${t}]`).join(', ')} (lower case, exactly)`
+    else if (/^\[[a-z]+(?:\s|$)/i.test(body)) why = `tag ${body.split(/\s/)[0]} is not closed — write ${DONE_WHEN_TAGS.map((t) => `[${t}]`).join(', ')}`
+    else why = `no tag — start the item with ${DONE_WHEN_TAGS.map((t) => `[${t}]`).join(', ')}`
+    problems.push(`line ${i + 1}: ${why}: ${body.slice(0, 80)}`)
+  })
+  return problems
+}

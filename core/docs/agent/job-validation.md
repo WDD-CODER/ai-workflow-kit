@@ -7,9 +7,15 @@
 
 ## Core rule
 
-A job is **done** when every Done-when item is validated. `[auto]` items are validated by agent evidence (Tier 1). `[human]` or untagged items are validated only by the Human. Agents never promote an item to `[auto]`; only the plan author tags it. Tag syntax: `.claude/skills/save-plan/SKILL.md` Plan Rules. Rationale: two tiers let agent-verifiable checks (`[auto]`) close without a human round-trip while visual or subjective checks still need the Human.
+A job is **done** when every Done-when item is validated. `[auto]` items are validated by agent evidence (Tier 1). `[ui]` items are validated by a script that drives the real UI and saves a screenshot (Tier 1b). `[human]` or untagged items are validated only by the Human. Agents never promote an item to `[auto]` or `[ui]`; only the plan author tags it. Tag syntax: `.claude/skills/save-plan/SKILL.md` Plan Rules. Rationale: agent-verifiable checks (`[auto]`, `[ui]`) close without a human round-trip while subjective checks still need the Human.
 
 Plans with no tags behave exactly as before: everything is `[human]`.
+
+| Tag | Checked by | Evidence | Use for |
+| --- | --- | --- | --- |
+| `[auto]` | the agent, one exact command | the command and its output / exit code | build, tests, exact CLI output |
+| `[ui]` | one short end-to-end test per item (the project's e2e command, `commands.e2e`), then a browser agent only if that test fails or none can be written | the test's pass and its screenshot path | open a page, do one thing, see a quoted text or element |
+| `[human]` | the Human | a validation word after the card | look and feel, product judgement, anything a script cannot decide |
 
 The table below applies to `[human]` and untagged items:
 
@@ -164,6 +170,34 @@ VERIFIED BY AGENT
 ```
 
 Mark matching todos with `node scripts/todo-query.mjs mark --line N[,N…] --auto-verified` (flips `[ ]` to `[x]`, appends `(auto-verified)`). `todo-archive.mjs` skip rules are unaffected.
+
+---
+
+## Tier 1b — `[ui]`, checked by a script first, a browser only for failures
+
+A `[ui]` item is one a script can check in the running app: **navigate** to one page, do **one action**, **assert** a
+quoted text or element, **save a screenshot**. It sits between `[auto]` (no app needed) and `[human]` (a person's
+judgement). Only the plan author tags it; an agent never re-tags `[human]` as `[ui]`.
+
+- **The builder writes one short end-to-end test per `[ui]` item** with the project's e2e command
+  (`commands.e2e` in the kit config; Playwright when the project has none), named after the item, that saves one screenshot. It reports
+  per item: the card title, the page URL, the test command and the screenshot path.
+- **The gate runs those tests.** A passing test is the evidence (`✓ [ui] {item} — {test} → pass; screenshot {path}`);
+  that item never reaches a browser agent.
+- **A browser agent looks only at the rest:** a test that failed, or an item no test can check. It gets the
+  "pre-checked — skip" list (the items whose tests passed) and the known-findings list, and returns per item
+  `pass`, `fail` or `plan-drift`.
+- **Plan drift is not a bug.** "The plan says X, the app has Y" (a renamed button, a moved control) is reported in its
+  own section with no severity and costs no fix round; the Human updates the card or the plan.
+- **Environment first.** Before any browser step: the page's server answers, the QA login works, the backend answers
+  from the page's origin. A blocked environment stops before the browser agent, with the reason, and costs no fix round.
+- An item that stays unchecked (no test possible and no browser step) falls back to `[human]`: the Human still gets its card.
+
+```text
+VERIFIED BY AGENT
+- ✓ [ui] {item} — `{test command}` → pass; screenshot `{path}`
+- ⚠ [ui→human] {item} — {why no script or browser could check it}
+```
 
 ---
 
