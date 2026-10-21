@@ -79,7 +79,7 @@ export function globProblem(g) {
   if (/^!/.test(g)) return 'negation (!) is not supported'
   return null
 }
-export const MODEL_KEYS = ['models.mechanical', 'models.analysis', 'models.judgment']
+export const MODEL_KEYS = ['models.mechanical', 'models.analysis', 'models.judgment', 'models.build']
 const MODEL_VALUE = /^(haiku|sonnet|opus|fable|inherit|claude-[a-z0-9][a-z0-9.-]*)$/
 const ENUMS = {
   'ci.lintScope': ['all', 'changed'],

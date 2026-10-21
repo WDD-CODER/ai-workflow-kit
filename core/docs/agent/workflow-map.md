@@ -16,7 +16,7 @@
 | Planner (Architect + Product Manager) | Claude Code in the main folder, on `{{git.mainBranch}}` | Scopes with the Human and writes Plan Contracts via `/plan`; runs the Architect + PM review on every plan it saves (its own and received ones) before saving and pushing it. Read-only against the app |
 | Drafting tool (optional) | Claude.ai, Cursor or another agent | May draft a plan or brief; the Planner reviews it before it is saved |
 | Worker (Contractor) | Claude Code or Cursor in a `{{slots.nameFormat}}` slot | Claims a plan ("execute plan NNN"), executes **one milestone at a time** inside its `## Read-Write Scope`, writes `sessions/[date].md`, stops |
-| Reviewer | Claude Code via `/review-it` | Checks milestone vs Plan Contract. Report-only, never fixes, never commits |
+| Reviewer | Claude Code via `/review-it` | Checks a Worker branch against its plan with the checker pipeline (finders → verifier). Report-only, never fixes, never commits |
 | Shipping agent | Whichever agent runs `/ship` | Build gate → review → commit approval → merge gate → brain capture |
 
 Rule: **a job is never done until every Done-when item is validated** — `[auto]` by agent evidence, `[human]`/untagged by the Human (`docs/agent/job-validation.md`).
@@ -49,7 +49,7 @@ Cursor rule files ship with the optional `layer:cursor`; the stack pack adds sta
 | `/fix` | bug-fix path (analog of `/feat` for fixes) | — | product code |
 | `/refactor` | refactor path | — | product code |
 | `/brief` | see §6 flow F2; syncs parent plan via save-plan Phase 4 | `git diff/log`, `.claude/todo.md` (retroactive mode) | `.claude/sessions/{session-id}/brief.md` |
-| `/review-it` | Reviewer protocol | newest `sessions/*.md`, parent plan in `plans/`, milestone files | verdict in chat only (never `[x]`, never commits) |
+| `/review-it` | Reviewer protocol; runs `kit-runner`, the `orch-check-*` finders and `orch-verify` (`docs/agent/agent-roles.md`) | the branch diff against `origin/{{git.mainBranch}}`, its plan in `plans/` | verdict in chat only (never `[x]`, never commits) |
 | `/ship` | Phase 0 classifies FAST/ULTRA-TRIVIAL/REGULAR first (`/ship fast`\|`regular` overrides); REGULAR invokes `/review`; runs `scripts/session-manifest-ship.py` (multi-worktree), `scripts/brain-review-check.mjs --scope=full` (feature-complete path) | `.claude/.session-state-path`, brief Done-when | commit; marks `.claude/todo.md` + plan `[x]`; `docs/brain/**` (auto-writes on `Y`, unless `no brain`; skipped by default on FAST/ULTRA-TRIVIAL); session-state file |
 | `/done` | job-validation Path B close-out | `.claude/todo.md`, parent plan | marks `[x]` on Human confirm (or Tier 1 evidence for all-`[auto]`) |
 | `/review` | standalone review pass (used by `/ship` Phase 2) | session diff | report only |
@@ -100,9 +100,16 @@ writing stay on the main session's model.
 
 | Agent | Tier | Called by | Returns |
 | --- | --- | --- | --- |
-| `kit-runner` | mechanical | `/ship` Phase 1, `auto-solve` Phase 4, `/review-it` step 3 | `RUN <cmd> → exit <n>` lines, verbatim error lines, full output of `[capture]` commands |
+| `kit-runner` | mechanical | `/ship` Phase 1, `auto-solve` Phase 4, `/review-it` step 2 | `RUN <cmd> → exit <n>` lines, verbatim error lines, full output of `[capture]` commands |
 | `kit-prevalidate` | analysis | `auto-solve` Phase 2 | DONE / TODO / BLOCKED table; the main session re-checks every DONE |
 | `git-agent` | mechanical | commit prep on request | proposed commit + commands for the Human |
+| `orch-builder` | build (escalation: judgment) | the orchestrator | `{status, branch, summary, evidence[]}` JSON |
+| `orch-readiness` | judgment | the orchestrator | per plan: ready / questions / env needs / commands |
+| `orch-gate`, `orch-report` | mechanical | the orchestrator | per-command pass / fail / env-fail; the final report |
+| `orch-check-plan`, `orch-check-bugs`, `orch-check-rules`, `orch-verify` | analysis | the orchestrator, `/review-it` | candidate problems with file:line; keep / refuted verdicts with confidence |
+| `orch-security`, `orch-ui`, `orch-merge` | analysis | the orchestrator | security problems (sensitive paths only); UI card results; merged sha or reason |
+
+Every `orch-*` agent follows `docs/agent/agent-roles.md`: non-interactive, evidence for every claim, a JSON result naming its model and effort.
 
 ---
 
@@ -185,7 +192,7 @@ Claude Code backs this up in `.claude/settings.json`: `permissions.deny` refuses
 | `prune-merged-worktrees.sh`, `prune-old-sessions.sh` | `/cleanup` |
 | `lib/slot.mjs` | `session-startup.sh` (`--describe`), `scope-check.mjs`, `ship-prep.mjs`, `take-plan.mjs`; `--list` for the Planner protocol |
 | `session-state-path.mjs` | `session-startup.sh`, `handoff-check.sh`, `write-session-state.mjs` — one resolver, no duplicated logic |
-| `scope-check.mjs` | `scope-guard.sh` (`--file`), `ship-prep.mjs` (`--diff`, `--arch --diff` warn), the Planner protocol (`--overlap`, `--deps`), save-plan Shape lint (`--arch --plan` block, `--deps`), `/review-it` step 3 (`--arch --diff`), `take-plan.mjs` + `take-plan.md` (`--drift`) |
+| `scope-check.mjs` | `scope-guard.sh` (`--file`), `ship-prep.mjs` (`--diff`, `--arch --diff` warn), the Planner protocol (`--overlap`, `--deps`), save-plan Shape lint (`--arch --plan` block, `--deps`), `/review-it` step 2 (`--arch --diff`), `take-plan.mjs` + `take-plan.md` (`--drift`) |
 | `lib/invariants.mjs` | `scope-check.mjs --arch` and `take-plan.mjs` (pre-claim architecture gate, judged against the main branch): parses `docs/brain/invariants.md` and a plan's `## Architecture Impact` |
 | `plan-order.mjs` | the Planner protocol (`/plan` step 3) and the orchestrator (`--json`): run order of a set of plans — waves, lanes, lock groups from scope overlap (hotspots left out), the reason of every edge; `--branch <b> --merged-from git` counts a plan merged only on the exact subject `Merge <src> into <b> (plan NNN)` |
 | `lib/plan-deps.mjs` | `plan-order.mjs`, `scope-check.mjs --deps`, `take-plan.mjs` — the one parser of a plan's `Depends-on:` line and legacy prose prerequisites |
@@ -209,7 +216,7 @@ Claude Code backs this up in `.claude/settings.json`: `permissions.deny` refuses
 | `.claude/todo.md` | save-plan Phase 1; mid-flight sync; `/ship`/`/done` mark `[x]` | `/brief` retroactive, `/ship`, `/done`, session startup |
 | `.claude/todo-archive/NNN.md` (300-line volumes) | `scripts/todo-archive.mjs`, run by the todo-sync workflow after a merge (archives fully-complete plan sections) | `/sweep-stale-todos` |
 | `.claude/sessions/{session-id}/brief.md` | `/brief` | `/ship` Done-when check |
-| `sessions/YYYY-MM-DD.md` | Contractor after each milestone | `/review-it` step 1 (handoff) |
+| `sessions/YYYY-MM-DD.md` | Contractor after each milestone | brain capture (Decisions) |
 | `docs/session-state*.md` (target in `.claude/.session-state-path`) | `/ship` Phase 5 | `session-startup.sh` on next session |
 | `docs/brain/**` | `/ship` brain capture (auto-write on gate reply, opt out with `no brain`) | session start on unfamiliar work; architectural choices |
 | `.claude/.plan-write-ack` | save-plan (save-as-new after Human confirm) | consumed once by `plan-write-guard.sh` |
@@ -244,8 +251,8 @@ Human describes feature
 ```
 /brief (proactive) → brief.md names Parent plan path
   → Contractor executes ONE milestone → writes sessions/[date].md → STOPS
-  → /review-it: reads newest session file → reads parent plan → checks milestone
-      → APPROVE | RETURN TO CURSOR | ESCALATE TO ARCHITECT
+  → /review-it: reads the branch diff and its plan → finders → verifier
+      → APPROVE | RETURN TO WORKER | ESCALATE TO ARCHITECT
   → mid-flight scope change (review fallout / Human adds stage):
       [gate] append [ ] to parent plan Atomic Sub-tasks + .claude/todo.md BEFORE doing the work
       (save-plan Phase 4 + job-validation "Plan file sync")
@@ -317,7 +324,7 @@ Durable learning in session (decision/gotcha/pattern)
 /feat        --invokes-->  /plan, /review-it
 /ship        --invokes-->  /review; --runs--> session-manifest-ship.py, brain-review-check.mjs
 /ship        --writes-->   .claude/todo.md, plans/*.plan.md ([x]), docs/brain/**, session-state
-/review-it   --reads-->    sessions/*.md, plans/*
+/review-it   --reads-->    git diff, plans/*; --invokes--> kit-runner, orch-check-*, orch-verify
 /brief       --writes-->   .claude/sessions/{id}/brief.md; --reads--> plans/* (parent)
 save-plan    --runs-->     plan-name-similarity.mjs; --writes--> plans/*, .claude/todo.md, .plan-write-ack
 plan-write-guard.sh --gates--> Write/Edit on plans/*.plan.md; --runs--> plan-name-similarity.mjs

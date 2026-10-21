@@ -1,52 +1,78 @@
 ---
-description: Review the latest Contractor milestone against its Plan Contract. Report only — never silently fix.
+description: Review a Worker's branch against its plan with the checker pipeline — three finders, a verifier that drops only refuted findings, and the plan's checks. Report only — never silently fix.
 ---
 
 # /review-it — Reviewer Protocol (ai-workflow-kit)
 
-You are the Reviewer. Follow CLAUDE.md. Report findings; never silently fix; never commit.
+You are the Reviewer. Follow CLAUDE.md. Report findings; never silently fix; never commit. The pipeline and the
+result schema are in `docs/agent/agent-roles.md`.
 
 ## Steps
 
-1. **Session handoff** — List `/sessions/` and read the newest file (by filename date / mtime). That is Cursor's execution summary. If `/sessions/` is empty, STOP and tell the Human: no handoff found.
+1. **Target** — The branch under review is the one the Human names, else the current branch. Its plan is
+   `plans/NNN-*.plan.md` from the branch name (`feat/NNN-<slug>`, `fix/NNN-<slug>`); no plan number → ask the Human
+   for the plan path and STOP. Read the plan. The diff under review is `git diff origin/main...HEAD`; when
+   it is empty, STOP and tell the Human there is nothing to review.
 
-2. **Plan** — From the session file, identify the plan path under `plans/` (`NNN-slug.plan.md`). Read it. Identify the milestone under review. Do not review other milestones.
+2. **Commands (one `kit-runner` call):** hand the `kit-runner` agent (`.claude/agents/kit-runner.md`) the commands of
+   the checks below — the architecture check and the log query (when set), both marked `[capture]` because they exit 0
+   while printing what the review needs, and the plan's own check commands (its `[auto]` Done-when commands; none
+   named → `npm run lint`) — and use its `RUN` / `OUTPUT` / `FAILED` blocks as their evidence. The
+   judgment on the output stays here. `ESCALATE`, or no `OUTPUT` block for a `[capture]` command → run that command
+   inline. Without sub-agents, run the commands inline.
+   - **Architecture**: `node scripts/scope-check.mjs --arch --diff=origin/main` — copy every
+     `ARCH: warn …` line into Findings (an invariant from `docs/brain/invariants.md` touched with no
+     `## Architecture Impact` entry, or a "Human decision" note naming no INV-n / ADR). Any warn → ESCALATE TO
+     ARCHITECT (the Planner, in the main folder).
+   - **Checks**: each plan check command with its exit code. A failure is reported as it is; the finders do not
+     look for what these commands catch.
 
-3. **Checks** (scoped to milestone files only):
-   - **Plan-match**: Did Cursor implement only what the milestone declared?
-   - **Convention compliance**: the hard rules in AGENTS.md and the standards in `(not set)`, no API keys in client code
-   - **Secrets**: No hardcoded API keys, tokens, passwords
-   - **Dead code**: No unused imports / stubbed leftovers from the milestone
-   - **Commands (one `kit-runner` call):** hand the `kit-runner` agent (`.claude/agents/kit-runner.md`) the commands of
-     the three checks below — the architecture check and the log query (when set), both marked `[capture]` because they
-     exit 0 while printing what the review needs, and the milestone's Verify command — and use its `RUN` / `OUTPUT` /
-     `FAILED` blocks as their evidence. The judgment on the output stays here. `ESCALATE`, or no `OUTPUT` block for a
-     `[capture]` command → run that command inline. In Cursor (no sub-agents) run the three commands inline.
-   - **Architecture**: Run `node scripts/scope-check.mjs --arch --diff=origin/main` and copy every `ARCH: warn …` line into Findings (an invariant from `docs/brain/invariants.md` touched with no `## Architecture Impact` entry, or a "Human decision" note naming no INV-n / ADR). Any warn → ESCALATE TO ARCHITECT (the Planner, in the main folder).
-   - **Verify command**: Run the milestone's declared Verify command (usually `npm run lint` and/or targeted build). Record exit code.
+3. **Finders, in parallel** — start `orch-check-plan`, `orch-check-bugs` and `orch-check-rules`
+   (`.claude/agents/`) in one message, each with the plan path, the branch and the base `origin/main`.
+   When the diff touches auth, guards, interceptors, secrets handling or `middleware`, start
+   `orch-security` too, with the changed files on those paths. Without sub-agents, read the diff once per lens
+   (plan, bugs, rules) inline and write the candidates in the same shape.
 
-4. **Security-sensitive?** If the milestone touches auth, guards, interceptors, or `middleware`:
-   - Rely on pre-commit security grep + CI security workflow; judgment-only review remains in this command
+4. **Verifier** — hand every candidate (with its `id`) to `orch-verify`. It drops a candidate only with a concrete
+   refutation (`file:line` or a command result) and gives each kept one a confidence 0–100.
 
-5. **Verdict** — Output:
+5. **Filter** — report a finding only when it is kept with confidence ≥ 80, cites a line the diff changed, and is not
+   on the do-not-report list (pre-existing issues, unchanged lines, what lint / typecheck / build catch, pedantic
+   nits, changes the plan names as intended). The pass/fail comes from that list — no kept `blocker` or `major` —
+   never from an agent's own `pass` flag. Check that each agent result names its `model` and `effort`; a result
+   without them is treated as missing and that lens is run again inline.
+
+6. **Verdict** — Output:
 
 ```
-## Review — [plan] / Milestone [N]
+## Review — [plan] / [branch]
 
 | Check | Result | Notes |
 |---|---|---|
-| Plan-match | PASS/FAIL | file:line |
-| Conventions | PASS/FAIL | ... |
-| Secrets | PASS/FAIL | ... |
-| Dead code | PASS/FAIL | ... |
+| Plan-match | PASS/FAIL | kept findings of orch-check-plan |
+| Bugs | PASS/FAIL | kept findings of orch-check-bugs |
+| Rules | PASS/FAIL | kept findings of orch-check-rules (secrets, dead code, conventions) |
+| Security | PASS/FAIL/SKIPPED | orch-security, sensitive paths only |
 | Architecture | PASS/WARN | ARCH lines |
-| Verify cmd | PASS/FAIL | exit code |
+| Checks | PASS/FAIL | command → exit code |
 
 ### Decision
-APPROVE | RETURN TO CURSOR | ESCALATE TO ARCHITECT
+APPROVE | RETURN TO WORKER | ESCALATE TO ARCHITECT
 
-### Findings
-- ...
+### Findings (kept, confidence ≥ 80)
+| # | file:line | Severity | Lens | Finding | Verifier | Confidence |
+|---|---|---|---|---|---|---|
+| 1 | src/a.ts:12 | major | bugs | ... | keep — reproduced with ... | 90 |
+
+### Dropped
+| id | Verdict | Why |
+|---|---|---|
+| plan-2 | refuted | src/a.ts:14 already handles it |
+
+### Agents
+role → model / effort, as each result names them
 ```
 
-6. STOP. Do **not** mark the milestone `[x]` in this review pass (review ≠ validation of the delivered job). Do not commit. After validation per `docs/agent/job-validation.md` (`/ship` Approve **Y**, explicit mark-done, or Tier 1 evidence for `[auto]` items), the shipping agent marks matching todos — see `AGENTS.md`.
+7. STOP. Do **not** tick the plan's tasks in this review pass (review ≠ validation of the delivered job). Do not
+   commit. After validation per `docs/agent/job-validation.md` (`/ship` Approve **Y**, explicit mark-done, or Tier 1
+   evidence for `[auto]` items), the shipping agent marks matching todos — see `AGENTS.md`.

@@ -1,6 +1,6 @@
 ---
 name: kit-runner
-description: Runs a given list of shell commands in order and reports each exit code, plus the error lines of any command that failed. Never edits, retries or interprets. Used by /ship Phase 1, auto-solve Phase 4 and /review-it step 3 to keep long command output out of the main session.
+description: Runs a given list of shell commands in order and reports each exit code, plus the error lines of any command that failed. Never edits, retries or interprets. Used by /ship Phase 1, auto-solve Phase 4 and /review-it step 2 to keep long command output out of the main session.
 tools: Bash, Read
 model: {{models.mechanical}}
 effort: low
