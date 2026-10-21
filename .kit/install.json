@@ -3,7 +3,7 @@
     "version": "1.3.1"
   },
   "source": "local:.",
-  "commit": "39e8453c981011e34d5dfdd11fad7e910338015f",
+  "commit": "d4859c72aa47e8755c052e95972a266f8443664b",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -185,7 +185,7 @@
       "source": "core/.claude/skills/techdebt/SKILL.md"
     },
     ".claude/skills/worktree-setup/SKILL.md": {
-      "sha256": "3207d0b507f4722d6c49222a795b56f525de685cb1d7b27fdd37de1bba7fb77e",
+      "sha256": "dc2b9aadcb5ef73119640d8e65acf4b76f849f0dca4922142749a39da5aa1b52",
       "kind": "managed",
       "source": "core/.claude/skills/worktree-setup/SKILL.md"
     },

@@ -1,6 +1,6 @@
 ---
 name: worktree-setup
-description: One-time provisioning or repair of the three permanent Planner-Worker slots `../ai-workflow-kit-wt-1-wt-N` (N = 1..3) — git worktrees detached at origin/main with deps installed (root, `scripts/`, backend), `.worktree-root`/`.worktree-port` written, runtime files excluded and the backend `.env` copied. Use only when the user says "setup worktree", "new worktree", "slot is missing" or a `wt-N` folder is absent. Taking a plan into an existing slot is `/take-plan`, not this.
+description: One-time provisioning or repair of the three permanent Planner-Worker slots `../ai-workflow-kit-wt-N` (N = 1..3) — git worktrees detached at origin/main with deps installed (root, `scripts/`, backend), `.worktree-root`/`.worktree-port` written, runtime files excluded and the backend `.env` copied. Use only when the user says "setup worktree", "new worktree", "slot is missing" or a `wt-N` folder is absent. Taking a plan into an existing slot is `/take-plan`, not this.
 disable-model-invocation: true
 ---
 
@@ -10,10 +10,10 @@ Three slots exist so up to three Workers can run in parallel without touching th
 
 ## 1. Create missing slots
 
-For each slot N = 1..3 (`wt-N`) whose folder `../ai-workflow-kit-wt-1-wt-N` does not exist:
+For each slot N = 1..3 (`wt-N`) whose folder `../ai-workflow-kit-wt-N` does not exist:
 
 ```bash
-git worktree add --detach ../ai-workflow-kit-wt-1-wt-N origin/main
+git worktree add --detach ../ai-workflow-kit-wt-N origin/main
 ```
 
 Detached at `origin/main`, never on `main` and never on a branch — an idle slot on a branch is how a stale branch gets accidental commits.
@@ -38,6 +38,6 @@ One line per slot, then the next step:
 
 <details><summary>Old pattern: the single `wt-parallel` worktree (pre-2026-09)</summary>
 
-If `../ai-workflow-kit-wt-1-wt-parallel` still exists: delete its disposable `.claude/dev-server.log`, then `git -C ../ai-workflow-kit-wt-1-wt-parallel status --porcelain`. Dirty or unpushed → stop and report; clean → `git worktree move ../ai-workflow-kit-wt-1-wt-parallel ../ai-workflow-kit-wt-1-wt-N` before step 1.
+If `../ai-workflow-kit-wt-parallel` still exists: delete its disposable `.claude/dev-server.log`, then `git -C ../ai-workflow-kit-wt-parallel status --porcelain`. Dirty or unpushed → stop and report; clean → `git worktree move ../ai-workflow-kit-wt-parallel ../ai-workflow-kit-wt-N` before step 1.
 
 </details>

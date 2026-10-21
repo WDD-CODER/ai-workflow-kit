@@ -1,7 +1,8 @@
 {
   "$comment": "The kit's own project config (the kit installed into itself). kit.config.json at the root is the scaffold every project starts from, so install, sync and drift-check read this file first. Solo flow: plans on main, work on feat/NNN-<slug> in the same folder, /ship. No slots or app servers are used.",
   "project": {
-    "name": "ai-workflow-kit"
+    "name": "ai-workflow-kit",
+    "repoName": "ai-workflow-kit"
   },
   "stack": {
     "packs": [],
