@@ -16,9 +16,24 @@ The kit uses its own workflow: it is installed into the kit repo and works solo 
 
 Nothing. Two optional changes reach projects with the next sync: `.kit/config.json`, when present, is read before
 `kit.config.json` by install, sync and drift-check; and `/ship` checks the plan scope of a `feat/NNN-<slug>` branch
-outside a slot too. Rendered files that change (`kit-update`): `scripts/scope-check.mjs`, `scripts/ship-prep.mjs`.
+outside a slot too. Rendered files that change (`kit-update`): `scripts/scope-check.mjs`, `scripts/ship-prep.mjs`,
+`.claude/commands/review-it.md`, `.claude/agents/kit-runner.md`, `docs/agent/model-routing.md`,
+`docs/agent/workflow-map.md`; new: eleven `.claude/agents/orch-*.md` and `docs/agent/agent-roles.md`. A new config
+key `models.build` (default `sonnet`) is optional; a project that turned the routing off (every tier `inherit`) sets `models.build: "inherit"` too.
 
 ### Added
+- Role agents for the orchestrator, each with a pinned model and effort from `models.*`: `orch-readiness`
+  (judgment), `orch-builder` (new `models.build` tier, escalation to judgment; no Agent or SendMessage tool),
+  `orch-gate` and `orch-report` (mechanical), the finders `orch-check-plan`, `orch-check-bugs`, `orch-check-rules`,
+  the verifier `orch-verify`, `orch-security` (sensitive paths only, read-only), `orch-ui` and `orch-merge`
+  (analysis). `docs/agent/agent-roles.md` holds their shared contract: one job, non-interactive, evidence for every
+  claim, a JSON result naming its own model and effort, no deny-listed command.
+- `models.build`: the tier for agents that write code, validated like the other tiers (install and sync refuse
+  `models.build: gpt-4` naming the key).
+- A shared result validator for the kit's checks (`tools/lib/agent-result.mjs`): requires `model` and `effort`,
+  computes `pass` from the verified problems and rejects a result whose own `pass` disagrees;
+  `tools/test/agent-contracts.test.mjs` runs every agent's documented example through it (in `e2e-check`).
+- Plans declare what they need first: a `Depends-on: NNN, MMM` (or `none`) header line, in the plan template and
 - Plans declare what they need first: a `Depends-on: NNN, MMM` (or `none`) header line, in the plan template and
   the save-plan lint. One parser (`scripts/lib/plan-deps.mjs`) reads it — plus legacy prose such as
   `Prerequisite: plan NNN merged`, so old plans need no edit — for every tool.
@@ -35,6 +50,10 @@ outside a slot too. Rendered files that change (`kit-update`): `scripts/scope-ch
   CI runs `drift-check --target .` so the installed copy always equals the sources.
 
 ### Changed
+- `/review-it` reviews a Worker branch with the checker pipeline: three finders in parallel (plan, bugs, rules; plus
+  security on sensitive paths), a verifier that drops a finding only on a concrete refutation, a confidence ≥ 80
+  threshold and a do-not-report list; it keeps its `kit-runner` call for the commands and no longer reads a session
+  handoff file.
 - `scope-check.mjs`: with no `--plan` and no slot plan, a `<type>/NNN-<slug>` branch's plan is the plan.
   `ship-prep.mjs` runs the scope gate in a slot **or** on such a branch (a branch that names no plan: no gate, as
   before).

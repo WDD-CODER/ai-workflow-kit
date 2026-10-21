@@ -1,0 +1,130 @@
+/**
+ * Shared result validator for the role agents (`.claude/agents/orch-*.md`, contract in docs/agent/agent-roles.md).
+ *
+ *   import { validateAgentResult, parseAgentResult, outputExample } from './agent-result.mjs'
+ *   const { ok, errors, pass } = validateAgentResult(parseAgentResult(lastMessage))
+ *
+ * A model's own `pass` flag is never trusted: `pass` is computed from the result's problems (or gate results, verifier
+ * verdicts, UI cards) and a result whose own `pass` disagrees is rejected. Every result must name its `model` and
+ * `effort`. Node built-ins only.
+ */
+
+export const SEVERITIES = ['blocker', 'major', 'minor', 'nit']
+export const FAILING = new Set(['blocker', 'major'])
+/** Kept verifier verdicts below this confidence are not reported (and never fail a result). */
+export const KEEP_THRESHOLD = 80
+export const ROLES = [
+  'orch-readiness', 'orch-builder', 'orch-gate', 'orch-check-plan', 'orch-check-bugs', 'orch-check-rules',
+  'orch-verify', 'orch-security', 'orch-ui', 'orch-merge', 'orch-report',
+]
+const FINDERS = new Set(['orch-check-plan', 'orch-check-bugs', 'orch-check-rules', 'orch-security'])
+
+const isStr = (v) => typeof v === 'string' && v.trim() !== ''
+const isArr = Array.isArray
+
+/** The JSON object in an agent's reply: the last ```json fence, else the whole text. Throws on invalid JSON. */
+export function parseAgentResult(text) {
+  const fences = [...String(text).matchAll(/```json\s*\n([\s\S]*?)```/g)]
+  return JSON.parse(fences.length ? fences[fences.length - 1][1] : String(text))
+}
+
+/** The first ```json fence under `## Output` in an agent file (its documented schema example), parsed. */
+export function outputExample(agentFileText) {
+  const at = agentFileText.search(/^## Output\b/m)
+  if (at < 0) throw new Error('no "## Output" section')
+  const m = /```json\s*\n([\s\S]*?)```/.exec(agentFileText.slice(at))
+  if (!m) throw new Error('no ```json example under "## Output"')
+  return JSON.parse(m[1])
+}
+
+function problemErrors(list, label) {
+  const out = []
+  if (!isArr(list)) return [`${label} must be a list`]
+  list.forEach((p, i) => {
+    const at = `${label}[${i}]`
+    if (!p || typeof p !== 'object') return out.push(`${at} must be an object`)
+    for (const k of ['id', 'file', 'rule', 'reasoning']) if (!isStr(p[k])) out.push(`${at}.${k} is required`)
+    if (!Number.isInteger(p.line) || p.line < 1) out.push(`${at}.line must be a line number (file:line evidence)`)
+    if (!SEVERITIES.includes(p.severity)) out.push(`${at}.severity must be one of ${SEVERITIES.join(', ')}`)
+  })
+  return out
+}
+
+/**
+ * Validate one role result. Returns { ok, errors, pass }: `pass` is the computed value (null for roles without one);
+ * `ok` is false when any error was found, including a `pass` field that disagrees with the computed one.
+ */
+export function validateAgentResult(result) {
+  const errors = []
+  if (!result || typeof result !== 'object' || isArr(result)) return { ok: false, errors: ['result must be a JSON object'], pass: null }
+  const role = result.role
+  if (!ROLES.includes(role)) errors.push(`role must be one of ${ROLES.join(', ')} (got ${JSON.stringify(role)})`)
+  if (!isStr(result.model)) errors.push('model is required: the model id the agent ran on')
+  if (!isStr(result.effort)) errors.push('effort is required')
+  if (result.decisions !== undefined && (!isArr(result.decisions) || !result.decisions.every(isStr))) errors.push('decisions must be a list of strings')
+
+  let pass = null
+  if (FINDERS.has(role)) {
+    errors.push(...problemErrors(result.problems, 'problems'))
+    if (isArr(result.problems)) pass = !result.problems.some((p) => FAILING.has(p?.severity))
+  } else if (role === 'orch-verify') {
+    if (!isArr(result.verdicts)) errors.push('verdicts must be a list')
+    else {
+      result.verdicts.forEach((v, i) => {
+        const at = `verdicts[${i}]`
+        if (!isStr(v?.id)) errors.push(`${at}.id is required`)
+        if (!['keep', 'refuted'].includes(v?.verdict)) errors.push(`${at}.verdict must be keep or refuted`)
+        if (!Number.isFinite(v?.confidence) || v.confidence < 0 || v.confidence > 100) errors.push(`${at}.confidence must be 0-100`)
+        if (!SEVERITIES.includes(v?.severity)) errors.push(`${at}.severity must be one of ${SEVERITIES.join(', ')}`)
+        if (v?.verdict === 'refuted' && !isStr(v.refutation)) errors.push(`${at}: a refuted verdict needs a concrete refutation`)
+      })
+      pass = !result.verdicts.some((v) => v?.verdict === 'keep' && v.confidence >= KEEP_THRESHOLD && FAILING.has(v.severity))
+    }
+  } else if (role === 'orch-gate') {
+    if (!isArr(result.results) || result.results.length === 0) errors.push('results must be a non-empty list')
+    else {
+      result.results.forEach((r, i) => {
+        const at = `results[${i}]`
+        if (!isStr(r?.command)) errors.push(`${at}.command is required`)
+        if (!['pass', 'fail', 'env-fail'].includes(r?.status)) errors.push(`${at}.status must be pass, fail or env-fail`)
+        if (r?.status === 'fail' && !isStr(r.tail)) errors.push(`${at}: a failed command needs its output tail`)
+      })
+      pass = !result.results.some((r) => r?.status !== 'pass')
+    }
+  } else if (role === 'orch-ui') {
+    if (!isArr(result.cards)) errors.push('cards must be a list')
+    else {
+      result.cards.forEach((c, i) => {
+        if (!isStr(c?.card)) errors.push(`cards[${i}].card is required`)
+        if (!['pass', 'fail', 'plan-drift'].includes(c?.status)) errors.push(`cards[${i}].status must be pass, fail or plan-drift`)
+        if (!isArr(c?.screenshots)) errors.push(`cards[${i}].screenshots must be a list`)
+      })
+      pass = result.cards.every((c) => c?.status === 'pass')
+    }
+  } else if (role === 'orch-builder') {
+    if (!['built', 'blocked', 'ESCALATE'].includes(result.status)) errors.push('status must be built, blocked or ESCALATE')
+    for (const k of ['branch', 'summary']) if (!isStr(result[k])) errors.push(`${k} is required`)
+    if (!isArr(result.evidence) || !result.evidence.every(isStr)) errors.push('evidence must be a list of strings')
+    else if (result.status === 'built' && result.evidence.length === 0) errors.push('a built result needs evidence')
+    if (result.status && result.status !== 'built' && !isStr(result.blocker)) errors.push(`a ${result.status} result needs a blocker`)
+  } else if (role === 'orch-merge') {
+    if (typeof result.merged !== 'boolean') errors.push('merged must be true or false')
+    else if (result.merged && !isStr(result.sha)) errors.push('a merged result needs the merge sha')
+    else if (!result.merged && !isStr(result.reason)) errors.push('a result that did not merge needs a reason')
+  } else if (role === 'orch-readiness') {
+    if (!isArr(result.plans)) errors.push('plans must be a list')
+    else result.plans.forEach((p, i) => {
+      if (!isStr(p?.plan)) errors.push(`plans[${i}].plan is required`)
+      if (!['ready', 'questions', 'blocked'].includes(p?.state)) errors.push(`plans[${i}].state must be ready, questions or blocked`)
+      for (const k of ['questions', 'envNeeds', 'commands']) if (!isArr(p?.[k])) errors.push(`plans[${i}].${k} must be a list`)
+    })
+  } else if (role === 'orch-report') {
+    if (!isStr(result.report)) errors.push('report is required')
+  }
+
+  if (pass !== null && 'pass' in result && result.pass !== pass) {
+    errors.push(`pass is ${JSON.stringify(result.pass)} but the result's own list says ${pass} — a model's pass flag is never trusted`)
+  }
+  if (pass === null && 'pass' in result && FINDERS.has(role)) errors.push('pass given without a problems list')
+  return { ok: errors.length === 0, errors, pass }
+}

@@ -10,21 +10,39 @@ a step whose outcome decides code quality never moves to a cheaper model.
 | --- | --- | --- | --- |
 | `mechanical` | `haiku` | Runs the commands it is given and reports exit codes and error lines in a fixed format | Interpret, fix, retry, judge |
 | `analysis` | `sonnet` | Gathers evidence with `file:line` for a question the main session asked | Decide pass/fail of a review, code quality, an architecture question |
-| `judgment` | `inherit` | Roles that decide (orchestrator reviewer and implementer roles) | — |
+| `judgment` | `inherit` | Roles that decide (orchestrator readiness), and the builder's escalation | — |
+| `build` | `sonnet` | Writes the code of one plan on its own branch (`orch-builder`) | Review its own work, merge, message the coordinator |
 
-`inherit` means the main session's model. All three set to `inherit` turns the routing off.
+`inherit` means the main session's model. All four set to `inherit` turns the routing off.
+
+**Builder escalation.** A builder never switches model inside its session. The first checker finding goes back to
+the same `build`-tier builder. A fresh builder on the `judgment` tier continues — from the hand-off file (rule 5), the
+plan and `git diff` — when the checks still fail after that fix, when the builder returns `ESCALATE`, or when a second
+finding comes. A failure of the `judgment`-tier builder parks the plan for the Human.
+
+**Checkers never decide pass/fail.** The `analysis`-tier finders and verifier return problems with evidence; the
+pass/fail of a role result is computed from its verified problems by the shared result validator, never taken from
+the model's own `pass` flag (`docs/agent/agent-roles.md`).
 
 | Agent / skill | Tier | Used by |
 | --- | --- | --- |
-| `.claude/agents/kit-runner.md` | mechanical | `/ship` Phase 1, `auto-solve` Phase 4, `/review-it` step 3 |
+| `.claude/agents/kit-runner.md` | mechanical | `/ship` Phase 1, `auto-solve` Phase 4, `/review-it` step 2 |
 | `.claude/agents/kit-prevalidate.md` | analysis | `auto-solve` Phase 2 |
 | `.claude/agents/git-agent.md` | mechanical | commit message prep |
 | `.claude/skills/github-sync/SKILL.md` (forked) | mechanical | session start |
 | `.claude/skills/techdebt/SKILL.md` (forked) | analysis | `/techdebt`, before a PR |
 | `/docs-refresh` agent call | analysis | `/docs-refresh` |
+| `.claude/agents/orch-builder.md` | build (escalation: judgment) | the orchestrator |
+| `.claude/agents/orch-readiness.md` | judgment | the orchestrator |
+| `.claude/agents/orch-gate.md`, `orch-report.md` | mechanical | the orchestrator |
+| `.claude/agents/orch-check-plan.md`, `orch-check-bugs.md`, `orch-check-rules.md`, `orch-verify.md` | analysis | the orchestrator, `/review-it` |
+| `.claude/agents/orch-security.md`, `orch-ui.md`, `orch-merge.md` | analysis | the orchestrator |
+
+The role agents (`orch-*`) share one contract — non-interactive, evidence for every claim, a JSON result that names
+its own model and effort: `docs/agent/agent-roles.md`.
 
 Stays on the main model: `/plan` and its Architect + PM review, `/review`, `/fix`, `/security`, all code writing
-(`take-plan`, `auto-solve` Phase 3), and every verdict.
+outside the orchestrator (`take-plan`, `auto-solve` Phase 3), and every verdict.
 
 ## Rules
 
