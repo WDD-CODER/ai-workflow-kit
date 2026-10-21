@@ -1,0 +1,11 @@
+{
+  "note": "In a string literal '\\d' is just 'd', so the pattern is ^v(d+).(d+)$ and parseVersion('v1.2') returns null.",
+  "findings": [
+    {
+      "file": "src/version.mjs",
+      "line": 2,
+      "rule": "logic",
+      "severity": "major"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # Plan 019 — Agent Eval Harness: Measure an Agent Before Trusting It
 
-Status: draft
+Status: active
 Snapshot: 3511799
 Depends-on: 013
 
@@ -82,15 +82,15 @@ per commit: `ok` or `conflict: <what>`. STOP for a go only on a `conflict`.
 ## Functional Requirements
 
 ### Must Have (P0)
-- [ ] Case folder shape: `<role>/<case>/input/` (plan + diff, or page + card) and `expected.json` (findings by
+- [x] Case folder shape: `<role>/<case>/input/` (plan + diff, or page + card) and `expected.json` (findings by
   `file`/`rule`/`severity`, or `pass`/`fail`).
-- [ ] The harness runs the agent N times per case (default 2), compares structurally, reports recall, precision, cost
+- [x] The harness runs the agent N times per case (default 2), compares structurally, reports recall, precision, cost
   (tokens from the run result) and run-to-run noise.
-- [ ] A runner interface so tests use a stub and real use calls Claude Code non-interactively with the agent file.
-- [ ] `--min-recall` / `--min-precision` thresholds set the exit code.
+- [x] A runner interface so tests use a stub and real use calls Claude Code non-interactively with the agent file.
+- [x] `--min-recall` / `--min-precision` thresholds set the exit code.
 
 ### Should Have (P1)
-- [ ] `--model <id>` overrides the agent's model so one agent file is compared across models.
+- [x] `--model <id>` overrides the agent's model so one agent file is compared across models.
 
 ### Nice to Have (P2)
 - none
@@ -102,12 +102,12 @@ per commit: `ok` or `conflict: <what>`. STOP for a go only on a `conflict`.
 
 These are the plan's milestones: a Worker does them in order and ticks each one after it is checked.
 
-- [ ] A1: Define the shape of an eval case so projects can add their own real cases — input folder and expected findings file, documented with a generic example — core/docs/agent/agent-evals.md, tools/fixtures/agent-evals/
-- [ ] A2: Compare an agent's findings with the expected ones by file, rule and severity, never by exact text — line tolerance, reworded findings still match — tools/lib/agent-eval/compare.mjs
-- [ ] A3: Compute recall, precision, cost and run-to-run noise over several runs per case — tools/lib/agent-eval/score.mjs
-- [ ] A4: Add the command that runs one agent file against a case folder and prints the table — stub runner for tests, real runner calls Claude Code non-interactively; thresholds set the exit code; model override flag — tools/agent-eval.mjs, tools/lib/agent-eval/run.mjs
-- [ ] A5: Ship generic kit cases for the checker and the verifier, free of any project fact — a seeded off-by-one, a regex that loses a backslash, a claim with no evidence, a refutable false alarm — tools/fixtures/agent-evals/
-- [ ] A6: Test the harness with a stub agent and wire it into the kit checks — perfect, missing, extra and noisy stubs; threshold exit codes; leak-check clean; CHANGELOG entry — tools/test/agent-eval.test.mjs, tools/e2e-check.mjs, CHANGELOG.md
+- [x] A1: Define the shape of an eval case so projects can add their own real cases — input folder and expected findings file, documented with a generic example — core/docs/agent/agent-evals.md, tools/fixtures/agent-evals/
+- [x] A2: Compare an agent's findings with the expected ones by file, rule and severity, never by exact text — line tolerance, reworded findings still match — tools/lib/agent-eval/compare.mjs
+- [x] A3: Compute recall, precision, cost and run-to-run noise over several runs per case — tools/lib/agent-eval/score.mjs
+- [x] A4: Add the command that runs one agent file against a case folder and prints the table — stub runner for tests, real runner calls Claude Code non-interactively; thresholds set the exit code; model override flag — tools/agent-eval.mjs, tools/lib/agent-eval/run.mjs
+- [x] A5: Ship generic kit cases for the checker and the verifier, free of any project fact — a seeded off-by-one, a regex that loses a backslash, a claim with no evidence, a refutable false alarm — tools/fixtures/agent-evals/
+- [x] A6: Test the harness with a stub agent and wire it into the kit checks — perfect, missing, extra and noisy stubs; threshold exit codes; leak-check clean; CHANGELOG entry — tools/test/agent-eval.test.mjs, tools/e2e-check.mjs, CHANGELOG.md
 
 ## Technical Considerations
 - Dependencies: agent files from plan 013 and their result schemas; `tools/lib/agent-result.mjs`.
@@ -132,3 +132,37 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 Review (Planner, 2026-10-21): fixed — brief's "plan 016" renumbered 019; real cases stay in each project (D7); the
 harness refuses write-capable agents by default. Q4 default stays Sonnet finders + Sonnet verifier until the baseline.
 Checked: 012, 013, 015, 016.
+
+Build (orchestrator builder, 2026-10-21, branch feat/019-agent-eval-harness from orch/orchestrator-v1 @ 397630b):
+- Step 0 skipped: `node scripts/scope-check.mjs --drift --plan=<this plan>` → `REALITY: clean`, exit 0.
+- Decisions (no Human available, conservative option taken):
+  - `rule` matching: equal after case/space normalization, or a bare expected category (no `:`) equal to the part
+    before the agent's `:`; an expected `rule` may be a list. Free-text model rules would otherwise never match.
+  - Verifier cases are labelled `verdicts` (keep/refuted by candidate id); a keep counts only at confidence ≥ 80
+    (the pipeline's threshold). Pass/fail roles use `{ "pass": bool }` against the validator's computed pass.
+  - "Claim with no evidence" ships as an `orch-check-plan` case; the refutable false alarm as an `orch-verify` case
+    (with one real candidate to keep); a correct change (`findings: []`) was added to test precision.
+  - An agent with no `tools:` line is refused like a write-capable one (it inherits Edit/Write).
+  - The real runner (`claude -p --output-format json --system-prompt-file … --tools … --disallowedTools Edit,…`)
+    is covered by an argument test only; no model was called (would spend tokens).
+  - The test reads the kit's installed agents; `AGENT_EVAL_ROOT=<project>` points it at another install, which
+    e2e-check uses. The stub runner lives in `tools/test/fixtures/agent-eval-stub.mjs`.
+  - The doc names the baseline file in prose (a backticked missing path fails install-check's link check).
+  - CHANGELOG: left the pre-existing duplicated "Plans declare what they need first" line alone (not this plan's
+    change; avoids a merge conflict with parallel plans).
+  - `.kit/install.json` changed by `tools/sync.mjs --apply` (new managed file `docs/agent/agent-evals.md`).
+- Evidence:
+  - `node --test tools/test/agent-eval.test.mjs` → exit 0, `tests 16 / pass 16 / fail 0` (perfect stub 1.0/1.0 on
+    orch-check-bugs, orch-check-plan, orch-verify fixtures; miss-one recall < 1; extra-one precision < 1; noisy
+    noise > 0; CLI `--min-recall 0.9` at recall 0.8 → exit 1 with `TOTAL 0.80 1.00 0.00`; reworded finding matches;
+    write-capable agent → exit 2; leak-check on fixtures ok).
+  - `node tools/leak-check.mjs` → exit 0 `LEAK_CHECK: ok — 180 files, 0 leaks`; `--root tools/fixtures/agent-evals` →
+    `LEAK_CHECK: ok — 22 files, 0 leaks`.
+  - `npm run build` → exit 0 `PACK_CHECK: ok`; `npm run lint` → exit 0; `npm run test` (install-check +
+    workflow-link-check) → exit 0 `WORKFLOW_LINK_CHECK: ok — 8 fixtures`.
+  - `node tools/e2e-check.mjs` → exit 0 `E2E_CHECK: ok — 49 cases passed` (incl. `PASS agent eval tests pass against
+    the installed agents`).
+  - `npm run e2e` (acceptance-check --e2e) → first run exit 1: upstream-owned slot-serve port 47302 held by another
+    parallel run's kit-e2e temp process (environmental); rerun once → exit 0 `ACCEPTANCE_CHECK: ok — 122 checks passed`.
+  - `node tools/drift-check.mjs --target .` → exit 0 `KIT_DRIFT: ok — 0 undeclared differences`.
+- Open `[human]`: the project case set (~20 real cases) and the Opus/Sonnet/Haiku baseline — needs Dandan's labels.

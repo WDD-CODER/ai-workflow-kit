@@ -33,6 +33,13 @@ key `models.build` (default `sonnet`) is optional; a project that turned the rou
 - A shared result validator for the kit's checks (`tools/lib/agent-result.mjs`): requires `model` and `effort`,
   computes `pass` from the verified problems and rejects a result whose own `pass` disagrees;
   `tools/test/agent-contracts.test.mjs` runs every agent's documented example through it (in `e2e-check`).
+- Agent eval harness (kit-side tool): `node tools/agent-eval.mjs --agent <agent.md> --cases <dir> --runs 2` runs one
+  agent file against labelled cases and prints recall, precision, run-to-run noise, tokens and cost per case with a
+  total line; `--model <id>` compares one agent file across models; `--min-recall` / `--min-precision` exit 1 below
+  the threshold. Findings match by `file`, `rule` and `severity` (line ±3, text ignored). The default runner calls
+  Claude Code non-interactively and refuses a write-capable agent unless `--allow-write`. Generic checker and
+  verifier cases ship in `tools/fixtures/agent-evals/`; real cases live in each project. New rendered file:
+  `docs/agent/agent-evals.md` (the case shape). `tools/test/agent-eval.test.mjs` runs in `e2e-check`.
 - Plans declare what they need first: a `Depends-on: NNN, MMM` (or `none`) header line, in the plan template and
 - Plans declare what they need first: a `Depends-on: NNN, MMM` (or `none`) header line, in the plan template and
   the save-plan lint. One parser (`scripts/lib/plan-deps.mjs`) reads it — plus legacy prose such as

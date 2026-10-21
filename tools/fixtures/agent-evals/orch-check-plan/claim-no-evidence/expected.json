@@ -1,0 +1,14 @@
+{
+  "note": "A1 is ticked and the notes say all tests pass, but the diff adds no test/slug.test.mjs and the note names no command or output.",
+  "findings": [
+    {
+      "file": "plan.md",
+      "rule": [
+        "evidence",
+        "A1",
+        "Done-when"
+      ],
+      "severity": "major"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+diff --git a/src/paginate.mjs b/src/paginate.mjs
+new file mode 100644
+--- /dev/null
++++ b/src/paginate.mjs
+@@ -0,0 +1,6 @@
++export function pageItems(items, page, size) {
++  const start = page * size
++  const out = []
++  for (let i = start; i <= start + size && i < items.length; i++) out.push(items[i])
++  return out
++}

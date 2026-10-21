@@ -45,7 +45,8 @@
  * SessionStart prints valid JSON on each branch (idle slot, worker without and with a session-state file);
  * plan order (plan 011): tools/test/plan-order.test.mjs against the installed scripts, plan-order adds an open
  * dependency to the order, take-plan refuses a plan whose Depends-on: plan is not merged (NOT_READY) and takes one
- * whose dependency is closed; role agents (plan 013): tools/test/agent-contracts.test.mjs against the installed agents.
+ * whose dependency is closed; role agents (plan 013): tools/test/agent-contracts.test.mjs against the installed agents;
+ * agent evals (plan 019): tools/test/agent-eval.test.mjs scores the installed agents with a stub runner.
  * Exit 0 = every case passed, 1 = failures (one line per case).
  */
 import { writeFileSync, readFileSync, mkdtempSync, mkdirSync, rmSync, existsSync, readdirSync, realpathSync, symlinkSync, lstatSync, copyFileSync } from 'fs'
@@ -163,6 +164,10 @@ function main() {
   // Role agents (plan 013): each installed orch-* agent's documented result passes the shared validator.
   const act = spawnSync(process.execPath, ['--test', '--test-reporter=tap', join(kit, 'tools', 'test', 'agent-contracts.test.mjs')], { cwd: proj, env: { ...env, AGENT_CONTRACTS_ROOT: proj }, encoding: 'utf8' })
   check('agent contract tests pass against the installed agents (node --test tools/test/agent-contracts.test.mjs)', act.status === 0 && /# fail 0/.test(`${act.stdout}`), tail(`${act.stdout}${act.stderr}`))
+  // Agent evals: the harness scores the installed checker and verifier agents on the kit fixture cases (stub runner,
+  // no model call), and the case-shape doc is installed.
+  const aev = spawnSync(process.execPath, ['--test', '--test-reporter=tap', join(kit, 'tools', 'test', 'agent-eval.test.mjs')], { cwd: proj, env: { ...env, AGENT_EVAL_ROOT: proj }, encoding: 'utf8' })
+  check('agent eval tests pass against the installed agents (node --test tools/test/agent-eval.test.mjs)', aev.status === 0 && /# fail 0/.test(`${aev.stdout}`) && existsSync(join(proj, 'docs', 'agent', 'agent-evals.md')), tail(`${aev.stdout}${aev.stderr}`))
   npm(proj, 'npm run -s prepare')
   git(proj, 'add', '-A')
   const c0 = git(proj, 'commit', '-q', '-m', 'chore: install the workflow kit')
