@@ -42,7 +42,10 @@
  * project that keeps its own .gitignore claims a plan (runtime files in .git/info/exclude); pre-push accepts a
  * closed plan in a range folder and refuses code; a project without
  * husky (core.hooksPath=.husky only) runs the hooks: the first commit passes, a staged fake key is refused;
- * SessionStart prints valid JSON on each branch (idle slot, worker without and with a session-state file).
+ * SessionStart prints valid JSON on each branch (idle slot, worker without and with a session-state file);
+ * plan order (plan 011): tools/test/plan-order.test.mjs against the installed scripts, plan-order adds an open
+ * dependency to the order, take-plan refuses a plan whose Depends-on: plan is not merged (NOT_READY) and takes one
+ * whose dependency is closed.
  * Exit 0 = every case passed, 1 = failures (one line per case).
  */
 import { writeFileSync, readFileSync, mkdtempSync, mkdirSync, rmSync, existsSync, readdirSync, realpathSync, symlinkSync, lstatSync, copyFileSync } from 'fs'
@@ -154,6 +157,9 @@ function main() {
   check('install lists no Node built-in as a devDependency', !/npm install -D [^\n]*\bnet\b/.test(inst.out), tail(inst.out))
   check('install --install-deps installs the workflow scripts\' own dependencies (scripts/package.json)',
     /installed the workflow scripts' dependencies/.test(inst.out) && existsSync(join(proj, 'scripts', 'package-lock.json')) && !/npm install -D [^\n]*\bpicomatch\b/.test(inst.out), tail(inst.out))
+  // Plan order (plan 011): the unit and fixture tests, run against this project's installed scripts/.
+  const pot = spawnSync(process.execPath, ['--test', '--test-reporter=tap', join(kit, 'tools', 'test', 'plan-order.test.mjs')], { cwd: proj, env: { ...env, PLAN_ORDER_ROOT: proj }, encoding: 'utf8' })
+  check('plan-order tests pass against the installed scripts (node --test tools/test/plan-order.test.mjs)', pot.status === 0 && /# fail 0/.test(`${pot.stdout}`), tail(`${pot.stdout}${pot.stderr}`))
   npm(proj, 'npm run -s prepare')
   git(proj, 'add', '-A')
   const c0 = git(proj, 'commit', '-q', '-m', 'chore: install the workflow kit')
@@ -300,11 +306,22 @@ function main() {
 
   // A claim commit that a pre-commit hook refuses leaves the slot as it was: detached, idle, no branch, clean.
   const plan2Rel = 'plans/002-second-script.plan.md'
-  writeFileSync(join(proj, plan2Rel), plan.replace('# Plan 001 — Hello Script', '# Plan 002 — Second Script')
-    .replace(`Snapshot: ${snap}`, `Snapshot: ${git(proj, 'rev-parse', 'origin/main').out.trim()}`).replace('H1:', 'S1:'))
-  git(proj, 'add', plan2Rel)
-  git(proj, 'commit', '-q', '-m', 'plan(002): second script')
+  // Plan order (plan 011): 002 depends on 001 (closed above); 003 depends on 004, which still has an open sub-task.
+  const snap2 = git(proj, 'rev-parse', 'origin/main').out.trim()
+  const planN = (n, title, dep) => plan.replace('# Plan 001 — Hello Script', `# Plan ${n} — ${title}`)
+    .replace(`Snapshot: ${snap}`, `Snapshot: ${snap2}`).replace('Status: draft', `Status: draft\nDepends-on: ${dep}`).replace('H1:', `S${n}:`)
+  writeFileSync(join(proj, plan2Rel), planN('002', 'Second Script', '001'))
+  writeFileSync(join(proj, 'plans/003-third-script.plan.md'), planN('003', 'Third Script', '004'))
+  writeFileSync(join(proj, 'plans/004-fourth-script.plan.md'), planN('004', 'Fourth Script', 'none'))
+  git(proj, 'add', 'plans')
+  git(proj, 'commit', '-q', '-m', 'plan(002,003,004): second, third and fourth script')
   const pp2 = git(proj, 'push', '-q', 'origin', 'main')
+  const po = node(proj, 'scripts/plan-order.mjs', '002', '003')
+  check('plan-order: 002 and the open dependency 004 first, then 003 (001 is closed)',
+    po.status === 0 && /^WAVE 1: 002, 004\b/m.test(po.out) && /^WAVE 2: 003$/m.test(po.out) && /^ADDED: 004 /m.test(po.out) && /^DONE: 001 \(closed: /m.test(po.out), tail(po.out))
+  const notReady = node(slot2, 'scripts/take-plan.mjs', '003')
+  check('take-plan refuses 003 by name: NOT_READY: plan 004 (Fourth Script) is not merged; the slot stays idle',
+    notReady.status !== 0 && /NOT_READY: plan 004 \(Fourth Script\) is not merged/.test(notReady.out) && git(slot2, 'branch', '--show-current').out.trim() === '', tail(notReady.out))
   const failHooks = join(root, 'failing-hooks')
   mkdirSync(failHooks, { recursive: true })
   writeFileSync(join(failHooks, 'pre-commit'), '#!/bin/sh\necho "pre-commit: refused by the e2e fixture" >&2\nexit 1\n', { mode: 0o755 })
@@ -316,7 +333,7 @@ function main() {
   check('a refused claim commit rolls back: slot detached and idle, no branch left, clean tree',
     pp2.status === 0 && tpFail.status !== 0 && /TAKE_PLAN: claim commit failed: /.test(failOut) && idle && clean, tail(failOut))
   const tpRetry = node(slot2, 'scripts/take-plan.mjs', '002')
-  check('after the rollback the same slot claims the plan normally', tpRetry.status === 0 && /OK plan=002 branch=feat\/002-second-script/.test(tpRetry.out), tail(tpRetry.out))
+  check('after the rollback the same slot claims the plan normally (its Depends-on: 001 is closed, so it is ready)', tpRetry.status === 0 && /OK plan=002 branch=feat\/002-second-script/.test(tpRetry.out), tail(tpRetry.out))
 
   // A fresh plain clone of a project that keeps its own .gitignore (an override): the slot's runtime files go to
   // .git/info/exclude, so take-plan is not refused for them.

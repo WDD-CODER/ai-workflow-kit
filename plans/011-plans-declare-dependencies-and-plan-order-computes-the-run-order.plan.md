@@ -1,6 +1,7 @@
 # Plan 011 — Plans Declare Dependencies, and plan-order Computes the Run Order
 
-Status: draft
+Status: active
+Depends-on: none
 Snapshot: 3511799
 
 ## Problem Statement
@@ -109,14 +110,14 @@ for a go only on a `conflict`.
 ## Functional Requirements
 
 ### Must Have (P0)
-- [ ] `Depends-on: NNN, MMM` (or `none`) is a header line of a plan, read by `scripts/lib/` (one shared parser, used by
+- [x] `Depends-on: NNN, MMM` (or `none`) is a header line of a plan, read by `scripts/lib/` (one shared parser, used by
   `plan-order`, `scope-check` and `take-plan`).
-- [ ] `plan-order` returns waves, lanes, derived conflicts (lock groups) and the reason of each edge, as text and `--json`.
-- [ ] "Merged" on an integration branch means an anchored merge subject, never a loose match.
-- [ ] `scope-check --deps` flags a missing `Depends-on:`; `take-plan` refuses an unmet dependency by name.
+- [x] `plan-order` returns waves, lanes, derived conflicts (lock groups) and the reason of each edge, as text and `--json`.
+- [x] "Merged" on an integration branch means an anchored merge subject, never a loose match.
+- [x] `scope-check --deps` flags a missing `Depends-on:`; `take-plan` refuses an unmet dependency by name.
 
 ### Should Have (P1)
-- [ ] Legacy prose (`Prerequisite: plan 007 merged`) is read as a dependency, so old plans need no edit.
+- [x] Legacy prose (`Prerequisite: plan 007 merged`) is read as a dependency, so old plans need no edit.
 
 ### Nice to Have (P2)
 - none
@@ -128,14 +129,14 @@ for a go only on a `conflict`.
 
 These are the plan's milestones: a Worker does them in order and ticks each one after it is checked.
 
-- [ ] A1: Give plans a Depends-on line and one shared parser, so every tool reads dependencies the same way — also read legacy "Prerequisite" prose; `none` is valid — core/scripts/lib/plan-deps.mjs, core/.claude/references/prd-template.md, core/.claude/skills/save-plan/SKILL.md
-- [ ] A2: Compute the run order for any set of plans: waves, lanes and the reason for every edge — cycle = exit 1 naming the plans; missing dependency names the plan; text and --json output — core/scripts/plan-order.mjs
-- [ ] A3: Detect which plans would collide on the same files and put them in one lock group — scope overlap from each plan's Read-Write Scope, leaving out the config hotspots and append-only files — core/scripts/plan-order.mjs, core/scripts/lib/plan-scope.mjs
-- [ ] A4: Decide "already merged" from an exact merge subject so a loose match can never mark a plan done — pattern ^Merge \S+ into <branch> \(plan NNN\)$, read from git on the named branch — core/scripts/plan-order.mjs
-- [ ] A5: Warn at planning time when a plan has no Depends-on line — new scope-check --deps flag, mentioned in the plan command and the save-plan lint — core/scripts/scope-check.mjs, core/.claude/commands/plan.md, core/.claude/skills/save-plan/SKILL.md
-- [ ] A6: Make a Worker refuse to start a plan whose dependency is not merged, naming that plan — reuses the shared parser; keeps today's prerequisite behaviour — core/scripts/take-plan.mjs, core/.claude/commands/take-plan.md
-- [ ] A7: Prove all of it with tests on the six shapes and on a scratch git repo — chain, diamond, cycle, conflict pair, missing dependency, prose-only old plan, anchored merge subject — tools/test/plan-order.test.mjs, tools/e2e-check.mjs
-- [ ] A8: Sync the installed copies and document the new script — node tools/sync.mjs --target . --apply; workflow map and CHANGELOG entry — core/docs/agent/workflow-map.md, CHANGELOG.md, scripts/, .claude/, docs/agent/
+- [x] A1: Give plans a Depends-on line and one shared parser, so every tool reads dependencies the same way — also read legacy "Prerequisite" prose; `none` is valid — core/scripts/lib/plan-deps.mjs, core/.claude/references/prd-template.md, core/.claude/skills/save-plan/SKILL.md
+- [x] A2: Compute the run order for any set of plans: waves, lanes and the reason for every edge — cycle = exit 1 naming the plans; missing dependency names the plan; text and --json output — core/scripts/plan-order.mjs
+- [x] A3: Detect which plans would collide on the same files and put them in one lock group — scope overlap from each plan's Read-Write Scope, leaving out the config hotspots and append-only files — core/scripts/plan-order.mjs, core/scripts/lib/plan-scope.mjs
+- [x] A4: Decide "already merged" from an exact merge subject so a loose match can never mark a plan done — pattern ^Merge \S+ into <branch> \(plan NNN\)$, read from git on the named branch — core/scripts/plan-order.mjs
+- [x] A5: Warn at planning time when a plan has no Depends-on line — new scope-check --deps flag, mentioned in the plan command and the save-plan lint — core/scripts/scope-check.mjs, core/.claude/commands/plan.md, core/.claude/skills/save-plan/SKILL.md
+- [x] A6: Make a Worker refuse to start a plan whose dependency is not merged, naming that plan — reuses the shared parser; keeps today's prerequisite behaviour — core/scripts/take-plan.mjs, core/.claude/commands/take-plan.md
+- [x] A7: Prove all of it with tests on the six shapes and on a scratch git repo — chain, diamond, cycle, conflict pair, missing dependency, prose-only old plan, anchored merge subject — tools/test/plan-order.test.mjs, tools/e2e-check.mjs
+- [x] A8: Sync the installed copies and document the new script — node tools/sync.mjs --target . --apply; workflow map and CHANGELOG entry — core/docs/agent/workflow-map.md, CHANGELOG.md, scripts/, .claude/, docs/agent/
 
 ## Technical Considerations
 - Dependencies: `scripts/lib/plan-scope.mjs` (scope parsing, glob overlap with picomatch), `take-plan.mjs` line 217
@@ -160,3 +161,32 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 Review (Planner, 2026-10-21): fixed — anchored merge subject and `--json` reasons added from the retrospective;
 overlap search checked 008, 010, 012, 015, 016 (shared files only: `scope-check.mjs`, `take-plan.mjs` with 016/017 —
 this plan runs before 017). Open question B (missing hand-off) answered "write from the brief" by Dandan.
+
+Build (orchestrator builder, 2026-10-21, branch feat/011-plan-order from orch/orchestrator-v1 @ 0bf851c):
+- Step 0 skipped: `node scripts/scope-check.mjs --drift --plan=<this plan>` → `REALITY: clean`, exit 0.
+- Decision (no Human available): the glob-overlap test lives in the new `core/scripts/lib/plan-graph.mjs` (inside
+  `core/scripts/lib/**`), not in `lib/plan-scope.mjs` — plan-scope is imported by `plan-name-similarity.mjs`, which has no
+  picomatch import today; adding picomatch there would make save-plan Phase 0 need the scripts' packages.
+- Decision: overlap of two wildcard globs with no tracked file in common over-approximates (same static base, or a
+  `**` glob whose base contains the other's base) — a lock group too many is safe, one too few is not.
+- Decision: lanes = chains where a plan continues the lane whose last plan is one of its dependencies; a dependency
+  that is an open plan but not named is added to the order (`ADDED:` line / `plans[nnn].added` in --json); a closed
+  plan (moved out of the open folders) or `Status: done` counts as met.
+- Decision: `scope-check.mjs` reads an absolute `--plan` path as is (the tests point it at scratch fixtures).
+- Decision: take-plan keeps today's rule for "merged" on main (closed, finished Status, or no open sub-task); a
+  `Depends-on:` number with no plan file on main at all is NOT_READY; an unknown prose number is skipped as before.
+- Decision: core text names no real plan number (leak-check "history" rule), so examples read `plan NNN`.
+- Tests: `tools/test/plan-order.test.mjs` (13 tests); wired into `tools/e2e-check.mjs`, which runs it against the
+  fresh e2e project's installed scripts (`PLAN_ORDER_ROOT`) and adds 3 cases: plan-order adds an open dependency,
+  take-plan refuses `NOT_READY: plan 004 (Fourth Script) is not merged`, and takes plan 002 whose `Depends-on: 001` is closed.
+- Evidence:
+  - `node tools/sync.mjs --target . --apply` → `KIT_SYNC: applied — … 0 conflicts`
+  - `node --test tools/test/plan-order.test.mjs` → exit 0, `pass 13`, `fail 0`
+  - `node scripts/scope-check.mjs --deps --plan=<this plan>` → `DEPENDS_ON: ok (none)`, exit 0
+  - `npm run build` → exit 0 (`PACK_CHECK: ok`); `npm run lint` → exit 0 (`LEAK_CHECK: ok — 27 files, 0 leaks`)
+  - `npm run test` → exit 0 (`INSTALL_CHECK: ok`, `WORKFLOW_LINK_CHECK: ok — 8 fixtures … 0 missing`)
+  - `node tools/e2e-check.mjs` → exit 0, `E2E_CHECK: ok — 47 cases passed`
+  - `npm run e2e` (acceptance-check --e2e) → first run exit 1 (upstream-owned fixture: slot-serve on port 47302 —
+    environmental, parallel orchestrator runs share the e2e ports); rerun once → exit 0, `ACCEPTANCE_CHECK: ok — 122 checks passed`
+  - `node tools/drift-check.mjs --target .` → exit 0, `KIT_DRIFT: ok — 0 undeclared differences`
+- Open for the Human: the kit PR / release of this change (Execution Mode: "Dandan merges").

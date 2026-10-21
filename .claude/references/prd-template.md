@@ -1,6 +1,7 @@
 # Plan XXX — [Feature Name]
 
 Status: draft | active | done
+Depends-on: none | NNN, MMM — the plans that must be merged before this one starts (`scope-check --deps` flags a plan without this line; `take-plan` refuses while one is not merged; `plan-order` computes the run order from it)
 Snapshot: [origin/main SHA the plan was verified against — leave filled in if the author already set it; save-plan only fills this when empty, never overwrites]
 
 ## Problem Statement

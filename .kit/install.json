@@ -3,7 +3,7 @@
     "version": "1.3.1"
   },
   "source": "local:.",
-  "commit": "d4859c72aa47e8755c052e95972a266f8443664b",
+  "commit": "0bf851ca43caa09914f3dc780ae5685da8a52daf",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -75,7 +75,7 @@
       "source": "core/.claude/commands/fix.md"
     },
     ".claude/commands/plan.md": {
-      "sha256": "f7aa6ac6c4d9bddc0b7dd8e5f5d7cb9e9eb3062913a81d14a0a3043c213d78a8",
+      "sha256": "c3e49f88c6cf22f3e4f22521fd903e579c0b9d29792800d42fcd9dd8aed2647c",
       "kind": "managed",
       "source": "core/.claude/commands/plan.md"
     },
@@ -115,7 +115,7 @@
       "source": "core/.claude/commands/sweep-stale-todos.md"
     },
     ".claude/commands/take-plan.md": {
-      "sha256": "5acdefd8f6745ca8d06303284363b72f0f9750e1b2e75b6521cfdc39a6736b46",
+      "sha256": "8af3af776301ca94ef770f635a3a6d20ef9712d6bf53af5e17c37f6045040b5f",
       "kind": "managed",
       "source": "core/.claude/commands/take-plan.md"
     },
@@ -140,7 +140,7 @@
       "source": "core/.claude/references/hld-template.md"
     },
     ".claude/references/prd-template.md": {
-      "sha256": "d4bec82df1080a7f667388741add72da9719a587c437b1ed7c3715a62cb933e7",
+      "sha256": "420368758e7a0c31372bf3caeb8dba7a414f843e4159b2b8c33418d6199147c6",
       "kind": "managed",
       "source": "core/.claude/references/prd-template.md"
     },
@@ -165,7 +165,7 @@
       "source": "core/.claude/skills/preflight/SKILL.md"
     },
     ".claude/skills/save-plan/SKILL.md": {
-      "sha256": "4ed40e8c6c56a07f3f33f9422438b76e30df5b497fee13f5973b99e9246ed3b1",
+      "sha256": "463b2170eec8065678bb1a8eceaaf171063612b644d0488410d8a002e978e65e",
       "kind": "managed",
       "source": "core/.claude/skills/save-plan/SKILL.md"
     },
@@ -275,7 +275,7 @@
       "source": "core/docs/agent/standards-security.md"
     },
     "docs/agent/workflow-map.md": {
-      "sha256": "f9bdca2aa40df7659032a737802fd32a80ddf0ba3ec3e8686e9f28292bd57a5e",
+      "sha256": "a8f2cf7a5f4d0f107b65387177cacbc2160d3ee555a799f7f6c32a32ca3872f2",
       "kind": "managed",
       "source": "core/docs/agent/workflow-map.md"
     },
@@ -444,6 +444,16 @@
       "kind": "managed",
       "source": "core/scripts/lib/invariants.mjs"
     },
+    "scripts/lib/plan-deps.mjs": {
+      "sha256": "7de8fa271a44df128b8d25c7b291902ac8ffdd50fc72dbd439fe966022096243",
+      "kind": "managed",
+      "source": "core/scripts/lib/plan-deps.mjs"
+    },
+    "scripts/lib/plan-graph.mjs": {
+      "sha256": "2394585ae93c6d38b864f7cae5ff21c98509411577d07073c1ec62d593da682a",
+      "kind": "managed",
+      "source": "core/scripts/lib/plan-graph.mjs"
+    },
     "scripts/lib/plan-paths.mjs": {
       "sha256": "97e2bac7abbd31fdc9431b18166bcb17b6a3505e69594bb738ad2a8bd4bb9eeb",
       "kind": "managed",
@@ -504,6 +514,11 @@
       "kind": "managed",
       "source": "core/scripts/plan-name-similarity.mjs"
     },
+    "scripts/plan-order.mjs": {
+      "sha256": "ffe1c9455f3ad4939f9c1a1cbc6c068fc2ce7a319363bb8bb8d0dfd697e53fb1",
+      "kind": "managed",
+      "source": "core/scripts/plan-order.mjs"
+    },
     "scripts/plan-write-guard.sh": {
       "sha256": "c038d4672e18500b449024d6528492201e86951a89d5546444a36bfbbda54387",
       "kind": "managed",
@@ -540,7 +555,7 @@
       "source": "core/scripts/run-python.sh"
     },
     "scripts/scope-check.mjs": {
-      "sha256": "b458520e38769e60bc488fccb7ffd33a2caa8c8879beceb40006f64499872c78",
+      "sha256": "f46ede1f6692ddab630599de9032096226e091c0a8f582476e2c5dba82f5ba01",
       "kind": "managed",
       "source": "core/scripts/scope-check.mjs"
     },
@@ -590,7 +605,7 @@
       "source": "core/scripts/slot-stop.mjs"
     },
     "scripts/take-plan.mjs": {
-      "sha256": "b197dd37add830c601d29838d074a0706fd32363767a17df31379dd6f53c1f18",
+      "sha256": "ce775946bfe6733be05d430e364beed6f5074c71e464a2f0c5cd3dd8c13de5e2",
       "kind": "managed",
       "source": "core/scripts/take-plan.mjs"
     },
