@@ -20,20 +20,21 @@ after(() => {
   for (const d of scratch) rmSync(d, { recursive: true, force: true })
 })
 
-const LOCK = '{"name":"fixture","lockfileVersion":3,"packages":{}}\n'
+const LOCK = '{"name":"fixture","lockfileVersion":3,"packages":{"":{"name":"fixture"},"node_modules/cross-env":{"version":"7.0.3"}}}\n'
+const EMPTY_LOCK = '{"name":"fixture","lockfileVersion":3,"packages":{"":{"name":"fixture"}}}\n'
 const sha = (s) => createHash('sha256').update(s).digest('hex')
 
 /** A temp package folder: optional lockfile, hash file (matching or stale) and installed node_modules. */
-function fixture({ lock = true, hash = 'match', modules = true } = {}) {
+function fixture({ lock = true, hash = 'match', modules = true, lockText = LOCK } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'kit-installneed-'))
   scratch.push(root)
   const dir = join(root, 'server')
   mkdirSync(dir, { recursive: true })
-  if (lock) writeFileSync(join(dir, 'package-lock.json'), LOCK)
+  if (lock) writeFileSync(join(dir, 'package-lock.json'), lockText)
   const hashPath = join(root, '.claude', '.last-npm-install-hash-server')
   if (hash) {
     mkdirSync(join(root, '.claude'), { recursive: true })
-    writeFileSync(hashPath, hash === 'match' ? sha(LOCK) : sha('an older lockfile'))
+    writeFileSync(hashPath, hash === 'match' ? sha(lockText) : sha('an older lockfile'))
   }
   if (modules) {
     mkdirSync(join(dir, 'node_modules'), { recursive: true })
@@ -71,6 +72,17 @@ test('no hash file yet -> changed', () => {
 test('no lockfile -> no install', () => {
   const { dir, hashPath } = fixture({ lock: false, modules: false })
   assert.equal(installNeed(dir, hashPath), null)
+})
+
+test('lockfile with no dependencies, hash unchanged, no node_modules -> no install (npm never creates it)', () => {
+  const { dir, hashPath } = fixture({ modules: false, lockText: EMPTY_LOCK })
+  assert.equal(installNeed(dir, hashPath), null)
+})
+
+test('v1 lockfile with dependencies, hash unchanged, no node_modules -> missing', () => {
+  const v1 = '{"name":"fixture","lockfileVersion":1,"dependencies":{"cross-env":{"version":"7.0.3"}}}\n'
+  const { dir, hashPath } = fixture({ modules: false, lockText: v1 })
+  assert.equal(installNeed(dir, hashPath), 'missing')
 })
 
 test('the reason words the messages print', () => {

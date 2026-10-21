@@ -488,16 +488,31 @@ const lockHash = (lockPath) => createHash('sha256').update(readFileSync(lockPath
 /**
  * Whether `dir` needs an npm install, without side effects: null (no lockfile, or the lockfile is unchanged since
  * the last install and the packages are there), 'changed' (no hash file at `hashPath`, or the lockfile's hash
- * differs) or 'missing' (hash matches, but <dir>/node_modules or its .package-lock.json is absent - a stale hash
- * must not hide packages that were never installed or were removed).
+ * differs) or 'missing' (hash matches, the lockfile lists packages, but <dir>/node_modules or its .package-lock.json
+ * is absent - a stale hash must not hide packages that were never installed or were removed).
  */
 export function installNeed(dir, hashPath) {
   const lockPath = join(dir, 'package-lock.json')
   if (!existsSync(lockPath)) return null
   const oldHash = existsSync(hashPath) ? readFileSync(hashPath, 'utf8').trim() : null
   if (lockHash(lockPath) !== oldHash) return 'changed'
-  if (!existsSync(join(dir, 'node_modules', '.package-lock.json'))) return 'missing'
+  if (lockHasDeps(lockPath) && !existsSync(join(dir, 'node_modules', '.package-lock.json'))) return 'missing'
   return null
+}
+
+/**
+ * Whether a package-lock.json lists any package besides the root: v2/v3 `packages` keys other than "", or v1
+ * `dependencies`. npm never creates node_modules for a lockfile with none, so 'missing' would repeat forever.
+ * An unreadable lockfile counts as having packages (the install then reports the real problem).
+ */
+function lockHasDeps(lockPath) {
+  try {
+    const lock = JSON.parse(readFileSync(lockPath, 'utf8'))
+    if (lock.packages && typeof lock.packages === 'object') return Object.keys(lock.packages).some((k) => k !== '')
+    return Boolean(lock.dependencies && Object.keys(lock.dependencies).length)
+  } catch {
+    return true
+  }
 }
 
 /** The words for an installNeed reason in the install messages. */

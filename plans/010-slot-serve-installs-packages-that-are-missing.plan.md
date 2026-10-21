@@ -30,8 +30,8 @@ function runs in `take-plan.mjs`, so a claimed slot can carry the gap too.
 **Primary:** a slot whose packages are missing gets them installed by `slot-serve` / `take-plan` before any server
 starts, so a hand-off never fails on a missing package.
 
-- [auto] `node --test tools/test/` passes, with cases for the new install check: lockfile hash unchanged but
-  `node_modules` missing → install needed; hash unchanged and `node_modules` present → not needed; hash changed →
+- [auto] `node --test "tools/test/*.test.mjs"` passes, with cases for the new install check: lockfile hash unchanged but
+  `node_modules` missing → install needed; hash unchanged, lockfile lists no packages, no `node_modules` → not needed; hash unchanged and `node_modules` present → not needed; hash changed →
   needed; no lockfile → not needed.
 - [auto] In a FoodVibe slot after the sync, with servers off and `server/node_modules` renamed away,
   `node scripts/slot-serve.mjs` prints `npm install ran in server (packages missing)` and then
@@ -60,6 +60,7 @@ CHANGELOG.md
 scripts/lib/slot-procs.mjs
 scripts/slot-serve.mjs
 scripts/take-plan.mjs
+.kit/install.json
 ```
 
 ## Read Scope
@@ -80,7 +81,7 @@ changes below to that text.
 
 ## Functional Requirements
 1. **Pure check:** new exported `installNeed(dir, hashPath)` in `slot-procs.mjs` returns `null` (no install),
-   `'missing'` (lockfile exists, hash matches, but `<dir>/node_modules` or `<dir>/node_modules/.package-lock.json` is
+   `'missing'` (lockfile exists and lists packages besides the root, hash matches, but `<dir>/node_modules` or `<dir>/node_modules/.package-lock.json` is
    absent) or `'changed'` (hash differs or no hash file). No lockfile → `null`. No side effects, so it can be tested
    without running npm.
 2. **Install:** `npmInstallIfChanged` uses `installNeed`; it still writes the hash after a successful install, and
@@ -130,3 +131,20 @@ changes below to that text.
   (E2E_CHECK ok — 47 cases), `node tools/drift-check.mjs --target .` (KIT_DRIFT ok — 0 undeclared differences).
 - D4 partly: CHANGELOG `### Fixed` entry written. Kit PR, release tag, FoodVibe kit-sync, the FoodVibe slot run and
   /ship there are left open (other project / Dandan's go) — D4 stays unticked.
+- Checker round 1 (fix):
+  - major fixed: `installNeed` returned `missing` forever for a lockfile with no packages (npm never creates
+    `node_modules` there), so every slot-serve run reinstalled and stopped the servers. It now returns `missing` only
+    when the lockfile lists a package besides the root (v2/v3 `packages` keys other than `""`, or v1 `dependencies`;
+    an unreadable lockfile counts as having packages) — `core/scripts/lib/slot-procs.mjs` `lockHasDeps`. New tests:
+    no-dependency lockfile → `null`; v1 lockfile with dependencies → `missing`. `node --test
+    tools/test/slot-procs-install.test.mjs` → tests 9, pass 9, fail 0. Real-npm replay (temp `server/` with
+    package.json `{"name":"z","version":"1.0.0"}` and a root-only lockfile): run1 `changed`, `node_modules` exists
+    `false`, run2 `false` (no reinstall, so no `stopAll`).
+  - minor fixed: `.kit/install.json` added to the scope block — scope extended: .kit/install.json, rewritten by the
+    required sync (commit field and sha256 values) (orchestrator, no Human available).
+  - minor fixed: the Done-when command now reads `node --test "tools/test/*.test.mjs"` (the bare-directory form exits 1
+    on Node v24.18.0) → tests 22, pass 22, fail 0.
+  - `node tools/sync.mjs --target . --apply` → exit 0 (`1 kit-update, 0 conflicts`). Kit checks, all exit 0:
+    `npm run build` (PACK_CHECK ok), `npm run lint` (LEAK_CHECK ok ×3), `npm run test` (INSTALL_CHECK ok,
+    WORKFLOW_LINK_CHECK ok), `npm run e2e` (ACCEPTANCE_CHECK ok — 122 checks), `node tools/e2e-check.mjs`
+    (E2E_CHECK ok — 47 cases), `node tools/drift-check.mjs --target .` (KIT_DRIFT ok — 0 undeclared differences).
