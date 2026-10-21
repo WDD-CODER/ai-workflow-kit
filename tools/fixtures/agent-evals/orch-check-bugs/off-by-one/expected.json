@@ -1,0 +1,11 @@
+{
+  "note": "The loop bound uses <= so a page holds size + 1 items: pageItems([1,2,3,4,5], 0, 2) returns [1, 2, 3].",
+  "findings": [
+    {
+      "file": "src/paginate.mjs",
+      "line": 4,
+      "rule": "logic",
+      "severity": "major"
+    }
+  ]
+}

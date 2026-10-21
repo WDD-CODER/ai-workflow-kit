@@ -289,6 +289,11 @@
       "kind": "managed",
       "source": "core/README_WORKFLOW.md"
     },
+    "docs/agent/agent-evals.md": {
+      "sha256": "52df5c20fcf8471dc836c2189b3c5996b941cbfdd605350a3d620d0c808020da",
+      "kind": "managed",
+      "source": "core/docs/agent/agent-evals.md"
+    },
     "docs/agent/agent-roles.md": {
       "sha256": "22e47a9ca55c83501d97c5a894839e4e4ba34c8a54f606ad8c0aeb84f0db0845",
       "kind": "managed",

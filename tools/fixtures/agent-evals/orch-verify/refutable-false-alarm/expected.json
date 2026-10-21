@@ -1,0 +1,13 @@
+{
+  "note": "bugs-1 is real (keep). bugs-2 is refuted by src/config.mjs:2, which returns the default before env.PORT is read.",
+  "verdicts": [
+    {
+      "id": "bugs-1",
+      "verdict": "keep"
+    },
+    {
+      "id": "bugs-2",
+      "verdict": "refuted"
+    }
+  ]
+}
