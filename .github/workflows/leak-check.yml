@@ -18,6 +18,8 @@ jobs:
         run: node tools/leak-check.mjs --root packs --project-only
       - name: README and CHANGELOG must not name the project
         run: node tools/leak-check.mjs --root README.md --root CHANGELOG.md --root docs --project-only
+      - name: Mods must not name the project (their tests are fixtures and are not scanned)
+        run: node tools/leak-check.mjs --root mods/README.md --root mods/SECURITY.md --root mods/fleet/hooks --root mods/guards/hooks --root mods/ship-pilot/hooks --root mods/fleet/.claude-plugin/plugin.json --root mods/guards/.claude-plugin/plugin.json --root mods/ship-pilot/.claude-plugin/plugin.json --root .claude-plugin --project-only
       - name: Packs must satisfy the pack contract
         run: node tools/pack-check.mjs
       # actionlint, pinned by version and checksum, lints every workflow install-check renders.

@@ -810,6 +810,50 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   rmSync(cm, { recursive: true, force: true })
 }
 
+// mods.* : enabled mods render the kit's marketplace and their enabledPlugins entries into settings.json (valid JSON,
+// security-guidance kept); none enabled = neither key; an unknown mod or a bad repo is refused; a sync right after
+// install leaves settings.json as it is.
+{
+  const mm = tmp('mods')
+  writeFileSync(join(mm, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, mods: { enabled: ['fleet', 'guards', 'ship-pilot'] } }))
+  const r = run('install.mjs', ['--target', mm])
+  if (r.status !== 0) fail(`install with mods.enabled: exit ${r.status}, ${(r.stdout + r.stderr).trim().split('\n').pop()}`)
+  else {
+    const st = JSON.parse(read(mm, '.claude/settings.json'))
+    const mkt = st.extraKnownMarketplaces?.['ai-workflow-kit-mods']
+    if (mkt?.source?.source !== 'github' || mkt?.source?.repo !== 'WDD-CODER/ai-workflow-kit' || mkt?.autoUpdate !== true) fail(`mods: settings.json marketplace entry is ${JSON.stringify(mkt)}`)
+    for (const m of ['fleet', 'guards', 'ship-pilot']) if (st.enabledPlugins?.[`${m}@ai-workflow-kit-mods`] !== true) fail(`mods: settings.json does not enable ${m}`)
+    if (st.enabledPlugins?.['security-guidance@claude-plugins-official'] !== true) fail('mods: settings.json lost security-guidance')
+    // The contract the mods read: fleet parses the port bases from scripts/lib/slot.mjs, guards the hotspot list from
+    // scripts/scope-check.mjs (mods/fleet, mods/guards). A change to either rendered shape must change the mods too.
+    if (!/return\s*\{\s*fe:\s*\d+\s*\+\s*n\s*,\s*be:\s*\d+\s*\+\s*n\s*\}/.test(read(mm, 'scripts/lib/slot.mjs'))) fail('mods: scripts/lib/slot.mjs no longer renders `return { fe: <n> + n, be: <n> + n }` (fleet reads it)')
+    if (!/const HOTSPOTS = \[[^\]]*\]/.test(read(mm, 'scripts/scope-check.mjs'))) fail('mods: scripts/scope-check.mjs no longer renders `const HOTSPOTS = [ … ]` (guards reads it)')
+    const again = run('sync.mjs', ['--target', mm])
+    const touched = again.stdout.split('\n').filter((l) => l.includes('.claude/settings.json'))
+    if (again.status !== 0 || touched.length) fail(`mods: sync right after install: exit ${again.status}, ${touched.join(' | ')}`)
+    writeFileSync(join(mm, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, mods: { enabled: ['fleet'] } }))
+    const fewer = run('sync.mjs', ['--target', mm])
+    if (!/kit-update\s+\.claude\/settings\.json/.test(fewer.stdout)) fail('mods: sync after a change to mods.enabled does not update settings.json')
+  }
+  rmSync(mm, { recursive: true, force: true })
+
+  const mn = tmp('mods-none')
+  writeFileSync(join(mn, 'kit.config.json'), JSON.stringify(CORE_CFG))
+  const n = run('install.mjs', ['--target', mn])
+  if (n.status !== 0) fail(`install without mods: exit ${n.status}`)
+  else {
+    const st = JSON.parse(read(mn, '.claude/settings.json'))
+    if (st.extraKnownMarketplaces || Object.keys(st.enabledPlugins ?? {}).some((k) => k.endsWith('@ai-workflow-kit-mods'))) fail('mods: settings.json carries mods with mods.enabled empty')
+  }
+  rmSync(mn, { recursive: true, force: true })
+
+  const mb = tmp('mods-bad')
+  writeFileSync(join(mb, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, mods: { enabled: ['fleet', 'radar'], marketplaceRepo: 'not a repo' } }))
+  const b = run('install.mjs', ['--target', mb])
+  if (b.status !== 2 || !b.stderr.includes('mods.enabled names "radar" — allowed: "fleet", "guards", "ship-pilot"') || !b.stderr.includes('mods.marketplaceRepo is "not a repo" — it must be <owner>/<repo>') || files(mb).length !== 1) fail(`install with a bad mods config: exit ${b.status}, ${b.stderr.trim().split('\n')[0]}`)
+  rmSync(mb, { recursive: true, force: true })
+}
+
 // models.* (docs/agent/model-routing.md): the tiers render into the agent and forked-skill frontmatter; no inline
 // command carries a `model:` (a model switch breaks the prompt cache); all tiers inherit = routing off; a value that is
 // not a model alias or a claude- id is refused like a bad ci.* mode.

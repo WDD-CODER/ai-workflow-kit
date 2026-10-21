@@ -1,0 +1,24 @@
+{
+  "name": "ai-workflow-kit-mods",
+  "owner": {
+    "name": "Dan Weibren"
+  },
+  "plugins": [
+    {
+      "name": "fleet",
+      "source": "./mods/fleet",
+      "description": "Session registry across worktree slots, slot lock, port janitor, session health + handoff, Pull main button, clickable suggested replies."
+    },
+    {
+      "name": "guards",
+      "source": "./mods/guards",
+      "description": "In-process Planner-Worker edit guards with an Approve button."
+    },
+    {
+      "name": "ship-pilot",
+      "source": "./mods/ship-pilot",
+      "description": "PR band with merge-gate buttons, plan progress bar, /check."
+    }
+  ],
+  "description": "Claude Code mods for the ai-workflow-kit Planner-Worker workflow (fleet, guards, ship-pilot)."
+}

@@ -1,0 +1,60 @@
+{
+  "name": "fleet",
+  "version": "0.4.0",
+  "description": "Session registry across worktree slots (/fleet), slot lock, port janitor (/ports), session health with cache/context/limits and when each limit window resets (with a notice when the 5-hour window refreshes) and a handoff-and-restart button (/health), a Pull main button, and a [ ⏎ ] button inline after each reply the answer marks with ⏎ (fills the prompt box, unsent).",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "pushUrl": {
+      "type": "string",
+      "description": "Optional ntfy-style URL to POST phone notifications to (empty = off).",
+      "default": "",
+      "sensitive": true,
+      "title": "Phone push URL"
+    },
+    "cacheTtlMinutes": {
+      "type": "number",
+      "description": "Prompt-cache lifetime to count down from after each turn (60 on a subscription, 5 on an API key).",
+      "default": 60,
+      "title": "Cache TTL (minutes)"
+    },
+    "heartbeatSeconds": {
+      "type": "number",
+      "description": "How often the session refreshes its registry record and git facts.",
+      "default": 30,
+      "title": "Heartbeat (seconds)"
+    },
+    "autoStopPorts": {
+      "type": "boolean",
+      "description": "In a wt-N slot, run scripts/slot-stop.mjs when the session ends (skipped while a /remote link is live).",
+      "default": false,
+      "title": "Stop slot ports on exit"
+    },
+    "contextWarnPercent": {
+      "type": "number",
+      "description": "Context fill percentage at which the health band appears.",
+      "default": 70,
+      "title": "Context warning (%)"
+    },
+    "fePortBase": {
+      "type": "number",
+      "title": "Front-end port base",
+      "description": "Slot N serves the front end on base + N; the main folder on base. 0 = the base the kit rendered into scripts/lib/slot.mjs (slots.fePorts).",
+      "default": 0
+    },
+    "bePortBase": {
+      "type": "number",
+      "title": "Back-end port base",
+      "description": "Slot N serves the back end on base + N. 0 = the base the kit rendered into scripts/lib/slot.mjs (slots.bePorts).",
+      "default": 0
+    }
+  },
+  "author": {
+    "name": "Dan Weibren"
+  },
+  "keywords": [
+    "claude-code",
+    "mod",
+    "planner-worker",
+    "ai-workflow-kit"
+  ]
+}

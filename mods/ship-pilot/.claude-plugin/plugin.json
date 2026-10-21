@@ -1,0 +1,36 @@
+{
+  "name": "ship-pilot",
+  "version": "0.4.0",
+  "description": "PR band for the current branch (checks, mergeable, behind main) with the /ship merge-gate replies as buttons, a plan progress bar from the active plan's Atomic Sub-tasks (/progress; click the plan chip or press p for the plan panel), and /check N to tick a sub-task from the phone.",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "pollSeconds": {
+      "type": "number",
+      "title": "PR poll (seconds)",
+      "description": "How often to ask gh about the branch's PR and checks (0 = only on /pr and after each turn).",
+      "default": 60
+    },
+    "mainBranch": {
+      "type": "string",
+      "title": "Main branch",
+      "description": "The branch PRs merge into.",
+      "default": "main"
+    },
+    "pushUrl": {
+      "type": "string",
+      "title": "Phone push URL",
+      "description": "Optional ntfy-style URL to POST \"checks green/failed\" to (empty = off).",
+      "default": "",
+      "sensitive": true
+    }
+  },
+  "author": {
+    "name": "Dan Weibren"
+  },
+  "keywords": [
+    "claude-code",
+    "mod",
+    "planner-worker",
+    "ai-workflow-kit"
+  ]
+}

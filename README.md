@@ -123,6 +123,33 @@ conflict, and leaves the force-push to the Human.
 Adding a pack or layer to an installed project: `kit-sync -Packs react-vite -Layers supabase` (dry-run), then
 `-Apply` records the new lists in `.kit/install.json` and `kit.config.json`.
 
+## Mods (Claude Code plugins served from this repository)
+
+The kit repository is also a Claude Code plugin marketplace: `.claude-plugin/marketplace.json` (name
+`ai-workflow-kit-mods`) serves `mods/fleet`, `mods/guards` and `mods/ship-pilot`. `mods/` is not installed into
+projects; a project turns mods on in its `kit.config.json`:
+
+```json
+"mods": { "enabled": ["fleet", "guards", "ship-pilot"] }
+```
+
+Install and sync then write into the project's `.claude/settings.json` the marketplace (`extraKnownMarketplaces`,
+GitHub source `mods.marketplaceRepo`, `autoUpdate: true`) and one `enabledPlugins` entry per mod. Opening the
+project in Claude Code and accepting the folder's trust dialog registers the marketplace and loads the mods. What
+each mod does and its options: `mods/README.md`.
+
+- **Updates:** a mod change bumps its `plugin.json` `version` and ships in a kit release; `autoUpdate` refreshes the
+  marketplace at each machine's next session start. By hand: `claude plugin marketplace update ai-workflow-kit-mods`,
+  then `claude plugin update <mod>@ai-workflow-kit-mods`.
+- **Private repository:** the machine needs git credentials for it (`gh auth login`, then `gh auth setup-git`).
+- **Cloud sessions** load no plugins from a repository's settings: the mods are for sessions on your own machines.
+- **Moving off a local directory marketplace:** first confirm in `/plugin` that the mods load from
+  `ai-workflow-kit-mods` at the new versions, then `claude plugin marketplace remove <old name>`. Removing a marketplace
+  also uninstalls what came from it and deletes its saved options: re-enter fleet's phone push URL in `/config` if you
+  had one.
+- The mods read the project's hotspots and port bases from the files the kit rendered (`scripts/scope-check.mjs`,
+  `scripts/lib/slot.mjs`), so they match the kit's own checks; their own `/config` options override those.
+
 ## Sync (see what a newer kit changes)
 
 ```powershell
@@ -244,6 +271,15 @@ node tools/install-check.mjs                                           # install
 node tools/e2e-check.mjs                                               # a fresh project through plan -> take-plan -> ship -> merge -> close-out
 node tools/workflow-link-check.mjs                                     # every path the installed workflow docs name exists (each pack and layer)
 node tools/acceptance-check.mjs --e2e                                  # Angular, React-Vite and upstream-owned fixture projects, then e2e --project
+node tools/leak-check.mjs --root mods/README.md --root mods/SECURITY.md --root mods/fleet/hooks --root mods/guards/hooks --root mods/ship-pilot/hooks --root mods/fleet/.claude-plugin/plugin.json --root mods/guards/.claude-plugin/plugin.json --root mods/ship-pilot/.claude-plugin/plugin.json --root .claude-plugin --project-only
+```
+
+The mods need the Claude Code CLI (not in CI); run before a release that changes one:
+
+```
+claude plugin validate .                 # the marketplace at the kit root
+claude plugin validate mods/<mod>        # manifest + every $ call the module makes
+claude plugin test mods/<mod>            # the mod's *.test.ts
 ```
 
 `node tools/e2e-check.mjs --project ..\my-app` runs the e2e cycle on a scratch copy of a real installed project
