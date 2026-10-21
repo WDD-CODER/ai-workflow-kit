@@ -35,6 +35,21 @@ to a stronger agent.
 - SessionStart prints a `MODEL_ROUTING:` line when `CLAUDE_CODE_SUBAGENT_MODEL` or
   `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` would override the agent files' models.
 
+Mods from the kit's own marketplace. The three Claude Code mods (fleet, guards, ship-pilot) now live in this
+repository under `mods/`, served by `.claude-plugin/marketplace.json` (`ai-workflow-kit-mods`), so a project gets them
+on every machine and a mod change reaches those machines with a kit release.
+
+- New config key `mods`: `enabled` (default `[]`; `fleet`, `guards`, `ship-pilot` — others are refused) and
+  `marketplaceRepo` (default this repository). With a mod enabled, install and sync write the marketplace
+  (`autoUpdate: true`) and one `enabledPlugins` entry per mod into `.claude/settings.json`.
+- fleet 0.4.0: the status line shows when the 5-hour window resets (`5h 62% ↻14:30 (2h10m)`), `/health` and the
+  limit notices name both reset times, and every session shows a notice when the 5-hour window refreshes (the 95%
+  notice is re-armed for the new window). Port bases come from `slots.fePorts` / `slots.bePorts` when fleet's own
+  options are empty; neither set = the port features stay off.
+- guards 0.2.0: its append-only hotspots come from `paths.hotspots` and `project.i18nFile` when its option is empty.
+- ship-pilot 0.4.0: no behaviour change (one shared copy from the marketplace).
+- CI runs `leak-check` on the mods (their tests are fixtures and are not scanned). Cloud sessions do not get the mods.
+
 ### What a project must do
 
 Nothing. Sync and commit. Rendered files that change (`kit-update`): `docs/agent/job-validation.md`,
@@ -45,6 +60,9 @@ overrides one of these files can copy the new "Servers first", Format and Close-
 Model routing: nothing either; the new config key `models` has defaults. To change a tier, set `models.<tier>` in `kit.config.json`; to keep
 every step on the main model, set all three to `inherit`. `templates/CLAUDE.md` is a seed, so an existing project's
 `CLAUDE.md` does not get the new pointer to `docs/agent/model-routing.md` (optional to add by hand).
+
+Mods: nothing unless you want them. To turn them on, set `mods.enabled` in `kit.config.json`, sync, commit, and accept
+the folder's trust dialog once. Replacing a local directory marketplace: see the README's **Mods**.
 
 ### Changed
 - `job-validation.md`: a Core rule for the hand-off (cards only when a human is needed, only once the work is

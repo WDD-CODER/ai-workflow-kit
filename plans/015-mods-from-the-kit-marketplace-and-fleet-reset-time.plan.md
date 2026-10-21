@@ -140,12 +140,12 @@ per the generated types). A newer source version → bring that one in and note 
     saved options — re-enter fleet's `pushUrl` in `/config` if it was set.
 
 ## Atomic Sub-tasks
-- [ ] M1: Bring the three mods into the kit without one project's paths or private data — mods/**
-- [ ] M2: Serve them from a marketplace at the kit root — .claude-plugin/marketplace.json
-- [ ] M3: Let guards and fleet take hotspots and ports from the project's kit config — mods/guards/**, mods/fleet/**
-- [ ] M4: Turn the mods on per project with one config key, rendered into settings.json by install and sync — kit.config.json, tools/lib/kit.mjs, tools/install.mjs, tools/sync.mjs, core/.claude/settings.json, tools/install-check.mjs
-- [ ] M5: Show when the 5-hour window resets and announce the refresh in every session — mods/fleet/** (0.4.0)
-- [ ] M6: Check the mods in CI and document updates and the hand-over — .github/workflows/leak-check.yml, README.md
+- [x] M1: Bring the three mods into the kit without one project's paths or private data — mods/**
+- [x] M2: Serve them from a marketplace at the kit root — .claude-plugin/marketplace.json
+- [x] M3: Let guards and fleet take hotspots and ports from the project's kit config — mods/guards/**, mods/fleet/**
+- [x] M4: Turn the mods on per project with one config key, rendered into settings.json by install and sync — kit.config.json, tools/lib/kit.mjs, tools/install.mjs, tools/sync.mjs, core/.claude/settings.json, tools/install-check.mjs
+- [x] M5: Show when the 5-hour window resets and announce the refresh in every session — mods/fleet/** (0.4.0)
+- [x] M6: Check the mods in CI and document updates and the hand-over — .github/workflows/leak-check.yml, README.md
 - [ ] M7: Release and bring it into FoodVibe — CHANGELOG entry, kit PR, tag on Dandan's go, `mods.enabled` set in FoodVibe's kit.config.json, kit-sync -Ref <tag> -Apply, /ship there; Dandan's PC steps from requirement 10 — CHANGELOG.md
 
 ## Out of Scope
@@ -155,3 +155,18 @@ per the generated types). A newer source version → bring that one in and note 
 - Removing the old local marketplace or uninstalling anything on Dandan's machine (his step).
 
 ## Execution Notes
+- 2026-10-21: Step 0 — the PC sources matched the plan (fleet 0.3.1, guards 0.1.1, ship-pilot 0.3.0; `resetsAt?: string`,
+  ISO 8601). M1–M6 done on `feat/015-mods-marketplace-fleet-reset`, rebased onto `main` after 009 and 012 merged
+  (conflicts in `kit.config.json` and `tools/lib/kit.mjs`: both keys kept).
+- Evidence (Claude Code 2.1.306 in the cloud session): `claude plugin validate .` passed; `claude plugin validate
+  mods/<mod>` passed for all three; `claude plugin test`: fleet 32 pass (27 before + 5 new), guards 14 pass (13 + 1),
+  ship-pilot 14 pass; `tsc` against this build's types: 0 errors for all three (hooks, types and tests). Kit checks:
+  leak-check (core/layers/templates, packs, README/CHANGELOG/docs, mods) 0 leaks; pack-check, install-check (new mods
+  block: enabled, none, refused names/repo, sync no-op and update), workflow-link-check pass.
+- Leak-check scans the mods' hooks, manifests, README and SECURITY, not their tests: the tests are fixtures whose port
+  numbers and plan numbers are the formats under test.
+- Found, not fixed (out of scope): ship-pilot registers `/pr`, a name Claude Code ships, so `$.command.register`
+  refuses it (`claude plugin validate mods/ship-pilot` warns). Follow-up: rename it (e.g. `/pr-status`).
+- `mods/README.md` was rewritten for any project (install from the marketplace, project defaults, examples without
+  one project's ports, paths or PR numbers); `TOKEN-REPORT.md`, `WORKFLOW-CHANGES.md`, `evidence/`, `backups/` and the
+  generated `.claude-plugin/types/` were not brought in; `author.email` dropped from the three manifests.
