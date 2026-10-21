@@ -185,8 +185,11 @@ Claude Code backs this up in `.claude/settings.json`: `permissions.deny` refuses
 | `prune-merged-worktrees.sh`, `prune-old-sessions.sh` | `/cleanup` |
 | `lib/slot.mjs` | `session-startup.sh` (`--describe`), `scope-check.mjs`, `ship-prep.mjs`, `take-plan.mjs`; `--list` for the Planner protocol |
 | `session-state-path.mjs` | `session-startup.sh`, `handoff-check.sh`, `write-session-state.mjs` — one resolver, no duplicated logic |
-| `scope-check.mjs` | `scope-guard.sh` (`--file`), `ship-prep.mjs` (`--diff`, `--arch --diff` warn), the Planner protocol (`--overlap`), save-plan Shape lint (`--arch --plan` block), `/review-it` step 3 (`--arch --diff`), `take-plan.mjs` + `take-plan.md` (`--drift`) |
+| `scope-check.mjs` | `scope-guard.sh` (`--file`), `ship-prep.mjs` (`--diff`, `--arch --diff` warn), the Planner protocol (`--overlap`, `--deps`), save-plan Shape lint (`--arch --plan` block, `--deps`), `/review-it` step 3 (`--arch --diff`), `take-plan.mjs` + `take-plan.md` (`--drift`) |
 | `lib/invariants.mjs` | `scope-check.mjs --arch` and `take-plan.mjs` (pre-claim architecture gate, judged against the main branch): parses `docs/brain/invariants.md` and a plan's `## Architecture Impact` |
+| `plan-order.mjs` | the Planner protocol (`/plan` step 3) and the orchestrator (`--json`): run order of a set of plans — waves, lanes, lock groups from scope overlap (hotspots left out), the reason of every edge; `--branch <b> --merged-from git` counts a plan merged only on the exact subject `Merge <src> into <b> (plan NNN)` |
+| `lib/plan-deps.mjs` | `plan-order.mjs`, `scope-check.mjs --deps`, `take-plan.mjs` — the one parser of a plan's `Depends-on:` line and legacy prose prerequisites |
+| `lib/plan-graph.mjs` | `plan-order.mjs` — waves, lanes, lock groups and edges as data |
 | `take-plan.mjs` | "execute plan NNN" / "take plan NNN" (`.claude/commands/take-plan.md`) |
 | `slot-serve.mjs` | a Worker step that needs the running app; preflight in a slot; validation cards; the Human's "start servers" |
 | `slot-stop.mjs` | "Merging from a slot" (`standards-git.md`), the `SessionEnd` hook (`--if-slot`), by hand |

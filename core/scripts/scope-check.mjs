@@ -10,6 +10,7 @@
  *   node scripts/scope-check.mjs --drift [--plan=<path>]
  *   node scripts/scope-check.mjs --arch --plan=<path>                   (BLOCK)
  *   node scripts/scope-check.mjs --arch --diff=<base> [--plan=<path>]   (WARN, exit 0)
+ *   node scripts/scope-check.mjs --deps --plan=<path>
  *
  * A path matching ownership.upstreamPaths (kit.config.json) is never in scope: --file prints "SCOPE: upstream <path>".
  *
@@ -19,6 +20,10 @@
  * --overlap finding a shared glob with another active plan, or on --drift
  * finding an in-scope commit since the plan's Snapshot (or, without one, since
  * the commit that added the plan).
+ *
+ * --deps checks the plan declares what it needs first: "DEPENDS_ON: ok" (exit 0) when it has a "Depends-on:" line
+ * ("Depends-on: none" counts), "DEPENDS_ON: missing" (exit 1) when it has none — legacy prose prerequisites are still
+ * read by plan-order and take-plan, but a new plan says it in the header (scripts/lib/plan-deps.mjs).
  *
  * --arch reads the architecture invariants registry (docs/brain/invariants.md; see
  * scripts/lib/invariants.mjs). With --plan: exit 1 when the plan's scope touches an
@@ -37,6 +42,7 @@ import picomatch from 'picomatch'
 import { activePlanPath, branchPlanPath } from './lib/slot.mjs'
 import { extractScopeGlobs } from './lib/plan-scope.mjs'
 import { listOpenPlans, OPEN_PLAN_DIRS } from './lib/plan-paths.mjs'
+import { parseDependsOn, parseProsePrerequisites } from './lib/plan-deps.mjs'
 import { parseInvariants, checkPlanArch, diffArchWarnings, decisionWithoutAdr, parseAddedLines } from './lib/invariants.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -103,7 +109,7 @@ function sanitizeBranch(branch) {
 }
 
 function readPlanFile(planPath) {
-  const abs = join(repoRoot, planPath)
+  const abs = isAbsolute(planPath) ? planPath : join(repoRoot, planPath)
   if (!existsSync(abs)) fail(`plan not found: ${planPath}`)
   return readFileSync(abs, 'utf8')
 }
@@ -299,13 +305,28 @@ function cmdArchDiff(args) {
   console.log(lines.length ? lines.join('\n') : 'ARCH: ok (diff)')
 }
 
+function cmdDeps(args) {
+  if (!args.plan || args.plan === true) fail('--deps requires --plan=<path>')
+  const planPath = normalize(args.plan)
+  const planText = readPlanFile(planPath)
+  const deps = parseDependsOn(planText)
+  if (deps === null) {
+    const prose = parseProsePrerequisites(planText)
+    console.log('DEPENDS_ON: missing')
+    console.log(`  ${planPath} has no "Depends-on:" header line - add one under Status: (e.g. "Depends-on: 007, 012" or "Depends-on: none")${prose.length ? `; its prose names plan(s) ${prose.join(', ')}` : ''}`)
+    process.exit(1)
+  }
+  console.log(`DEPENDS_ON: ok${deps.length ? ` (${deps.join(', ')})` : ' (none)'}`)
+}
+
 const args = parseArgs(process.argv.slice(2))
 
 if (args.arch && args.diff) cmdArchDiff(args)
 else if (args.arch && args.plan) cmdArchPlan(args)
 else if (args.arch) fail('--arch needs --plan=<p> or --diff=<base>')
+else if (args.deps) cmdDeps(args)
 else if (args.file) cmdFile(args)
 else if (args.diff) cmdDiff(args)
 else if (args.overlap) cmdOverlap(args)
 else if (args.drift) cmdDrift(args)
-else fail('usage: --file=<p> | --diff=<base> | --overlap --plan=<p> | --drift [--plan=<p>] | --arch --plan=<p> | --arch --diff=<base>')
+else fail('usage: --file=<p> | --diff=<base> | --overlap --plan=<p> | --drift [--plan=<p>] | --arch --plan=<p> | --arch --diff=<base> | --deps --plan=<p>')

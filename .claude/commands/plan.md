@@ -121,6 +121,10 @@ review docs allow a direct push to `main` — restricted to `plans/*.plan.md` an
 3. Ask: "Will this plan run in parallel with other active plans?" If yes, run
    `node scripts/scope-check.mjs --overlap --plan=<path>` — it must report `OVERLAP: none`
    before saving; a real overlap means narrowing the `## Read-Write Scope` first.
+   Every plan carries a `Depends-on:` header line (`Depends-on: none` when nothing comes first):
+   `node scripts/scope-check.mjs --deps --plan=<path>` must print `DEPENDS_ON: ok`. For a set of plans,
+   `node scripts/plan-order.mjs <NNN …>` prints the run order — waves (what can run in parallel), lanes, lock
+   groups from scope overlap, and the reason of every edge (`--json` for tools).
 4. Save via `.claude/skills/save-plan/SKILL.md` with `Status: draft`. Leave `Snapshot:` as
    the author wrote it (the SHA they verified the plan against) — only fill it with the
    current `origin/main` SHA if the draft left it empty. Never overwrite an already-filled

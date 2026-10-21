@@ -28,6 +28,10 @@ Triggers: "execute plan NNN", "take plan NNN" (only meaningful inside a wt-N slo
    Ask the Human how to proceed. Common cases:
    - plan has no readable scope (neither a ```` ```scope ```` block nor a `**Scope:**` list of
      backticked globs) → the Planner fixes the plan on `main`; nothing was claimed.
+   - `NOT_READY: plan NNN (<title>) is not merged` → this plan's `Depends-on:` (or a legacy
+     `Prerequisite: plan NNN` line) names a plan that is not merged into `main` yet. Tell the Human
+     which plan it waits on (number and title) and take another plan; `node scripts/plan-order.mjs <NNN>`
+     shows what is ready. Nothing was claimed. `--ignore-order` only when the Human says so.
    - a port is held by a program that is not a dev server → the Human frees it.
    - `… fails the architecture gate` plus `ARCH: …` lines → the plan's `## Architecture Impact`
      misses an invariant or an approval; the Planner fixes it on main. Nothing was claimed.

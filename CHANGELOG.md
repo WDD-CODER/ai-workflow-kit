@@ -19,6 +19,16 @@ Nothing. Two optional changes reach projects with the next sync: `.kit/config.js
 outside a slot too. Rendered files that change (`kit-update`): `scripts/scope-check.mjs`, `scripts/ship-prep.mjs`.
 
 ### Added
+- Plans declare what they need first: a `Depends-on: NNN, MMM` (or `none`) header line, in the plan template and
+  the save-plan lint. One parser (`scripts/lib/plan-deps.mjs`) reads it — plus legacy prose such as
+  `Prerequisite: plan NNN merged`, so old plans need no edit — for every tool.
+- `scripts/plan-order.mjs`: the run order of any set of plans — waves (what can run in parallel), lanes, lock groups
+  derived from Read-Write Scope overlap (config hotspots and the i18n file left out) and the reason of every edge;
+  text or `--json`. A cycle or a missing dependency exits 1 and names the plans. With `--branch <b> --merged-from
+  git`, a plan counts as merged only on the exact subject `Merge <src> into <b> (plan NNN)`.
+- `scope-check.mjs --deps --plan=<path>`: `DEPENDS_ON: ok` or `DEPENDS_ON: missing` (exit 1).
+- `take-plan.mjs` refuses a plan whose dependency is not merged with `NOT_READY: plan NNN (<title>) is not merged`
+  (the same check as before, now on the shared parser and the `Depends-on:` line).
 - `.kit/config.json` project config, read before `kit.config.json` (for a project whose `kit.config.json` is
   something else; messages name the file used). A kit installed into itself records its source as `local:.`.
 - The kit repo carries the installed workflow (`.kit/config.json`, a root `package.json` that runs the checks), and
