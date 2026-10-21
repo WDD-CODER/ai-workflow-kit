@@ -68,7 +68,7 @@ const SCHEMA = {
   },
   ui: {
     type: 'object',
-    properties: { ...COMMON, cards: { type: 'array', items: { type: 'object', properties: { card: str, status: { type: 'string', enum: ['pass', 'fail', 'plan-drift'] }, screenshots: strList }, required: ['card', 'status', 'screenshots'] } }, pass: { type: 'boolean' } },
+    properties: { ...COMMON, cards: { type: 'array', items: { type: 'object', properties: { card: str, page: str, status: { type: 'string', enum: ['pass', 'fail', 'plan-drift'] }, screenshots: strList }, required: ['card', 'status', 'screenshots'] } }, pass: { type: 'boolean' } },
     required: ['role', 'model', 'effort', 'cards'],
   },
   merge: { type: 'object', properties: { ...COMMON, merged: { type: 'boolean' }, sha: str, reason: str, envFailure: { type: 'boolean' } }, required: ['role', 'model', 'effort', 'merged'] },
@@ -214,9 +214,11 @@ async function checkers(ctx) {
 
 async function ui(ctx) {
   if (A.ui !== true) return {}
-  const r = await agent(`UI cards of plan ${ctx.nnn} of run ${RUN}. Follow .claude/agents/orch-ui.md.\n\n${task({ PLAN: ctx.info.path, FOLDER: ctx.wt.path })}`,
+  const r = await agent(`UI cards of plan ${ctx.nnn} of run ${RUN}. Follow .claude/agents/orch-ui.md, and give each card the page URL it was checked on in \`page\`.\n\n${task({ PLAN: ctx.info.path, FOLDER: ctx.wt.path })}`,
     { agentType: 'orch-ui', schema: SCHEMA.ui, label: `ui ${ctx.nnn}`, phase: 'Build' })
   if (!r) return { fail: true, why: 'the UI agent returned nothing', findings: [] }
+  // Each card result (page, status, screenshot paths) goes into status.json: the run report's validation list by page.
+  for (const c of r.cards) await setPlan(ctx.nnn, { round: ctx.round, card: c.card, 'card-status': c.status, page: c.page || undefined, shots: c.screenshots.join(',') || undefined })
   const bad = r.cards.filter((c) => c.status !== 'pass')
   if (bad.length) return { r, fail: true, why: `ui: ${bad.map((c) => `${c.card} ${c.status}`).join('; ')}`, findings: bad.map((c, i) => ({ id: `ui-${i + 1}`, file: c.card, line: 1, rule: `ui ${c.status}`, reasoning: c.screenshots.join(', '), severity: 'major' })) }
   return { r }

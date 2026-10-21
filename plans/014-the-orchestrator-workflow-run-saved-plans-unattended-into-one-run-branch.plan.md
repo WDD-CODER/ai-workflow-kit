@@ -247,3 +247,27 @@ Orchestrator build (builder, 2026-10-21, branch feat/014-orchestrator-workflow f
   - node tools/e2e-check.mjs → exit 0 (`E2E_CHECK: ok — 52 cases passed`, incl. the orchestrator test and e2e).
   - node tools/drift-check.mjs --target . → exit 0 (`KIT_DRIFT: ok — 0 undeclared differences`).
 - Open ([human]): one real run on a project with 2–3 plans — the Human chooses the project; not done here.
+
+Checker round 1 (builder, 2026-10-21):
+- Fixed (major, report): the report's "What only the Human can do" is one validation list grouped by page, numbers
+  running on. `orch-ui` card results (page, status, round, screenshot paths) are persisted per card through
+  `orch-state.mjs set --card … --card-status … --page … --shots …` into `status.json` `uiCards`; `validationList()` in
+  `scripts/lib/orch-run.mjs` groups them by page with the screenshots as evidence, then lists the `[human]` items
+  (which name no page) per plan. Decision: `orch-ui.md` (plan 018 / 013 file, outside this scope) has no `page` field
+  yet, so the workflow schema takes an optional `page` and the prompt asks for it; a card without one is grouped under
+  "page not named (plan NNN)". docs/agent/orchestrator.md "The report" says so.
+- Fixed (minor, status.json race): every read takes `.claude/orchestrator-runs/<run>.lock` (O_EXCL, retried, stale
+  after 30 s, released on exit) and every write is temp file + rename. Rerun of the checker's repro: 30 concurrent
+  `node scripts/orch-state.mjs set --root <scratch> --run race --plan N --state building` → `plans in status.json:
+  30 of 30`, 0 logs with SyntaxError/FAIL; then 60 more → `90 of 90`, 0 errors, no lock or tmp file left.
+- Fixed (minor, test): e2e run "gamma" plan 301 — ESCALATE at round 1, then the judgment builder's gate fails → parked
+  at round 1 with `fix rounds used: 1 of 2` (the `judgment && escalated` park on its own).
+- Fixed (nit, security trigger): `orch-state.mjs diff` also scans the diff's added lines for auth / permission /
+  password / jwt / session id / token / role code (camelCase too) → `sensitive: true`, `sensitiveCode: [files]`. e2e
+  gamma 302 adds `checkAuthToken(req)` to work/302.txt → orch-security runs for 302 and for no other plan.
+- Evidence: node tools/orchestrator-e2e.mjs → exit 0, `ORCHESTRATOR_E2E: ok — 39 cases passed` (4 new gamma cases);
+  node --test tools/test/orchestrator.test.mjs → pass 8, fail 0 (new: validation list by page); npm run build → exit 0
+  (`PACK_CHECK: ok`); npm run lint → exit 0 (`LEAK_CHECK: ok … 0 leaks`); npm run test → exit 0 (`INSTALL_CHECK: ok …
+  0 problems`, `WORKFLOW_LINK_CHECK: ok … 0 missing`); npm run e2e → exit 0 (`ACCEPTANCE_CHECK: ok — 122 checks
+  passed`); node tools/e2e-check.mjs → exit 0 (`E2E_CHECK: ok — 52 cases passed`); node tools/sync.mjs --target .
+  --apply → exit 0; node tools/drift-check.mjs --target . → exit 0 (`KIT_DRIFT: ok — 0 undeclared differences`).

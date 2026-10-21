@@ -137,10 +137,10 @@ function stubBuilder(t, opts) {
   const n = bump(`builder ${nnn}`)
   const r = { ...base('orch-builder', opts), branch: t.BRANCH, summary: `stub build ${n}`, evidence: ['stub -> exit 0'] }
   if (nnn === '103' && n === 1) return { ...r, status: 'blocked', envFailure: true, blocker: 'free disk 0.4 GB is below orchestrator.minFreeDiskGb' }
-  if (nnn === '204' && n === 1) return { ...r, status: 'ESCALATE', blocker: 'the task is beyond this builder', evidence: [] }
+  if ((nnn === '204' || nnn === '301') && n === 1) return { ...r, status: 'ESCALATE', blocker: 'the task is beyond this builder', evidence: [] }
   const wt = t.WORKTREE
   mkdirSync(join(wt, 'work'), { recursive: true })
-  writeFileSync(join(wt, 'work', `${nnn}.txt`), `attempt ${n}\n`)
+  writeFileSync(join(wt, 'work', `${nnn}.txt`), `attempt ${n}\n${nnn === '302' ? 'const ok = checkAuthToken(req)\n' : ''}`)
   git(wt, 'add', '--', `work/${nnn}.txt`)
   const c = git(wt, 'commit', '-q', '-m', `feat(${nnn}): attempt ${n}`)
   const p = git(wt, 'push', '-q', '-u', 'origin', t.BRANCH)
@@ -150,7 +150,7 @@ function stubBuilder(t, opts) {
 
 function stubGate(t, opts, nnn) {
   const n = bump(`gate ${nnn}`)
-  const fail = (nnn === '102' && n === 1) || (nnn === '202' && !phase2)
+  const fail = (nnn === '102' && n === 1) || (nnn === '202' && !phase2) || nnn === '301'
   const cmds = json(t.COMMANDS)
   return { ...base('orch-gate', opts), results: cmds.map((c, i) => (fail && i === 0 ? { command: c, status: 'fail', tail: 'stub: 1 failing test' } : { command: c, status: 'pass' })), pass: !fail }
 }
@@ -199,6 +199,7 @@ async function agent(prompt, opts = {}) {
   if (type === 'orch-gate') return stubGate(t, opts, nnn)
   if (['orch-check-plan', 'orch-check-bugs', 'orch-check-rules', 'orch-security'].includes(type)) return stubFinder(type, opts, nnn)
   if (type === 'orch-verify') return stubVerify(t, opts)
+  if (type === 'orch-ui') return { ...base('orch-ui', opts), cards: [{ card: '1 Saved shows', status: 'pass', page: 'https://app.example/settings', screenshots: [`screens/${nnn}-1.png`] }], pass: true }
   if (type === 'orch-merge') return stubMerge(t, opts)
   if (type === 'orch-readiness') return { ...base('orch-readiness', opts), plans: [{ plan: t.PLAN, state: 'ready', questions: [], envNeeds: [], commands: ['node --test', 'git reset --hard HEAD'] }] }
   throw new Error(`stub: no agent for ${type ?? role} (${opts.label})`)
@@ -303,6 +304,18 @@ async function main() {
   const s2 = statusOnBranch('beta')
   check('beta 2: status.json shows all four merged after two attempts', !!s2 && s2.attempts === 2 && ['201', '202', '203', '204'].every((n) => s2.plans[n].state === 'merged') && !s2.plans['202'].reason && s2.plans['202'].earlier?.[0]?.state === 'parked', JSON.stringify(s2 && Object.values(s2.plans).map((p) => `${p.nnn}:${p.state}`)))
   check('beta 2: the run result counts come from git', JSON.stringify((b2?.merged ?? []).slice().sort()) === JSON.stringify(['201', '202', '203', '204']), JSON.stringify(b2?.merged))
+  // Run gamma: the UI step on; an ESCALATE then a judgment-tier failure parks at round 1; auth code in a plain path.
+  const g = await runWorkflow({ mode: 'run', run: 'gamma', plans: ['301', '302'], ui: true, startedAt: '2026-01-04T00:00:00.000Z', root: proj })
+  const sg = JSON.parse(readFileSync(join(proj, '.claude', 'orchestrator-runs', 'gamma', 'status.json'), 'utf8'))
+  const b301 = builderCalls('301').map((c) => `${c.tier}/${c.mode}`).join(',')
+  check('gamma: 301 ESCALATE → judgment builder fails → parked at round 1 of 2 (judgment + escalated)', b301 === 'build/first,judgment/handoff' && sg.plans['301']?.state === 'parked' && sg.plans['301'].round === 1 && /fix rounds used: 1 of 2/.test(sg.plans['301'].reason ?? '') && !!g?.parked?.includes('301'), `${b301} ${JSON.stringify(sg.plans['301'])}`)
+  const card = sg.plans['302']?.uiCards?.[0]
+  check('gamma: 302 merged with its UI card (page, status, screenshot) in status.json', sg.plans['302']?.state === 'merged' && sg.plans['302'].uiCards.length === 1 && card.page === 'https://app.example/settings' && card.status === 'pass' && card.screenshots[0] === 'screens/302-1.png', JSON.stringify(sg.plans['302']?.uiCards))
+  const gReport = join(proj, '.claude', 'orchestrator-runs', 'gamma.md')
+  const rg = existsSync(gReport) ? readFileSync(gReport, 'utf8') : ''
+  check('gamma: the report groups the validation list by page with the evidence', rg.includes('### https://app.example/settings\n\n1. 302: 1 Saved shows — UI check pass in round 0; evidence: `screens/302-1.png`') && rg.includes('2. 302 UI checked and auth code: Open work/302.txt'), (rg.split('## What only the Human can do')[1] ?? rg).slice(0, 400))
+  const sec = calls.filter((c) => c.type === 'orch-security').map((c) => c.nnn)
+  check('gamma: orch-security runs for added auth code in a plain path, and only there', sec.length > 0 && sec.every((n) => n === '302'), JSON.stringify(sec))
   check('beta: origin/main unchanged', git(origin, 'rev-parse', 'main').stdout.trim() === mainBefore, 'main moved')
 
   // Every state write went through orch-state.mjs (the runner ran nothing else).
@@ -319,7 +332,7 @@ for (const line of results) console.log(line)
 const total = results.filter((l) => /^(PASS|FAIL)/.test(l)).length
 if (keep) console.log(`kept: ${root}`)
 else {
-  for (const run of ['alpha', 'beta']) {
+  for (const run of ['alpha', 'beta', 'gamma']) {
     git(proj, 'worktree', 'remove', '--force', join(root, `orch-app-orch-merge-${run}`))
   }
   try {

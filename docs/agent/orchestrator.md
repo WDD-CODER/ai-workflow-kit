@@ -38,7 +38,7 @@ branch himself.
    - builder (`orch-builder`, in its own folder `<repo>-orch-<run>-<NNN>` on `feat/NNN-<slug>`, scope-guarded);
    - gate (`orch-gate`): the project checks plus the plan's own check commands from readiness;
    - finders in parallel (`orch-check-plan`, `orch-check-bugs`, `orch-check-rules`, and `orch-security` only when the
-     diff touches a sensitive path), then `orch-verify` on every candidate;
+     diff touches a sensitive path or its added lines name auth, permission, password, token or role code), then `orch-verify` on every candidate;
    - UI validator (`orch-ui`) only when the run is started with the UI step on;
    - merger (`orch-merge`), one at a time: `git merge --no-ff --no-commit`, the checks, then the commit
      `Merge <plan branch> into orch/<run> (plan NNN)` and the push. A conflict or a failing check aborts the
@@ -90,6 +90,8 @@ branch himself.
 
 ## The report
 
-Merged, parked and why; the decisions agents took; the models each agent ran on; what only the Human can do — every
-`[human]` item of the merged plans and a decision for each parked plan; and the PowerShell lines that open the pull
-request of the run branch. The end-of-run message prints the report path and those lines.
+Merged, parked and why; the decisions agents took; the models each agent ran on; what only the Human can do — one
+validation list grouped by page, numbers running on: each `orch-ui` card result of a merged plan under the page it was
+checked on, with its status, round and screenshot paths as evidence (kept in `status.json` as `uiCards`), then every
+`[human]` item of the merged plans, which name no page, per plan — and a decision for each parked plan; and the
+PowerShell lines that open the pull request of the run branch. The end-of-run message prints the report path and those lines.

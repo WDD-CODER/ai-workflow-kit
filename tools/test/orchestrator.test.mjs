@@ -52,11 +52,29 @@ test('the report: counts from git merges, main untouched, the Human items and th
   assert.match(r, /`main` untouched: yes/)
   assert.match(r, /\| 001 One \| merged \| 1 \| build \| bbbbbbb \|/)
   assert.match(r, /- 001: kept the old flag/)
-  assert.match(r, /1\. Check the page/)
+  assert.ok(r.includes("### The plans' [human] items (no UI check ran)\n\n1. 001 One: Check the page"), r)
   assert.match(r, /- Decide on 002: gate: npm run test/)
   assert.match(r, /gh pr create --base main --head orch\/r1/)
   const moved = lib.formatReport({ status, merged: [], mainShaNow: 'ccccccc3', finishedAt: 'T1', runBranch: 'orch/r1', mainBranch: 'main' })
   assert.match(moved, /`main` untouched: NO/)
+})
+
+test('the report: one validation list grouped by page with the UI evidence, numbers running on', () => {
+  const plans = [
+    { nnn: '001', title: 'One', humanItems: ['Open the app'], uiCards: [
+      { card: 'Save stores the name', status: 'pass', page: 'https://app.example/settings', screenshots: ['shots/1.png'], round: 0 },
+      { card: 'Home shows the list', status: 'pass', page: 'https://app.example/', screenshots: [], round: 1 },
+    ] },
+    { nnn: '002', title: 'Two', humanItems: [], uiCards: [{ card: 'Delete asks first', status: 'pass', page: 'https://app.example/settings', screenshots: ['shots/2.png'], round: 0 }] },
+  ]
+  const out = lib.validationList(plans)
+  const at = (l) => out.indexOf(l)
+  assert.ok(at('### https://app.example/settings') === 0, out.join(' | '))
+  assert.equal(out[2], '1. 001: Save stores the name — UI check pass in round 0; evidence: `shots/1.png`')
+  assert.equal(out[3], '2. 002: Delete asks first — UI check pass in round 0; evidence: `shots/2.png`')
+  assert.equal(out[at('### https://app.example/') + 2], '3. 001: Home shows the list — UI check pass in round 1; evidence: no screenshot')
+  assert.equal(out[at("### Not checked by the run — the plans' [human] items") + 2], '4. 001 One: Open the app')
+  assert.deepEqual(lib.validationList([{ nnn: '003', humanItems: [] }]), ['- nothing to validate', ''])
 })
 
 test('orchestrator.* config: defaults pass, bad values name the key', () => {

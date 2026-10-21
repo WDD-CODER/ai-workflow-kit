@@ -11,6 +11,9 @@
  *     202  its gate fails on every build in the first launch → parked after maxFixRounds; passes on the relaunch
  *     203  depends on 201 → wave 2, not started while wave 1 parked a plan
  *     204  its first builder returns ESCALATE → a fresh judgment-tier builder with the hand-off file
+ *   run "gamma" — the UI step on (args.ui), escalation then a judgment failure, auth code in a plain path
+ *     301  its first builder returns ESCALATE, then its gate fails → parked at round 1 (judgment + escalated)
+ *     302  adds an auth-token line to work/302.txt → orch-security runs; its UI card lands in the report by page
  */
 const plan = ({ nnn, title, deps = [], inv = 'INV-none: preserves — a toy plan' }) => `# Plan ${nnn} — ${title}
 
@@ -45,6 +48,8 @@ export const PLANS = {
   '202': plan({ nnn: '202', title: 'Keeps failing then passes' }),
   '203': plan({ nnn: '203', title: 'Second wave', deps: ['201'] }),
   '204': plan({ nnn: '204', title: 'Escalates' }),
+  '301': plan({ nnn: '301', title: 'Escalates then fails on judgment' }),
+  '302': plan({ nnn: '302', title: 'UI checked and auth code' }),
 }
 
 export const fileName = (nnn) => {

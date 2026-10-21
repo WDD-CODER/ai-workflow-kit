@@ -11,6 +11,7 @@
  *   node scripts/orch-state.mjs diff       --run <name> --plan <NNN>        changed files vs the run branch, sensitive?
  *   node scripts/orch-state.mjs set        --run <name> --plan <NNN> [--state s] [--round n] [--tier t] [--sha x]
  *                                          [--role r --model m --effort e | --roles r=m/e,r2=m2/e2] [--reason "<text>"]
+ *                                          [--card "<title>" --card-status s --page <url> --shots a.png,b.png]
  *   node scripts/orch-state.mjs handoff    --run <name> --plan <NNN> --step s --check c --tail t --tried x
  *                                          the hand-off file a fresh judgment-tier builder reads
  *   node scripts/orch-state.mjs note       --run <name> [--plan <NNN>] --text "<decision>"
@@ -27,7 +28,7 @@
  *   builders   <parent>/<repo>-orch-<run>-<NNN> (a worktree on the plan branch)
  * ORCH_FREE_GB (a number) replaces the measured free disk — for tests only.
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync, statfsSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, statfsSync, openSync, closeSync, statSync, unlinkSync, renameSync } from 'fs'
 import { spawnSync } from 'child_process'
 import { resolve, dirname, join } from 'path'
 import { fileURLToPath } from 'url'
@@ -44,6 +45,9 @@ const REPO = '{{project.repoName}}'
 // built-in list, a list of globs is added to it.
 const DEFAULT_SENSITIVE_RE = /auth|crypto|guard|interceptor|security|permission|payment|migration|secret|\.env|\.github\/workflows/i
 const SENSITIVE_CFG = {{security.sensitivePaths|json}}
+// Added lines that name auth or permission code (the security reviewer runs on them whatever the file path).
+// No word boundary before the stems, so camelCase names (checkAuthToken, hasPermission) match too.
+const SENSITIVE_CODE_RE = /auth|permission|password|jwt|session[_-]?id|tokens?\b|\broles?\b/i
 
 function parseArgs(argv) {
   const out = { _: [] }
@@ -93,15 +97,64 @@ const statusPath = (run) => join(runsDir(), run, 'status.json')
 const mergeFolder = (run) => join(parent, `${repoName}-orch-merge-${run}`)
 const builderFolder = (run, nnn) => join(parent, `${repoName}-orch-${run}-${nnn}`)
 
+// Plans of one wave run in parallel, so several orch-state processes can read-modify-write status.json at once.
+// Every read takes the run's lock file (an O_EXCL create, retried; a lock older than LOCK_STALE_MS is taken over) and
+// holds it until this short-lived process exits; every write goes to a temp file renamed into place.
+const LOCK_STALE_MS = 30000
+const LOCK_WAIT_MS = 60000
+const lockPath = (run) => join(runsDir(), `${run}.lock`)
+const heldLocks = new Set()
+const pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+function lockRun(run) {
+  if (heldLocks.has(run)) return
+  const p = lockPath(run)
+  mkdirSync(runsDir(), { recursive: true })
+  const until = Date.now() + LOCK_WAIT_MS
+  for (;;) {
+    try {
+      closeSync(openSync(p, 'wx'))
+      heldLocks.add(run)
+      return
+    } catch (e) {
+      if (!['EEXIST', 'EPERM', 'EACCES'].includes(e.code)) throw e
+    }
+    try {
+      if (Date.now() - statSync(p).mtimeMs > LOCK_STALE_MS) unlinkSync(p)
+    } catch { /* gone already, or another process took it over */ }
+    if (Date.now() > until) fail(`status.json of run "${run}" stays locked by ${p} — another orch-state process is stuck`, { envFailure: true })
+    pause(15 + Math.floor(Math.random() * 25))
+  }
+}
+process.on('exit', () => {
+  for (const run of heldLocks) {
+    try {
+      unlinkSync(lockPath(run))
+    } catch { /* already gone */ }
+  }
+})
 function readStatus(run) {
+  lockRun(run)
   const p = statusPath(run)
   if (!existsSync(p)) return null
   return JSON.parse(readFileSync(p, 'utf8'))
 }
 function writeStatus(run, status) {
+  lockRun(run)
   status.updatedAt = nowIso()
-  mkdirSync(dirname(statusPath(run)), { recursive: true })
-  writeFileSync(statusPath(run), `${JSON.stringify(status, null, 2)}\n`)
+  const p = statusPath(run)
+  mkdirSync(dirname(p), { recursive: true })
+  const tmp = `${p}.${process.pid}.tmp`
+  writeFileSync(tmp, `${JSON.stringify(status, null, 2)}\n`)
+  for (let i = 0; ; i++) {
+    try {
+      renameSync(tmp, p)
+      return
+    } catch (e) {
+      // Windows: a virus scanner or indexer can hold the target for a moment.
+      if (i >= 20 || !['EPERM', 'EACCES', 'EBUSY'].includes(e.code)) throw e
+      pause(25)
+    }
+  }
 }
 function needStatus(run) {
   const s = readStatus(run)
@@ -290,7 +343,16 @@ const commands = {
     const files = d.out.split('\n').filter(Boolean)
     const tests = sensitiveTests()
     const sensitiveFiles = files.filter((f) => tests.some((re) => re.test(f)))
-    emit({ ok: true, files, sensitive: sensitiveFiles.length > 0, sensitiveFiles, head: git(root, 'rev-parse', head).out }, [`${files.length} file(s) changed, ${sensitiveFiles.length} sensitive`])
+    // A diff that adds auth or permission code to a file whose path does not say so: its added lines name it.
+    const added = git(root, 'diff', '-U0', '--no-color', `origin/${runBranch(run)}...${head}`)
+    const codeFiles = []
+    let cur = null
+    for (const l of added.out.split('\n')) {
+      if (l.startsWith('+++ ')) cur = l.replace(/^\+\+\+ (b\/)?/, '')
+      else if (cur && l.startsWith('+') && SENSITIVE_CODE_RE.test(l) && !codeFiles.includes(cur) && !sensitiveFiles.includes(cur)) codeFiles.push(cur)
+    }
+    const sensitive = sensitiveFiles.length > 0 || codeFiles.length > 0
+    emit({ ok: true, files, sensitive, sensitiveFiles, sensitiveCode: codeFiles, head: git(root, 'rev-parse', head).out }, [`${files.length} file(s) changed, ${sensitiveFiles.length} sensitive by path, ${codeFiles.length} by added auth/permission code`])
   },
 
   set() {
@@ -317,6 +379,14 @@ const commands = {
         if (!m) fail(`--roles item "${item}" — use role=model/effort`)
         p.models[m[1]] = { model: m[2], ...(m[3] ? { effort: m[3] } : {}) }
       }
+    }
+    // --card "<title>" --card-status pass --page "<url>" --shots a.png,b.png: one orch-ui card result, the evidence the
+    // run report groups by page. The same card title again replaces the earlier result.
+    if (args.card && args.card !== true) {
+      const status = String(args['card-status'] ?? '')
+      if (!['pass', 'fail', 'plan-drift'].includes(status)) fail(`--card-status "${status}" — allowed: pass, fail, plan-drift`)
+      const card = { card: String(args.card), status, page: args.page && args.page !== true ? String(args.page) : '', screenshots: args.shots && args.shots !== true ? String(args.shots).split(',').filter(Boolean) : [], round: p.round }
+      p.uiCards = [...(p.uiCards ?? []).filter((c) => c.card !== card.card), card]
     }
     p.freeDiskGb = diskGb()
     status.freeDiskGb = p.freeDiskGb

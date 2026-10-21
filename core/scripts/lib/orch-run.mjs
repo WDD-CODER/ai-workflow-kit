@@ -45,6 +45,40 @@ export function humanItems(planText) {
 export const freeGb = (st) => Math.floor((Number(st.bavail) * Number(st.bsize)) / 1e8) / 10
 
 /**
+ * The validation list of the merged plans, one group per page in plan order, numbers running on across groups.
+ * A group lists the orch-ui card results checked on that page (status, round, screenshot paths — the evidence). The
+ * plans' `[human]` items, which name no page, close the list, per plan.
+ */
+export function validationList(mergedPlans) {
+  const pages = new Map()
+  for (const p of mergedPlans) {
+    for (const c of p.uiCards ?? []) {
+      const page = c.page || `page not named (plan ${p.nnn})`
+      if (!pages.has(page)) pages.set(page, [])
+      pages.get(page).push({ ...c, nnn: p.nnn })
+    }
+  }
+  const human = mergedPlans.filter((p) => (p.humanItems ?? []).length)
+  if (!pages.size && !human.length) return ['- nothing to validate', '']
+  let n = 0
+  const out = []
+  for (const [page, cards] of pages) {
+    out.push(`### ${page}`, '')
+    for (const c of cards) {
+      const shots = (c.screenshots ?? []).length ? c.screenshots.map((s) => `\`${s}\``).join(', ') : 'no screenshot'
+      out.push(`${++n}. ${c.nnn}: ${c.card} — UI check ${c.status} in round ${c.round ?? 0}; evidence: ${shots}`)
+    }
+    out.push('')
+  }
+  if (human.length) {
+    out.push(pages.size ? '### Not checked by the run — the plans\' [human] items' : '### The plans\' [human] items (no UI check ran)', '')
+    for (const p of human) for (const h of p.humanItems) out.push(`${++n}. ${p.nnn} ${p.title ?? ''}: ${h}`)
+    out.push('')
+  }
+  return out
+}
+
+/**
  * The run report (Markdown) from status.json and the merges git shows. `merged` is the ordered list of
  * { nnn, branch, sha } read from the anchored merge subjects — never a count kept in memory.
  */
@@ -81,7 +115,7 @@ export function formatReport({ status, merged, mainShaNow, finishedAt, runBranch
     '',
     '## What only the Human can do',
     '',
-    ...plans.filter((p) => mergedSet.has(p.nnn) && (p.humanItems ?? []).length).flatMap((p) => [`### ${p.nnn} ${p.title ?? ''}`, '', ...p.humanItems.map((h, i) => `${i + 1}. ${h}`), '']),
+    ...validationList(plans.filter((p) => mergedSet.has(p.nnn))),
     ...parked.map((p) => `- Decide on ${p.nnn}: ${p.reason ?? p.state}`),
     `- Review and merge the run branch (PowerShell, one line each):`,
     '',
