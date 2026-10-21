@@ -26,7 +26,9 @@ to a stronger agent.
   Phase 2 uses `kit-prevalidate` and re-checks every DONE row; `auto-solve` Phase 3's parallel agents name
   `model: "inherit"`; `/docs-refresh`'s agent call passes the analysis tier.
 - `github-sync` (mechanical) and `techdebt` (analysis) run as forked skills. A question the fork cannot ask comes
-  back as an `ASK:` line, and the main session asks it.
+  back as an `ASK:` line, and the main session asks it. On a rebase conflict github-sync now runs `git rebase --abort`
+  before stopping (it used to leave the conflict in place), so the checkout is never left mid-rebase.
+- In Cursor (no sub-agents) `/ship` and `/review-it` run those commands inline, as before.
 - SessionStart prints a `MODEL_ROUTING:` line when `CLAUDE_CODE_SUBAGENT_MODEL` or
   `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` would override the agent files' models.
 

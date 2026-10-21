@@ -155,6 +155,10 @@ Re-read `auto-solve.md` Phase 2–4, `ship.md` Phase 1, `review-it.md` step 3 an
   (new `models.*` block: defaults, project id, all-inherit, refused `gpt-4`, no `model:` on an inline command),
   workflow-link-check, acceptance-check --e2e pass. e2e-check fails 1 of 42 ("first push to an empty remote": a git
   `push negotiation failed` warning) on unmodified `main` too in this cloud session — environment, not this plan.
+- Independent review (separate agent, opus): 1 blocking + 3 should-fix + 3 nits, all fixed — `[capture]` marker so
+  `scope-check --arch`, the log query and the ledger check return their output on exit 0; Cursor runs those commands
+  inline; real lint failure stops auto-solve Phase 4; install-check now tests the SessionStart `MODEL_ROUTING:` line and
+  a skill with `model:` but no `context: fork`; ESCALATE wording aligned; github-sync's `rebase --abort` in CHANGELOG.
 - `ship-regular.md` needed no change (its review stays inline); it stays in scope for Step 0 only.
 - Open PR #32 (plan 009) also edits `ship.md` (Phase 4 cards) and `CHANGELOG.md` `[Unreleased]`: a test merge of #32 into
   this branch is clean for `ship.md`; the second PR to merge resolves `[Unreleased]` by keeping both entries.

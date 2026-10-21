@@ -34,8 +34,9 @@ Stays on the main model: `/plan` and its Architect + PM review, `/review`, `/fix
 2. **Delegate only when the step reads a lot and returns little** (a build log, a sync, a scan). A sub-agent starts
    empty and loads its own prompt, `CLAUDE.md` (unless the agent sets `omitClaudeMd: true`) and a git status; for a
    step that reads one short file, doing it inline is cheaper.
-3. **Escalate, don't guess.** A cheap agent that is unsure returns `ESCALATE: <reason>` as its first line and stops.
-   The main session then does that step itself.
+3. **Escalate, don't guess.** A cheap agent that is unsure puts `ESCALATE: <reason>` on the first line of its reply
+   (with whatever partial result its format allows) and does not guess the rest. The main session then does the
+   escalated part itself.
 4. **Re-check what changes the outcome.** An agent result that would skip work (a `DONE` row) or block a merge is
    re-checked by the main session at the cited `file:line` before acting on it.
 5. **Hand-off file.** When an agent hands a failed step to the next agent (a cheap one to a stronger one), it writes
@@ -55,3 +56,5 @@ Stays on the main model: `/plan` and its Architect + PM review, `/review`, `/fix
 6. **Environment overrides.** `CLAUDE_CODE_SUBAGENT_MODEL` (on Claude Code before v2.1.251) or
    `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` overrides every agent file's `model:`. SessionStart prints a
    `MODEL_ROUTING:` line when either is set.
+7. **Commands whose output is the result.** A check that prints warnings and exits 0 (`scope-check --arch`, a log
+   query, `plan-ledger-check`) is handed to `kit-runner` marked `[capture]`, so its output comes back even on exit 0.

@@ -100,7 +100,7 @@ writing stay on the main session's model.
 
 | Agent | Tier | Called by | Returns |
 | --- | --- | --- | --- |
-| `kit-runner` | mechanical | `/ship` Phase 1, `auto-solve` Phase 4, `/review-it` step 3 | `RUN <cmd> → exit <n>` lines + verbatim error lines |
+| `kit-runner` | mechanical | `/ship` Phase 1, `auto-solve` Phase 4, `/review-it` step 3 | `RUN <cmd> → exit <n>` lines, verbatim error lines, full output of `[capture]` commands |
 | `kit-prevalidate` | analysis | `auto-solve` Phase 2 | DONE / TODO / BLOCKED table; the main session re-checks every DONE |
 | `git-agent` | mechanical | commit prep on request | proposed commit + commands for the Human |
 

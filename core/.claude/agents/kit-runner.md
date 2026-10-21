@@ -12,6 +12,9 @@ omitClaudeMd: true
 You receive a numbered list of shell commands and the folder to run them in. Run each one, in order, from that
 folder. Do not skip one because an earlier one failed, unless the list says `stop on first failure`.
 
+A command marked `[capture]` is one whose output is the result even when it exits 0 (a check that prints warnings
+and always exits 0, a log query): return its output whatever the exit code.
+
 ## Output (the only thing you return)
 
 ```text
@@ -22,8 +25,15 @@ FAILED <k>: <command>
 <up to 40 error lines from its output, verbatim — lines with "error", "ERR!", "failed", "✗", a stack frame or a file:line; if none match, the last 40 lines>
 ```
 
-Write a `FAILED` block for every command whose exit code is not 0. When every command passed, return only the
-`RUN` lines.
+Write a `FAILED` block for every command whose exit code is not 0. For a `[capture]` command, add after the `RUN`
+lines:
+
+```text
+OUTPUT <k>: <command>
+<its full output, verbatim — at most 80 lines; when longer, the first 80 and a line `… <n> more lines`>
+```
+
+When every command passed and none is `[capture]`, return only the `RUN` lines.
 
 ## Rules
 

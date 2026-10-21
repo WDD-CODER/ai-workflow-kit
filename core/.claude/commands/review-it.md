@@ -18,8 +18,10 @@ You are the Reviewer. Follow CLAUDE.md. Report findings; never silently fix; nev
    - **Secrets**: No hardcoded API keys, tokens, passwords
    - **Dead code**: No unused imports / stubbed leftovers from the milestone
    - **Commands (one `kit-runner` call):** hand the `kit-runner` agent (`.claude/agents/kit-runner.md`) the commands of
-     the three checks below — the architecture check, the log query (when set) and the milestone's Verify command — and
-     use its `RUN` / `FAILED` block as their evidence. The judgment on the output stays here. `ESCALATE` → run them inline.
+     the three checks below — the architecture check and the log query (when set), both marked `[capture]` because they
+     exit 0 while printing what the review needs, and the milestone's Verify command — and use its `RUN` / `OUTPUT` /
+     `FAILED` blocks as their evidence. The judgment on the output stays here. `ESCALATE`, or no `OUTPUT` block for a
+     `[capture]` command → run that command inline. In Cursor (no sub-agents) run the three commands inline.
    - **Architecture**: Run `node scripts/scope-check.mjs --arch --diff=origin/{{git.mainBranch}}` and copy every `ARCH: warn …` line into Findings (an invariant from `docs/brain/invariants.md` touched with no `## Architecture Impact` entry, or a "Human decision" note naming no INV-n / ADR). Any warn → ESCALATE TO ARCHITECT (the Planner, in the main folder).
 <!-- KIT:if commands.logQuery -->
    - **Logs**: Run `{{commands.logQuery}}`. Any entry not explained by the milestone fails the review.

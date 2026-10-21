@@ -833,6 +833,15 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     })
     const inline = modelLines(md).filter(([f]) => f.startsWith('.claude/commands/'))
     if (inline.length) fail(`an inline command carries model: (cache break): ${inline.map(([f]) => f).join(', ')}`)
+    const inlineSkills = modelLines(md).filter(([f]) => /^\.claude\/skills\/[^/]+\/SKILL\.md$/.test(f) && !/^context:\s*fork\s*$/m.test(read(md, f)))
+    if (inlineSkills.length) fail(`a skill carries model: without context: fork (cache break): ${inlineSkills.map(([f]) => f).join(', ')}`)
+    // SessionStart names an environment variable that overrides the agent files' models, and says nothing otherwise.
+    spawnSync('git', ['init', '-q'], { cwd: md })
+    const hook = (env) => spawnSync('bash', ['scripts/session-startup.sh'], { cwd: md, encoding: 'utf8', env: { PATH: process.env.PATH, HOME: process.env.HOME, ...env } }).stdout
+    if (/MODEL_ROUTING:/.test(hook({}))) fail('SessionStart prints MODEL_ROUTING with no override variable set')
+    if (!hook({ CLAUDE_CODE_SUBAGENT_MODEL: 'haiku' }).includes("MODEL_ROUTING: CLAUDE_CODE_SUBAGENT_MODEL=haiku overrides the kit's agent models")) fail('SessionStart does not warn about CLAUDE_CODE_SUBAGENT_MODEL')
+    if (!hook({ CLAUDE_CODE_SUBAGENT_MODEL_FORCE: '1' }).includes('MODEL_ROUTING: CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1 makes Claude Code ignore')) fail('SessionStart does not warn about CLAUDE_CODE_SUBAGENT_MODEL_FORCE')
+    if (/MODEL_ROUTING:/.test(hook({ CLAUDE_CODE_SUBAGENT_MODEL_FORCE: '0' }))) fail('SessionStart warns about CLAUDE_CODE_SUBAGENT_MODEL_FORCE=0')
     if (!read(md, '.claude/commands/docs-refresh.md').includes('model: "sonnet"') && read(md, '.claude/commands/docs-refresh.md').includes('Agent(')) fail('docs-refresh: the Agent call does not pass the analysis tier')
     if (!read(md, 'docs/agent/model-routing.md').includes('| `mechanical` | `haiku` |')) fail('model-routing.md does not name the project tier values')
   }

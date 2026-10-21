@@ -145,6 +145,7 @@ npm run {{commands.lint}}
 
 - Build `FAILED` → the Error Handling rule below (stop, show the error lines it copied).
 - Lint exits non-zero because no lint script exists (`Missing script`) → report `lint: N/A`.
+- Lint `FAILED` for any other reason → a Phase 4 failure: stop, show the error lines it copied, do not auto-fix (same as a build failure).
 - `ESCALATE` → run the two commands inline yourself.
 
 If plan touched UI/layout:
