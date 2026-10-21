@@ -107,19 +107,22 @@ VALIDATED BY HUMAN                      # the usual case: the close-out cards we
   - ✓ ① {card title} — "{reply word}" (this chat)
   - ✓ ② …
 
-  — or, only when no close-out happened before /ship (this gate is the first ask) —
+  — or, only when no close-out happened before /ship (servers started first; Y alone does not validate these) —
 
-HOW TO VALIDATE — {N} checks · app: {url or window} · reply: Y | edit list | abort
+HOW TO VALIDATE — {N} checks on {P} pages · reply: done | not yet | failed: <numbers>
+  ▸ {Page name} — {full URL}   (checks ①–②)
   ① {plain title}
      WHY     {what changed and what this check proves}
-     WHERE   {window / page — and how to get there}
+     WHERE   {spot on the page and what to click}
      SETUP   {only when needed}
      DO      {action}  — or —  paste:  {exact text}
      SEE ✓   {success}
      FAIL ✗  {failure}
   ② …
+  ▸ Outside the app — {exact window}   (check ③)
+  ③ …
 
-Approve? (Y / merge / edit list / abort)   # Y = commit + push (+ PR); only "merge" merges
+Approve? (Y / merge / edit list / abort)   # Y = commit + push (+ PR); only "merge" merges; with cards above: "done Y"
 ~~~
 
 Every Done-when item `[auto]` → replace HOW TO VALIDATE with:
@@ -131,7 +134,7 @@ VERIFIED BY AGENT
 
 Phase 4 shows exactly one of these, never none:
 - **VALIDATED BY HUMAN** — the Human already answered the HOW TO VALIDATE cards in this session (end-of-job close-out, `/done`, or a validation word such as `done` / `verified` / `approved`). List each card with the reply word. **Never repeat cards the Human already answered** — the commit gate records validation, it does not re-run it.
-- **HOW TO VALIDATE** — no close-out happened before `/ship`, so this gate is the first ask. One card per check (WHY / WHERE / SETUP / DO / SEE ✓ / FAIL ✗, plain words, exact paste text when a terminal is needed) per `docs/agent/job-validation.md` → Card rules; happy path + any edge/failure rule introduced; one line if no user-visible effect.
+- **HOW TO VALIDATE** — `[human]` items and no answered cards in this session: the close-out was skipped, so this gate shows the cards first. Run "Servers first" (`job-validation.md`: every page URL answers), then the cards grouped by page per `docs/agent/job-validation.md` → Format and Card rules; happy path + any edge/failure rule introduced; one line if no user-visible effect. Say in the tree that **Y** alone does not validate them: commit/push waits for a validation word (`done`, `verified`, `approved` — `done Y` answers both). `not yet` / `failed: <numbers>` → no commit; fix and re-show.
 - **VERIFIED BY AGENT** — every Done-when item is `[auto]`.
 A mix (some cards answered, some not) shows VALIDATED BY HUMAN with the unanswered cards repeated beneath it. Rules: `docs/agent/job-validation.md` → "When that moment is".
 
@@ -151,7 +154,7 @@ On `feat/session-*`: `git log main..HEAD --oneline` + `git diff --stat main..HEA
 
 ### On approval (order is hard — do not reorder)
 
-Approve **Y** (or `--yes`) = commit/push consent, and Human validation of any `[human]` items. Then:
+Approve **Y** (or `--yes`) = commit/push consent. It validates `[human]` items only together with a validation word for cards the Human was shown (VALIDATED BY HUMAN, or `done Y` at this gate) — never on its own. Then:
 
 1. **Todo sync (when items match):** mechanics ({{slots.nameFormat}} slot vs outside, exact commands, never-invent rule) → `docs/agent/job-validation.md` Path A step 2.
 2. **Write brain drafts** (if proposed, not dropped) — verbatim to `docs/brain/**`.

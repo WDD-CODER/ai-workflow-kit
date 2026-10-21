@@ -44,11 +44,25 @@ Triggers: "execute plan NNN", "take plan NNN" (only meaningful inside a {{slots.
 
 4. **Open with the plan brief, before any work.** Right after reading the plan, print a
    **PLAN BRIEF** to the Human — 2–3 plain lines, no more: what the plan changes and why it matters.
-   Not the plan's title restated, not a milestone list, no jargon. Then start executing. Validation
-   cards come later, at close-out (`/done`, `/ship`), per `docs/agent/job-validation.md`.
+   Not the plan's title restated, not a milestone list, no jargon. Then start executing. No validation
+   cards here — nothing can be checked before the work exists.
+
+5. **Close-out — the last step of every executed plan, before `/ship`.** When the plan's sub-tasks are
+   done (`docs/agent/job-validation.md` → "HOW TO VALIDATE checklist — the hand-off at the end of the work"):
+   - Run every `[auto]` Done-when check and print `VERIFIED BY AGENT` (raw command + output).
+   - All `[auto]` → no cards, no servers; go on to `/ship`.
+   - Any `[human]` item → start the servers (`node scripts/slot-serve.mjs`) and open every page URL the cards
+     will name; fix a failed start before going on. Then show the HOW TO VALIDATE cards grouped by page and the
+     JOB DONE block, and **wait** for `done` / `verified` / `not yet` / `failed: <numbers>`. No `/ship`, PR or
+     merge before that reply.
+   - Several plans in one session: each plan gets its own close-out (or one combined set of cards before the
+     first `/ship`) — never a prose checklist instead of cards.
+   - **Exception — merges pre-approved:** when the Human said "merges pre-approved" for this run, ship and merge
+     first, then run "Servers first" and show the cards in the final message; the `[human]` items stay `[ ]`
+     until the Human replies (`job-validation.md` → "Validated after the merge").
 
 **Dev servers on demand.** Start them only when a step needs the running app — a browser check,
-a validation click-list for the Human, `/remote`, preflight — or when the Human says "start servers":
+the close-out cards (step 5 — there they are required), `/remote`, preflight — or when the Human says "start servers":
 `node scripts/slot-serve.mjs` (prints `SLOT_SERVE: be=<port> started|kept, fe=<port> started|kept`).
 If it fails, only that step is blocked: show the printed log tail, then carry on with the steps that
 don't need the app. Stop them with `node scripts/slot-stop.mjs`; the merge, `free-merged-slots.mjs` and
