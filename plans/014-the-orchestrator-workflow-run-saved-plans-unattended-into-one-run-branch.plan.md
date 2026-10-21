@@ -1,6 +1,6 @@
 # Plan 014 — The Orchestrator Workflow: Run Saved Plans Unattended Into One Run Branch
 
-Status: draft
+Status: active
 Snapshot: 3511799
 Depends-on: 010, 011, 013, 017
 
@@ -99,6 +99,7 @@ scripts/**
 docs/agent/**
 README_WORKFLOW.md
 CHANGELOG.md
+core/scripts/local-excludes.mjs
 ```
 
 ## Read Scope
@@ -165,15 +166,15 @@ per commit: `ok` or `conflict: <what>`. STOP for a go only on a `conflict`.
 
 These are the plan's milestones: a Worker does them in order and ticks each one after it is checked.
 
-- [ ] A1: Let the installer ship the workflow folder and add the run settings, so the feature is opt-in and tunable — orchestrator.runBranchPrefix, maxFixRounds, minFreeDiskGb with defaults, validated; the workflows folder is copied like agents — kit.config.json, .kit/config.json, tools/lib/kit.mjs, tools/install.mjs, tools/sync.mjs, tools/install-check.mjs
-- [ ] A2: Add a state script the workflow calls for everything a workflow script cannot do itself — write status.json, rebuild merged plans from anchored merge subjects, report free disk, check the merge folder is clean — core/scripts/orch-state.mjs, core/scripts/lib/
-- [ ] A3: Add the readiness preflight so environment problems are found before the run, not by a builder — disk, database, dev servers, git identity, settings; prints one line per problem — core/scripts/orch-preflight.mjs
-- [ ] A4: Write the run rules for projects in plain words, replacing ad-hoc run notes — roles, never-do list, state rules, report location, escalation — core/docs/agent/orchestrator.md, core/docs/agent/workflow-map.md
-- [ ] A5: Write the workflow script: readiness, ordering, the per-plan pipeline, the fix loop and the wave gate — uses agentType role agents and schema results; pass computed in the script; environment failures do not count as rounds; no file, git or clock calls — core/.claude/workflows/orchestrate.js
-- [ ] A6: Add the command that starts a run from a clean turn and prints the final instructions — range or list of plans, refuses when main is dirty or a run of that name is live — core/.claude/commands/orchestrate.md, core/.claude/commands/commands.md
-- [ ] A7: Keep the local copy of the report openable from the main folder without a branch switch — gitignored run-report folder in the template ignore list and this repo — templates/gitignore, .gitignore
-- [ ] A8: Prove the run end to end on a scratch project with stub agents — diamond, fix-then-pass, environment failure that costs no round, major-with-pass-true treated as fail, parked plan stops the wave, relaunch rebuilds from git — tools/orchestrator-e2e.mjs, tools/fixtures/orchestrator/, tools/e2e-check.mjs
-- [ ] A9: Sync installed copies and record the release notes — node tools/sync.mjs --target . --apply; CHANGELOG lists each new key and file; an ADR if the run-mode rules supersede anything — CHANGELOG.md, docs/brain/decisions/
+- [x] A1: Let the installer ship the workflow folder and add the run settings, so the feature is opt-in and tunable — orchestrator.runBranchPrefix, maxFixRounds, minFreeDiskGb with defaults, validated; the workflows folder is copied like agents — kit.config.json, .kit/config.json, tools/lib/kit.mjs, tools/install.mjs, tools/sync.mjs, tools/install-check.mjs
+- [x] A2: Add a state script the workflow calls for everything a workflow script cannot do itself — write status.json, rebuild merged plans from anchored merge subjects, report free disk, check the merge folder is clean — core/scripts/orch-state.mjs, core/scripts/lib/
+- [x] A3: Add the readiness preflight so environment problems are found before the run, not by a builder — disk, database, dev servers, git identity, settings; prints one line per problem — core/scripts/orch-preflight.mjs
+- [x] A4: Write the run rules for projects in plain words, replacing ad-hoc run notes — roles, never-do list, state rules, report location, escalation — core/docs/agent/orchestrator.md, core/docs/agent/workflow-map.md
+- [x] A5: Write the workflow script: readiness, ordering, the per-plan pipeline, the fix loop and the wave gate — uses agentType role agents and schema results; pass computed in the script; environment failures do not count as rounds; no file, git or clock calls — core/.claude/workflows/orchestrate.js
+- [x] A6: Add the command that starts a run from a clean turn and prints the final instructions — range or list of plans, refuses when main is dirty or a run of that name is live — core/.claude/commands/orchestrate.md, core/.claude/commands/commands.md
+- [x] A7: Keep the local copy of the report openable from the main folder without a branch switch — gitignored run-report folder in the template ignore list and this repo — templates/gitignore, .gitignore
+- [x] A8: Prove the run end to end on a scratch project with stub agents — diamond, fix-then-pass, environment failure that costs no round, major-with-pass-true treated as fail, parked plan stops the wave, relaunch rebuilds from git — tools/orchestrator-e2e.mjs, tools/fixtures/orchestrator/, tools/e2e-check.mjs
+- [x] A9: Sync installed copies and record the release notes — node tools/sync.mjs --target . --apply; CHANGELOG lists each new key and file; an ADR if the run-mode rules supersede anything — CHANGELOG.md, docs/brain/decisions/
 
 ## Technical Considerations
 - Dependencies: Workflow tool API (`agent()` with `agentType`, `schema`; no fs/git/clock); plan 011 `plan-order --json`;
@@ -205,3 +206,44 @@ mechanical runner; "escalate when Architecture Impact exists" would always fire 
 than INV-none; builder escalation = Dandan's 2026-10-21 rule; `orchestrator.models.*` dropped; run report location
 decided (G): run branch plus gitignored copy in the main folder; `Depends-on: 010` added (H). Checked: 006 (precedent for
 an unattended run with one merge point), 008, 009, 012, 015, 016.
+
+Orchestrator build (builder, 2026-10-21, branch feat/014-orchestrator-workflow from orch/orchestrator-v1):
+- scope extended: core/scripts/local-excludes.mjs — the runtime ignore list (and the rendered templates/.gitignore
+  skeleton, which is built from it) is where `.claude/orchestrator-runs/` must go so projects ignore the local run
+  state; `templates/gitignore/**` named in the scope does not exist (orchestrator, no Human available).
+- Step 0 skipped: `node scripts/scope-check.mjs --drift --plan=<this plan>` → `REALITY: clean`, exit 0.
+- Decision: status.json lives in the main folder at `.claude/orchestrator-runs/<run>/status.json` (gitignored, written
+  after every step by orch-state.mjs only); `finish` commits a copy beside the report at
+  `docs/orchestrator/runs/<run>/` on the run branch — the "orch/<run>/status.json" of the Done-when. Writing it to the
+  run branch after every step would add a commit per step and leave the merge folder dirty mid-run.
+- Decision: the report is computed by `orch-state.mjs finish` from status.json and the anchored merge subjects (rule:
+  every count from that file or git); the `orch-report` agent is not called by the run.
+- Decision: the merger merges with `--no-ff --no-commit`, runs the checks, then commits and pushes; a conflict or a
+  failing check is `git merge --abort` and goes back to the builder as a finding (a fix round) — this satisfies
+  "build + tests before push" without a deny-listed reset. Given in the merge prompt; `orch-merge.md` (plan 013's
+  file, outside this scope) is unchanged.
+- Decision: models.judgment = inherit → the judgment-tier builder is a default agent told to follow
+  `.claude/agents/orch-builder.md` (an agentType would pin the build model); any other value → agentType
+  orch-builder with model = the judgment tier.
+- Decision: the UI step (orch-ui) runs only with `args.ui: true`, the hook plan 018 fills; default off.
+- Decision: readiness questions are asked by the /orchestrate command (main session), not the workflow: a workflow
+  cannot ask the Human. The workflow's readiness mode returns the batch.
+- Decision: minFreeDiskGb default 5 (most conservative of the plausible values); maxFixRounds 1–5.
+- Decision: no ADR — the run mode is opt-in beside the Planner/Worker flow and supersedes no decision (INV-none).
+- Evidence:
+  - node tools/orchestrator-e2e.mjs → exit 0, `ORCHESTRATOR_E2E: ok — 35 cases passed` (diamond in wave order;
+    102 fixed in round 1; 103 env failure retried after `orch-preflight.mjs --env-only`, round 0; 104 pass:true + major
+    = fail; status.json on orch/<run> with state/round/sha/models; origin/main unchanged; merge folder clean; 202 parked
+    at "fix rounds used: 2 of 2" and wave stopped (203 skipped); 201 INV-1 → judgment; 204 ESCALATE → fresh judgment
+    with hand-off; relaunch redoes no merged plan; forbidden-pattern scan of orchestrate.js finds no line; every runner
+    command is orch-state/orch-preflight).
+  - node --test tools/test/orchestrator.test.mjs → exit 0, pass 7, fail 0.
+  - npm run build → exit 0 (`PACK_CHECK: ok`); npm run lint → exit 0 (`LEAK_CHECK: ok`, after fixing two leaks: a
+    "3000" literal and a "plans NNN" example in core).
+  - npm run test → exit 0 (`INSTALL_CHECK: ok … 0 problems` with the new orchestrator block: files copied, defaults
+    and project values render, five bad values refused by install naming the key, sync STOP on maxFixRounds 9;
+    `WORKFLOW_LINK_CHECK: ok … 0 missing`).
+  - npm run e2e → exit 0 (`ACCEPTANCE_CHECK: ok — 122 checks passed`).
+  - node tools/e2e-check.mjs → exit 0 (`E2E_CHECK: ok — 52 cases passed`, incl. the orchestrator test and e2e).
+  - node tools/drift-check.mjs --target . → exit 0 (`KIT_DRIFT: ok — 0 undeclared differences`).
+- Open ([human]): one real run on a project with 2–3 plans — the Human chooses the project; not done here.

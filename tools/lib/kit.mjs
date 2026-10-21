@@ -63,11 +63,35 @@ export function commandProblems(vals) {
   // mods.*: each enabled mod must be one the kit's marketplace serves; the repo is an owner/repo pair.
   for (const m of asList(vals['mods.enabled'])) if (!MODS.includes(m)) out.push(`mods.enabled names "${m}" — allowed: ${MODS.map((x) => `"${x}"`).join(', ')}`)
   if (asList(vals['mods.enabled']).length && !/^[\w.-]+\/[\w.-]+$/.test(String(vals['mods.marketplaceRepo'] ?? ''))) out.push(`mods.marketplaceRepo is "${vals['mods.marketplaceRepo'] ?? ''}" — it must be <owner>/<repo>`)
+  out.push(...orchestratorProblems(vals))
   // ownership.upstreamPaths is read by the kit's own glob matcher and by the scope guard's (picomatch): only the syntax
   // both read alike (`**`, `*`, `?`, a trailing `/`).
   for (const g of asList(vals['ownership.upstreamPaths'])) {
     const why = globProblem(g)
     if (why) out.push(`ownership.upstreamPaths "${g}" — ${why}`)
+  }
+  return out
+}
+
+/**
+ * orchestrator.* (the opt-in run, docs/agent/orchestrator.md): the run-branch prefix becomes part of a git branch
+ * name and a merge-subject regex, the two numbers bound the fix loop and the disk check. Unset keys take the
+ * kit.config.json defaults, so only a value the project wrote can be refused. One message per bad key.
+ */
+export function orchestratorProblems(vals) {
+  const out = []
+  const prefix = vals['orchestrator.runBranchPrefix']
+  if (prefix !== undefined && (typeof prefix !== 'string' || !/^[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._-]*)*\/$/.test(prefix) || /\.\.|\.lock\//.test(prefix) ||
+      prefix === `${vals['git.mainBranch'] ?? 'main'}/`)) {
+    out.push(`orchestrator.runBranchPrefix is ${JSON.stringify(prefix)} — it must be lower-case letters, digits, dots, dashes and slashes ending with "/" (e.g. "orch/"), and not the main branch`)
+  }
+  const rounds = vals['orchestrator.maxFixRounds']
+  if (rounds !== undefined && !(Number.isInteger(rounds) && rounds >= 1 && rounds <= 5)) {
+    out.push(`orchestrator.maxFixRounds is ${JSON.stringify(rounds)} — it must be a whole number from 1 to 5`)
+  }
+  const disk = vals['orchestrator.minFreeDiskGb']
+  if (disk !== undefined && !(typeof disk === 'number' && Number.isFinite(disk) && disk >= 0 && disk <= 1000)) {
+    out.push(`orchestrator.minFreeDiskGb is ${JSON.stringify(disk)} — it must be a number of GB from 0 to 1000`)
   }
   return out
 }

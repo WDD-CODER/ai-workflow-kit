@@ -51,6 +51,7 @@ Cursor rule files ship with the optional `layer:cursor`; the stack pack adds sta
 | `/brief` | see §6 flow F2; syncs parent plan via save-plan Phase 4 | `git diff/log`, `.claude/todo.md` (retroactive mode) | `.claude/sessions/{session-id}/brief.md` |
 | `/review-it` | Reviewer protocol; runs `kit-runner`, the `orch-check-*` finders and `orch-verify` (`docs/agent/agent-roles.md`) | the branch diff against `origin/main`, its plan in `plans/` | verdict in chat only (never `[x]`, never commits) |
 | `/ship` | Phase 0 classifies FAST/ULTRA-TRIVIAL/REGULAR first (`/ship fast`\|`regular` overrides); REGULAR invokes `/review`; runs `scripts/session-manifest-ship.py` (multi-worktree), `scripts/brain-review-check.mjs --scope=full` (feature-complete path) | `.claude/.session-state-path`, brief Done-when | commit; marks `.claude/todo.md` + plan `[x]`; `docs/brain/**` (auto-writes on `Y`, unless `no brain`; skipped by default on FAST/ULTRA-TRIVIAL); session-state file |
+| `/orchestrate` | opt-in: the `orchestrate` workflow (`.claude/workflows/orchestrate.js`), which runs `kit-runner` with `orch-state.mjs` / `orch-preflight.mjs` and the `orch-*` role agents (`docs/agent/orchestrator.md`) | the named plans, `plan-order.mjs --json`, the run branch's merge subjects | readiness answers in each plan's Execution Notes (on main); merges into `orch/<run>` only; `.claude/orchestrator-runs/<run>/status.json`; the run report |
 | `/done` | job-validation Path B close-out | `.claude/todo.md`, parent plan | marks `[x]` on Human confirm (or Tier 1 evidence for all-`[auto]`) |
 | `/review` | standalone review pass (used by `/ship` Phase 2) | session diff | report only |
 | `/end-session` | alias territory of `/ship` ("wrap up") | — | — |
@@ -192,6 +193,9 @@ Claude Code backs this up in `.claude/settings.json`: `permissions.deny` refuses
 | `scope-check.mjs` | `scope-guard.sh` (`--file`), `ship-prep.mjs` (`--diff`, `--arch --diff` warn), the Planner protocol (`--overlap`, `--deps`), save-plan Shape lint (`--arch --plan` block, `--deps`), `/review-it` step 2 (`--arch --diff`), `take-plan.mjs` + `take-plan.md` (`--drift`) |
 | `lib/invariants.mjs` | `scope-check.mjs --arch` and `take-plan.mjs` (pre-claim architecture gate, judged against the main branch): parses `docs/brain/invariants.md` and a plan's `## Architecture Impact` |
 | `plan-order.mjs` | the Planner protocol (`/plan` step 3) and the orchestrator (`--json`): run order of a set of plans — waves, lanes, lock groups from scope overlap (hotspots left out), the reason of every edge; `--branch <b> --merged-from git` counts a plan merged only on the exact subject `Merge <src> into <b> (plan NNN)` |
+| `orch-state.mjs` | the orchestrator workflow, through `kit-runner` — run branch, merge folder, builder folders, `status.json`, hand-off files, the run report; merged plans read only from the anchored merge subjects |
+| `orch-preflight.mjs` | `/orchestrate` step 1, the orchestrator workflow (start, and `--env-only` before a retry after an environment failure) |
+| `lib/orch-run.mjs` | `orch-state.mjs`, `orch-preflight.mjs` — run names, plan branches, the start tier, `[human]` items, the report text |
 | `lib/plan-deps.mjs` | `plan-order.mjs`, `scope-check.mjs --deps`, `take-plan.mjs` — the one parser of a plan's `Depends-on:` line and legacy prose prerequisites |
 | `lib/plan-graph.mjs` | `plan-order.mjs` — waves, lanes, lock groups and edges as data |
 | `take-plan.mjs` | "execute plan NNN" / "take plan NNN" (`.claude/commands/take-plan.md`) |
@@ -217,6 +221,8 @@ Claude Code backs this up in `.claude/settings.json`: `permissions.deny` refuses
 | `docs/session-state*.md` (target in `.claude/.session-state-path`) | `/ship` Phase 5 | `session-startup.sh` on next session |
 | `docs/brain/**` | `/ship` brain capture (auto-write on gate reply, opt out with `no brain`) | session start on unfamiliar work; architectural choices |
 | `.claude/.plan-write-ack` | save-plan (save-as-new after Human confirm) | consumed once by `plan-write-guard.sh` |
+| `.claude/orchestrator-runs/<run>/status.json`, `<run>.md` | `orch-state.mjs` only (after every step of a run; the report copy at the end) | `/orchestrate` step 4, a relaunch of the run |
+| `docs/orchestrator/runs/<run>/` on `orch/<run>` | `orch-state.mjs finish` (report + status.json) | the Human, before merging the run branch |
 | `notes/github-sync/YYYY-MM-DD.md` | github-sync skill | — |
 | `.qa-reports/` | QA/audit runs | audits |
 
@@ -322,6 +328,7 @@ Durable learning in session (decision/gotcha/pattern)
 /ship        --invokes-->  /review; --runs--> session-manifest-ship.py, brain-review-check.mjs
 /ship        --writes-->   .claude/todo.md, plans/*.plan.md ([x]), docs/brain/**, session-state
 /review-it   --reads-->    git diff, plans/*; --invokes--> kit-runner, orch-check-*, orch-verify
+/orchestrate --runs-->     orchestrate.js workflow; --invokes--> kit-runner (orch-state.mjs, orch-preflight.mjs), orch-*; --merges--> orch/<run> only
 /brief       --writes-->   .claude/sessions/{id}/brief.md; --reads--> plans/* (parent)
 save-plan    --runs-->     plan-name-similarity.mjs; --writes--> plans/*, .claude/todo.md, .plan-write-ack
 plan-write-guard.sh --gates--> Write/Edit on plans/*.plan.md; --runs--> plan-name-similarity.mjs
