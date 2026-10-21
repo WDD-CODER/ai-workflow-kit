@@ -81,13 +81,13 @@ Plan 008 merged; re-read `take-plan.md` step 4 and `ship.md` Phase 4 as they are
 apply the changes below to that text.
 
 ## Atomic Sub-tasks
-- [ ] V1: Say clearly that cards appear only when a human is needed and only once the work is finished — Core rule + "When that moment is": all-[auto] → evidence only; cards before /ship, PR or merge; pre-approved merges ("merges pre-approved") → after the merge, items left open — core/docs/agent/job-validation.md
-- [ ] V2: Make the agent start the app before handing over checks, every time — "Servers first" becomes a hard step: every page URL in the cards must answer; slot → slot-serve, else the project's dev command; a failed start is fixed before the hand-off; no check needs the app → no servers — core/docs/agent/job-validation.md
-- [ ] V3: Group the cards by page so the Human opens each page once — new format: header "{N} checks on {P} pages", one "▸ page — full URL (real id for :id routes)" line per page in click order, WHERE names only the spot on the page, numbers run on, last group "Outside the app — window"; update the example and the Required close-out block; reply words done | not yet | failed: <numbers> | verify — core/docs/agent/job-validation.md
-- [ ] V4: Add the hand-off as the last step of every executed plan — take-plan gets a final "Close-out" step: [auto] evidence, then (when [human] items) slot-serve + cards + wait, before /ship; pre-approved merges exception; also applies when several plans run in one session — core/.claude/commands/take-plan.md
-- [ ] V5: Stop the ship gate from counting Y as validation when no cards were shown — Phase 4 wording and the page-grouped card format; VALIDATED BY HUMAN unchanged — core/.claude/commands/ship.md, core/.claude/commands/done.md
-- [ ] V6: Give Cursor the same rules, since it has no global hook — layers/cursor/.cursor/commands/done.md, layers/cursor/.cursor/commands/ship.md
-- [ ] V7: Point the always-loaded rules at the hand-off — one line in the Job validation hard rule: servers up, page-grouped cards, before ship/merge — templates/AGENTS.md
+- [x] V1: Say clearly that cards appear only when a human is needed and only once the work is finished — Core rule + "When that moment is": all-[auto] → evidence only; cards before /ship, PR or merge; pre-approved merges ("merges pre-approved") → after the merge, items left open — core/docs/agent/job-validation.md
+- [x] V2: Make the agent start the app before handing over checks, every time — "Servers first" becomes a hard step: every page URL in the cards must answer; slot → slot-serve, else the project's dev command; a failed start is fixed before the hand-off; no check needs the app → no servers — core/docs/agent/job-validation.md
+- [x] V3: Group the cards by page so the Human opens each page once — new format: header "{N} checks on {P} pages", one "▸ page — full URL (real id for :id routes)" line per page in click order, WHERE names only the spot on the page, numbers run on, last group "Outside the app — window"; update the example and the Required close-out block; reply words done | not yet | failed: <numbers> | verify — core/docs/agent/job-validation.md
+- [x] V4: Add the hand-off as the last step of every executed plan — take-plan gets a final "Close-out" step: [auto] evidence, then (when [human] items) slot-serve + cards + wait, before /ship; pre-approved merges exception; also applies when several plans run in one session — core/.claude/commands/take-plan.md
+- [x] V5: Stop the ship gate from counting Y as validation when no cards were shown — Phase 4 wording and the page-grouped card format; VALIDATED BY HUMAN unchanged — core/.claude/commands/ship.md, core/.claude/commands/done.md
+- [x] V6: Give Cursor the same rules, since it has no global hook — layers/cursor/.cursor/commands/done.md, layers/cursor/.cursor/commands/ship.md
+- [x] V7: Point the always-loaded rules at the hand-off — one line in the Job validation hard rule: servers up, page-grouped cards, before ship/merge — templates/AGENTS.md
 - [ ] V8: Release and bring it into FoodVibe — CHANGELOG entry, kit PR, release tag on Dandan's go, then kit-sync -Ref <tag> -Apply in FoodVibe and /ship there — CHANGELOG.md
 
 ## Out of Scope
@@ -96,3 +96,15 @@ apply the changes below to that text.
 - Changing `scripts/slot-serve.mjs`.
 
 ## Execution Notes
+
+Run in the kit slot `ai-workflow-kit-wt-1`, branch `feat/009-validation-hand-off` from `origin/main` `53ca2c6`.
+Step 0: plan 008 merged (#29); `take-plan.md` step 4 and `ship.md` Phase 4 read as on `origin/main` — no conflict.
+V1–V7 done; V8's kit part done (CHANGELOG under `[Unreleased]`: v1.3.1 is not tagged yet, so the version is chosen at
+release). V8's PR merge, tag and FoodVibe `kit-sync` wait for Dandan.
+
+- The section keeps the name "HOW TO VALIDATE checklist" (now "… — the hand-off at the end of the work"), because
+  `core/.claude/instructions/validation-checklist.md` points at it by that name.
+- `{{commands.dev}}` is not used for "outside a slot": its default is empty, so the text names the project's own dev
+  command instead.
+- Same rule, still old wording, outside this plan's scope: `core/.claude/commands/feat.md:26` ("Human Approve **Y**
+  validates the job") and `core/docs/agent/workflow-map.md` F4 (no "servers first"). Asked the Human for `approved:`.
