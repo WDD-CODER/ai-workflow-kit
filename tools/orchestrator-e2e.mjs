@@ -152,6 +152,8 @@ const UI_CARDS = {
   '402': () => [{ card: 'Home shows Hello', page: `${UI.dead}/`, test: FAIL_TEST, screenshot: 'screens/402-1.png' }],
   '403': () => [{ card: 'Account shows the name', page: `${UI.base}/account`, test: FAIL_TEST, screenshot: 'screens/403-1.png' }],
   '404': () => [{ card: 'List shows items', page: `${UI.base}/list` }],
+  // 405 has two [ui] items; the builder reports a card for the first only.
+  '405': () => [{ card: 'Save shows Saved', page: 'https://app.example/profile', test: PASS_TEST, screenshot: 'screens/405-1.png' }],
 }
 
 function stubBuilder(t, opts) {
@@ -387,6 +389,15 @@ async function main() {
   check('gamma: orch-security runs for added auth code in a plain path, and only there', sec.length > 0 && sec.every((n) => n === '302'), JSON.stringify(sec))
   check('beta: origin/main unchanged', git(origin, 'rev-parse', 'main').stdout.trim() === mainBefore, 'main moved')
 
+  // Run epsilon (UI step off): a [ui] item the builder reported no card for is still recorded and reaches the Human.
+  const e = await runWorkflow({ mode: 'run', run: 'epsilon', plans: ['405'], startedAt: '2026-01-04T12:00:00.000Z', root: proj })
+  const se = JSON.parse(readFileSync(join(proj, '.claude', 'orchestrator-runs', 'epsilon', 'status.json'), 'utf8'))
+  const eCard = (title) => (se.plans['405']?.uiCards ?? []).find((c) => c.card === title)
+  check('epsilon: 405 merged; its reported card passed by script, the left-out [ui] item is recorded unchecked', e?.ok === true && se.plans['405']?.state === 'merged' && eCard('Save shows Saved')?.status === 'pass' && eCard('Save shows Saved').via === 'script' && eCard('Profile shows the avatar')?.status === 'unchecked' && eCard('Profile shows the avatar').via === 'none', JSON.stringify(se.plans['405']?.uiCards))
+  check('epsilon: a run note names the [ui] item the builder left out', (se.notes ?? []).some((n) => n.plan === '405' && /builder reported no card for 1 \[ui\] item\(s\).*Profile shows the avatar/.test(n.text)), JSON.stringify(se.notes))
+  const re = readFileSync(join(proj, '.claude', 'orchestrator-runs', 'epsilon.md'), 'utf8')
+  check('epsilon: the run report hands the left-out [ui] item to the Human', /\d+\. 405: Profile shows the avatar — a \[ui\] card no script could check and the browser step was off/.test(re), (re.split('## What only the Human can do')[1] ?? re).slice(0, 400))
+
   // The [ui] tier: a local test server (a child process) for the pages, the login and the backend.
   const server = await startUiServer()
   try {
@@ -439,7 +450,7 @@ for (const line of results) console.log(line)
 const total = results.filter((l) => /^(PASS|FAIL)/.test(l)).length
 if (keep) console.log(`kept: ${root}`)
 else {
-  for (const run of ['alpha', 'beta', 'gamma', 'delta', 'ui-down', 'ui-login', 'ui-cors']) {
+  for (const run of ['alpha', 'beta', 'gamma', 'epsilon', 'delta', 'ui-down', 'ui-login', 'ui-cors']) {
     git(proj, 'worktree', 'remove', '--force', join(root, `orch-app-orch-merge-${run}`))
   }
   try {

@@ -1,12 +1,13 @@
 /**
  * Done-when tags — the shape rule for a plan's Done-when items (docs/agent/job-validation.md), shared by
- * scripts/scope-check.mjs --tags (the save-plan shape lint) and the orchestrator. Pure: callers pass the plan text.
+ * scripts/scope-check.mjs --tags (the save-plan shape lint) and scripts/orch-state.mjs plan-info (the [ui] items the
+ * orchestrator holds the builder's cards against). Pure: callers pass the plan text.
  */
 /** The plan's `[ui]` items (Goals / Done-when), verbatim without the tag, in file order. */
 export function uiItems(planText) {
   const out = []
   for (const line of String(planText).replace(/\r\n/g, '\n').split('\n')) {
-    const m = /^\s*[-*]\s*(?:\[[ x]\]\s*)?\[ui\]\s*(.+)$/.exec(line)
+    const m = /^\s*[-*]\s*(?:\[[ xX]\]\s*)?\[ui\]\s*(.+)$/.exec(line)
     if (m) out.push(m[1].trim())
   }
   return out

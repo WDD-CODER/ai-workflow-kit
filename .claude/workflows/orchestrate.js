@@ -219,8 +219,22 @@ async function checkers(ctx) {
 // The [ui] tier (docs/agent/job-validation.md): each card's own script first, run by the gate; the browser agent only
 // for a card whose script failed or that no script can check, after the UI environment check. A passing script card
 // never reaches the browser agent. Verdicts: pass / fail / plan-drift; plan drift has no severity and is not a bug.
+// The plan's own [ui] items (plan-info) are held against the builder's cards: an item no card covers is never dropped
+// — it joins as a card with no script, so the browser agent checks it (args.ui) or it is recorded `unchecked` and
+// reaches the Human in the run report.
+const normCard = (s) => String(s ?? '').toLowerCase().replace(/[`"'‘’“”]/g, '').replace(/\s+/g, ' ').trim()
+function uiItemsMissing(items, cards) {
+  const have = cards.map((c) => normCard(c.card)).filter(Boolean)
+  return (items ?? []).filter((item) => {
+    const n = normCard(item)
+    return n && !have.some((h) => h === n || h.includes(n) || n.includes(h))
+  })
+}
 async function ui(ctx) {
-  const cards = ctx.uiCards ?? []
+  const reported = ctx.uiCards ?? []
+  const missing = uiItemsMissing(ctx.info?.uiItems, reported)
+  if (missing.length) await note(`builder reported no card for ${missing.length} [ui] item(s), added with no script: ${missing.join('; ')}`, ctx.nnn)
+  const cards = [...reported, ...missing.map((card) => ({ card, page: '' }))]
   if (!cards.length && A.ui !== true) return {}
   const record = (c, status, via, shots) => setPlan(ctx.nnn, { round: ctx.round, card: c.card, 'card-status': status, page: c.page || undefined, shots: (shots ?? []).filter(Boolean).join(',') || undefined, via })
   const results = []

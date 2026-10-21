@@ -19,9 +19,9 @@ const run = await import(pathToFileURL(join(root, 'scripts', 'lib', 'orch-run.mj
 const plan = (items) => `# Plan 900 — Toy\n\nStatus: draft\n\n## Goals & Success Criteria\n**Primary:** a toy.\n\n${items.join('\n')}\n\n## Atomic Sub-tasks\n- [ ] A1: not a Done-when item\n`
 
 test('tag lint: [auto], [ui] and [human] items pass, boxes and continuation lines are fine', () => {
-  const t = plan(['- [auto] `node x.mjs` exits 0', '- [ui] On /settings, Save shows "Saved"', '  continued on the next line', '- [ ] [human] The colours match', '- [x] [ui] Done already'])
+  const t = plan(['- [auto] `node x.mjs` exits 0', '- [ui] On /settings, Save shows "Saved"', '  continued on the next line', '- [ ] [human] The colours match', '- [x] [ui] Done already', '- [X] [ui] Done with a capital box'])
   assert.deepEqual(tags.doneWhenTagProblems(t), [])
-  assert.deepEqual(tags.uiItems(t), ['On /settings, Save shows "Saved"', 'Done already'])
+  assert.deepEqual(tags.uiItems(t), ['On /settings, Save shows "Saved"', 'Done already', 'Done with a capital box'])
 })
 
 test('tag lint: [ui (unclosed) and [UI] (wrong case) are rejected, and an untagged item still is', () => {

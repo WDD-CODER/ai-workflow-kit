@@ -6,7 +6,7 @@
  *   node scripts/orch-state.mjs init       --run <name> [--started <iso>]   run branch + merge folder + status.json
  *   node scripts/orch-state.mjs order      --run <name> --plans <NNN,NNN>  waves from plan-order (merged plans left out)
  *   node scripts/orch-state.mjs done       --run <name>                     plans merged into the run branch (from git)
- *   node scripts/orch-state.mjs plan-info  --run <name> --plan <NNN>        path, branch, start tier, [human] items
+ *   node scripts/orch-state.mjs plan-info  --run <name> --plan <NNN>        path, branch, start tier, [human] and [ui] items
  *   node scripts/orch-state.mjs worktree   --run <name> --plan <NNN>        the builder's folder on its plan branch
  *   node scripts/orch-state.mjs diff       --run <name> --plan <NNN>        changed files vs the run branch, sensitive?
  *   node scripts/orch-state.mjs set        --run <name> --plan <NNN> [--state s] [--round n] [--tier t] [--sha x]
@@ -34,6 +34,7 @@ import { resolve, dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import { findOpenPlan } from './lib/plan-paths.mjs'
 import { planNumber, planTitle, mergeSubjectRe } from './lib/plan-deps.mjs'
+import { uiItems } from './lib/done-when.mjs'
 import { runNameProblem, PLAN_STATES, planBranch, startTier, humanItems, freeGb, formatReport } from './lib/orch-run.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -289,7 +290,7 @@ const commands = {
     const path = planPath(nnn)
     const text = readFileSync(join(root, path), 'utf8')
     const { tier, invariants } = startTier(text)
-    const info = { ok: true, nnn, path, title: planTitle(text), branch: planBranch(path, nnn), worktree: builderFolder(run, nnn).replace(/\\/g, '/'), startTier: tier, invariants, humanItems: humanItems(text) }
+    const info = { ok: true, nnn, path, title: planTitle(text), branch: planBranch(path, nnn), worktree: builderFolder(run, nnn).replace(/\\/g, '/'), startTier: tier, invariants, humanItems: humanItems(text), uiItems: uiItems(text) }
     const status = readStatus(run)
     if (status) {
       // plan-info starts each attempt at a plan: an earlier attempt (a relaunch) moves to `earlier`, so state, round,

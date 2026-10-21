@@ -20,6 +20,8 @@
  *     402  run "ui-down": its card's page server does not answer → stops before the browser agent, no fix round
  *     403  run "ui-login": the QA login answers 401 → stops before the browser agent, no fix round
  *     404  run "ui-cors": the backend does not allow the page's origin → stops before the browser agent, no fix round
+ *     405  run "epsilon" (UI step off): the builder reports a card for one of its two [ui] items only → the left-out
+ *          item is still recorded (`unchecked`) and reaches the Human in the run report
  */
 const plan = ({ nnn, title, deps = [], inv = 'INV-none: preserves — a toy plan', ui = [] }) => `# Plan ${nnn} — ${title}
 
@@ -61,6 +63,7 @@ export const PLANS = {
   '402': plan({ nnn: '402', title: 'UI page server down', ui: ['Home shows Hello'] }),
   '403': plan({ nnn: '403', title: 'UI login failing', ui: ['Account shows the name'] }),
   '404': plan({ nnn: '404', title: 'UI backend cross origin', ui: ['List shows items'] }),
+  '405': plan({ nnn: '405', title: 'UI item the builder left out', ui: ['Save shows Saved', 'Profile shows the avatar'] }),
 }
 
 export const fileName = (nnn) => {
