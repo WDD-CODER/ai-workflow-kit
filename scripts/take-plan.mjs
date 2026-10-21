@@ -32,7 +32,7 @@ import { extractScopeGlobs } from './lib/plan-scope.mjs'
 import { findOpenPlanIn } from './lib/plan-paths.mjs'
 import { parseInvariants, checkPlanArch } from './lib/invariants.mjs'
 import { planDependencies, planTitle, isFinishedStatus, atomicStats } from './lib/plan-deps.mjs'
-import { portState, waitForPortFree, stopSlotServers, npmInstallIfChanged, generateEnvironmentSlot, hasFrontend as projectHasFrontend, installDirs } from './lib/slot-procs.mjs'
+import { portState, waitForPortFree, stopSlotServers, npmInstallIfChanged, installReason, generateEnvironmentSlot, hasFrontend as projectHasFrontend, installDirs } from './lib/slot-procs.mjs'
 import { ensureLocalExcludes } from './local-excludes.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -349,11 +349,13 @@ if (previousPlan !== match || !existsSync(planStartPath)) writeFileSync(planStar
 const statePointer = join(repoRoot, '.claude', '.session-state-path')
 if (existsSync(statePointer)) unlinkSync(statePointer)
 
-// --- (f) after the claim, nothing can fail it: npm install if the lockfile changed + environment.slot.ts
-// A build needs the dependencies; a failed install is reported, never a refusal (slot-serve.mjs retries it).
+// --- (f) after the claim, nothing can fail it: npm install if the lockfile changed or packages are missing
+// + environment.slot.ts. A build needs the dependencies; a failed install is reported, never a refusal
+// (slot-serve.mjs retries it).
 for (const [dir, hashFile, label] of installDirs(repoRoot)) {
   try {
-    if (npmInstallIfChanged(dir, hashFile)) console.log(`TAKE_PLAN: npm install ran in ${label} (lockfile changed)`)
+    const ran = npmInstallIfChanged(dir, hashFile)
+    if (ran) console.log(`TAKE_PLAN: npm install ran in ${label} (${installReason(ran)})`)
   } catch (e) {
     const why = String(e.message).split('\n')[0]
     console.log(`TAKE_PLAN: warning - npm install failed in ${label} (${why}); slot-serve.mjs retries it`)
