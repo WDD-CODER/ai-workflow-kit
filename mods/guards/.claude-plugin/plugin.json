@@ -1,0 +1,35 @@
+{
+  "name": "guards",
+  "version": "0.2.0",
+  "description": "In-process port of the Planner-Worker shell guards: main-branch guard, plan Read-Write Scope guard with an Approve button (/approve <path>), kit-owned files, new-plan similarity, a hard deny on git push --no-verify, and session-state injection at start.",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "stateInjectChars": {
+      "type": "number",
+      "title": "Session-state chars injected",
+      "description": "How much of docs/session-state-<branch>.md to add to the system prompt (0 = none).",
+      "default": 1500
+    },
+    "failOpen": {
+      "type": "boolean",
+      "title": "Scope guard fails open",
+      "description": "When the scope check itself errors, allow the edit (the /ship scope gate still verifies). Off = deny.",
+      "default": true
+    },
+    "hotspots": {
+      "type": "string",
+      "title": "Append-only hotspots",
+      "description": "Comma-separated repo-relative files every plan may append to (never rewrite). Empty = the project's kit.config.json paths.hotspots and project.i18nFile.",
+      "default": ""
+    }
+  },
+  "author": {
+    "name": "Dan Weibren"
+  },
+  "keywords": [
+    "claude-code",
+    "mod",
+    "planner-worker",
+    "ai-workflow-kit"
+  ]
+}

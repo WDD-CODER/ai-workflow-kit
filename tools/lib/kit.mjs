@@ -60,6 +60,9 @@ export function commandProblems(vals) {
     const v = vals[key]
     if (isEmpty(v) || !MODEL_VALUE.test(v)) out.push(`${key} is "${isEmpty(v) ? '' : v}" — allowed: "haiku", "sonnet", "opus", "fable", "inherit" or a full model id starting "claude-"`)
   }
+  // mods.*: each enabled mod must be one the kit's marketplace serves; the repo is an owner/repo pair.
+  for (const m of asList(vals['mods.enabled'])) if (!MODS.includes(m)) out.push(`mods.enabled names "${m}" — allowed: ${MODS.map((x) => `"${x}"`).join(', ')}`)
+  if (asList(vals['mods.enabled']).length && !/^[\w.-]+\/[\w.-]+$/.test(String(vals['mods.marketplaceRepo'] ?? ''))) out.push(`mods.marketplaceRepo is "${vals['mods.marketplaceRepo'] ?? ''}" — it must be <owner>/<repo>`)
   // ownership.upstreamPaths is read by the kit's own glob matcher and by the scope guard's (picomatch): only the syntax
   // both read alike (`**`, `*`, `?`, a trailing `/`).
   for (const g of asList(vals['ownership.upstreamPaths'])) {
@@ -607,6 +610,27 @@ export function markHooksExecutable(target, dests) {
  * Plan every file the kit would install: [{ dest, kind, source, content }] (content rendered).
  * `vals` is the output of resolveConfig.
  */
+/** The Claude Code mods the kit's own marketplace serves (`.claude-plugin/marketplace.json`, `mods/<name>/`). */
+export const MODS = ['fleet', 'guards', 'ship-pilot']
+export const MODS_MARKETPLACE = 'ai-workflow-kit-mods'
+
+/**
+ * settings.json with the mods a project turned on (`mods.enabled`): the kit's marketplace (auto-updating) and one
+ * enabledPlugins entry per mod. No mods enabled = the text unchanged.
+ */
+export function withMods(text, vals) {
+  const enabled = asList(vals['mods.enabled'])
+  if (!enabled.length) return text
+  const s = JSON.parse(text)
+  const out = {}
+  for (const [k, v] of Object.entries(s)) {
+    if (k === 'enabledPlugins') out.extraKnownMarketplaces = { [MODS_MARKETPLACE]: { source: { source: 'github', repo: String(vals['mods.marketplaceRepo']) }, autoUpdate: true } }
+    out[k] = v
+  }
+  out.enabledPlugins = { ...(s.enabledPlugins ?? {}), ...Object.fromEntries(enabled.map((m) => [`${m}@${MODS_MARKETPLACE}`, true])) }
+  return `${JSON.stringify(out, null, 2)}\n`
+}
+
 export function planFiles({ kitRoot, packs, layers = [], cursor, yesChef, vals, agentsWorkflow = false }) {
   const units = selectedUnits(kitRoot, packs, layers)
   // Builtin for KIT:if: the Cursor layer is installed (set = not empty).
@@ -680,6 +704,8 @@ export function planFiles({ kitRoot, packs, layers = [], cursor, yesChef, vals, 
     } else if (dest === 'CLAUDE.md') {
       body = fillMarker(body, 'KIT:yes-chef', yesChef ? readFileSync(join(tplRoot, 'fragments', 'yes-chef.md'), 'utf8').trimEnd().split('\n') : [])
       body = fillMarker(body, 'KIT:agents-workflow', agentsWorkflow ? [`@${AGENTS_WORKFLOW}`] : [])
+    } else if (dest === '.claude/settings.json') {
+      body = withMods(body, vals)
     } else if (dest === '.gitignore') {
       const list = runtimeIgnores(kitRoot)
       if (list) body = body.replace(/^# KIT:runtime-ignores[ \t]*\r?\n/m, `${list.join('\n')}\n`)
