@@ -17,11 +17,48 @@ export function runNameProblem(name) {
 /** The states a plan moves through in a run; status.json refuses any other. */
 export const PLAN_STATES = ['queued', 'building', 'gate', 'checking', 'fixing', 'env-paused', 'merging', 'merged', 'parked', 'left-run', 'skipped']
 
-/** The plan branch of a run: feat/NNN-<first four words of the file slug>. */
+/** The only shape a plan branch may have: it reaches git commands and agent prompts. */
+export const PLAN_BRANCH_RE = /^feat\/\d+-[a-z0-9-]+$/
+
+/** The plan branch of a run: feat/NNN-<first four words of the file slug>, lower-case letters, digits and dashes only
+ *  (any other character of the file name becomes a word break). */
 export function planBranch(planPath, nnn) {
   const file = String(planPath).replace(/\\/g, '/').split('/').pop()
-  const slug = file.replace(/\.plan\.md$/, '').replace(/^\d+-/, '').split('-').filter(Boolean).slice(0, 4).join('-')
+  const slug = file.replace(/\.plan\.md$/, '').replace(/^\d+-/, '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').split('-').filter(Boolean).slice(0, 4).join('-')
   return `feat/${nnn}-${slug || 'plan'}`
+}
+
+/** Why a plan branch cannot be used, or null. */
+export function planBranchProblem(branch) {
+  return typeof branch === 'string' && PLAN_BRANCH_RE.test(branch) ? null : `plan branch ${JSON.stringify(branch ?? '')} does not match feat/<NNN>-<lower-case words with dashes>`
+}
+
+/**
+ * Files whose added lines match `codeRe`, from `git diff -U0` output — or `failed` (the caller treats the diff as
+ * sensitive) when git failed or its output was cut off: a diff the check could not read is never a clean one.
+ * diff: { status, out, truncated }. Files in `skip` are already sensitive by path.
+ */
+export function addedCodeFiles(diff, codeRe, skip = []) {
+  if (!diff || diff.status !== 0 || diff.truncated) return { failed: true, files: [] }
+  const files = []
+  let cur = null
+  for (const l of String(diff.out).split('\n')) {
+    if (l.startsWith('+++ ')) cur = l.replace(/^\+\+\+ (b\/)?/, '')
+    else if (cur && l.startsWith('+') && codeRe.test(l) && !files.includes(cur) && !skip.includes(cur)) files.push(cur)
+  }
+  return { failed: false, files }
+}
+
+/** A screenshot path a [ui] card may record: relative, safe characters, no leading `-`, no `..`. */
+export const SAFE_SHOT_RE = /^(?!-)(?!.*\.\.)[A-Za-z0-9_./-]+$/
+
+/** Why a [ui] card value cannot be recorded, or null: the card title does not start with `-`, the page is an http(s)
+ *  URL, each screenshot matches SAFE_SHOT_RE. orchestrate.js applies the same rules before it calls `set`. */
+export function uiCardProblem({ card, page, shots } = {}) {
+  if (card !== undefined && (typeof card !== 'string' || !card.trim() || /^\s*-/.test(card))) return `card ${JSON.stringify(card)} — a title, not starting with "-"`
+  if (page !== undefined && page !== '' && !/^https?:\/\/[^\s"'`$\\<>|;&]+$/.test(String(page))) return `page ${JSON.stringify(page)} — an http(s) URL`
+  for (const s of shots ?? []) if (!SAFE_SHOT_RE.test(String(s))) return `screenshot ${JSON.stringify(s)} — a relative path of letters, digits, . _ / -`
+  return null
 }
 
 /** The tier a plan's first builder starts on: judgment when Architecture Impact names an invariant other than INV-none. */

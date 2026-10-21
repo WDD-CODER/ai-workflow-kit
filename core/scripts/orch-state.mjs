@@ -21,7 +21,8 @@
  *   node scripts/orch-state.mjs finish     --run <name>                     report on the run branch + local copy
  *
  * Every command prints its facts, then one last line `ORCH_JSON <json>` the workflow reads. Exit 0 when `ok`, else 1.
- * Values arrive as separate arguments, never as a shell string; nothing from plan text is run. Paths:
+ * Values arrive as `--key=value` arguments (the workflow) or `--key value` (a value may not start with "-"), never as a
+ * shell string; an unknown flag is refused; nothing from plan text is run. Paths:
  *   status     .claude/orchestrator-runs/<run>/status.json (main folder, gitignored; copied to the run branch by finish)
  *   report     docs/orchestrator/runs/<run>/report.md on the run branch, and .claude/orchestrator-runs/<run>.md
  *   merge      <parent>/<repo>-orch-merge-<run> (a worktree on the run branch; only merges and the report commit)
@@ -35,7 +36,7 @@ import { fileURLToPath } from 'url'
 import { findOpenPlan } from './lib/plan-paths.mjs'
 import { planNumber, planTitle, mergeSubjectRe } from './lib/plan-deps.mjs'
 import { uiItems } from './lib/done-when.mjs'
-import { runNameProblem, PLAN_STATES, planBranch, startTier, humanItems, freeGb, formatReport } from './lib/orch-run.mjs'
+import { runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem } from './lib/orch-run.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const MAIN = '{{git.mainBranch}}'
@@ -50,25 +51,33 @@ const SENSITIVE_CFG = {{security.sensitivePaths|json}}
 // No word boundary before the stems, so camelCase names (checkAuthToken, hasPermission) match too.
 const SENSITIVE_CODE_RE = /auth|permission|password|jwt|session[_-]?id|tokens?\b|\broles?\b/i
 
+// Every flag takes a value. The workflow passes `--key=value` (one token, so a value can never become a flag); a
+// human may write `--key value`, where a value starting with "-" is refused. An unknown flag (--root among them: the
+// folder is always this script's own project) or a second positional word stops the command.
+const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tier', 'sha', 'role', 'model', 'effort', 'roles', 'reason', 'card', 'card-status', 'page', 'shots', 'via', 'step', 'check', 'tail', 'tried', 'text', 'min'])
 function parseArgs(argv) {
   const out = { _: [] }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (!a.startsWith('--')) {
+      if (out._.length) return { problem: `unexpected argument "${a}" — values go in --key=value` }
       out._.push(a)
       continue
     }
     const eq = a.indexOf('=')
-    if (eq > 0) out[a.slice(2, eq)] = a.slice(eq + 1)
-    else if (argv[i + 1] !== undefined && !argv[i + 1].startsWith('--')) out[a.slice(2)] = argv[++i]
-    else out[a.slice(2)] = true
+    const key = eq > 0 ? a.slice(2, eq) : a.slice(2)
+    if (!FLAGS.has(key)) return { problem: `unknown flag --${key}` }
+    if (eq > 0) out[key] = a.slice(eq + 1)
+    else if (argv[i + 1] !== undefined && !argv[i + 1].startsWith('-')) out[key] = argv[++i]
+    else return { problem: `--${key} needs a value (use --${key}=<value>)` }
   }
-  return out
+  return { args: out }
 }
 
-const args = parseArgs(process.argv.slice(2))
+const parsed = parseArgs(process.argv.slice(2))
+const args = parsed.args ?? { _: [] }
 const cmd = args._[0]
-const root = resolve(args.root ? String(args.root) : join(__dirname, '..'))
+const root = resolve(join(__dirname, '..'))
 const repoName = REPO || root.split(/[\\/]/).pop()
 const parent = dirname(root)
 const nowIso = () => new Date().toISOString()
@@ -79,10 +88,12 @@ function emit(result, lines = []) {
   process.exit(result.ok ? 0 : 1)
 }
 const fail = (error, extra = {}) => emit({ ok: false, error, ...extra }, [`ORCH_STATE: FAIL — ${error}`])
+if (parsed.problem) fail(parsed.problem)
 
 function git(cwd, ...a) {
-  const r = spawnSync('git', a, { cwd, encoding: 'utf8' })
-  return { status: r.status ?? 1, out: (r.stdout ?? '').replace(/\r?\n+$/, ''), err: (r.stderr ?? '').trim() }
+  const r = spawnSync('git', a, { cwd, encoding: 'utf8', maxBuffer: 512 * 1024 * 1024 })
+  // truncated: the output hit maxBuffer (ENOBUFS) — a reader must not trust it.
+  return { status: r.status ?? 1, out: (r.stdout ?? '').replace(/\r?\n+$/, ''), err: (r.stderr ?? '').trim(), truncated: r.error?.code === 'ENOBUFS' }
 }
 const refExists = (ref) => git(root, 'rev-parse', '--verify', '--quiet', ref).status === 0
 
@@ -194,6 +205,23 @@ function planPath(nnn) {
   return p
 }
 
+/** The plan's branch; refused unless it is feat/<NNN>-<lower-case words> (it reaches git and agent commands). */
+function branchOf(path, nnn) {
+  const b = planBranch(path, nnn)
+  const why = planBranchProblem(b)
+  if (why) fail(why)
+  return b
+}
+
+/** The script names of the project's package.json: the only `npm run` checks the workflow accepts. */
+function npmScripts() {
+  try {
+    return Object.keys(JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).scripts ?? {})
+  } catch {
+    return []
+  }
+}
+
 function sensitiveTests() {
   const globRe = (g) => new RegExp(`^${g.split('**').map((part) => part.split('*').map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*')).join('.*')}$`)
   if (Array.isArray(SENSITIVE_CFG)) return [DEFAULT_SENSITIVE_RE, ...SENSITIVE_CFG.filter(Boolean).map(globRe)]
@@ -290,7 +318,7 @@ const commands = {
     const path = planPath(nnn)
     const text = readFileSync(join(root, path), 'utf8')
     const { tier, invariants } = startTier(text)
-    const info = { ok: true, nnn, path, title: planTitle(text), branch: planBranch(path, nnn), worktree: builderFolder(run, nnn).replace(/\\/g, '/'), startTier: tier, invariants, humanItems: humanItems(text), uiItems: uiItems(text) }
+    const info = { ok: true, nnn, path, title: planTitle(text), branch: branchOf(path, nnn), npmScripts: npmScripts(), worktree: builderFolder(run, nnn).replace(/\\/g, '/'), startTier: tier, invariants, humanItems: humanItems(text), uiItems: uiItems(text) }
     const status = readStatus(run)
     if (status) {
       // plan-info starts each attempt at a plan: an earlier attempt (a relaunch) moves to `earlier`, so state, round,
@@ -307,7 +335,7 @@ const commands = {
     const run = runName()
     const nnn = planNumber(args.plan ?? '')
     if (!nnn) fail('--plan takes a plan number')
-    const branch = planBranch(planPath(nnn), nnn)
+    const branch = branchOf(planPath(nnn), nnn)
     const base = `origin/${runBranch(run)}`
     const wt = builderFolder(run, nnn)
     fetchOrigin()
@@ -336,7 +364,7 @@ const commands = {
     const run = runName()
     const nnn = planNumber(args.plan ?? '')
     if (!nnn) fail('--plan takes a plan number')
-    const branch = planBranch(planPath(nnn), nnn)
+    const branch = branchOf(planPath(nnn), nnn)
     fetchOrigin()
     const head = refExists(`origin/${branch}`) ? `origin/${branch}` : branch
     const d = git(root, 'diff', '--name-only', `origin/${runBranch(run)}...${head}`)
@@ -345,23 +373,25 @@ const commands = {
     const tests = sensitiveTests()
     const sensitiveFiles = files.filter((f) => tests.some((re) => re.test(f)))
     // A diff that adds auth or permission code to a file whose path does not say so: its added lines name it.
-    const added = git(root, 'diff', '-U0', '--no-color', `origin/${runBranch(run)}...${head}`)
-    const codeFiles = []
-    let cur = null
-    for (const l of added.out.split('\n')) {
-      if (l.startsWith('+++ ')) cur = l.replace(/^\+\+\+ (b\/)?/, '')
-      else if (cur && l.startsWith('+') && SENSITIVE_CODE_RE.test(l) && !codeFiles.includes(cur) && !sensitiveFiles.includes(cur)) codeFiles.push(cur)
-    }
-    const sensitive = sensitiveFiles.length > 0 || codeFiles.length > 0
-    emit({ ok: true, files, sensitive, sensitiveFiles, sensitiveCode: codeFiles, head: git(root, 'rev-parse', head).out }, [`${files.length} file(s) changed, ${sensitiveFiles.length} sensitive by path, ${codeFiles.length} by added auth/permission code`])
+    // A diff git could not give in full (an error, or output cut off) counts as sensitive: fail closed.
+    const added = addedCodeFiles(git(root, 'diff', '-U0', '--no-color', `origin/${runBranch(run)}...${head}`), SENSITIVE_CODE_RE, sensitiveFiles)
+    const codeFiles = added.files
+    const unread = added.failed || d.truncated
+    const sensitive = sensitiveFiles.length > 0 || codeFiles.length > 0 || unread
+    emit({ ok: true, files, sensitive, sensitiveFiles, sensitiveCode: codeFiles, ...(unread ? { diffUnread: true } : {}), head: git(root, 'rev-parse', head).out },
+      [`${files.length} file(s) changed, ${sensitiveFiles.length} sensitive by path, ${codeFiles.length} by added auth/permission code${unread ? '; the diff could not be read in full: sensitive' : ''}`])
   },
 
   set() {
     const run = runName()
     const nnn = planNumber(args.plan ?? '')
     if (!nnn) fail('--plan takes a plan number')
+    if (args.card !== undefined) {
+      const why = uiCardProblem({ card: args.card, page: args.page, shots: args.shots ? String(args.shots).split(',').filter(Boolean) : [] })
+      if (why) fail(why)
+    }
     const status = needStatus(run)
-    const p = (status.plans[nnn] ??= { nnn, round: 0, models: {}, state: 'queued' })
+    const p = (status.plans[nnn] ??={ nnn, round: 0, models: {}, state: 'queued' })
     if (args.state !== undefined) {
       if (!PLAN_STATES.includes(args.state)) fail(`--state "${args.state}" — allowed: ${PLAN_STATES.join(', ')}`)
       p.state = args.state
@@ -405,7 +435,7 @@ const commands = {
     const run = runName()
     const nnn = planNumber(args.plan ?? '')
     if (!nnn) fail('--plan takes a plan number')
-    const branch = planBranch(planPath(nnn), nnn)
+    const branch = branchOf(planPath(nnn), nnn)
     const head = refExists(`origin/${branch}`) ? `origin/${branch}` : branch
     const files = git(root, 'diff', '--name-only', `origin/${runBranch(run)}...${head}`).out.split('\n').filter(Boolean)
     const val = (k) => (args[k] && args[k] !== true ? String(args[k]) : '(not given)')

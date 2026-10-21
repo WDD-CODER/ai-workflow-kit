@@ -24,6 +24,31 @@ const KEEP_THRESHOLD = 80
 const FINDERS = ['orch-check-plan', 'orch-check-bugs', 'orch-check-rules']
 // Commands no agent may run (docs/agent/agent-roles.md deny list); a readiness command matching one is dropped.
 const DENY = /\brm\s+-[a-z]*[rf]|reset\s+--hard|push\s+(?:[^\n]*\s)?(?:--force|-f\b|--force-with-lease)|git\s+clean|branch\s+-D|stash\s+clear|filter-branch/
+// A plan's extra check commands (readiness `commands`, args.checks) are allowlisted, not just deny-listed: `npm run
+// <script>` with a script package.json has (plan-info's npmScripts; null before plan-info = shape only), `node tools/…`
+// or `node scripts/…` and `node --test <files>`, with safe arguments. Anything else is dropped with the reason.
+const SAFE_ARG = /^[A-Za-z0-9_./=:,@+-]+$/
+function checkProblem(cmd, scripts) {
+  const c = String(cmd ?? '').trim()
+  if (DENY.test(c)) return `${c}: on the deny list`
+  const npm = /^npm run ([A-Za-z0-9:_-]+)$/.exec(c)
+  if (npm) return scripts && !scripts.includes(npm[1]) ? `${c}: no script ${npm[1]} in package.json` : null
+  const w = c.split(/ +/)
+  const safe = (ws) => ws.every((x) => SAFE_ARG.test(x) && !x.includes('..'))
+  if (w[0] === 'node' && /^(tools|scripts)\/[A-Za-z0-9_./-]+\.m?js$/.test(w[1] ?? '') && safe(w.slice(1))) return null
+  if (w[0] === 'node' && w[1] === '--test' && safe(w.slice(2)) && w.slice(2).every((x) => !x.startsWith('-') || /^--test-[a-z-]+(=[\w.,-]+)?$/.test(x))) return null
+  return `${c}: not an allowed check (npm run <package.json script>, node tools/… or scripts/…, node --test <files>)`
+}
+// The plan branch shape (lib/orch-run.mjs PLAN_BRANCH_RE): it reaches git commands the agents run.
+const PLAN_BRANCH_RE = /^feat\/\d+-[a-z0-9-]+$/
+// [ui] card values recorded through `set` (lib/orch-run.mjs uiCardProblem): the same rules, checked before the call.
+function cardProblem({ card, page, shots }) {
+  if (typeof card !== 'string' || !card.trim() || /^\s*-/.test(card)) return `card ${card} starts with - or is empty`
+  if (page !== undefined && page !== '' && !/^https?:\/\/[^\s"'`$\\<>|;&]+$/.test(String(page))) return `page ${page} is not an http(s) URL`
+  const bad = (shots ?? []).find((s) => !/^(?!-)(?!.*\.\.)[A-Za-z0-9_./-]+$/.test(String(s)))
+  if (bad !== undefined) return `screenshot ${bad} is not a safe relative path`
+  return null
+}
 
 const A = args ?? {}
 const MODE = A.mode === 'readiness' ? 'readiness' : 'run'
@@ -104,9 +129,24 @@ async function runner(script, argv, label) {
     return { ok: false, error: `unreadable ORCH_JSON from: ${command}` }
   }
 }
-const state = (argv, label) => runner('orch-state.mjs', argv, label)
+// orch-state.mjs <command> --key value …: every flag and its value go as one `--key=value` token (quoted as a whole by
+// q), so no value — an agent's card title, a reason — can ever be read as a flag.
+const state = (argv, label) => {
+  const out = [argv[0]]
+  for (let i = 1; i < argv.length; i += 2) out.push(`${argv[i]}=${argv[i + 1] ?? ''}`)
+  return runner('orch-state.mjs', out, label)
+}
 const roleArg = (results) => results.filter(Boolean).filter((r) => r.role && r.model).map((r) => `${r.role}=${r.model}/${r.effort ?? ''}`).join(',')
+const CARD_FIELDS = ['card', 'card-status', 'page', 'shots', 'via']
 async function setPlan(nnn, fields, results = []) {
+  // Agent-supplied [ui] values are checked before the call; a bad one is not recorded (a run note says why).
+  if (fields.card !== undefined) {
+    const why = cardProblem({ card: fields.card, page: fields.page, shots: String(fields.shots ?? '').split(',').filter(Boolean) })
+    if (why) {
+      await note(`[ui] card not recorded: ${why}`, nnn)
+      fields = Object.fromEntries(Object.entries(fields).filter(([k]) => !CARD_FIELDS.includes(k)))
+    }
+  }
   const argv = ['set', '--run', RUN, '--plan', nnn]
   for (const [k, v] of Object.entries(fields)) if (v !== undefined && v !== null) argv.push(`--${k}`, String(v))
   const roles = roleArg(results)
@@ -140,8 +180,8 @@ async function readiness() {
     const r = results[i]
     const p = r?.plans?.[0]
     if (!p) return { nnn, state: 'questions', questions: ['The readiness agent returned no result for this plan — check it by hand.'], envNeeds: [], commands: [] }
-    const denied = p.commands.filter((c) => DENY.test(c))
-    return { nnn, path: order.plans[nnn]?.path, state: p.state, questions: p.questions, envNeeds: p.envNeeds, commands: p.commands.filter((c) => !DENY.test(c)), denied, model: r.model }
+    const denied = p.commands.filter((c) => checkProblem(c, null))
+    return { nnn, path: order.plans[nnn]?.path, state: p.state, questions: p.questions, envNeeds: p.envNeeds, commands: p.commands.filter((c) => !checkProblem(c, null)), denied, deniedWhy: denied.map((c) => checkProblem(c, null)), model: r.model }
   })
   return { mode: 'readiness', run: RUN, ok: true, waves: order.waves, skipped: order.skipped, plans: out, preflight: pre }
 }
@@ -174,11 +214,17 @@ async function gate(ctx) {
     task({ FOLDER: ctx.wt.path, COMMANDS: ctx.checks }),
   ].join('\n\n'), { agentType: 'orch-gate', schema: SCHEMA.gate, label: `gate ${ctx.nnn}`, phase: 'Build', effort: 'low' })
   if (!r) return { r, env: true, why: 'the gate agent returned nothing' }
-  const env = r.results.filter((x) => x.status === 'env-fail')
-  const failed = r.results.filter((x) => x.status === 'fail')
-  if (env.length) return { r, env: true, why: `gate env-fail: ${env.map((x) => x.command).join(', ')}` }
+  // Exactly one result per command in ctx.checks, matched by the command string: a check with no result, with two, or a
+  // result for a command that was not asked for is a fail (a gate cannot pass by leaving a check out).
+  const known = r.results.filter((x) => ctx.checks.includes(x.command))
+  const unknown = r.results.filter((x) => !ctx.checks.includes(x.command)).map((x) => ({ command: x.command, status: 'fail', tail: 'the gate returned a result for a command it was not given' }))
+  const missing = ctx.checks.filter((c) => !known.some((x) => x.command === c)).map((c) => ({ command: c, status: 'fail', tail: 'the gate returned no result for this check' }))
+  const twice = ctx.checks.filter((c) => known.filter((x) => x.command === c).length > 1).map((c) => ({ command: c, status: 'fail', tail: 'the gate returned more than one result for this check' }))
+  const env = known.filter((x) => x.status === 'env-fail')
+  const failed = [...known.filter((x) => x.status !== 'pass' && x.status !== 'env-fail'), ...missing, ...twice, ...unknown]
+  if (env.length && !missing.length && !unknown.length && !twice.length) return { r, env: true, why: `gate env-fail: ${env.map((x) => x.command).join(', ')}` }
   // pass is computed from the results, never read from the agent
-  if (failed.length || !r.results.length) {
+  if (failed.length || !ctx.checks.length) {
     return { r, fail: true, why: `gate: ${failed.map((x) => x.command).join(', ') || 'no check ran'}`, check: failed[0]?.command, tail: failed[0]?.tail,
       findings: failed.map((x, i) => ({ id: `gate-${i + 1}`, file: x.command, line: 1, rule: 'check fails', reasoning: x.tail ?? '', severity: 'blocker' })) }
   }
@@ -320,7 +366,13 @@ async function envCheck(ctx, why) {
 async function runPlan(nnn) {
   const info = await state(['plan-info', '--run', RUN, '--plan', nnn], `plan ${nnn}`)
   if (!info.ok) return { nnn, state: 'parked', reason: `plan-info: ${info.error}` }
-  const ctx = { nnn, info, tier: info.startTier, round: 0, escalated: false, checks: [...PROJECT_CHECKS, ...((A.checks ?? {})[nnn] ?? []).filter((c) => !DENY.test(c))], handoff: `.claude/sessions/orch-${RUN}/handoff-${nnn}.md` }
+  if (!PLAN_BRANCH_RE.test(String(info.branch))) return { nnn, state: 'parked', reason: `plan-info: plan branch ${JSON.stringify(info.branch)} does not match feat/<NNN>-<lower-case words>` }
+  const extra = Array.isArray((A.checks ?? {})[nnn]) ? A.checks[nnn] : []
+  const scripts = Array.isArray(info.npmScripts) ? info.npmScripts : []
+  const dropped = extra.map((c) => checkProblem(c, scripts)).filter(Boolean)
+  const checks = [...new Set([...PROJECT_CHECKS, ...extra.filter((c) => !checkProblem(c, scripts)).map((c) => String(c).trim())])]
+  const ctx = { nnn, info, tier: info.startTier, round: 0, escalated: false, checks, handoff: `.claude/sessions/orch-${RUN}/handoff-${nnn}.md` }
+  for (const why of dropped) await note(`check command dropped, not run: ${why}`, nnn)
   if (info.startTier === 'judgment') await note(`starts on the judgment tier: Architecture Impact names ${info.invariants.join(', ')}`, nnn)
   const park = async (reason) => {
     await setPlan(nnn, { state: 'parked', round: ctx.round, tier: ctx.tier, reason })

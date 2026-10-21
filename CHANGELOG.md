@@ -127,6 +127,14 @@ The `[ui]` Done-when tag is optional: existing `[auto]` / `[human]` plans keep w
     `.claude/settings.json` (`kit-update`); `scripts/lib/guard.mjs` (`new`).
 
 ### Fixed
+- Security: guards fail closed on a guarded folder; orchestrator check commands allowlisted, state arguments
+  validated. `scripts/lib/guard.mjs` refuses a write it cannot judge (empty or unparseable input, no file path, an
+  error, a sibling worktree's guard with no answer, a scope check that crashes, a shell target it cannot resolve while
+  any worktree of the repository is guarded) and allows it only where nothing is guarded. The orchestrator: plan
+  branch slugs are `[a-z0-9-]` only and any other branch is refused; extra check commands are `npm run <script in
+  package.json>`, `node tools/…`, `node scripts/…` or `node --test <files>` (anything else dropped with a run note); a
+  gate that leaves a check out or reports an unknown one fails; `orch-state.mjs` takes `--key=value`, refuses unknown
+  flags (`--root` among them) and unsafe `[ui]` card values, and treats a diff it cannot read in full as sensitive.
 - `slot-serve.mjs` and `take-plan.mjs` install a folder's packages when they are missing (no
   `node_modules/.package-lock.json`), not only when its lockfile changed: a stale `.last-npm-install-hash-*` no
   longer hides a missing `server/node_modules`. They print `npm install ran in <label> (packages missing|lockfile

@@ -23,11 +23,11 @@ const project = process.env.GUARDS_ROOT ? resolve(process.env.GUARDS_ROOT) : kit
 // The time a guard run may take on a no-op input (the hook limit is 10 s; Git Bash start-up on Windows is slow).
 const LIMIT_MS = Number(process.env.GUARDS_LIMIT_MS || 2000)
 
-let base, main, slot, merge, orch, free
+let base, main, slot, merge, orch, free, master, broken, nocheck, solo
 after(() => {
   if (!base || process.env.GUARDS_KEEP) return
   // Worktrees first, so git does not keep stale entries; then the folder.
-  for (const d of [slot, merge, orch, free]) spawnSync('git', ['worktree', 'remove', '--force', d], { cwd: main })
+  for (const d of [slot, merge, orch, free, master, broken, nocheck]) spawnSync('git', ['worktree', 'remove', '--force', d], { cwd: main })
   rmSync(base, { recursive: true, force: true })
 })
 
@@ -87,6 +87,26 @@ before(() => {
   linkModules(orch)
   gitIn(main, 'worktree', 'add', '-q', '-b', 'chore/free', free)
   linkModules(free)
+
+  // Fail-closed fixtures: a guarded folder (branch master) and a plan folder whose own guard answers nothing, a plan
+  // folder whose scope check crashes, and a separate repository with no guarded folder at all.
+  master = join(base, 'proj-master')
+  broken = join(base, 'proj-broken')
+  nocheck = join(base, 'proj-nocheck')
+  solo = join(base, 'solo')
+  gitIn(main, 'worktree', 'add', '-q', '-b', 'master', master)
+  gitIn(main, 'worktree', 'add', '-q', '-b', 'feat/001-broken', broken)
+  gitIn(main, 'worktree', 'add', '-q', '-b', 'feat/001-nocheck', nocheck)
+  for (const d of [master, broken]) writeFileSync(join(d, 'scripts', 'lib', 'guard.mjs'), 'process.exit(0)\n')
+  linkModules(nocheck)
+  writeFileSync(join(nocheck, 'scripts', 'scope-check.mjs'), 'process.exit(3)\n')
+  mkdirSync(solo)
+  gitIn(solo, 'init', '-q', '-b', 'chore/solo')
+  addScripts(solo)
+  writeFileSync(join(solo, 'README.md'), '# solo\n')
+  gitIn(solo, 'add', '-A')
+  gitIn(solo, 'commit', '-q', '-m', 'solo')
+  linkModules(solo)
 })
 
 // A PreToolUse hook call as Claude Code makes it: JSON on stdin (tool_name, tool_input, cwd), decision JSON on stdout.
@@ -247,8 +267,72 @@ test('a shell target the guard cannot resolve ($VAR, $(...)) is refused where a 
   assert.match(onMain.out, /cannot tell which file/)
   const inSlot = bash(main, 'scope-guard.sh', 'echo x > $(pwd)/README.md', { cwd: slot })
   assert.equal(inSlot.decision, 'deny', inSlot.out)
+  // From a folder with no plan: a sibling worktree of the repository holds a plan, and the target may be there.
   const free_ = bash(free, 'scope-guard.sh', 'echo x > "$OUT_FILE"')
-  assert.equal(free_.decision, 'allow', free_.out)
+  assert.equal(free_.decision, 'deny', free_.out)
+  assert.match(free_.out, /SCOPE_GUARD:/)
+  // From a feature branch: the main folder on main is a guarded sibling.
+  const freeBranch = bash(free, 'branch-guard.sh', 'echo x > "$OUT_FILE"')
+  assert.equal(freeBranch.decision, 'deny', freeBranch.out)
+  assert.match(freeBranch.out, /BRANCH_GUARD:/)
+  // The shell's folder after a cd into a guarded worktree counts, even when the session folder is not guarded.
+  const cdMain = bash(free, 'branch-guard.sh', `cd "${main.replace(/\\/g, '/')}" && echo x > "$OUT_FILE"`)
+  assert.equal(cdMain.decision, 'deny', cdMain.out)
+  // A repository with no guarded folder at all: nothing to protect, allowed.
+  for (const script of ['branch-guard.sh', 'scope-guard.sh']) {
+    const r = bash(solo, script, 'echo x > "$OUT_FILE"')
+    assert.equal(r.decision, 'allow', `${script}: ${r.out}`)
+  }
+})
+
+// A hook call with raw stdin (not built from a tool input).
+function raw(from, script, input) {
+  const r = spawnSync('bash', [join(from, 'scripts', script)], { cwd: from, input, encoding: 'utf8', timeout: 30000 })
+  const out = `${r.stdout ?? ''}${r.stderr ?? ''}`
+  const m = (r.stdout ?? '').match(/"permission":"(allow|deny)"/)
+  return { decision: m ? m[1] : `unparsed (${out.trim().slice(-300)})`, out, status: r.status }
+}
+
+test('branch guard fails closed on a guarded folder: empty or unparseable input, or a Write with no path', () => {
+  for (const input of ['', 'not json {', JSON.stringify({ tool_name: 'Write', tool_input: { content: 'x' }, cwd: main })]) {
+    const r = raw(main, 'branch-guard.sh', input)
+    assert.equal(r.decision, 'deny', `${JSON.stringify(input)}: ${r.out}`)
+    assert.match(r.out, /BRANCH_GUARD:/)
+    assert.equal(r.status, 0)
+    // The same input in a folder that is not guarded (a feature branch) is allowed, as before.
+    const ok = raw(free, 'branch-guard.sh', input)
+    assert.equal(ok.decision, 'allow', `${JSON.stringify(input)}: ${ok.out}`)
+  }
+  // Plans, the todo list and runtime files stay writable on main.
+  for (const f of [join(main, 'plans', '004-delta.plan.md'), join(main, '.claude', 'todo.md'), join(main, '.claude', 'sessions', 'a.md'), join(main, '.claude', '.session-state-path'), join(main, '.claude', '.plan-write-ack')]) {
+    const r = write(main, 'branch-guard.sh', f)
+    assert.equal(r.decision, 'allow', `${f}: ${r.out}`)
+  }
+})
+
+test('scope guard fails closed on a plan folder: unparseable input, and a scope check that crashes', () => {
+  const r = raw(slot, 'scope-guard.sh', 'not json {')
+  assert.equal(r.decision, 'deny', r.out)
+  assert.match(r.out, /SCOPE_GUARD:/)
+  assert.equal(raw(free, 'scope-guard.sh', 'not json {').decision, 'allow')
+  const crash = write(nocheck, 'scope-guard.sh', join(nocheck, 'src', 'b.js'))
+  assert.equal(crash.decision, 'deny', crash.out)
+  assert.match(crash.out, /SCOPE_GUARD: the scope check failed/)
+})
+
+test('a sibling worktree whose own guard gives no answer is judged by the local rule (fail closed)', () => {
+  // master is a guarded branch folder; its guard prints nothing.
+  const b = write(free, 'branch-guard.sh', join(master, 'src', 'a.js'))
+  assert.equal(b.decision, 'deny', b.out)
+  assert.match(b.out, /BRANCH_GUARD:/)
+  const plan = write(free, 'branch-guard.sh', join(master, 'plans', '005-eps.plan.md'))
+  assert.equal(plan.decision, 'allow', plan.out)
+  // broken holds plan 001 (scope); its guard prints nothing.
+  const s = write(free, 'scope-guard.sh', join(broken, 'src', 'b.js'))
+  assert.equal(s.decision, 'deny', s.out)
+  assert.match(s.out, /SCOPE_GUARD:/)
+  // broken is on a feature branch: no branch rule, allowed.
+  assert.equal(write(free, 'branch-guard.sh', join(broken, 'src', 'b.js')).decision, 'allow')
 })
 
 test('bashWrites: redirects, heredocs, tee, sed -i, cp/mv, cd and bash -c; quotes and fd duplication are not targets', async () => {

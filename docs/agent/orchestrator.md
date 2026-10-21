@@ -36,7 +36,9 @@ branch himself.
 3. **Per plan, wave by wave** (plans of one wave in parallel; plans that share scope — a lock group — one after the
    other):
    - builder (`orch-builder`, in its own folder `<repo>-orch-<run>-<NNN>` on `feat/NNN-<slug>`, scope-guarded);
-   - gate (`orch-gate`): the project checks plus the plan's own check commands from readiness;
+   - gate (`orch-gate`): the project checks plus the plan's own check commands from readiness — only `npm run
+     <script in package.json>`, `node tools/…`, `node scripts/…` or `node --test <files>` (any other is dropped with
+     a run note); exactly one result per command, or the gate fails;
    - finders in parallel (`orch-check-plan`, `orch-check-bugs`, `orch-check-rules`, and `orch-security` only when the
      diff touches a sensitive path or its added lines name auth, permission, password, token or role code), then `orch-verify` on every candidate;
    - the `[ui]` cards (below): each card's own e2e test, run by a gate; the UI validator (`orch-ui`) only for a
