@@ -46,6 +46,14 @@ if [[ "$DESCRIBE" == PLANNER:* && -n "$PLANNER_BRANCH" && "$PLANNER_BRANCH" != "
   DESCRIBE="$DESCRIBE WARNING: the Planner folder is on $PLANNER_BRANCH, not {{git.mainBranch}}, and every session in this folder is on it too. Tell the Human before doing anything else."
 fi
 
+# Model routing (docs/agent/model-routing.md): these variables override every kit agent file's `model:`.
+if [[ -n "${CLAUDE_CODE_SUBAGENT_MODEL:-}" ]]; then
+  DESCRIBE="$DESCRIBE MODEL_ROUTING: CLAUDE_CODE_SUBAGENT_MODEL=$CLAUDE_CODE_SUBAGENT_MODEL overrides the kit's agent models on Claude Code before v2.1.251 (and on any version with CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1). Tell the Human once."
+fi
+if [[ -n "${CLAUDE_CODE_SUBAGENT_MODEL_FORCE:-}" && "${CLAUDE_CODE_SUBAGENT_MODEL_FORCE}" != "0" ]]; then
+  DESCRIBE="$DESCRIBE MODEL_ROUTING: CLAUDE_CODE_SUBAGENT_MODEL_FORCE=$CLAUDE_CODE_SUBAGENT_MODEL_FORCE makes Claude Code ignore the kit's agent models. Tell the Human once."
+fi
+
 # The hook output is built in node: JSON.stringify keeps quotes, backslashes and newlines from the
 # session-state file valid. additionalContext sits directly under hookSpecificOutput.
 emit() {

@@ -810,6 +810,55 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   rmSync(cm, { recursive: true, force: true })
 }
 
+// models.* (docs/agent/model-routing.md): the tiers render into the agent and forked-skill frontmatter; no inline
+// command carries a `model:` (a model switch breaks the prompt cache); all tiers inherit = routing off; a value that is
+// not a model alias or a claude- id is refused like a bad ci.* mode.
+{
+  const modelLines = (dir) => files(dir).filter((f) => f.startsWith('.claude/')).flatMap((f) =>
+    [...read(dir, f).matchAll(/^model:\s*(\S+)\s*$/gm)].map((m) => [f, m[1]]))
+  const expect = (dir, label, want) => {
+    for (const [f, tier] of Object.entries(want)) {
+      const got = modelLines(dir).filter(([g]) => g === f).map(([, v]) => v)
+      if (got.length !== 1 || got[0] !== tier) fail(`${label}: ${f} should carry model: ${tier}, got ${JSON.stringify(got)}`)
+    }
+  }
+  const md = tmp('models')
+  writeFileSync(join(md, 'kit.config.json'), JSON.stringify(CORE_CFG))
+  const d = run('install.mjs', ['--target', md])
+  if (d.status !== 0) fail(`install with default models: exit ${d.status}, ${(d.stdout + d.stderr).trim().split('\n').pop()}`)
+  else {
+    expect(md, 'default models', {
+      '.claude/agents/kit-runner.md': 'haiku', '.claude/agents/git-agent.md': 'haiku', '.claude/agents/kit-prevalidate.md': 'sonnet',
+      '.claude/skills/github-sync/SKILL.md': 'haiku', '.claude/skills/techdebt/SKILL.md': 'sonnet',
+    })
+    const inline = modelLines(md).filter(([f]) => f.startsWith('.claude/commands/'))
+    if (inline.length) fail(`an inline command carries model: (cache break): ${inline.map(([f]) => f).join(', ')}`)
+    if (!read(md, '.claude/commands/docs-refresh.md').includes('model: "sonnet"') && read(md, '.claude/commands/docs-refresh.md').includes('Agent(')) fail('docs-refresh: the Agent call does not pass the analysis tier')
+    if (!read(md, 'docs/agent/model-routing.md').includes('| `mechanical` | `haiku` |')) fail('model-routing.md does not name the project tier values')
+  }
+  rmSync(md, { recursive: true, force: true })
+
+  const mi = tmp('models-inherit')
+  writeFileSync(join(mi, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { mechanical: 'inherit', analysis: 'inherit', judgment: 'inherit' } }))
+  const i = run('install.mjs', ['--target', mi])
+  const notInherit = i.status === 0 ? modelLines(mi).filter(([, v]) => v !== 'inherit') : []
+  if (i.status !== 0 || !modelLines(mi).length || notInherit.length) fail(`all tiers inherit must render only model: inherit (routing off): exit ${i.status}, others ${JSON.stringify(notInherit)}`)
+  rmSync(mi, { recursive: true, force: true })
+
+  const mp = tmp('models-project')
+  writeFileSync(join(mp, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { mechanical: 'claude-haiku-5-5' } }))
+  const p = run('install.mjs', ['--target', mp])
+  if (p.status !== 0) fail(`install with models.mechanical claude-haiku-5-5: exit ${p.status}`)
+  else expect(mp, 'project model id', { '.claude/agents/kit-runner.md': 'claude-haiku-5-5', '.claude/agents/kit-prevalidate.md': 'sonnet' })
+  rmSync(mp, { recursive: true, force: true })
+
+  const mb = tmp('models-bad')
+  writeFileSync(join(mb, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { analysis: 'gpt-4' } }))
+  const b = run('install.mjs', ['--target', mb])
+  if (b.status !== 2 || !b.stderr.includes('models.analysis is "gpt-4" — allowed: "haiku", "sonnet", "opus", "fable", "inherit" or a full model id starting "claude-"') || files(mb).length !== 1) fail(`install with models.analysis gpt-4: exit ${b.status}, ${b.stderr.trim().split('\n')[0]}`)
+  rmSync(mb, { recursive: true, force: true })
+}
+
 // sync --apply that updates the kit-managed scripts/package.json refreshes the project's scripts/package-lock.json
 // (npm install inside scripts/). Offline with an empty npm cache the install fails: sync names the command to run.
 // Without a lockfile, sync runs nothing.

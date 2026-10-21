@@ -85,13 +85,24 @@ Redirect stubs for palette discoverability ship with the optional Cursor layer (
 | --- | --- | --- | --- |
 | `save-plan` | Plan Contract pasted / "save the plan" / plan not yet under `plans/` | runs `scripts/plan-name-similarity.mjs`; writes `plans/NNN-slug.plan.md` + `.claude/todo.md`; `.claude/.plan-write-ack` handshake with `plan-write-guard.sh`; mid-flight brief↔plan sync in `reference/mid-flight-sync.md` | `save-plan-must-use-skill` |
 | `brief-detection` | a pasted Plan Contract or structured brief (H2 markers), or a feature request in prose in the main folder | gates it: a = Architect + PM review, nothing saved · b = `/plan` → save-plan → a Worker claims it with `take-plan` · c = discussion | `brief-detection-must-use-skill` |
-| `github-sync` | session start, once per day | `scripts/github-sync-gate.mjs` (injected gate); writes `notes/github-sync/YYYY-MM-DD.md` | `github-sync-must-use-skill` — best-effort, no `SessionStart`-hook equivalent in Cursor |
+| `github-sync` | session start, once per day | forked, `mechanical` tier (questions come back as `ASK:` lines); `scripts/github-sync-gate.mjs` (injected gate); writes `notes/github-sync/YYYY-MM-DD.md` | `github-sync-must-use-skill` — best-effort, no `SessionStart`-hook equivalent in Cursor |
 | `preflight` | before dev server / browser / DB workflows | `scripts/preflight.mjs` | `preflight-must-use-skill` |
-| `techdebt` | before PR / audit | `scripts/techdebt-report.mjs` (rolling 7 reports + trend) | `techdebt-must-use-skill` |
+| `techdebt` | before PR / audit | forked, `analysis` tier; `scripts/techdebt-report.mjs` (rolling 7 reports + trend) | `techdebt-must-use-skill` |
 | `worktree-setup` | "setup worktree" (explicit only) | — | `worktree-setup-must-use-skill` |
 <!-- PACK:workflow-map:skills -->
 
 <!-- PACK:stack — stack skill rows (component structure, auth, styling layer, breadcrumbs) come from the stack pack -->
+
+### Agents (`.claude/agents/`) and model tiers — Claude Code only
+
+Rules and the tier table: `docs/agent/model-routing.md` (`kit.config.json` → `models`). Planning, review, fixes and code
+writing stay on the main session's model.
+
+| Agent | Tier | Called by | Returns |
+| --- | --- | --- | --- |
+| `kit-runner` | mechanical | `/ship` Phase 1, `auto-solve` Phase 4, `/review-it` step 3 | `RUN <cmd> → exit <n>` lines + verbatim error lines |
+| `kit-prevalidate` | analysis | `auto-solve` Phase 2 | DONE / TODO / BLOCKED table; the main session re-checks every DONE |
+| `git-agent` | mechanical | commit prep on request | proposed commit + commands for the Human |
 
 ---
 

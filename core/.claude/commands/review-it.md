@@ -17,6 +17,9 @@ You are the Reviewer. Follow CLAUDE.md. Report findings; never silently fix; nev
    - **Convention compliance**: the hard rules in AGENTS.md and the standards in `{{stack.standardsDoc}}`, no API keys in client code
    - **Secrets**: No hardcoded API keys, tokens, passwords
    - **Dead code**: No unused imports / stubbed leftovers from the milestone
+   - **Commands (one `kit-runner` call):** hand the `kit-runner` agent (`.claude/agents/kit-runner.md`) the commands of
+     the three checks below — the architecture check, the log query (when set) and the milestone's Verify command — and
+     use its `RUN` / `FAILED` block as their evidence. The judgment on the output stays here. `ESCALATE` → run them inline.
    - **Architecture**: Run `node scripts/scope-check.mjs --arch --diff=origin/{{git.mainBranch}}` and copy every `ARCH: warn …` line into Findings (an invariant from `docs/brain/invariants.md` touched with no `## Architecture Impact` entry, or a "Human decision" note naming no INV-n / ADR). Any warn → ESCALATE TO ARCHITECT (the Planner, in the main folder).
 <!-- KIT:if commands.logQuery -->
    - **Logs**: Run `{{commands.logQuery}}`. Any entry not explained by the milestone fails the review.

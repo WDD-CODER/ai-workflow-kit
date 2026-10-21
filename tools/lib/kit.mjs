@@ -55,6 +55,11 @@ export function commandProblems(vals) {
     const v = vals[key]
     if (!isEmpty(v) && !allowed.includes(v)) out.push(`${key} is "${v}" — allowed: ${allowed.map((a) => `"${a}"`).join(', ')}`)
   }
+  // models.*: a tier renders into agent / skill frontmatter `model:`; an unknown value would fail only at run time.
+  for (const key of MODEL_KEYS) {
+    const v = vals[key]
+    if (isEmpty(v) || !MODEL_VALUE.test(v)) out.push(`${key} is "${isEmpty(v) ? '' : v}" — allowed: "haiku", "sonnet", "opus", "fable", "inherit" or a full model id starting "claude-"`)
+  }
   // ownership.upstreamPaths is read by the kit's own glob matcher and by the scope guard's (picomatch): only the syntax
   // both read alike (`**`, `*`, `?`, a trailing `/`).
   for (const g of asList(vals['ownership.upstreamPaths'])) {
@@ -71,6 +76,8 @@ export function globProblem(g) {
   if (/^!/.test(g)) return 'negation (!) is not supported'
   return null
 }
+export const MODEL_KEYS = ['models.mechanical', 'models.analysis', 'models.judgment']
+const MODEL_VALUE = /^(haiku|sonnet|opus|fable|inherit|claude-[a-z0-9][a-z0-9.-]*)$/
 const ENUMS = {
   'ci.lintScope': ['all', 'changed'],
   'ci.appAuditMode': ['enforce', 'report'],

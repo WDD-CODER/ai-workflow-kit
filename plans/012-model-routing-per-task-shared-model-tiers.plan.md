@@ -1,6 +1,6 @@
 # Plan 012 — Model Routing Per Task: Shared Model Tiers, Cheap Agents for Mechanical Work
 
-Status: draft
+Status: in-progress
 Snapshot: 53ca2c6
 
 ## Problem Statement
