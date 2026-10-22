@@ -126,6 +126,7 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 - [ ] A4: Add verifier cases that mix real findings with refutable false alarms — docs/agent-evals/cases/orch-verify/
 - [ ] A5: Prove every case parses and every label has a code-backed source, before spending tokens — stub runner and a case test — tools/fixtures/agent-evals/stub-perfect.mjs, tools/test/eval-cases.test.mjs
 - [ ] A0: Give validating agents their own model tier that can never be Haiku, so a review is never done by the weakest model — models.review default sonnet, refused when haiku; checker, verifier, security, UI agents and the review command use it; routing doc and install check updated — kit.config.json, .kit/config.json, tools/lib/kit.mjs, tools/install-check.mjs, core/.claude/agents/orch-check-*.md, orch-verify.md, orch-security.md, orch-ui.md, core/.claude/commands/review-it.md, core/docs/agent/model-routing.md
+- [ ] A0b: Start the commit-message agent without the project instructions, since it gets everything from its prompt — omitClaudeMd true, like kit-runner; note in the routing doc that the field needs Claude Code v2.1.271 or later and is ignored before that — core/.claude/agents/git-agent.md, core/docs/agent/model-routing.md
 - [ ] A6: Run each checker and the verifier on Opus and Sonnet and write the baseline report — two runs per case, one run at a time — docs/agent-evals/BASELINE.md
 - [ ] A7: Record the outcome in the changelog and the plan's notes — CHANGELOG.md
 
