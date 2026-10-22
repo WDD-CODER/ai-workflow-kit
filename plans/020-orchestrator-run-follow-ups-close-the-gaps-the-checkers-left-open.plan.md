@@ -296,3 +296,34 @@ strict guard — decided by the Human 2026-10-22 ("strict guard"):
   tools/e2e-check.mjs` → exit 0 (`E2E_CHECK: ok — 53 cases passed`); `node tools/drift-check.mjs --target .` → exit 0
   (`KIT_DRIFT: ok — 0 undeclared differences`); `node --test tools/test/*.test.mjs` → exit 0 (`tests 114`, `pass
   114`, `fail 0`); `node tools/orchestrator-e2e.mjs` → exit 0 (`ORCHESTRATOR_E2E: ok — 64 cases passed`).
+
+strict guard round 2 (2026-10-22):
+- Why: a security review of 4388a38 found 4 more holes in `strictScan`/`strictShell` — (1, HIGH) shell `-c`
+  detection missed `bash -ce`, `-xc`, `-o x -c`; (4) a shell reading its script from /dev/stdin, /dev/fd, `-` or a
+  here-document; (3) quoted command words and wrapper prefixes (env, sudo, xargs, nice, timeout …) were skipped;
+  (2) `((…))`/`$((…))`/`[[ … ]]` evaluate variable names, and a variable holding `a[$(cmd)]` runs cmd. Fix: strict
+  mode is deny by default and narrower, not more parsing — the shell `-c` follower is gone.
+- Rules (`core/scripts/lib/guard.mjs`): `:653-667` DENY_WORDS (shells, eval/source/exec/let, dd/sed/perl/awk,
+  python*/node/ruby/…, wrappers env/sudo/xargs/find/timeout/nice/nohup/command/builtin/…), `denyWord` (also the write
+  commands), `cmdBase` (path, case and .exe stripped); `:861-873` every word of every simple command at every level,
+  quoted or not, is checked — the only exception is tee/touch/truncate/cp/mv/install/ln and `sed -i`/`perl -i` as the
+  command name of a top-level command (`plainWrite`), `.` and a glob/subscript command name are refused; `:724` `$[…]`;
+  `:749` a name inside `((…))`/`$((…))`; `:1004` a name inside `[[ … ]]`; `:924` a process substitution and `:953` any
+  `>` redirect but `N>&M` inside a substitution; `:1042-1047` `strictShell` sets aside `<`/`>` read as comparisons, so
+  a command that then writes nothing passes (`if [[ $a > $b ]]; then :; fi`, `(( a > b ))`); otherwise the first
+  deny reason refuses it. Non-complex commands: unchanged.
+- Behaviour change: `if [[ $a > $b ]]; then echo x > src/d.js; fi` in a plan folder and `2>/dev/null [[ a >
+  README.md ]]` are now refused (a name in `[[ … ]]` / a `[[` command word holding a glob); tests updated. The commit
+  and PR heredoc forms (`git commit -m "$(cat <<'EOF' … EOF)"`, `gh pr create --body "$(cat <<'EOF' … EOF)"`) still
+  pass, also with `->`, `<email>`, tee/bash/sed in the text.
+- Tests (`tools/test/guards.test.mjs`): `strictShell round 2: shells, wrappers, -c variants, stdin scripts and names
+  in arithmetic are refused`, `strict guard round 2 on main: each bypass is denied; the commit/PR heredoc, a
+  comparison and a plan write are allowed`. Against 4388a38's installed `scripts/` (copied to the OS temp folder, run
+  with GUARDS_ROOT): 4 of the guard tests fail (both new ones and the two updated ones); old `strictShell` refuses 0 of
+  the 7 round-2 forms, old `decide` on main denies 4 of 7 (allows `bash -ce`, `sh /dev/stdin <<EOF`, `(( x ))`); new:
+  7 of 7.
+- Evidence (after `node tools/sync.mjs --target . --apply`): `npm run build` → exit 0 (`PACK_CHECK: ok`); `npm run
+  lint` → exit 0 (3× `LEAK_CHECK: ok`); `npm run test` → exit 0 (`WORKFLOW_LINK_CHECK: ok`); `node
+  tools/e2e-check.mjs` → exit 0 (`E2E_CHECK: ok — 53 cases passed`); `node tools/drift-check.mjs --target .` → exit 0
+  (`KIT_DRIFT: ok — 0 undeclared differences`); `node --test tools/test/*.test.mjs` → exit 0 (`tests 116`, `pass
+  116`, `fail 0`); `node tools/orchestrator-e2e.mjs` → exit 0 (`ORCHESTRATOR_E2E: ok — 64 cases passed`).

@@ -591,9 +591,10 @@ test('strictShell: every bypass of the earlier rounds and $\'…\' quoting is re
   const { bashWrites, strictShell } = await import(pathToFileURL(join(project, 'scripts', 'lib', 'guard.mjs')).href)
   const cwd = main
   const strict = (cmd) => strictShell(cmd, cwd, bashWrites(cmd, cwd))
-  // Two bypasses are plain top-level redirects to strict mode: it passes them on only because the reader found
-  // README.md (which the normal rule then judges); every other one is refused outright.
-  const plainToStrict = ['2>/dev/null [[ a > README.md ]]', "'[[' x > README.md"]
+  // One bypass is a plain top-level redirect to strict mode: it passes it on only because the reader found README.md
+  // (which the normal rule then judges); every other one is refused outright (round 2: `[[` as a command word after a
+  // redirect is a command name holding a glob, refused by default).
+  const plainToStrict = ["'[[' x > README.md"]
   for (const cmd of plainToStrict) {
     assert.equal(strict(cmd), null, cmd)
     assert.ok(bashWrites(cmd, cwd).some((t) => t.path && basename(t.path) === 'README.md'), cmd)
@@ -631,13 +632,49 @@ test('strict guard on main: a complex command that writes is refused unless its 
 })
 
 test('strict guard in a plan folder: a plain target in scope stays allowed, a hidden one is refused', () => {
-  for (const cmd of ['npm run build > src/log.txt', 'echo "$(date)" > src/notes.md', 'if [[ $a > $b ]]; then echo x > src/d.js; fi']) {
+  for (const cmd of ['npm run build > src/log.txt', 'echo "$(date)" > src/notes.md']) {
     const r = bash(main, 'scope-guard.sh', cmd, { cwd: slot })
     assert.equal(r.decision, 'allow', `${cmd}: ${r.out}`)
   }
-  for (const cmd of ['echo $(echo x > src/e.js)', "x=$'\\''; cat > src/f.js"]) {
+  // Round 2: names inside [[ … ]] in a command that writes are refused (deny by default), even with a plain target.
+  for (const cmd of ['echo $(echo x > src/e.js)', "x=$'\\''; cat > src/f.js", 'if [[ $a > $b ]]; then echo x > src/d.js; fi']) {
     const r = bash(main, 'scope-guard.sh', cmd, { cwd: slot })
     assert.equal(r.decision, 'deny', `${cmd}: ${r.out}`)
     assert.match(r.out, /SCOPE_GUARD: this shell command writes/)
+  }
+})
+
+// Strict guard round 2 (2026-10-22): deny by default inside a complex command that writes — shells in any -c form,
+// a script read from stdin, quoted command words, wrapper prefixes, and names inside ((…)) / [[ … ]].
+const STRICT_ROUND2_DENIED = [
+  "echo \"$(date)\"; bash -ce 'cat > README.md'",
+  "echo \"$(date)\"; bash -o errexit -c 'cat > README.md'",
+  "echo \"$(date)\"; sh /dev/stdin <<'EOF'\ncat > README.md\nEOF",
+  "echo \"$(true)\"; env bash -c 'x > README.md'",
+  "echo \"$(date)\"; \"bash\" -c 'cat > README.md'",
+  "x='a[$(cat > README.md)]'; (( x ))",
+  '[[ $(true) ]] && xargs tee README.md',
+]
+const COMMIT_HEREDOC = `git commit -m "$(cat <<'EOF'\nfix(020): a -> b, tee and bash in the text\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\nEOF\n)"`
+const PR_HEREDOC = `gh pr create --title "x" --body "$(cat <<'EOF'\n## Summary\n- a > b; sed, perl and sh -c in prose\nEOF\n)"`
+
+test('strictShell round 2: shells, wrappers, -c variants, stdin scripts and names in arithmetic are refused', async () => {
+  const { bashWrites, strictShell } = await import(pathToFileURL(join(project, 'scripts', 'lib', 'guard.mjs')).href)
+  const strict = (cmd) => strictShell(cmd, main, bashWrites(cmd, main))
+  for (const cmd of STRICT_ROUND2_DENIED) assert.equal(typeof strict(cmd), 'string', `refused: ${JSON.stringify(cmd)}`)
+  for (const cmd of [COMMIT_HEREDOC, PR_HEREDOC, 'echo "$(date)" > notes.md', 'if [[ $a > $b ]]; then :; fi', '(( 1 > 0 ))', 'npm run build > log.txt', "cat > plans/003-gamma.plan.md <<'EOF'\n# x\nEOF", 'mv plans/001-alpha.plan.md plans/done/001-alpha.plan.md']) {
+    assert.equal(strict(cmd), null, `passes: ${JSON.stringify(cmd)}`)
+  }
+})
+
+// (mv into plans/done/ is checked above at strictShell level only: on main the ordinary branch rule judges it.)
+test('strict guard round 2 on main: each bypass is denied; the commit/PR heredoc, a comparison and a plan write are allowed', () => {
+  for (const cmd of STRICT_ROUND2_DENIED) {
+    const r = bash(main, 'branch-guard.sh', cmd)
+    assert.equal(r.decision, 'deny', `${JSON.stringify(cmd)}: ${r.out}`)
+  }
+  for (const cmd of [COMMIT_HEREDOC, PR_HEREDOC, 'if [[ $a > $b ]]; then :; fi', '(( 1 > 0 ))', "cat > plans/003-gamma.plan.md <<'EOF'\n# x\nEOF"]) {
+    const r = bash(main, 'branch-guard.sh', cmd)
+    assert.equal(r.decision, 'allow', `${JSON.stringify(cmd)}: ${r.out}`)
   }
 })

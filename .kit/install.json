@@ -3,7 +3,7 @@
     "version": "1.4.0"
   },
   "source": "local:.",
-  "commit": "931f14c0e3a7aeb6b2f715d0c79755d9a9c55960",
+  "commit": "4388a389e3c48d5d17ad98b6c2a3fb36ad16dd65",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -345,7 +345,7 @@
       "source": "core/docs/agent/ship-regular.md"
     },
     "docs/agent/standards-git.md": {
-      "sha256": "1b6752742038d704a731cd0a193e88e4c0bbc2c53b4865adf1cb160a1a17bfc6",
+      "sha256": "b4244ecf18f75c46da656ee4dfdeee851eddfaf931c9b3faeda2e12eb3ee04ae",
       "kind": "managed",
       "source": "core/docs/agent/standards-git.md"
     },
@@ -525,7 +525,7 @@
       "source": "core/scripts/lib/fe-command.mjs"
     },
     "scripts/lib/guard.mjs": {
-      "sha256": "dd1f5418df2decdcbd6444549b4068c708dc6d157238cff2f599837ab3e25f30",
+      "sha256": "aa4593caf82c73a729503e74b05ea49d3b1fc6d8a0ca08756e7525267891addb",
       "kind": "managed",
       "source": "core/scripts/lib/guard.mjs"
     },

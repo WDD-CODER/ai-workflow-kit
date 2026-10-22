@@ -18,7 +18,8 @@
  *     cannot parse every shell construct — so a target it cannot resolve (a `$VAR` or `$(...)` path) is refused
  *     when this folder, the shell's folder or any worktree of the repository is guarded (fail closed). Strict mode
  *     (strictShell) is the backstop for the reader: a complex command ($(…), ${…}, backticks, <(…), [[, ((, $'…')
- *     that writes is refused there too unless every write is a top-level plain target the reader found. /ship's
+ *     that writes is refused there too unless every write is a top-level plain target the reader found, and it is
+ *     deny by default (no shell/interpreter/wrapper word, no name inside ((…))/[[ … ]], no `>` in a $(…)). /ship's
  *     scope gate and CI drift-check stay the backstop.
  *   - a check that cannot run (empty/unparseable input, no file path, an error, a sibling guard with no answer, a
  *     scope check that crashes) refuses the write when the folder concerned is guarded, and allows it otherwise.
@@ -621,22 +622,49 @@ export function bashWrites(command, cwd, env = process.env) {
 // fail-closed backstop on top of it, for a command that is COMPLEX (its raw text holds `$(`, a backtick, `${`, `<(`,
 // `>(`, `$'`, `$"`, `[[`, `((`, the word eval, or an odd number of ' or ") and WRITES (a `>` that is not a
 // /dev/null-style or fd redirect, or one of the words tee cp mv install touch dd truncate ln sed perl eval and the
-// shells). Both tests read the raw text and over-include on purpose. Such a command passes only when strictScan reads
-// it whole with a small, deliberately narrow grammar and finds that
+// shells). Both tests read the raw text and over-include on purpose. Such a command is judged DENY BY DEFAULT: it
+// passes only when strictScan reads it whole with a small, deliberately narrow grammar and finds that
 //   - every write is at the top level — a redirect, or tee/touch/truncate/cp/mv/install/ln/sed -i/perl -i as the
-//     command — never inside a `$(…)`, backticks, a `<(…)`/`>(…)`, an unquoted here-document or a nested `sh -c`;
+//     command name of a top-level simple command — never inside a `$(…)`, backticks, a `<(…)`/`>(…)` or an unquoted
+//     here-document;
 //   - every write target is a plain literal path (no `$`, backtick, glob or brace), and bashWrites found each one;
-//   - nothing it cannot read for sure is present: `$'…'`, `$"…"`, `${…}` other than `${NAME}`, eval, a `((…))`
-//     with parens/quotes/substitutions inside, a process substitution glued to text, a command name built at run
-//     time, dd, a shell reading stdin, an unclosed quote/construct or here-document.
+//   - no word anywhere (quoted or not, any level, path and .exe stripped) runs or hides other code: a shell (bash sh
+//     zsh dash ksh fish busybox …), eval, source, `.`, exec, let, dd, sed, perl, awk, python*, node, ruby, xargs,
+//     find, env, sudo, timeout, nice, nohup, command, builtin and similar wrappers/interpreters (DENY_WORDS), nor a
+//     write command anywhere but the command name above — so no `bash -c` / `-ce` / `-o x -c` variant, no script
+//     read from stdin, a here-document or /dev/fd, and no wrapper prefix can carry a write past the reader;
+//   - every `((…))`, `$((…))`, `$[…]` and `[[ … ]]` is pure numbers and operators: an identifier there can name a
+//     variable holding `a[$(cmd)]`, which bash runs while it evaluates the expression;
+//   - every `$(…)` / backtick body has no `>` redirect (only a `N>&M` duplication), no `<(…)`/`>(…)`, and none of
+//     the words above;
+//   - nothing it cannot read for sure is present: `$'…'`, `$"…"`, `${…}` other than `${NAME}`, a `((…))` with
+//     parens/quotes/substitutions inside, a process substitution glued to text, a command name built at run time or
+//     holding a glob/subscript, an unclosed quote/construct or here-document.
+// `<`/`>` that the reader took as comparisons inside `[[ … ]]` / `((…))` are not writes: a command that writes
+// nothing once they are set aside (`if [[ $a > $b ]]; then :; fi`, `(( a > b ))`) passes.
 // Anything else is refused on a guarded folder (decide): write the file with the Write/Edit tool, or use a plain
 // redirect to a literal path. A command that is not complex is judged exactly as before.
 
 const COMPLEX_RE = /\$\(|`|\$\{|<\(|>\(|\$'|\$"|\[\[|\(\(|(?:^|[^\w.-])eval(?![\w.-])/
 const SINK_REDIR_RE = /\d*>&\s*(?:\d+|-)(?![\w./-])|(?:&>>?|\d*>>?|>\|)\s*(?:\/dev\/(?:null|stdout|stderr|tty)|nul|NUL)(?![\w./-])/g
-const WRITE_WORD_RE = /(?:^|[^\w.-])(?:tee|cp|mv|install|touch|dd|truncate|ln|sed|perl|eval|bash|sh|zsh|dash|ksh)(?![\w.-])/
+const WRITE_WORD_RE = /(?:^|[^\w.-])(?:tee|cp|mv|install|touch|dd|truncate|ln|sed|perl|eval|bash|sh|zsh|dash|ksh|fish|busybox)(?![\w.-])/
 const STRICT_WRITE_CMDS = new Set(['tee', 'touch', 'truncate', 'cp', 'mv', 'install', 'ln'])
-const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh'])
+// Words that run, or hide, other code in a complex command that writes: shells, eval-likes, interpreters, wrappers.
+const DENY_WORDS = new Set([
+  ...['bash', 'sh', 'zsh', 'dash', 'ksh', 'fish', 'busybox', 'ash', 'mksh', 'csh', 'tcsh', 'pwsh', 'powershell', 'cmd'],
+  ...['eval', 'source', 'exec', 'let', 'dd', 'sed', 'perl', 'awk', 'gawk', 'mawk', 'nawk', 'node', 'nodejs', 'deno', 'bun'],
+  ...['ruby', 'php', 'lua', 'tclsh', 'py', 'pypy', 'pypy3', 'xargs', 'find', 'env', 'sudo', 'doas', 'su', 'timeout'],
+  ...['nice', 'ionice', 'nohup', 'command', 'builtin', 'stdbuf', 'setsid', 'chroot', 'flock', 'taskset', 'watch'],
+  ...['parallel', 'script', 'unbuffer', 'strace', 'nsenter', 'unshare'],
+])
+const denyWord = (b) => DENY_WORDS.has(b) || STRICT_WRITE_CMDS.has(b) || /^python[0-9.]*w?$/.test(b)
+// A word as a command name: no folder (/ or \), lower case, no .exe/.com/.bat/.cmd.
+const cmdBase = (w) =>
+  w
+    .slice(Math.max(w.lastIndexOf('/'), w.lastIndexOf('\\')) + 1)
+    .toLowerCase()
+    .replace(/\.(?:exe|com|bat|cmd)$/, '')
+const IDENT_RE = /[A-Za-z_]/
 const odd = (s, ch) => (s.split(ch).length - 1) % 2 === 1
 
 /** Does the raw command use a construct that can hide how it parses? */
@@ -657,15 +685,17 @@ const sfail = (why) => {
 }
 const isSpace = (c) => c === ' ' || c === '\t' || c === '\r'
 const isBreak = (c) => c === undefined || isSpace(c) || c === '\n' || ';&|()<>'.includes(c)
-const posixBase = (w) => w.slice(w.lastIndexOf('/') + 1)
 
 /**
  * Read a command with the strict grammar. Returns its top-level writes: [{ kind: 'redir', lit, abs }] and
  * [{ kind: 'cmd', name, args: [{ lit, abs }] }] (abs: the path from the shell's folder there, null when unknown);
  * throws StrictFail(<why>) on anything it cannot read for sure. level > 0: inside a substitution, where any write fails.
+ * facts collects what strictShell judges after the scan: deny (the deny-by-default reasons, in order) and cmp (the
+ * positions in the whole command of `<`/`>` read as comparisons); off: where src starts in the whole command.
  */
-function strictScan(src, level, cwd, env) {
+function strictScan(src, level, cwd, env, facts, off = 0) {
   const writes = []
+  const deny = (why) => void facts.deny.push(why)
   const pending = [] // here-documents waiting for the next newline: { delim, quoted, tabs, level }
   let pos = 0
   let dir = cwd == null ? null : nativePath(cwd, env)
@@ -691,6 +721,7 @@ function strictScan(src, level, cwd, env) {
       if (!m) sfail('a ${…} expansion other than ${NAME}')
       return void (pos += m[0].length)
     }
+    if (n === '[') deny('old-style arithmetic $[…]')
     const m = src.slice(pos).match(/^\$(?:[A-Za-z_][A-Za-z0-9_]*|[0-9@*#?$!-])/)
     pos += m ? m[0].length : 1
   }
@@ -701,14 +732,22 @@ function strictScan(src, level, cwd, env) {
     const body = src.slice(pos + 1, e)
     if (body.includes('\\')) sfail('a backslash inside backticks')
     if (pending.length && body.includes('\n')) sfail('a here-document and a multi-line substitution')
-    strictScan(body, lvl + 1, dir, env)
+    strictScan(body, lvl + 1, dir, env, facts, off + pos + 1)
     pos = e + 1
   }
-  // ((…)) at pos (the first `(`): plain arithmetic only — no parens, quotes, substitutions or braces inside.
+  // `<`/`>` in src[from, to) read as comparisons, not redirects.
+  const cmps = (from, to) => {
+    for (let i = from; i < to; i++) if (src[i] === '<' || src[i] === '>') facts.cmp.push(off + i)
+  }
+  // ((…)) at pos (the first `(`): plain arithmetic only — no parens, quotes, substitutions or braces inside, and
+  // (deny by default) no identifier: a variable holding `a[$(cmd)]` runs cmd when bash evaluates it.
   const arith = () => {
     const close = src.indexOf(')', pos + 2)
     if (close < 0 || src[close + 1] !== ')') sfail('a ((…)) that is not plain arithmetic')
-    if (/[()'"`\\{}\n]/.test(src.slice(pos + 2, close))) sfail('a ((…)) that is not plain arithmetic')
+    const body = src.slice(pos + 2, close)
+    if (/[()'"`\\{}\n]/.test(body)) sfail('a ((…)) that is not plain arithmetic')
+    if (IDENT_RE.test(body)) deny(`a name inside ((…)) (${body.trim()}): only numbers and operators`)
+    cmps(pos + 2, close)
     pos = close + 2
   }
   // "…" from pos (after the opening quote).
@@ -814,55 +853,36 @@ function strictScan(src, level, cwd, env) {
   // A simple command's words, judged when it ends.
   const command = (words, lvl) => {
     let k = 0
-    let viaPrefix = false
-    while (k < words.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[k].value) || PREFIXES.has(words[k].value) || RESERVED.has(words[k].value))) {
-      if (PREFIXES.has(words[k].value)) viaPrefix = true
-      k++
-    }
+    while (k < words.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[k].value) || PREFIXES.has(words[k].value) || RESERVED.has(words[k].value))) k++
     const argv = words.slice(k).filter((w) => !w.arith)
-    if (!argv.length) return
-    if (argv[0].dyn || argv[0].procsub) sfail(`a command name built at run time (${argv[0].raw})`)
-    const name = posixBase(argv[0].value)
+    const cmd0 = argv[0]
+    if (cmd0 && (cmd0.dyn || cmd0.procsub)) sfail(`a command name built at run time (${cmd0.raw})`)
+    const name = cmd0 ? cmdBase(cmd0.value) : ''
     const args = argv.slice(1)
-    if (name === 'eval') sfail('eval')
-    if (name === 'dd') sfail('dd')
+    // Deny by default: the plain write commands (and sed -i / perl -i) pass only as the command name of a top-level
+    // command no wrapper prefix runs; every other word that runs or hides code is refused, quoted or not.
+    const inPlace = (name === 'sed' || name === 'perl') && args.some((a) => /^-[a-zA-Z]*i/.test(a.value) || a.value.startsWith('--in-place'))
+    const plainWrite = lvl === 0 && (STRICT_WRITE_CMDS.has(name) || inPlace)
+    for (const w of words) {
+      if (w.arith || w.procsub) continue
+      if (w === cmd0 && plainWrite) continue
+      const b = cmdBase(w.value)
+      if (denyWord(b)) deny(`${b}${lvl > 0 ? ' inside a substitution' : ''} — a shell, interpreter, wrapper or write the guard cannot follow`)
+      else if (w === cmd0 && b === '.') deny('. (source)')
+      else if (w === cmd0 && w.glob && w.value !== '[') deny(`a command name with a glob or subscript (${w.raw})`)
+    }
+    if (!cmd0) return
     if (name === 'cd' || name === 'pushd' || name === 'popd') {
       const to = args.find((a) => !a.value.startsWith('-') || a.value === '-')
       dir = name === 'popd' || (to && (to.dyn || to.glob || to.value === '-')) ? null : to ? abs(to.value) : env.HOME || null
       return
     }
-    const shellAt = (j, atCmd) => {
-      const rest = args.slice(j)
-      const ci = rest.findIndex((a) => /^-[A-Za-z]*c$/.test(a.value))
-      if (ci < 0) {
-        if (!rest.some((a) => !a.value.startsWith('-'))) sfail(`${name} reading its commands from input`)
-        return
-      }
-      const body = rest[ci + 1]
-      if (!body || body.dyn) sfail('a shell -c body built at run time')
-      // The parser follows `bash -c <body>` at the top level: the body's writes must be plain too. Anywhere else
-      // (find -exec sh -c, a substitution) the body must not write at all.
-      if (atCmd && lvl === 0) writes.push(...strictScan(body.value, 0, dir, env))
-      else strictScan(body.value, lvl + 1, dir, env)
-    }
-    if (SHELLS.has(name)) return shellAt(0, true)
-    const inPlace = (name === 'sed' || name === 'perl') && args.some((a) => /^-[a-zA-Z]*i/.test(a.value) || a.value.startsWith('--in-place'))
-    if (STRICT_WRITE_CMDS.has(name) || inPlace) {
-      if (lvl > 0) sfail(`a write inside a substitution (${name})`)
+    if (plainWrite) {
       const files = args.filter((a) => !a.procsub && !DEV_SINKS.has(a.value))
       const bad = files.find((a) => a.dyn || a.glob)
       if (bad) sfail(`${name} with a target that is not a plain path (${bad.raw})`)
       const argAbs = (v) => (v.startsWith('--target-directory=') ? abs(v.slice(19)) : v.startsWith('-') ? null : abs(v))
       writes.push({ kind: 'cmd', name, args: files.map((a) => ({ lit: a.value, abs: argAbs(a.value) })) })
-      return
-    }
-    for (let j = 0; j < args.length; j++) {
-      const a = posixBase(args[j].value)
-      if (args[j].quoted) continue
-      if (SHELLS.has(a)) shellAt(j + 1, false)
-      else if (a === 'eval') sfail('eval')
-      // A write command behind a prefix with options (`sudo -u x cp`, `xargs -0 tee`): the parser cannot follow it.
-      else if (viaPrefix && (STRICT_WRITE_CMDS.has(a) || ['dd', 'sed', 'perl'].includes(a))) sfail(`${a} after ${argv[0].value}`)
     }
   }
   // Commands from pos until `closer` (')' ends a $(…) or <(…)) or the end of the text.
@@ -870,6 +890,7 @@ function strictScan(src, level, cwd, env) {
     let words = []
     let redirected = false
     let test = false
+    let testFrom = 0
     let parens = 0
     const end = () => {
       if (test) sfail('an unclosed [[')
@@ -900,6 +921,7 @@ function strictScan(src, level, cwd, env) {
       if ((c === '<' || c === '>') && src[pos + 1] === '(') {
         // A process substitution: a word of its own (never glued to text), its body a command one level down.
         if (!isBreak(src[pos - 1]) || src[pos - 1] === '<' || src[pos - 1] === '>') sfail('a process substitution glued to other text')
+        if (lvl > 0) deny('a process substitution inside a substitution')
         pos += 2
         list(lvl + 1, ')')
         if (!isBreak(src[pos])) sfail('a process substitution glued to other text')
@@ -907,6 +929,7 @@ function strictScan(src, level, cwd, env) {
         continue
       }
       if (test && (c === '<' || c === '>')) {
+        facts.cmp.push(off + pos)
         pos++ // a comparison inside [[ … ]]
         continue
       }
@@ -926,6 +949,8 @@ function strictScan(src, level, cwd, env) {
         if (!t.raw) sfail(`a ${op} redirect without a plain target`)
         if (op === '<' || op === '<<<' || op === '<&') continue
         if (op === '>&' && /^(\d+|-)$/.test(t.value) && !t.dyn) continue
+        // Inside a substitution only a `N>&M` duplication passes; any other `>`, even to /dev/null, is refused.
+        if (lvl > 0) deny(`a ${op} redirect inside a substitution (${op} ${t.raw})`)
         if (!t.dyn && DEV_SINKS.has(t.value)) continue
         if (lvl > 0) sfail(`a write inside a substitution (${op} ${t.raw})`)
         if (t.dyn || t.glob) sfail(`a write to a target that is not a plain path (${t.raw})`)
@@ -972,10 +997,16 @@ function strictScan(src, level, cwd, env) {
       // A word of digits right before a redirect is its fd number.
       if (/^\d+$/.test(w.raw) && (src[pos] === '>' || src[pos] === '<')) continue
       if (test) {
-        if (w.value === ']]' && !w.quoted) test = false
+        if (w.value === ']]' && !w.quoted) {
+          test = false
+          // Deny by default: `[[ … ]]` evaluates names arithmetically (-eq, -v a[…]), which runs a[$(cmd)].
+          const body = src.slice(testFrom, pos - w.raw.length)
+          if (IDENT_RE.test(body)) deny(`a name inside [[ … ]] (${body.trim()}): only numbers and operators`)
+        }
         continue
       }
       if (w.value === '[[' && !w.quoted && !redirected && words.every((x) => RESERVED.has(x.value) && !x.quoted)) {
+        testFrom = pos
         test = true
         words.push(w)
         continue
@@ -999,12 +1030,21 @@ export function strictShell(command, cwd, targets, env = process.env) {
   const cmd = String(command)
   if (!complexShell(cmd) || !shellWrites(cmd)) return null
   let writes
+  const facts = { deny: [], cmp: [] }
   try {
-    writes = strictScan(cmd, 0, cwd, env)
+    writes = strictScan(cmd, 0, cwd, env, facts)
   } catch (e) {
     if (e instanceof StrictFail) return e.message
     throw e
   }
+  // `<`/`>` the reader took as comparisons inside [[ … ]] / ((…)) are not writes: with them set aside, a command
+  // that no longer looks like it writes is not judged by strict mode (`if [[ $a > $b ]]; then :; fi`).
+  if (!writes.length && facts.cmp.length) {
+    const chars = cmd.split('') // UTF-16 units, as the positions are
+    for (const i of facts.cmp) chars[i] = ' '
+    if (!shellWrites(chars.join(''))) return null
+  }
+  if (facts.deny.length) return facts.deny[0]
   const paths = targets.filter((t) => t.path).map((t) => t.path)
   const found = (p, parentOk) => !!p && paths.some((t) => same(t, p) || (parentOk && same(dirname(t), p)))
   for (const w of writes) {
