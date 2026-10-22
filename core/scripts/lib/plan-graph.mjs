@@ -1,0 +1,224 @@
+/**
+ * Plan graph — the run order of a set of plans, as data. Used by plan-order.mjs (text and --json); the orchestrator
+ * reads that --json instead of hand-writing a dependency or lock table.
+ *
+ *   waves      plans that can start together, in order (wave N needs only plans of earlier waves)
+ *   lanes      chains of plans one worker can run back to back (each plan follows one of its dependencies)
+ *   conflicts  lock groups: plans with no dependency between them whose Read-Write Scopes overlap
+ *   edges      every edge with its reason: 'Depends-on:', 'prose prerequisite' or 'scope overlap: <glob>'
+ *
+ * Plain functions: the caller reads the plans, the merged set and the tracked files; this file only computes.
+ */
+import picomatch from 'picomatch'
+
+const trimSlash = (s) => s.replace(/\/+$/, '')
+const isUnder = (child, parent) => !parent || child === parent || child.startsWith(`${parent}/`)
+
+/**
+ * The glob two scope globs share, or null. "Share" means one plan's write could land on a file the other may write:
+ *   - the same glob, or a plain path the other glob matches -> that path;
+ *   - two globs: a known file (files = e.g. `git ls-files`) matched by both, the same static base, or a recursive
+ *     (**) glob whose base contains the other's base -> the more specific glob.
+ * It over-approximates for two globs with no known file in common: a lock group too many is safe, one too few is not.
+ */
+export function globsOverlap(a, b, files = []) {
+  if (a === b) return a
+  const sa = picomatch.scan(a)
+  const sb = picomatch.scan(b)
+  const opts = { dot: true }
+  if (!sa.isGlob && !sb.isGlob) return null
+  if (!sb.isGlob) return picomatch(a, opts)(b) ? b : null
+  if (!sa.isGlob) return picomatch(b, opts)(a) ? a : null
+  const baseA = trimSlash(sa.base)
+  const baseB = trimSlash(sb.base)
+  const specific = baseA.length >= baseB.length ? a : b
+  const ma = picomatch(a, opts)
+  const mb = picomatch(b, opts)
+  if (files.some((f) => ma(f) && mb(f))) return specific
+  if (baseA === baseB) return specific
+  if (isUnder(baseB, baseA) && sa.glob.includes('**')) return b
+  if (isUnder(baseA, baseB) && sb.glob.includes('**')) return a
+  return null
+}
+
+/**
+ * A plan's scope without the shared append-only files (hotspots, the i18n file): every plan may append there, so
+ * they never make two plans conflict. A hotspot ending in "/" means everything under it.
+ */
+export function scopeWithoutHotspots(globs, hotspots = []) {
+  const hs = hotspots.filter(Boolean).map((p) => (p.endsWith('/') ? `${p}**` : p))
+  if (!hs.length) return [...globs]
+  const isHot = picomatch(hs, { dot: true })
+  return globs.filter((g) => !hs.includes(g) && !isHot(g))
+}
+
+/**
+ * Compute the run order.
+ *   plans    [{ nnn, title, path, deps: [{ nnn, reason }], scope: [globs] | null }] — the plans to order
+ *   done     Map nnn -> why it counts as done (merged, closed, Status: done); a dependency on it is met
+ *   hotspots globs left out of the overlap
+ *   files    known files for the overlap test (optional)
+ * Returns { ok: true, waves, lanes, conflicts, edges, done } or { ok: false, error: 'cycle'|'missing', … }.
+ */
+export function computeOrder({ plans, done = new Map(), hotspots = [], files = [] }) {
+  const byNnn = new Map(plans.map((p) => [p.nnn, p]))
+  const edges = []
+  const missing = []
+  const needs = new Map(plans.map((p) => [p.nnn, new Set()]))
+  for (const p of plans) {
+    for (const d of p.deps) {
+      if (byNnn.has(d.nnn)) {
+        edges.push({ from: d.nnn, to: p.nnn, reason: d.reason })
+        needs.get(p.nnn).add(d.nnn)
+      } else if (done.has(d.nnn)) {
+        edges.push({ from: d.nnn, to: p.nnn, reason: d.reason, met: done.get(d.nnn) })
+      } else {
+        missing.push({ plan: p.nnn, dependency: d.nnn, reason: d.reason })
+      }
+    }
+  }
+  if (missing.length) return { ok: false, error: 'missing', missing }
+
+  // Waves: Kahn's algorithm, one level at a time.
+  const waves = []
+  const placed = new Map() // nnn -> wave index
+  let left = plans.map((p) => p.nnn)
+  while (left.length) {
+    const ready = left.filter((n) => [...needs.get(n)].every((d) => placed.has(d))).sort()
+    if (!ready.length) return { ok: false, error: 'cycle', cycle: findCycle(left, needs) }
+    for (const n of ready) placed.set(n, waves.length)
+    waves.push(ready)
+    left = left.filter((n) => !placed.has(n))
+  }
+
+  // Lanes: a plan continues the lane of its first dependency whose lane still ends with that dependency.
+  const lanes = []
+  const laneOf = new Map()
+  for (const wave of waves) {
+    for (const n of wave) {
+      const deps = [...needs.get(n)].sort()
+      const li = deps.map((d) => laneOf.get(d)).find((i, k) => lanes[i][lanes[i].length - 1] === deps[k])
+      if (li !== undefined) {
+        lanes[li].push(n)
+        laneOf.set(n, li)
+      } else {
+        laneOf.set(n, lanes.length)
+        lanes.push([n])
+      }
+    }
+  }
+
+  // Conflicts: overlapping scope between plans with no dependency path either way -> one lock group (union-find).
+  const ancestors = new Map()
+  const ancestorsOf = (n) => {
+    if (ancestors.has(n)) return ancestors.get(n)
+    const set = new Set()
+    for (const d of needs.get(n)) {
+      set.add(d)
+      for (const a of ancestorsOf(d)) set.add(a)
+    }
+    ancestors.set(n, set)
+    return set
+  }
+  const parent = new Map(plans.map((p) => [p.nnn, p.nnn]))
+  const root = (n) => (parent.get(n) === n ? n : root(parent.get(n)))
+  const scopes = new Map(plans.map((p) => [p.nnn, scopeWithoutHotspots(p.scope || [], hotspots)]))
+  const lockGlobs = new Map()
+  const ordered = plans.map((p) => p.nnn).sort()
+  for (let i = 0; i < ordered.length; i++) {
+    for (let j = i + 1; j < ordered.length; j++) {
+      const a = ordered[i]
+      const b = ordered[j]
+      if (ancestorsOf(a).has(b) || ancestorsOf(b).has(a)) continue
+      const shared = new Set()
+      for (const ga of scopes.get(a)) for (const gb of scopes.get(b)) {
+        const g = globsOverlap(ga, gb, files)
+        if (g) shared.add(g)
+      }
+      if (!shared.size) continue
+      for (const g of [...shared].sort()) edges.push({ from: a, to: b, reason: `scope overlap: ${g}`, lock: true })
+      const [ra, rb] = [root(a), root(b)]
+      if (ra !== rb) parent.set(rb, ra)
+      const r = root(a)
+      const globs = new Set([...(lockGlobs.get(ra) || []), ...(lockGlobs.get(rb) || []), ...shared])
+      lockGlobs.delete(ra)
+      lockGlobs.delete(rb)
+      lockGlobs.set(r, globs)
+    }
+  }
+  const groups = new Map()
+  for (const n of ordered) {
+    const r = root(n)
+    if (!lockGlobs.has(r)) continue
+    if (!groups.has(r)) groups.set(r, [])
+    groups.get(r).push(n)
+  }
+  const conflicts = [...groups].map(([r, members]) => ({ plans: members, globs: [...lockGlobs.get(r)].sort() }))
+  const waveLocks = waves.map((wave) => lockGroupsWithin(wave, edges))
+
+  // Only the done plans this order relies on (a met dependency), not every plan ever merged.
+  const metDone = Object.fromEntries([...done].filter(([n]) => edges.some((e) => e.met && e.from === n)))
+  return { ok: true, waves, lanes, conflicts, waveLocks, edges, done: metDone }
+}
+
+// Lock groups among the plans of one wave: only the overlap edges between two of them, and only their globs.
+function lockGroupsWithin(wave, edges) {
+  const parent = new Map(wave.map((n) => [n, n]))
+  const root = (n) => (parent.get(n) === n ? n : root(parent.get(n)))
+  const inWave = edges.filter((e) => e.lock && parent.has(e.from) && parent.has(e.to))
+  for (const e of inWave) parent.set(root(e.to), root(e.from))
+  const groups = new Map()
+  for (const e of inWave) {
+    const r = root(e.from)
+    if (!groups.has(r)) groups.set(r, { plans: new Set(), globs: new Set() })
+    groups.get(r).plans.add(e.from).add(e.to)
+    groups.get(r).globs.add(e.reason.replace(/^scope overlap: /, ''))
+  }
+  return [...groups.values()].map((g) => ({ plans: [...g.plans].sort(), globs: [...g.globs].sort() }))
+}
+
+// The plans of one cycle among the plans Kahn's algorithm could not place, in dependency order, first plan repeated.
+function findCycle(left, needs) {
+  const inLeft = new Set(left)
+  const state = new Map()
+  const stack = []
+  const visit = (n) => {
+    state.set(n, 'open')
+    stack.push(n)
+    for (const d of [...needs.get(n)].sort()) {
+      if (!inLeft.has(d)) continue
+      if (state.get(d) === 'open') return [...stack.slice(stack.indexOf(d)), d]
+      if (!state.has(d)) {
+        const c = visit(d)
+        if (c) return c
+      }
+    }
+    stack.pop()
+    state.set(n, 'closed')
+    return null
+  }
+  for (const n of [...left].sort()) {
+    if (state.has(n)) continue
+    const c = visit(n)
+    if (c) return c.reverse()
+  }
+  return [...left].sort()
+}
+
+/** The text report: one line per wave, with the lock groups that fall inside it. */
+export function formatOrder(order, titles = {}) {
+  const lines = []
+  for (const [n, why] of Object.entries(order.done)) lines.push(`DONE: ${n} (${why})`)
+  order.waves.forEach((wave, i) => {
+    const locks = order.waveLocks[i].map((c) => `lock group${order.waveLocks[i].length > 1 ? ` ${c.plans.join('+')}` : ''}: ${c.globs.join(', ')}`)
+    lines.push(`WAVE ${i + 1}: ${wave.join(', ')}${locks.length ? ` (${locks.join('; ')})` : ''}`)
+  })
+  order.lanes.forEach((lane, i) => lines.push(`LANE ${i + 1}: ${lane.join(' -> ')}`))
+  for (const c of order.conflicts) lines.push(`CONFLICT: ${c.plans.join(', ')} share ${c.globs.join(', ')}`)
+  for (const e of order.edges) {
+    if (e.lock) continue
+    const t = titles[e.from] ? ` (${titles[e.from]})` : ''
+    lines.push(`EDGE: ${e.from}${t} -> ${e.to}: ${e.reason}${e.met ? ` — met: ${e.met}` : ''}`)
+  }
+  return lines.join('\n')
+}

@@ -42,7 +42,15 @@
  * project that keeps its own .gitignore claims a plan (runtime files in .git/info/exclude); pre-push accepts a
  * closed plan in a range folder and refuses code; a project without
  * husky (core.hooksPath=.husky only) runs the hooks: the first commit passes, a staged fake key is refused;
- * SessionStart prints valid JSON on each branch (idle slot, worker without and with a session-state file).
+ * SessionStart prints valid JSON on each branch (idle slot, worker without and with a session-state file);
+ * plan order (plan 011): tools/test/plan-order.test.mjs against the installed scripts, plan-order adds an open
+ * dependency to the order, take-plan refuses a plan whose Depends-on: plan is not merged (NOT_READY) and takes one
+ * whose dependency is closed; role agents (plan 013): tools/test/agent-contracts.test.mjs against the installed agents;
+ * agent evals (plan 019): tools/test/agent-eval.test.mjs scores the installed agents with a stub runner;
+ * write guards (plan 017): tools/test/guards.test.mjs against the installed scripts (a main-folder session writing
+ * into a slot, main, runtime files, Bash writes, merge folders, run time); the orchestrator: tools/test/orchestrator.test.mjs
+ * against the installed scripts and tools/orchestrator-e2e.mjs (the installed workflow run with stub role agents);
+ * the [ui] tier (plan 018): tools/test/ui-tier.test.mjs against the installed scripts (tag lint, UI preflight, grid).
  * Exit 0 = every case passed, 1 = failures (one line per case).
  */
 import { writeFileSync, readFileSync, mkdtempSync, mkdirSync, rmSync, existsSync, readdirSync, realpathSync, symlinkSync, lstatSync, copyFileSync } from 'fs'
@@ -104,7 +112,12 @@ const sh = (cmd, args, cwd, input) => {
 const git = (cwd, ...args) => sh('git', args, cwd)
 const node = (cwd, ...args) => sh(process.execPath, args, cwd)
 const npm = (cwd, cmd) => spawnSync(cmd, { cwd, env, encoding: 'utf8', shell: true })
-const tail = (s) => s.trim().split(/\r?\n/).slice(-3).join(' | ')
+// The last 3 lines, plus any failing TAP test lines and their error message, so a CI failure names the test.
+const tail = (s) => {
+  const lines = s.trim().split(/\r?\n/)
+  const failed = lines.flatMap((l, i) => (/^\s*not ok \d+/.test(l) ? [l] : /^\s*error: /.test(l) ? lines.slice(i, i + 4).map((x) => x.trim()) : [])).slice(0, 24)
+  return [...failed, ...lines.slice(-3)].join(' | ')
+}
 // True when nothing listens on `port` (a listen attempt succeeds); retried while a stop settles.
 const portFree = (port) => {
   for (let i = 0; i < 20; i++) {
@@ -154,6 +167,26 @@ function main() {
   check('install lists no Node built-in as a devDependency', !/npm install -D [^\n]*\bnet\b/.test(inst.out), tail(inst.out))
   check('install --install-deps installs the workflow scripts\' own dependencies (scripts/package.json)',
     /installed the workflow scripts' dependencies/.test(inst.out) && existsSync(join(proj, 'scripts', 'package-lock.json')) && !/npm install -D [^\n]*\bpicomatch\b/.test(inst.out), tail(inst.out))
+  // Plan order (plan 011): the unit and fixture tests, run against this project's installed scripts/.
+  const pot = spawnSync(process.execPath, ['--test', '--test-reporter=tap', join(kit, 'tools', 'test', 'plan-order.test.mjs')], { cwd: proj, env: { ...env, PLAN_ORDER_ROOT: proj }, encoding: 'utf8' })
+  check('plan-order tests pass against the installed scripts (node --test tools/test/plan-order.test.mjs)', pot.status === 0 && /# fail 0/.test(`${pot.stdout}`), tail(`${pot.stdout}${pot.stderr}`))
+  // Role agents (plan 013): each installed orch-* agent's documented result passes the shared validator.
+  const act = spawnSync(process.execPath, ['--test', '--test-reporter=tap', join(kit, 'tools', 'test', 'agent-contracts.test.mjs')], { cwd: proj, env: { ...env, AGENT_CONTRACTS_ROOT: proj }, encoding: 'utf8' })
+  check('agent contract tests pass against the installed agents (node --test tools/test/agent-contracts.test.mjs)', act.status === 0 && /# fail 0/.test(`${act.stdout}`), tail(`${act.stdout}${act.stderr}`))
+  // Agent evals: the harness scores the installed checker and verifier agents on the kit fixture cases (stub runner,
+  // no model call), and the case-shape doc is installed.
+  const aev = spawnSync(process.execPath, ['--test', '--test-reporter=tap', join(kit, 'tools', 'test', 'agent-eval.test.mjs')], { cwd: proj, env: { ...env, AGENT_EVAL_ROOT: proj }, encoding: 'utf8' })
+  check('agent eval tests pass against the installed agents (node --test tools/test/agent-eval.test.mjs)', aev.status === 0 && /# fail 0/.test(`${aev.stdout}`) && existsSync(join(proj, 'docs', 'agent', 'agent-evals.md')), tail(`${aev.stdout}${aev.stderr}`))
+  // Write guards (plan 017): the hook scripts, run on a scratch repo built from this project's installed scripts/.
+  const gt = spawnSync(process.execPath, ['--test', '--test-reporter=tap', join(kit, 'tools', 'test', 'guards.test.mjs')], { cwd: proj, env: { ...env, GUARDS_ROOT: proj }, encoding: 'utf8' })
+  check('write-guard tests pass against the installed scripts (node --test tools/test/guards.test.mjs)', gt.status === 0 && /# fail 0/.test(`${gt.stdout}`), tail(`${gt.stdout}${gt.stderr}`))
+  // The orchestrator: its pure rules against the installed scripts, then a whole run with stub role agents.
+  const ot = spawnSync(process.execPath, ['--test', '--test-reporter=tap', join(kit, 'tools', 'test', 'orchestrator.test.mjs')], { cwd: proj, env: { ...env, ORCH_ROOT: proj }, encoding: 'utf8' })
+  check('orchestrator tests pass against the installed scripts (node --test tools/test/orchestrator.test.mjs)', ot.status === 0 && /# fail 0/.test(`${ot.stdout}`), tail(`${ot.stdout}${ot.stderr}`))
+  const ut = spawnSync(process.execPath, ['--test', '--test-reporter=tap', join(kit, 'tools', 'test', 'ui-tier.test.mjs')], { cwd: proj, env: { ...env, UI_TIER_ROOT: proj }, encoding: 'utf8' })
+  check('[ui] tier tests pass against the installed scripts (node --test tools/test/ui-tier.test.mjs)', ut.status === 0 && /# fail 0/.test(`${ut.stdout}`), tail(`${ut.stdout}${ut.stderr}`))
+  const oe = node(kit, join(kit, 'tools', 'orchestrator-e2e.mjs'), '--deps-from', join(proj, 'scripts', 'node_modules'))
+  check('orchestrator run end to end with stub agents (node tools/orchestrator-e2e.mjs)', oe.status === 0 && /ORCHESTRATOR_E2E: ok/.test(oe.out), tail(oe.out))
   npm(proj, 'npm run -s prepare')
   git(proj, 'add', '-A')
   const c0 = git(proj, 'commit', '-q', '-m', 'chore: install the workflow kit')
@@ -300,11 +333,22 @@ function main() {
 
   // A claim commit that a pre-commit hook refuses leaves the slot as it was: detached, idle, no branch, clean.
   const plan2Rel = 'plans/002-second-script.plan.md'
-  writeFileSync(join(proj, plan2Rel), plan.replace('# Plan 001 — Hello Script', '# Plan 002 — Second Script')
-    .replace(`Snapshot: ${snap}`, `Snapshot: ${git(proj, 'rev-parse', 'origin/main').out.trim()}`).replace('H1:', 'S1:'))
-  git(proj, 'add', plan2Rel)
-  git(proj, 'commit', '-q', '-m', 'plan(002): second script')
+  // Plan order (plan 011): 002 depends on 001 (closed above); 003 depends on 004, which still has an open sub-task.
+  const snap2 = git(proj, 'rev-parse', 'origin/main').out.trim()
+  const planN = (n, title, dep) => plan.replace('# Plan 001 — Hello Script', `# Plan ${n} — ${title}`)
+    .replace(`Snapshot: ${snap}`, `Snapshot: ${snap2}`).replace('Status: draft', `Status: draft\nDepends-on: ${dep}`).replace('H1:', `S${n}:`)
+  writeFileSync(join(proj, plan2Rel), planN('002', 'Second Script', '001'))
+  writeFileSync(join(proj, 'plans/003-third-script.plan.md'), planN('003', 'Third Script', '004'))
+  writeFileSync(join(proj, 'plans/004-fourth-script.plan.md'), planN('004', 'Fourth Script', 'none'))
+  git(proj, 'add', 'plans')
+  git(proj, 'commit', '-q', '-m', 'plan(002,003,004): second, third and fourth script')
   const pp2 = git(proj, 'push', '-q', 'origin', 'main')
+  const po = node(proj, 'scripts/plan-order.mjs', '002', '003')
+  check('plan-order: 002 and the open dependency 004 first, then 003 (001 is closed)',
+    po.status === 0 && /^WAVE 1: 002, 004\b/m.test(po.out) && /^WAVE 2: 003$/m.test(po.out) && /^ADDED: 004 /m.test(po.out) && /^DONE: 001 \(closed: /m.test(po.out), tail(po.out))
+  const notReady = node(slot2, 'scripts/take-plan.mjs', '003')
+  check('take-plan refuses 003 by name: NOT_READY: plan 004 (Fourth Script) is not merged; the slot stays idle',
+    notReady.status !== 0 && /NOT_READY: plan 004 \(Fourth Script\) is not merged/.test(notReady.out) && git(slot2, 'branch', '--show-current').out.trim() === '', tail(notReady.out))
   const failHooks = join(root, 'failing-hooks')
   mkdirSync(failHooks, { recursive: true })
   writeFileSync(join(failHooks, 'pre-commit'), '#!/bin/sh\necho "pre-commit: refused by the e2e fixture" >&2\nexit 1\n', { mode: 0o755 })
@@ -316,7 +360,7 @@ function main() {
   check('a refused claim commit rolls back: slot detached and idle, no branch left, clean tree',
     pp2.status === 0 && tpFail.status !== 0 && /TAKE_PLAN: claim commit failed: /.test(failOut) && idle && clean, tail(failOut))
   const tpRetry = node(slot2, 'scripts/take-plan.mjs', '002')
-  check('after the rollback the same slot claims the plan normally', tpRetry.status === 0 && /OK plan=002 branch=feat\/002-second-script/.test(tpRetry.out), tail(tpRetry.out))
+  check('after the rollback the same slot claims the plan normally (its Depends-on: 001 is closed, so it is ready)', tpRetry.status === 0 && /OK plan=002 branch=feat\/002-second-script/.test(tpRetry.out), tail(tpRetry.out))
 
   // A fresh plain clone of a project that keeps its own .gitignore (an override): the slot's runtime files go to
   // .git/info/exclude, so take-plan is not refused for them.

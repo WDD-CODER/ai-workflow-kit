@@ -337,7 +337,7 @@ for (const fx of fixtures) {
   }
   const review = read(dir, '.claude/commands/review-it.md')
   const logs = fx.name === 'angular-express-cursor'
-  if (logs !== review.includes(`   - **Logs**: Run \`${WORDING.logQuery}\`. Any entry not explained by the milestone fails the review.`) || logs !== review.includes(`| Logs | PASS/FAIL | ${WORDING.logQuery} |`) || (!logs && review.includes('Logs'))) fail(`${fx.name}: /review-it must have the Logs check only with commands.logQuery`)
+  if (logs !== review.includes(`   - **Logs**: Run \`${WORDING.logQuery}\`. Any entry not explained by the plan fails the review.`) || logs !== review.includes(`| Logs | PASS/FAIL | ${WORDING.logQuery} |`) || (!logs && review.includes('Logs'))) fail(`${fx.name}: /review-it must have the Logs check only with commands.logQuery`)
   if (fx.name === 'angular-cursor') {
     if (!agents.includes('Signals only')) fail(`${fx.name}: AGENTS.md is missing the angular pack's hard rules`)
     if (!agents.includes('angularComponentStructure')) fail(`${fx.name}: AGENTS.md is missing the angular skill triggers`)
@@ -895,6 +895,59 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   rmSync(mb, { recursive: true, force: true })
 }
 
+// orchestrator.* (docs/agent/orchestrator.md): the installer ships the workflow folder, the /orchestrate command and
+// the run rules; the three keys render with their defaults; a project value renders; a bad value is refused naming
+// the key (install exit 2, nothing written; sync STOP).
+{
+  const od = tmp('orch-default')
+  writeFileSync(join(od, 'kit.config.json'), JSON.stringify(CORE_CFG))
+  const r = run('install.mjs', ['--target', od])
+  if (r.status !== 0) fail(`install for the orchestrator files: exit ${r.status}, ${(r.stdout + r.stderr).trim().split('\n').pop()}`)
+  else {
+    for (const f of ['.claude/workflows/orchestrate.js', '.claude/commands/orchestrate.md', 'docs/agent/orchestrator.md', 'scripts/orch-state.mjs', 'scripts/orch-preflight.mjs', 'scripts/lib/orch-run.mjs']) {
+      if (!existsSync(join(od, f))) fail(`orchestrator: install did not copy ${f}`)
+    }
+    const wf = read(od, '.claude/workflows/orchestrate.js')
+    if (!wf.includes('const MAX_FIX_ROUNDS = 2') || !wf.includes('const RUN_PREFIX = "orch/"')) fail('orchestrator: orchestrate.js does not render maxFixRounds 2 / runBranchPrefix "orch/"')
+    if (/\{\{[\w.|]+\}\}/.test(wf)) fail(`orchestrator: orchestrate.js keeps a placeholder: ${/\{\{[\w.|]+\}\}/.exec(wf)[0]}`)
+    if (!read(od, 'scripts/orch-state.mjs').includes('const MIN_FREE_GB = 5')) fail('orchestrator: orch-state.mjs does not render minFreeDiskGb 5')
+    const doc = read(od, 'docs/agent/orchestrator.md')
+    if (!doc.includes('| `runBranchPrefix` | `orch/` |') || !doc.includes('| `maxFixRounds` | `2` |') || !doc.includes('| `minFreeDiskGb` | `5` |')) fail('orchestrator: orchestrator.md does not name the default settings')
+    if (!/^\.claude\/orchestrator-runs\/$/m.test(read(od, '.gitignore'))) fail('orchestrator: the rendered .gitignore does not ignore .claude/orchestrator-runs/')
+  }
+  rmSync(od, { recursive: true, force: true })
+
+  const op = tmp('orch-project')
+  writeFileSync(join(op, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, orchestrator: { runBranchPrefix: 'runs/', maxFixRounds: 3, minFreeDiskGb: 10 } }))
+  const p = run('install.mjs', ['--target', op])
+  if (p.status !== 0) fail(`install with project orchestrator values: exit ${p.status}`)
+  else if (!read(op, '.claude/workflows/orchestrate.js').includes('const MAX_FIX_ROUNDS = 3') || !read(op, '.claude/workflows/orchestrate.js').includes('const RUN_PREFIX = "runs/"') || !read(op, 'scripts/orch-state.mjs').includes('const MIN_FREE_GB = 10')) fail('orchestrator: project values do not render')
+  rmSync(op, { recursive: true, force: true })
+
+  const bad = [
+    [{ runBranchPrefix: 'Orch' }, 'orchestrator.runBranchPrefix is "Orch" — it must be lower-case letters, digits, dots, dashes and slashes ending with "/"'],
+    [{ runBranchPrefix: 'main/' }, 'orchestrator.runBranchPrefix is "main/"'],
+    [{ maxFixRounds: 0 }, 'orchestrator.maxFixRounds is 0 — it must be a whole number from 1 to 5'],
+    [{ maxFixRounds: '2' }, 'orchestrator.maxFixRounds is "2" — it must be a whole number from 1 to 5'],
+    [{ minFreeDiskGb: -1 }, 'orchestrator.minFreeDiskGb is -1 — it must be a number of GB from 0 to 1000'],
+  ]
+  for (const [orch, msg] of bad) {
+    const ob = tmp('orch-bad')
+    writeFileSync(join(ob, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, orchestrator: orch }))
+    const b = run('install.mjs', ['--target', ob])
+    if (b.status !== 2 || !b.stderr.includes(msg) || files(ob).length !== 1) fail(`install with orchestrator ${JSON.stringify(orch)}: exit ${b.status}, ${b.stderr.trim().split('\n')[0]}`)
+    rmSync(ob, { recursive: true, force: true })
+  }
+  // sync refuses a bad value too, naming the key.
+  const os = tmp('orch-sync')
+  writeFileSync(join(os, 'kit.config.json'), JSON.stringify(CORE_CFG))
+  run('install.mjs', ['--target', os])
+  writeFileSync(join(os, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, orchestrator: { maxFixRounds: 9 } }))
+  const s = run('sync.mjs', ['--target', os, '--apply'])
+  if (s.status !== 2 || !s.stderr.includes('KIT_SYNC: STOP — orchestrator.maxFixRounds is 9')) fail(`sync with orchestrator.maxFixRounds 9: exit ${s.status}, ${s.stderr.trim().split('\n')[0]}`)
+  rmSync(os, { recursive: true, force: true })
+}
+
 // models.* (docs/agent/model-routing.md): the tiers render into the agent and forked-skill frontmatter; no inline
 // command carries a `model:` (a model switch breaks the prompt cache); all tiers inherit = routing off; a value that is
 // not a model alias or a claude- id is refused like a bad ci.* mode.
@@ -907,6 +960,28 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
       if (got.length !== 1 || got[0] !== tier) fail(`${label}: ${f} should carry model: ${tier}, got ${JSON.stringify(got)}`)
     }
   }
+  // The role agents (docs/agent/agent-roles.md) and their default tiers.
+  const ORCH_DEFAULTS = {
+    '.claude/agents/orch-builder.md': 'sonnet', '.claude/agents/orch-readiness.md': 'inherit',
+    '.claude/agents/orch-gate.md': 'haiku', '.claude/agents/orch-report.md': 'haiku',
+    '.claude/agents/orch-check-plan.md': 'sonnet', '.claude/agents/orch-check-bugs.md': 'sonnet', '.claude/agents/orch-check-rules.md': 'sonnet',
+    '.claude/agents/orch-verify.md': 'sonnet', '.claude/agents/orch-security.md': 'sonnet', '.claude/agents/orch-ui.md': 'sonnet',
+    '.claude/agents/orch-merge.md': 'sonnet',
+  }
+  // Every agent file pins model: and effort: and has no empty tools:; the builder cannot start agents or message
+  // anyone; no role agent names a deny-listed command.
+  const agentContract = (dir, label) => {
+    const agents = files(dir).filter((f) => /^\.claude\/agents\/[^/]+\.md$/.test(f))
+    for (const f of agents) {
+      const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(read(dir, f))?.[1] ?? ''
+      if (!/^model:\s*\S+\s*$/m.test(fm) || !/^effort:\s*\S+\s*$/m.test(fm)) fail(`${label}: ${f} must pin model: and effort: in its frontmatter`)
+      if (/^tools:\s*$/m.test(fm)) fail(`${label}: ${f} has an empty tools:`)
+    }
+    const tools = (/^tools:\s*(.*)$/m.exec(read(dir, '.claude/agents/orch-builder.md'))?.[1] ?? '').split(',').map((t) => t.trim())
+    if (tools.includes('Agent') || tools.includes('SendMessage')) fail(`${label}: orch-builder tools must not include Agent or SendMessage (${tools.join(', ')})`)
+    const deny = /reset --hard|push --force|push -f\b|\brm -rf?\b/
+    for (const f of agents.filter((x) => x.startsWith('.claude/agents/orch-'))) if (deny.test(read(dir, f))) fail(`${label}: ${f} names a deny-listed command (${deny.exec(read(dir, f))[0]})`)
+  }
   const md = tmp('models')
   writeFileSync(join(md, 'kit.config.json'), JSON.stringify(CORE_CFG))
   const d = run('install.mjs', ['--target', md])
@@ -915,7 +990,9 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     expect(md, 'default models', {
       '.claude/agents/kit-runner.md': 'haiku', '.claude/agents/git-agent.md': 'haiku', '.claude/agents/kit-prevalidate.md': 'sonnet',
       '.claude/skills/github-sync/SKILL.md': 'haiku', '.claude/skills/techdebt/SKILL.md': 'sonnet',
+      ...ORCH_DEFAULTS,
     })
+    agentContract(md, 'default models')
     const inline = modelLines(md).filter(([f]) => f.startsWith('.claude/commands/'))
     if (inline.length) fail(`an inline command carries model: (cache break): ${inline.map(([f]) => f).join(', ')}`)
     const inlineSkills = modelLines(md).filter(([f]) => /^\.claude\/skills\/[^/]+\/SKILL\.md$/.test(f) && !/^context:\s*fork\s*$/m.test(read(md, f)))
@@ -929,11 +1006,12 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     if (/MODEL_ROUTING:/.test(hook({ CLAUDE_CODE_SUBAGENT_MODEL_FORCE: '0' }))) fail('SessionStart warns about CLAUDE_CODE_SUBAGENT_MODEL_FORCE=0')
     if (!read(md, '.claude/commands/docs-refresh.md').includes('model: "sonnet"') && read(md, '.claude/commands/docs-refresh.md').includes('Agent(')) fail('docs-refresh: the Agent call does not pass the analysis tier')
     if (!read(md, 'docs/agent/model-routing.md').includes('| `mechanical` | `haiku` |')) fail('model-routing.md does not name the project tier values')
+    if (!read(md, 'docs/agent/model-routing.md').includes('| `build` | `sonnet` |')) fail('model-routing.md does not name the build tier value')
   }
   rmSync(md, { recursive: true, force: true })
 
   const mi = tmp('models-inherit')
-  writeFileSync(join(mi, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { mechanical: 'inherit', analysis: 'inherit', judgment: 'inherit' } }))
+  writeFileSync(join(mi, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { mechanical: 'inherit', analysis: 'inherit', judgment: 'inherit', build: 'inherit' } }))
   const i = run('install.mjs', ['--target', mi])
   const notInherit = i.status === 0 ? modelLines(mi).filter(([, v]) => v !== 'inherit') : []
   if (i.status !== 0 || !modelLines(mi).length || notInherit.length) fail(`all tiers inherit must render only model: inherit (routing off): exit ${i.status}, others ${JSON.stringify(notInherit)}`)
@@ -945,6 +1023,23 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   if (p.status !== 0) fail(`install with models.mechanical claude-haiku-5-5: exit ${p.status}`)
   else expect(mp, 'project model id', { '.claude/agents/kit-runner.md': 'claude-haiku-5-5', '.claude/agents/kit-prevalidate.md': 'sonnet' })
   rmSync(mp, { recursive: true, force: true })
+
+  // models.build: one key sets the builder's model; every other role agent keeps its tier.
+  const mbp = tmp('models-build')
+  writeFileSync(join(mbp, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { build: 'opus' } }))
+  const bp = run('install.mjs', ['--target', mbp])
+  if (bp.status !== 0) fail(`install with models.build opus: exit ${bp.status}`)
+  else {
+    expect(mbp, 'project models.build', { ...ORCH_DEFAULTS, '.claude/agents/orch-builder.md': 'opus' })
+    agentContract(mbp, 'project models.build')
+  }
+  rmSync(mbp, { recursive: true, force: true })
+
+  const mbb = tmp('models-build-bad')
+  writeFileSync(join(mbb, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { build: 'gpt-4' } }))
+  const bb = run('install.mjs', ['--target', mbb])
+  if (bb.status !== 2 || !bb.stderr.includes('models.build is "gpt-4" — allowed: "haiku", "sonnet", "opus", "fable", "inherit" or a full model id starting "claude-"') || files(mbb).length !== 1) fail(`install with models.build gpt-4: exit ${bb.status}, ${bb.stderr.trim().split('\n')[0]}`)
+  rmSync(mbb, { recursive: true, force: true })
 
   const mb = tmp('models-bad')
   writeFileSync(join(mb, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { analysis: 'gpt-4' } }))

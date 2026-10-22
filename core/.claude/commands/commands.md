@@ -41,6 +41,7 @@ Show all registered slash commands with short descriptions and file locations.
 | `/feat` | New-feature path — rules, `/plan`, Contractor + `/review-it` | `.claude/commands/feat.md` | FLOW | SHARED |
 | `/fix` | Bug fix path — matching rules + quality pass | `.claude/commands/fix.md` | FLOW | SHARED |
 | `/fix-pr-checks` | Bounded PR CI/security fix loop (2 rounds max) | `.claude/commands/fix-pr-checks.md` | FLOW | SHARED |
+| `/orchestrate` | Opt-in: run saved plans unattended into one run branch (readiness questions in one batch; the Human merges) | `.claude/commands/orchestrate.md` | FLOW | CC |
 | `/plan` | Planning / Plan Contract path | `.claude/commands/plan.md` | FLOW | SHARED |
 | `/workflow-report` | Workflow report (not the feature) before `/clear` — feeds the next kit round | `.claude/commands/workflow-report.md` | UTIL | SHARED |
 | `/refactor` | Refactor path — {{stack.name}}/domain rules, styling skill, techdebt | `.claude/commands/refactor.md` | FLOW | SHARED |

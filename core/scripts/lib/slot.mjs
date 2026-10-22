@@ -8,6 +8,7 @@
  * Usage:
  *   node scripts/lib/slot.mjs --describe
  *   node scripts/lib/slot.mjs --list
+ *   node scripts/lib/slot.mjs --scoped-plan   the plan whose scope governs this folder (empty line: none)
  */
 import { readFileSync, existsSync } from 'fs'
 import { execFileSync } from 'child_process'
@@ -67,6 +68,21 @@ export function activePlanPath() {
   return fromBranch && stale ? fromBranch : rel
 }
 
+/**
+ * The plan whose Read-Write Scope governs this folder, or null: a slot's active plan; outside a slot, on a branch
+ * other than {{git.mainBranch}}, the plan .worktree-plan names (a run's merge folder, e.g. orch/<run>), else the plan a
+ * <type>/NNN-<slug> branch names. Shared by ship-prep.mjs (the /ship scope gate) and scripts/lib/guard.mjs (the hooks).
+ */
+export function scopedPlanPath(branch = git(['branch', '--show-current'])) {
+  if (isSlot()) return activePlanPath()
+  if (!branch || branch === '{{git.mainBranch}}' || branch === 'master') return null
+  // Same rule as guard.mjs scopedPlan: a .worktree-plan whose file is missing is ignored, never returned.
+  const p = join(repoRoot, '.worktree-plan')
+  const marked = existsSync(p) ? readFileSync(p, 'utf8').replace(/\r?\n+$/, '').trim() : ''
+  if (marked && existsSync(join(repoRoot, marked))) return marked
+  return branchPlanPath(branch)
+}
+
 /** Every {{slots.nameFormat}} worktree: { slot, path, branch (null if detached), detached, plan }. */
 export function listSlots() {
   const out = git(['worktree', 'list', '--porcelain'])
@@ -124,8 +140,9 @@ if (isMainModule) {
   const arg = process.argv[2]
   if (arg === '--describe') describe()
   else if (arg === '--list') list()
+  else if (arg === '--scoped-plan') console.log(scopedPlanPath() ?? '')
   else {
-    console.error('SLOT: usage: node scripts/lib/slot.mjs --describe | --list')
+    console.error('SLOT: usage: node scripts/lib/slot.mjs --describe | --list | --scoped-plan')
     process.exit(1)
   }
 }

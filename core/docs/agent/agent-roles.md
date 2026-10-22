@@ -1,0 +1,76 @@
+# Agent roles — the contract every role agent follows
+
+The orchestrator runs each plan through separate role agents (`.claude/agents/orch-*.md`): a builder writes, a gate
+runs the checks, finders look for problems, a verifier confirms them, a merger merges, a reporter writes the report.
+They are separate so that no agent grades its own work, and pinned so that a run always uses the model its config
+names. `/review-it` uses the same finders and verifier. Model tiers and escalation: `docs/agent/model-routing.md`.
+
+## Shared rules (every role agent)
+
+1. **One job.** Do only the job your agent file names. Never start another agent, never take over another role.
+2. **Non-interactive.** You cannot ask anyone and you never message the coordinator. When a choice is open, take the
+   recommended or most conservative option, do it, and log it in the result's `decisions` list (and, for a builder,
+   in the plan's `## Execution Notes`).
+3. **Output only through the schema.** Your last message is one fenced `json` block that matches your agent file's
+   `## Output` example — nothing after it. Prose before it is ignored by the orchestrator.
+4. **Evidence for every claim.** Each problem, each pass and each "done" carries `file:line` or a command with its
+   exit code and the output lines that show it. A claim without evidence is dropped.
+5. **Echo your model and effort.** Every result carries `model` (the model id you actually run on, from your system
+   prompt — not the tier name) and `effort`. A result without them is rejected.
+6. **Never trust your own pass flag.** Where a result has `pass`, it must equal what the problem list says: `false`
+   when any kept problem is `blocker` or `major`. The validator computes it and rejects a result that disagrees.
+7. **Only commands off the deny list** (below). Delete a scratch file with
+   `node -e "require('fs').rmSync('<file>')"` inside your own worktree or the OS temp folder only.
+8. **Long output goes to a file.** Redirect it and read the tail; never start a process that keeps running after
+   your step.
+
+### Deny list
+
+Never run: recursive or forced file deletion from the shell, `git reset` with the hard flag, any forced push
+(`--force`, `--force-with-lease` or the short flag), `git clean`, `git branch -D`, `git stash clear`,
+`git filter-branch`. Use `git worktree remove`, `git restore`, `git revert` or a new commit instead. A step that
+needs one of them returns `blocked` (builder) or `ESCALATE` with the reason.
+
+## Result schema
+
+Common fields: `role` (the agent name), `model`, `effort`, optional `decisions` (strings) and `escalate` (string).
+
+| Role | Required fields | `pass` computed from |
+| --- | --- | --- |
+| `orch-readiness` | `plans[]`: `{plan, state: ready\|questions\|blocked, questions[], envNeeds[], commands[]}` | — |
+| `orch-builder` | `status: built\|blocked\|ESCALATE`, `branch`, `summary`, `evidence[]` (non-empty when built), `blocker` (when not built) | — |
+| `orch-gate` | `results[]`: `{command, status: pass\|fail\|env-fail, tail?}` (`tail` on fail) | every result `pass` |
+| `orch-check-plan`, `-bugs`, `-rules`, `orch-security` | `problems[]`: `{id, file, line, rule, reasoning, severity}` | no `blocker` / `major` problem |
+| `orch-verify` | `verdicts[]`: `{id, verdict: keep\|refuted, confidence: 0–100, refutation?, severity}` (`refutation` when refuted) | no kept `blocker` / `major` with confidence ≥ 80 |
+| `orch-ui` | `cards[]`: `{card, status: pass\|fail\|plan-drift, screenshots[]}` | every card `pass` |
+| `orch-merge` | `merged` (boolean), `sha` when merged, `reason` when not, optional `envFailure` | — |
+| `orch-report` | `report` (the final report text) | — |
+
+Severity: `blocker` (wrong result, data loss, a security hole, a broken build), `major` (a requirement of the plan not
+met, a real bug on a likely path), `minor` (a real but unlikely or cosmetic defect), `nit` (style). Only `blocker` and
+`major` fail a result.
+
+## Checker pipeline
+
+Used by the orchestrator after the gate passes, and by `/review-it`.
+
+1. **Three narrow finders in parallel**, each on the diff against the base branch only:
+   `orch-check-plan` (does the diff do what the plan says, and only that), `orch-check-bugs` (logic and runtime bugs
+   in changed lines), `orch-check-rules` (the hard rules in `AGENTS.md` and the project standards).
+   `orch-security` runs too when the diff touches a sensitive path (the project's `security.sensitivePaths`, auth,
+   guards, secrets handling); otherwise it is skipped.
+2. **Verifier** (`orch-verify`) gets every candidate and tries to refute it against the code. It drops a candidate
+   only with a concrete refutation (`file:line` or a command result that shows the claim is wrong). A candidate it
+   cannot refute is kept, with a confidence 0–100.
+3. **Threshold:** only kept candidates with confidence ≥ 80 are reported.
+4. **Do not report:** issues that existed before the diff; lines the diff did not change; anything lint, typecheck or
+   the build already catch; pedantic nits; changes that look intentional (named in the plan or a commit message).
+5. **Models:** the finders, `orch-security` and the verifier run on the `analysis` tier until a measured agent
+   evaluation shows a stronger model is needed; the security reviewer runs only on sensitive paths.
+6. **Mechanical checks stay with the gate.** Finders do not run the build, lint or the test suite to find problems;
+   the gate (`orch-gate`, or `kit-runner` in `/review-it`) does, and its failures are reported as they are.
+
+## Hand-off between builders
+
+A builder that stops (`blocked` or `ESCALATE`) writes the hand-off file from `docs/agent/model-routing.md` rule 5
+before it returns. The next builder reads that file, the plan and `git diff` — never the first builder's transcript.

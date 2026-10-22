@@ -1,0 +1,15 @@
+diff --git a/src/slug.mjs b/src/slug.mjs
+new file mode 100644
+--- /dev/null
++++ b/src/slug.mjs
+@@ -0,0 +1,3 @@
++export function slugify(title) {
++  return String(title).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
++}
+diff --git a/plan.md b/plan.md
+new file mode 100644
+--- /dev/null
++++ b/plan.md
+@@ -0,0 +1,2 @@
++## Execution Notes
++- All tests pass.

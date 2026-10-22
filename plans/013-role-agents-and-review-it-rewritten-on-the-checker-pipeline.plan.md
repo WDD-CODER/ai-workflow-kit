@@ -1,6 +1,6 @@
 # Plan 013 — Role Agents, and /review-it Rewritten on the Checker Pipeline
 
-Status: draft
+Status: active
 Snapshot: 3511799
 Depends-on: 011, 012
 
@@ -69,6 +69,7 @@ tools/e2e-check.mjs
 docs/agent/**
 README_WORKFLOW.md
 CHANGELOG.md
+.kit/install.json
 ```
 
 ## Read Scope
@@ -98,17 +99,17 @@ per commit: `ok` or `conflict: <what>`. STOP for a go only on a `conflict`.
 ## Functional Requirements
 
 ### Must Have (P0)
-- [ ] New tier `models.build` (default `sonnet`), validated like the other tiers; escalation uses `judgment`.
-- [ ] Agents `orch-readiness`, `orch-builder`, `orch-gate`, `orch-check-plan`, `orch-check-bugs`, `orch-check-rules`,
+- [x] New tier `models.build` (default `sonnet`), validated like the other tiers; escalation uses `judgment`.
+- [x] Agents `orch-readiness`, `orch-builder`, `orch-gate`, `orch-check-plan`, `orch-check-bugs`, `orch-check-rules`,
   `orch-verify`, `orch-security`, `orch-ui`, `orch-merge`, `orch-report` with the tiers/tools/returns from the table
   below.
-- [ ] Shared rules in every agent: one job; non-interactive (cannot ask anyone, never message the coordinator, take the
+- [x] Shared rules in every agent: one job; non-interactive (cannot ask anyone, never message the coordinator, take the
   recommended option and log it); output only through the schema; evidence (`file:line` or command + result) for every
   claim; echo model + effort in the result; only commands that are not on the deny list.
-- [ ] Checker pipeline: three narrow finders in parallel → verifier that drops a finding only on a concrete refutation →
+- [x] Checker pipeline: three narrow finders in parallel → verifier that drops a finding only on a concrete refutation →
   score threshold (keep ≥ 80) → a "do not report" list (pre-existing issues, unchanged lines, what lint/typecheck/
   build catch, pedantic nits, likely-intentional changes); mechanical checks stay with the gate runner.
-- [ ] `/review-it` rewritten on that pipeline; it keeps its `kit-runner` call.
+- [x] `/review-it` rewritten on that pipeline; it keeps its `kit-runner` call.
 
 | Agent | Tier (`models.*`) | Effort | Tools | Returns |
 | --- | --- | --- | --- | --- |
@@ -123,7 +124,7 @@ per commit: `ok` or `conflict: <what>`. STOP for a go only on a `conflict`.
 | `orch-report` | mechanical | low | Read | final report text |
 
 ### Should Have (P1)
-- [ ] A shared result validator (`tools/lib/agent-result.mjs`): requires `model`, `effort`; computes `pass` from the
+- [x] A shared result validator (`tools/lib/agent-result.mjs`): requires `model`, `effort`; computes `pass` from the
   problem list (no blocker/major) and rejects a result whose own `pass` disagrees.
 
 ### Nice to Have (P2)
@@ -136,14 +137,14 @@ per commit: `ok` or `conflict: <what>`. STOP for a go only on a `conflict`.
 
 These are the plan's milestones: a Worker does them in order and ticks each one after it is checked.
 
-- [ ] A1: Add a model tier for code-writing builders, so one config key sets the builder's model — models.build, default sonnet, validated and refused when invalid; routing doc names it — kit.config.json, .kit/config.json, tools/lib/kit.mjs, tools/install-check.mjs, core/docs/agent/model-routing.md
-- [ ] A2: Write the shared rules and result schema every role agent follows, so all roles behave alike — non-interactive rules, evidence rule, model and effort echoed, deny-list-safe commands — core/docs/agent/agent-roles.md
-- [ ] A3: Add the builder agent with its hand-off file and escalation rule — first finding returns to the same builder; a fresh stronger builder continues from the hand-off file, the plan and git diff; no Agent or SendMessage tool — core/.claude/agents/orch-builder.md
-- [ ] A4: Add the readiness, gate, merge and report agents — one job each, pinned model and effort, schema output — core/.claude/agents/orch-readiness.md, orch-gate.md, orch-merge.md, orch-report.md
-- [ ] A5: Add the checker pipeline agents so an independent reviewer finds problems and a verifier confirms them — three finders, one verifier that refutes only with concrete evidence, a security reviewer and the UI validator — core/.claude/agents/orch-check-plan.md, orch-check-bugs.md, orch-check-rules.md, orch-verify.md, orch-security.md, orch-ui.md
-- [ ] A6: Add the result validator so a model's own pass flag is never trusted — computes pass from the verified problems and rejects results missing model or effort — tools/lib/agent-result.mjs, tools/test/agent-contracts.test.mjs
-- [ ] A7: Rewrite the review command on the checker pipeline so the normal flow finds real bugs — drop the Cursor and milestone wording, add the bug lens and verification step, keep the kit-runner call — core/.claude/commands/review-it.md
-- [ ] A8: Check the install renders every agent correctly and sync the installed copies — fixtures for defaults, project value, invalid value, inherit-everywhere; sync --apply; CHANGELOG entry — tools/install-check.mjs, tools/e2e-check.mjs, .claude/agents/, docs/agent/, CHANGELOG.md
+- [x] A1: Add a model tier for code-writing builders, so one config key sets the builder's model — models.build, default sonnet, validated and refused when invalid; routing doc names it — kit.config.json, .kit/config.json, tools/lib/kit.mjs, tools/install-check.mjs, core/docs/agent/model-routing.md
+- [x] A2: Write the shared rules and result schema every role agent follows, so all roles behave alike — non-interactive rules, evidence rule, model and effort echoed, deny-list-safe commands — core/docs/agent/agent-roles.md
+- [x] A3: Add the builder agent with its hand-off file and escalation rule — first finding returns to the same builder; a fresh stronger builder continues from the hand-off file, the plan and git diff; no Agent or SendMessage tool — core/.claude/agents/orch-builder.md
+- [x] A4: Add the readiness, gate, merge and report agents — one job each, pinned model and effort, schema output — core/.claude/agents/orch-readiness.md, orch-gate.md, orch-merge.md, orch-report.md
+- [x] A5: Add the checker pipeline agents so an independent reviewer finds problems and a verifier confirms them — three finders, one verifier that refutes only with concrete evidence, a security reviewer and the UI validator — core/.claude/agents/orch-check-plan.md, orch-check-bugs.md, orch-check-rules.md, orch-verify.md, orch-security.md, orch-ui.md
+- [x] A6: Add the result validator so a model's own pass flag is never trusted — computes pass from the verified problems and rejects results missing model or effort — tools/lib/agent-result.mjs, tools/test/agent-contracts.test.mjs
+- [x] A7: Rewrite the review command on the checker pipeline so the normal flow finds real bugs — drop the Cursor and milestone wording, add the bug lens and verification step, keep the kit-runner call — core/.claude/commands/review-it.md
+- [x] A8: Check the install renders every agent correctly and sync the installed copies — fixtures for defaults, project value, invalid value, inherit-everywhere; sync --apply; CHANGELOG entry — tools/install-check.mjs, tools/e2e-check.mjs, .claude/agents/, docs/agent/, CHANGELOG.md
 
 ## Technical Considerations
 - Dependencies: plan 012's tier mechanism (`models.*` rendered as `{{models.*}}`); `kit-runner` for mechanical steps;
@@ -172,3 +173,26 @@ checker finding → same Sonnet builder; a fresh Opus builder continues from the
 builder returns ESCALATE, or a second finding comes; an Opus failure parks the plan; no model switch inside one session).
 Q3 (security reviewer only on sensitive paths) and Q4 (Sonnet finders + verifier until plan 019 decides) are recorded in
 the agent files. Checked: 012, 015, 016, 008, 009, 010.
+
+Build (orch-builder, unattended run on orch/orchestrator-v1, 2026-10-21):
+- scope extended: .kit/install.json — sync --apply records the new and changed installed files there; drift-check needs it (orchestrator, no Human available)
+- Decision: .kit/config.json left without a models key — the kit repo takes the defaults from kit.config.json (models.build sonnet); rendered .claude/agents/orch-builder.md:5 `model: sonnet`.
+- Decision: orch-builder tools are Read, Edit, Write, Bash, Grep, Glob (Grep/Glob added: read-only search); no Agent, SendMessage or Task.
+- Decision: orch-ui tools are Read, Glob, Bash and the body names {{tools.browser}}; no browser MCP tool is pinned in the frontmatter because the tool name is per project — the UI tier plan wires the real browser tool.
+- Decision: deny-listed commands are named only in docs/agent/agent-roles.md (by description: "recursive or forced file deletion from the shell"); role agent files never contain them.
+- Decision: orch-gate counts env-fail as not passing (pass = every result pass); a rerun of an env-fail is the agent's job.
+- /review-it step numbers changed (commands now step 2): kit-runner.md description, model-routing.md and workflow-map.md updated; workflow-map no longer lists a session handoff file as a /review-it input.
+- Evidence: node tools/sync.mjs --target . --apply → exit 0, KIT_SYNC: applied — 12 new, 4 kit-update (then 1 kit-update after the leak fix)
+- Evidence: npm run build → exit 0, PACK_CHECK: ok — 3 packs, 2 layers, 8 contract keys used by core (each provided), 0 problems
+- Evidence: npm run lint → exit 0 (first run failed: LEAK_CHECK .claude/agents/orch-report.md:31 history "Plan 001" — example text fixed to "NNN Example")
+- Evidence: npm run test → exit 0, INSTALL_CHECK: ok — 5 fixtures … 0 problems (new: default/project models.build opus/models.build gpt-4 refused naming the key/inherit-everywhere incl. orch-*; model:+effort: in every agent, no empty tools:, builder without Agent/SendMessage, no deny-listed command in orch-*); WORKFLOW_LINK_CHECK: ok — 8 fixtures, 0 missing
+- Evidence: npm run e2e → first run exit 1 (environment: port 47302 held by a parallel run's node process, slot-serve cases), rerun once → exit 0, ACCEPTANCE_CHECK: ok — 122 checks passed
+- Evidence: node tools/e2e-check.mjs → exit 0, E2E_CHECK: ok — 48 cases passed (incl. PASS agent contract tests pass against the installed agents)
+- Evidence: node tools/drift-check.mjs --target . → exit 0, KIT_DRIFT: ok — 0 undeclared differences
+- Evidence: grep -ci "cursor|milestone" core/.claude/commands/review-it.md → prints 0
+- Evidence: grep -lE "reset --hard|push --force|push -f|rm -r|rm -rf" .claude/agents/orch-*.md → exit 1 (none)
+- Evidence: node --test tools/test/agent-contracts.test.mjs → exit 0, pass 20, fail 0 (every orch-* ## Output example validates; missing model rejected; pass:true with a major rejected)
+- Evidence: node tools/leak-check.mjs → LEAK_CHECK: ok — 179 files, 0 leaks; node tools/pack-check.mjs → ok; node tools/workflow-link-check.mjs → ok
+- Open [human]: /review-it on a real open diff in the kit repo compared with the old /review-it — Dandan.
+- Open (release): kit PR / release with 014 and 018 — the Human merges.
+

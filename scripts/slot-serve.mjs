@@ -8,7 +8,7 @@
  *   node scripts/slot-serve.mjs            # start what is not running, keep what is
  *   node scripts/slot-serve.mjs --restart  # stop this slot's servers first, then start both
  *
- * Steps: npm install when a lockfile changed (running servers are restarted on the new dependencies), then
+ * Steps: npm install when a lockfile changed or a folder's packages are missing (running servers are restarted on the new dependencies), then
  * each server is kept when this slot already runs it (a watcher that is restarting its app counts), refused
  * when its port is held by anything else (a second start would leave an idle watcher behind), or started.
  * environment.slot.ts and the optional prepare step run only before a start, so a kept server is never
@@ -22,7 +22,7 @@ import { isSlot, slotNumber, ports, activePlanPath } from './lib/slot.mjs'
 import {
   repoRoot, portState, processTable, listeners, devChains, killTree, readSlotPids, writeSlotPids,
   stopSlotServers, waitForPort, waitForPortFree, startServer, npmInstallIfChanged, generateEnvironmentSlot,
-  hasFrontend as projectHasFrontend, frontendArgs, isFrontendCmd, installDirs
+  hasFrontend as projectHasFrontend, frontendArgs, isFrontendCmd, installDirs, installReason
 } from './lib/slot-procs.mjs'
 
 const isWin = process.platform === 'win32'
@@ -57,7 +57,9 @@ let installed = false
 for (const [dir, hashFile, label] of installDirs(repoRoot)) {
   try {
     // The workflow scripts' own dependencies are not loaded by the servers: no restart for them.
-    if (npmInstallIfChanged(dir, hashFile) && label !== 'scripts') installed = true
+    const ran = npmInstallIfChanged(dir, hashFile)
+    if (ran) console.log(`SLOT_SERVE: npm install ran in ${label} (${installReason(ran)})`)
+    if (ran && label !== 'scripts') installed = true
   } catch (e) {
     fail(`npm install failed in ${label} - servers not started.\n${String(e.message).split('\n')[0]}`)
   }

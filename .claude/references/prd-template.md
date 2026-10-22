@@ -1,14 +1,20 @@
 # Plan XXX — [Feature Name]
 
 Status: draft | active | done
+Depends-on: none | NNN, MMM — the plans that must be merged before this one starts (`scope-check --deps` flags a plan without this line; `take-plan` refuses while one is not merged; `plan-order` computes the run order from it)
 Snapshot: [origin/main SHA the plan was verified against — leave filled in if the author already set it; save-plan only fills this when empty, never overwrites]
 
 ## Problem Statement
 [What problem does this solve for the user?]
 
 ## Goals & Success Criteria
-- Primary: [measurable outcome]
-- Success: [how we know it's done — tag each item `[auto]` or `[human]`; an `[auto]` item names the exact check: a command and its expected output]
+**Primary:** [measurable outcome]
+
+[The Done-when items: one bullet each, each starting with its tag — `scope-check --tags` checks them]
+- [auto] [an exact check: a command and its expected output]
+- [ui] [one page, one action, one quoted text or element a script asserts — the builder writes one short e2e test
+  that saves a screenshot; a browser agent looks only if the test fails or none can be written]
+- [human] [what only a person can judge: look and feel, a product decision]
 
 ## Execution Mode
 - Parallel: yes | no — will this run alongside other active plans?

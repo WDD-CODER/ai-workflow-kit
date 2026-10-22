@@ -16,18 +16,131 @@ The kit uses its own workflow: it is installed into the kit repo and works solo 
 
 Nothing. Two optional changes reach projects with the next sync: `.kit/config.json`, when present, is read before
 `kit.config.json` by install, sync and drift-check; and `/ship` checks the plan scope of a `feat/NNN-<slug>` branch
-outside a slot too. Rendered files that change (`kit-update`): `scripts/scope-check.mjs`, `scripts/ship-prep.mjs`.
+outside a slot too. Rendered files that change (`kit-update`): `scripts/scope-check.mjs`, `scripts/ship-prep.mjs`,
+`.claude/commands/review-it.md`, `.claude/agents/kit-runner.md`, `docs/agent/model-routing.md`,
+`docs/agent/workflow-map.md`; new: eleven `.claude/agents/orch-*.md` and `docs/agent/agent-roles.md`. A new config
+key `models.build` (default `sonnet`) is optional; a project that turned the routing off (every tier `inherit`) sets `models.build: "inherit"` too.
+The orchestrator is opt-in: nothing runs until `/orchestrate`. New rendered files: `.claude/workflows/orchestrate.js`,
+`.claude/commands/orchestrate.md`, `docs/agent/orchestrator.md`, `scripts/orch-state.mjs`, `scripts/orch-preflight.mjs`,
+`scripts/lib/orch-run.mjs`; changed: `.claude/commands/commands.md`, `scripts/local-excludes.mjs` (adds
+`.claude/orchestrator-runs/` to the runtime ignores). New optional config keys `orchestrator.runBranchPrefix`
+(default `orch/`), `orchestrator.maxFixRounds` (default `2`) and `orchestrator.minFreeDiskGb` (default `5`).
+The `[ui]` Done-when tag is optional: existing `[auto]` / `[human]` plans keep working. Rendered files that change:
+`docs/agent/job-validation.md`, `docs/agent/orchestrator.md`, `.claude/skills/save-plan/SKILL.md`,
+`.claude/references/prd-template.md`, `.claude/commands/ship.md`, `.claude/commands/done.md`,
+`.claude/agents/orch-builder.md`, `.claude/agents/orch-ui.md`, `.claude/workflows/orchestrate.js`,
+`scripts/orch-preflight.mjs`, `scripts/orch-state.mjs`, `scripts/scope-check.mjs`, `scripts/lib/orch-run.mjs`; new:
+`scripts/lib/done-when.mjs`.
 
 ### Added
+- The `[ui]` validation tier: a Done-when item a script can check in the running app (one page, one
+  action, one asserted text or element, a screenshot) sits between `[auto]` and `[human]`
+  (`docs/agent/job-validation.md` Tier 1b). The save-plan shape lint is now a command,
+  `node scripts/scope-check.mjs --tags --plan=<p>` (`DONE_WHEN_TAGS: ok`; `[ui`, `[UI]` and untagged items are
+  rejected). In the orchestrator the builder writes one short e2e test per `[ui]` item and reports `uiCards`; a gate
+  runs them; a passing card is recorded with its screenshot and never reaches the browser agent; `orch-ui` sees only
+  failed or unscriptable cards, with a "pre-checked — skip" list and the known findings, and returns pass / fail /
+  plan-drift. Before any browser step `orch-preflight.mjs --ui` checks the pages' servers, the QA login and the
+  backend from the page's origin; a blocked environment parks the plan with the reason and costs no fix round. The
+  run report shows a screenshot grid per page, plan drift in its own section with no severity, and the cards no one
+  could check for the Human. Tests: `tools/test/ui-tier.test.mjs` (in `e2e-check`) and five new cases in
+  `tools/orchestrator-e2e.mjs`.
+- The orchestrator workflow (opt-in): `/orchestrate 451-457` runs saved plans unattended into one run branch
+  `orch/<run>` — never into `main`; the Human merges the run branch. Readiness first (`plan-order --json` waves, one
+  `orch-readiness` agent per plan, `scripts/orch-preflight.mjs`), every open question asked in one batch and written
+  into the plans' Execution Notes, then `go`. Per plan: builder → gate → finders in parallel → verifier → security
+  (sensitive paths only) → UI validator (when turned on) → merger, one merge at a time with the checks before the
+  push. `pass` is computed from the verified problem lists, never taken from a model; a plan whose Architecture
+  Impact names an invariant other than `INV-none` starts on the judgment tier; a persisting failure, an `ESCALATE` or a
+  second finding starts a fresh judgment-tier builder from the hand-off file; `orchestrator.maxFixRounds` rounds, then
+  the plan is parked and its wave is the last. Environment failures (disk, database, network) cost no fix round: the
+  plan pauses, the environment check runs and the plan is retried once. Rules: `docs/agent/orchestrator.md`.
+- `.claude/workflows/orchestrate.js` (the installer ships the workflows folder): no file, git or clock access; every
+  such step is `scripts/orch-state.mjs` run by the mechanical runner — run branch, merge folder, builder folders,
+  `status.json` after every step (state, round, tier, sha, model per agent, free disk), hand-off files, and the report
+  (`docs/orchestrator/runs/<run>/report.md` on the run branch, copied to the gitignored
+  `.claude/orchestrator-runs/<run>.md`). Git is the ledger: a relaunch rebuilds the merged plans from the anchored
+  subjects `Merge <branch> into orch/<run> (plan NNN)` and redoes none.
+- `orchestrator.runBranchPrefix`, `orchestrator.maxFixRounds`, `orchestrator.minFreeDiskGb`: install and sync refuse a
+  bad value naming the key.
+- `tools/orchestrator-e2e.mjs`: the installed workflow run end to end on a scratch project with stub role agents
+  (diamond in wave order, fix-then-pass, an environment failure that costs no round, `pass: true` next to a `major`
+  treated as a fail, a parked plan stopping the wave, escalation, a relaunch rebuilt from git);
+  `tools/test/orchestrator.test.mjs` for the pure rules and the config validation. Both run in `e2e-check`.
+- Role agents for the orchestrator, each with a pinned model and effort from `models.*`: `orch-readiness`
+  (judgment), `orch-builder` (new `models.build` tier, escalation to judgment; no Agent or SendMessage tool),
+  `orch-gate` and `orch-report` (mechanical), the finders `orch-check-plan`, `orch-check-bugs`, `orch-check-rules`,
+  the verifier `orch-verify`, `orch-security` (sensitive paths only, read-only), `orch-ui` and `orch-merge`
+  (analysis). `docs/agent/agent-roles.md` holds their shared contract: one job, non-interactive, evidence for every
+  claim, a JSON result naming its own model and effort, no deny-listed command.
+- `models.build`: the tier for agents that write code, validated like the other tiers (install and sync refuse
+  `models.build: gpt-4` naming the key).
+- A shared result validator for the kit's checks (`tools/lib/agent-result.mjs`): requires `model` and `effort`,
+  computes `pass` from the verified problems and rejects a result whose own `pass` disagrees;
+  `tools/test/agent-contracts.test.mjs` runs every agent's documented example through it (in `e2e-check`).
+- Agent eval harness (kit-side tool): `node tools/agent-eval.mjs --agent <agent.md> --cases <dir> --runs 2` runs one
+  agent file against labelled cases and prints recall, precision, run-to-run noise, tokens and cost per case with a
+  total line; `--model <id>` compares one agent file across models; `--min-recall` / `--min-precision` exit 1 below
+  the threshold. Findings match by `file`, `rule` and `severity` (line ±3, text ignored). The default runner calls
+  Claude Code non-interactively and refuses a write-capable agent unless `--allow-write`. Generic checker and
+  verifier cases ship in `tools/fixtures/agent-evals/`; real cases live in each project. New rendered file:
+  `docs/agent/agent-evals.md` (the case shape). `tools/test/agent-eval.test.mjs` runs in `e2e-check`.
+- Plans declare what they need first: a `Depends-on: NNN, MMM` (or `none`) header line, in the plan template and
+- Plans declare what they need first: a `Depends-on: NNN, MMM` (or `none`) header line, in the plan template and
+  the save-plan lint. One parser (`scripts/lib/plan-deps.mjs`) reads it — plus legacy prose such as
+  `Prerequisite: plan NNN merged`, so old plans need no edit — for every tool.
+- `scripts/plan-order.mjs`: the run order of any set of plans — waves (what can run in parallel), lanes, lock groups
+  derived from Read-Write Scope overlap (config hotspots and the i18n file left out) and the reason of every edge;
+  text or `--json`. A cycle or a missing dependency exits 1 and names the plans. With `--branch <b> --merged-from
+  git`, a plan counts as merged only on the exact subject `Merge <src> into <b> (plan NNN)`.
+- `scope-check.mjs --deps --plan=<path>`: `DEPENDS_ON: ok` or `DEPENDS_ON: missing` (exit 1).
+- `take-plan.mjs` refuses a plan whose dependency is not merged with `NOT_READY: plan NNN (<title>) is not merged`
+  (the same check as before, now on the shared parser and the `Depends-on:` line).
 - `.kit/config.json` project config, read before `kit.config.json` (for a project whose `kit.config.json` is
   something else; messages name the file used). A kit installed into itself records its source as `local:.`.
 - The kit repo carries the installed workflow (`.kit/config.json`, a root `package.json` that runs the checks), and
   CI runs `drift-check --target .` so the installed copy always equals the sources.
 
 ### Changed
+- `/review-it` reviews a Worker branch with the checker pipeline: three finders in parallel (plan, bugs, rules; plus
+  security on sensitive paths), a verifier that drops a finding only on a concrete refutation, a confidence ≥ 80
+  threshold and a do-not-report list; it keeps its `kit-runner` call for the commands and no longer reads a session
+  handoff file.
 - `scope-check.mjs`: with no `--plan` and no slot plan, a `<type>/NNN-<slug>` branch's plan is the plan.
   `ship-prep.mjs` runs the scope gate in a slot **or** on such a branch (a branch that names no plan: no gate, as
   before).
+- Write guards judge the file being written, whoever launched the agent. Tests first
+  (`tools/test/guards.test.mjs`, also run by `tools/e2e-check.mjs`): a main-folder session writing into a slot was
+  already judged by the slot's guard; what failed, and is fixed:
+  - **Bash writes are guarded.** `.claude/settings.json` runs `branch-guard.sh` and `scope-guard.sh` on `Bash` too;
+    redirects, heredocs, `tee`, `sed -i` / `perl -i`, `cp` / `mv` / `install` targets and `touch` get the same path
+    rules, read-only commands pass, and a target the guard cannot resolve (`$VAR`, `$(...)`) is refused where a write
+    needs a check.
+  - **Merge folders are held to their plan.** Outside a slot, a branch other than `main` that names a plan —
+    `.worktree-plan` (e.g. an `orch/<run>` merge folder) or `<type>/NNN-<slug>` — is scope-guarded; `ship-prep.mjs`
+    uses the same rule (`scopedPlanPath` in `scripts/lib/slot.mjs`, `--scoped-plan` prints it).
+  - **Runtime files on `main`.** `.claude/sessions/**`, `.claude/.session-state-path` and `.claude/.plan-write-ack`
+    are no longer refused by the branch guard.
+  - **Speed.** Both guards are one node process (`scripts/lib/guard.mjs`): the branch and git dirs are read from files,
+    no git call on the allow path (`KIT_GUARD_TRACE=1` prints `GUARD_GIT_CALLS: <n>`), no python. Rendered files that
+    change: `scripts/scope-guard.sh`, `scripts/branch-guard.sh`, `scripts/lib/slot.mjs`, `scripts/ship-prep.mjs`,
+    `.claude/settings.json` (`kit-update`); `scripts/lib/guard.mjs` (`new`).
+
+### Fixed
+- Security: guards fail closed on a guarded folder; orchestrator check commands allowlisted, state arguments
+  validated. `scripts/lib/guard.mjs` refuses a write it cannot judge (empty or unparseable input, no file path, an
+  error, a sibling worktree's guard with no answer, a scope check that crashes, a shell target it cannot resolve while
+  any worktree of the repository is guarded) and allows it only where nothing is guarded. The orchestrator: plan
+  branch slugs are `[a-z0-9-]` only and any other branch is refused; extra check commands are `npm run <script in
+  package.json>`, `node tools/…`, `node scripts/…` or `node --test <files>` (anything else dropped with a run note); a
+  gate that leaves a check out or reports an unknown one fails; `orch-state.mjs` takes `--key=value`, refuses unknown
+  flags (`--root` among them) and unsafe `[ui]` card values, and treats a diff it cannot read in full as sensitive.
+- `slot-serve.mjs` and `take-plan.mjs` install a folder's packages when they are missing (no
+  `node_modules/.package-lock.json`), not only when its lockfile changed: a stale `.last-npm-install-hash-*` no
+  longer hides a missing `server/node_modules`. They print `npm install ran in <label> (packages missing|lockfile
+  changed)`, and a failed install names the exact command to run by hand. New pure check `installNeed(dir,
+  hashPath)` in `scripts/lib/slot-procs.mjs`. Rendered files that change (`kit-update`): `scripts/lib/slot-procs.mjs`,
+  `scripts/slot-serve.mjs`, `scripts/take-plan.mjs`.
 
 The validation hand-off moves to the end of the work: a finished plan with `[human]` items now ends with the
 servers running and HOW TO VALIDATE cards grouped by page, before any `/ship`, PR or merge.

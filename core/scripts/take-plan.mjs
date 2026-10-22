@@ -31,7 +31,8 @@ import { isSlot, slotNumber, ports, listSlots } from './lib/slot.mjs'
 import { extractScopeGlobs } from './lib/plan-scope.mjs'
 import { findOpenPlanIn } from './lib/plan-paths.mjs'
 import { parseInvariants, checkPlanArch } from './lib/invariants.mjs'
-import { portState, waitForPortFree, stopSlotServers, npmInstallIfChanged, generateEnvironmentSlot, hasFrontend as projectHasFrontend, installDirs } from './lib/slot-procs.mjs'
+import { planDependencies, planTitle, isFinishedStatus, atomicStats } from './lib/plan-deps.mjs'
+import { portState, waitForPortFree, stopSlotServers, npmInstallIfChanged, installReason, generateEnvironmentSlot, hasFrontend as projectHasFrontend, installDirs } from './lib/slot-procs.mjs'
 import { ensureLocalExcludes } from './local-excludes.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -204,31 +205,24 @@ if (isDirty()) {
   fail('uncommitted or untracked changes present in this slot - refusing to touch it; commit, stash, or ask the Human')
 }
 
-const atomicStats = (text) => {
-  const sec = (text.match(/^## Atomic Sub-tasks[^\n]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m) || [])[1] || ''
-  return { open: (sec.match(/^\s*- \[ \]/gm) || []).length, done: (sec.match(/^\s*- \[x\]/gim) || []).length }
-}
-
-// Plan order: "must run after plan N" / "until N is done" -> refuse while plan N still has open sub-tasks on main.
-const prereqs = new Set()
-for (const m of remotePlanText.matchAll(/\b(?:must\s+)?runs?\s+after\s+plans?\s+#?(\d{1,3})\b|\buntil\s+(?:plan\s+)?#?(\d{1,3})\s+(?:is\s+)?(?:done|merged|shipped|complete)/gi)) {
-  prereqs.add((m[1] || m[2]).padStart(3, '0'))
-}
-// "Prerequisite: plan NNN merged" / "Prerequisites: plans NNN, MMM (…)": every plan number before the first ( — . or ;
-for (const m of remotePlanText.matchAll(/^\s*[-*]?\s*\**Prerequisites?\**:\**\s*([^\n(—.;]*)/gim)) {
-  if (!/\bplans?\b/i.test(m[1])) continue
-  for (const d of m[1].matchAll(/#?\b(\d{1,3})\b/g)) prereqs.add(d[1].padStart(3, '0'))
-}
-prereqs.delete(nnn)
+// Plan order (scripts/lib/plan-deps.mjs, the parser plan-order and scope-check --deps use): the plan's "Depends-on:"
+// line plus legacy prose ("Prerequisite: plan NNN merged", "must run after plan 7"). A dependency is merged when its
+// plan is closed on {{git.mainBranch}} (moved out of the open folders), its Status: says done, or all its sub-tasks are [x]
+// there. A Depends-on: plan with no file on {{git.mainBranch}} at all is not merged either; an unknown prose number is skipped.
+const { deps } = planDependencies(remotePlanText, nnn)
 if (!process.argv.includes('--ignore-order')) {
-  for (const p of prereqs) {
+  for (const { nnn: p, reason } of deps) {
     const file = findOpenPlanIn(mainPlans, p)
-    if (!file) continue // unknown or archived plan number - nothing to judge
+    if (!file) {
+      const closed = mainPlans.some((f) => f.endsWith('.plan.md') && f.split('/').pop().startsWith(`${p}-`))
+      if (closed || reason !== 'Depends-on:') continue // closed (archived) = merged; an unknown prose number - nothing to judge
+      fail(`NOT_READY: plan ${p} (no plans/${p}-*.plan.md on {{git.mainBranch}}) is not merged - plan ${nnn} depends on it (${reason}). Take another plan, or re-run with --ignore-order if the Human says so. Nothing was changed.`)
+    }
     const prereqText = tryGit(['show', `origin/{{git.mainBranch}}:${file}`])
-    if (/^Status:\s*(superseded|done|closed|complete|abandoned)\b/im.test(prereqText)) continue // finished another way
+    if (isFinishedStatus(prereqText)) continue // finished another way
     const st = atomicStats(prereqText)
     if (st.open > 0) {
-      fail(`plan ${nnn} must run after plan ${p}, which still has ${st.open} open sub-task(s) on {{git.mainBranch}} (${file}). Take another plan, or re-run with --ignore-order if the Human says so. Nothing was changed.`)
+      fail(`NOT_READY: plan ${p} (${planTitle(prereqText) || file}) is not merged - plan ${nnn} depends on it (${reason}); ${st.open} open sub-task(s) on {{git.mainBranch}} in ${file}. Take another plan, or re-run with --ignore-order if the Human says so. Nothing was changed.`)
     }
   }
 }
@@ -355,11 +349,13 @@ if (previousPlan !== match || !existsSync(planStartPath)) writeFileSync(planStar
 const statePointer = join(repoRoot, '.claude', '.session-state-path')
 if (existsSync(statePointer)) unlinkSync(statePointer)
 
-// --- (f) after the claim, nothing can fail it: npm install if the lockfile changed + environment.slot.ts
-// A build needs the dependencies; a failed install is reported, never a refusal (slot-serve.mjs retries it).
+// --- (f) after the claim, nothing can fail it: npm install if the lockfile changed or packages are missing
+// + environment.slot.ts. A build needs the dependencies; a failed install is reported, never a refusal
+// (slot-serve.mjs retries it).
 for (const [dir, hashFile, label] of installDirs(repoRoot)) {
   try {
-    if (npmInstallIfChanged(dir, hashFile)) console.log(`TAKE_PLAN: npm install ran in ${label} (lockfile changed)`)
+    const ran = npmInstallIfChanged(dir, hashFile)
+    if (ran) console.log(`TAKE_PLAN: npm install ran in ${label} (${installReason(ran)})`)
   } catch (e) {
     const why = String(e.message).split('\n')[0]
     console.log(`TAKE_PLAN: warning - npm install failed in ${label} (${why}); slot-serve.mjs retries it`)

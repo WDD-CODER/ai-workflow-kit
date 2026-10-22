@@ -1,0 +1,205 @@
+/**
+ * Agent eval runner (contract: docs/agent/agent-evals.md). Runs one agent file against a folder of cases N times
+ * per case and scores the results.
+ *
+ *   import { evaluate, loadAgent, findCases, claudeRunner, formatTable } from './run.mjs'
+ *   const report = await evaluate({ agentFile, casesDir, runs: 2, model, runner })
+ *
+ * A runner is `async ({ agent, model, role, caseName, caseDir, inputDir, run }) => ({ text, tokens, costUsd })`:
+ * `text` is the agent's final reply (its JSON result, fenced or bare), `tokens` and `costUsd` what the run spent.
+ * Tests pass a stub runner; real use takes `claudeRunner`, which calls Claude Code non-interactively
+ * (`claude -p --output-format json`) with the agent file's body as the system prompt. Node built-ins only.
+ */
+import { readFileSync, readdirSync, existsSync, statSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { join, resolve, dirname, relative } from 'node:path'
+import { tmpdir } from 'node:os'
+import { spawn } from 'node:child_process'
+import { parseAgentResult, validateAgentResult } from '../agent-result.mjs'
+import { compareCase, caseKind } from './compare.mjs'
+import { scoreCase, scoreTotal } from './score.mjs'
+
+/** Tools that let an agent change files; an agent that has one is refused unless allowWrite is set. */
+export const WRITE_TOOLS = ['Edit', 'Write', 'MultiEdit', 'NotebookEdit']
+
+/** Parse an agent file: frontmatter fields and the body (the prompt). */
+export function loadAgent(agentFile) {
+  const text = readFileSync(agentFile, 'utf8')
+  const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(text)
+  if (!m) throw new Error(`${agentFile}: no frontmatter (--- name/tools/model ---)`)
+  const fields = Object.fromEntries(m[1].split(/\r?\n/).map((l) => /^(\w+):\s*(.*)$/.exec(l)).filter(Boolean).map((x) => [x[1], x[2].trim()]))
+  if (!fields.name) throw new Error(`${agentFile}: frontmatter has no name:`)
+  const tools = fields.tools === undefined ? null : fields.tools.split(',').map((t) => t.trim()).filter(Boolean)
+  return { file: resolve(agentFile), name: fields.name, model: fields.model ?? null, effort: fields.effort ?? null, tools, body: m[2], text }
+}
+
+/**
+ * Refuse a write-capable agent: one whose `tools:` names a write tool, or that has no `tools:` line (it would inherit
+ * every tool). Returns null when allowed, else the reason.
+ */
+export function writeRefusal(agent, allowWrite = false) {
+  if (allowWrite) return null
+  if (agent.tools === null) return `${agent.name} has no tools: line, so it inherits every tool including Edit and Write — pass --allow-write to run it anyway`
+  const found = agent.tools.filter((t) => WRITE_TOOLS.includes(t))
+  return found.length ? `${agent.name} can write files (tools: ${found.join(', ')}) — pass --allow-write to run it anyway` : null
+}
+
+/**
+ * The cases for an agent: `<casesDir>/<role>/<case>/` when a folder named after the agent exists, else the case
+ * folders directly under casesDir. A case folder holds `expected.json` and an `input/` folder.
+ */
+export function findCases(casesDir, role) {
+  const root = existsSync(join(casesDir, role)) && statSync(join(casesDir, role)).isDirectory() ? join(casesDir, role) : casesDir
+  if (!existsSync(root)) throw new Error(`no case folder at ${casesDir}`)
+  const cases = readdirSync(root, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && existsSync(join(root, d.name, 'expected.json')))
+    .map((d) => d.name)
+    .sort()
+    .map((name) => {
+      const caseDir = join(root, name)
+      const expected = JSON.parse(readFileSync(join(caseDir, 'expected.json'), 'utf8'))
+      caseKind(expected) // throws on a malformed expectation
+      return { name, caseDir, inputDir: join(caseDir, 'input'), expected }
+    })
+  if (cases.length === 0) throw new Error(`no cases (folders with expected.json) under ${root}`)
+  return cases
+}
+
+/** Score one run's reply text against a case. */
+export function scoreRun(expected, reply, role) {
+  let result = null
+  let error = null
+  let pass = null
+  try {
+    result = parseAgentResult(reply.text ?? '')
+    const v = validateAgentResult(result)
+    pass = v.pass
+    if (!v.ok) error = `invalid result: ${v.errors.slice(0, 2).join('; ')}`
+    else if (result.role !== role) error = `result role ${result.role} is not ${role}`
+  } catch (e) {
+    error = `no JSON result: ${e.message}`
+  }
+  const cmp = compareCase(expected, error ? null : result, { pass: error ? null : pass })
+  return { ...cmp, tokens: Number(reply.tokens) || 0, costUsd: Number(reply.costUsd) || 0, error }
+}
+
+/** Run the agent on every case `runs` times and score it. Returns { agent, model, cases: [...], total }. */
+export async function evaluate({ agentFile, casesDir, runs = 2, model = null, runner, allowWrite = false }) {
+  const agent = loadAgent(agentFile)
+  const refusal = writeRefusal(agent, allowWrite)
+  if (refusal) throw new Error(refusal)
+  if (!Number.isInteger(runs) || runs < 1) throw new Error('--runs must be a whole number ≥ 1')
+  const useModel = model ?? agent.model
+  const cases = findCases(casesDir, agent.name)
+  const scored = []
+  for (const c of cases) {
+    const results = []
+    for (let run = 1; run <= runs; run++) {
+      let reply
+      try {
+        reply = await runner({ agent, model: useModel, role: agent.name, caseName: c.name, caseDir: c.caseDir, inputDir: c.inputDir, run })
+      } catch (e) {
+        results.push({ ...compareCase(c.expected, null), tokens: 0, costUsd: 0, error: `runner failed: ${e.message}` })
+        continue
+      }
+      results.push(scoreRun(c.expected, reply, agent.name))
+    }
+    scored.push({ ...scoreCase(c.name, results), errorDetails: results.map((r) => r.error).filter(Boolean) })
+  }
+  return { agent: agent.name, model: useModel, cases: scored, total: scoreTotal(scored) }
+}
+
+const pct = (x) => x.toFixed(2)
+/** The report as a plain-text table: case, recall, precision, noise, tokens (and errors); a total line. */
+export function formatTable(report) {
+  const head = ['case', 'recall', 'precision', 'noise', 'tokens', 'cost$', 'errors']
+  const row = (c) => [c.name, pct(c.recall), pct(c.precision), pct(c.noise), String(c.tokens), c.costUsd.toFixed(4), String(c.errors)]
+  const rows = [head, ...report.cases.map(row), row(report.total)]
+  const widths = head.map((_, i) => Math.max(...rows.map((r) => r[i].length)))
+  const line = (r) => r.map((cell, i) => (i === 0 ? cell.padEnd(widths[i]) : cell.padStart(widths[i]))).join('  ')
+  const out = [`AGENT_EVAL: ${report.agent} on ${report.model ?? 'its default model'}, ${report.cases[0]?.runs ?? 0} run(s) per case`, line(rows[0])]
+  out.push(...rows.slice(1, -1).map(line), '-'.repeat(line(rows[0]).length), line(rows[rows.length - 1]))
+  for (const c of report.cases) for (const e of c.errorDetails ?? []) out.push(`  ${c.name}: ${e}`)
+  return out.join('\n')
+}
+
+// ---- real runner: Claude Code, non-interactive ----------------------------------------------------------------
+
+const MAX_INLINE = 60_000
+
+function listFiles(dir, base = dir) {
+  if (!existsSync(dir)) return []
+  return readdirSync(dir, { withFileTypes: true }).flatMap((d) =>
+    d.isDirectory() ? listFiles(join(dir, d.name), base) : [relative(base, join(dir, d.name)).replace(/\\/g, '/')])
+}
+
+/** The user prompt for one case: what the input is and the input files inline (bounded). */
+export function casePrompt({ role, inputDir }) {
+  const files = listFiles(inputDir)
+  let budget = MAX_INLINE
+  const parts = files.map((f) => {
+    const body = readFileSync(join(inputDir, f), 'utf8')
+    const shown = body.length > budget ? `${body.slice(0, Math.max(0, budget))}\n…(truncated; read the file)` : body
+    budget -= shown.length
+    return `--- ${f} ---\n${shown}`
+  })
+  return [
+    `This is an evaluation case for ${role}. There is no git repository: the branch's change is in the input files`,
+    `(diff.patch is the diff against the base; plan.md is the plan; candidates.json, when present, holds the finders'`,
+    `candidate problems; the changed source files are under their own paths).`,
+    `Your working directory is the input folder. Return only your JSON result, as your instructions describe.`,
+    '',
+    ...parts,
+  ].join('\n')
+}
+
+/** Arguments for `claude -p` (exported for tests; no model is called here). */
+export function claudeArgs({ agent, model, systemPromptFile }) {
+  const args = ['-p', '--output-format', 'json', '--system-prompt-file', systemPromptFile]
+  if (model) args.push('--model', model)
+  if (agent.tools?.length) args.push('--tools', agent.tools.join(','))
+  if (!agent.tools?.some((t) => WRITE_TOOLS.includes(t))) args.push('--disallowedTools', WRITE_TOOLS.join(','))
+  return args
+}
+
+/** Sum every numeric *_tokens field of a Claude Code usage object. */
+export function usageTokens(usage) {
+  if (!usage || typeof usage !== 'object') return 0
+  return Object.entries(usage).filter(([k, v]) => /_tokens$/.test(k) && Number.isFinite(v)).reduce((s, [, v]) => s + v, 0)
+}
+
+/**
+ * Runner that calls Claude Code: the agent body (plus the shared agent-roles contract when it sits next to the
+ * agent's repo) as the system prompt, the case input as the prompt, cwd = the case input folder.
+ */
+export function claudeRunner({ bin = process.env.AGENT_EVAL_CLAUDE ?? 'claude', timeoutMs = 600_000 } = {}) {
+  return async ({ agent, model, role, inputDir }) => {
+    const tmp = mkdtempSync(join(tmpdir(), 'agent-eval-'))
+    try {
+      const roles = join(dirname(agent.file), '..', '..', 'docs', 'agent', 'agent-roles.md')
+      const system = existsSync(roles) ? `${agent.body}\n\n---\n# docs/agent/agent-roles.md\n\n${readFileSync(roles, 'utf8')}` : agent.body
+      const systemPromptFile = join(tmp, 'system.md')
+      writeFileSync(systemPromptFile, system)
+      const args = claudeArgs({ agent, model, systemPromptFile })
+      const win = process.platform === 'win32'
+      const out = await new Promise((resolveRun, reject) => {
+        const child = spawn(bin, win ? args.map((a) => `"${a}"`) : args, { cwd: inputDir, shell: win, windowsHide: true })
+        let stdout = ''
+        let stderr = ''
+        const timer = setTimeout(() => { child.kill(); reject(new Error(`claude timed out after ${timeoutMs} ms`)) }, timeoutMs)
+        child.stdout.on('data', (d) => { stdout += d })
+        child.stderr.on('data', (d) => { stderr += d })
+        child.on('error', (e) => { clearTimeout(timer); reject(e) })
+        child.on('close', (code) => {
+          clearTimeout(timer)
+          if (code !== 0) reject(new Error(`claude exited ${code}: ${stderr.trim().split(/\r?\n/).slice(-2).join(' | ')}`))
+          else resolveRun(stdout)
+        })
+        child.stdin.end(casePrompt({ role, inputDir }))
+      })
+      const json = JSON.parse(out)
+      return { text: String(json.result ?? ''), tokens: usageTokens(json.usage), costUsd: Number(json.total_cost_usd) || 0 }
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
+  }
+}
