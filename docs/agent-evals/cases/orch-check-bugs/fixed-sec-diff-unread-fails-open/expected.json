@@ -1,0 +1,11 @@
+{
+  "note": "fixed by 35140fb (test: tools/test/orchestrator.test.mjs 'added-code check: a failed or cut-off git diff counts as sensitive (fail closed)'). The diff command's added-code scan ignores git's exit status and spawnSync's default 1 MB maxBuffer: a failed or cut-off 'git diff -U0' yields empty or partial output, so a diff that adds auth code is reported as not sensitive and the security reviewer is skipped (fail open).",
+  "findings": [
+    {
+      "file": "core/scripts/orch-state.mjs",
+      "line": 348,
+      "rule": ["security", "error handling", "error-handling", "logic", "runtime", "fail open", "correctness"],
+      "severity": "major"
+    }
+  ]
+}

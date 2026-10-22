@@ -1,0 +1,11 @@
+{
+  "note": "planted: in the real aff848a orch-preflight.mjs, the disk check's 'free < MIN_FREE_GB' became 'free > MIN_FREE_GB': a machine with enough disk is refused and one that is nearly full passes.",
+  "findings": [
+    {
+      "file": "core/scripts/orch-preflight.mjs",
+      "line": 59,
+      "rule": ["logic", "inverted condition", "correctness", "runtime"],
+      "severity": "major"
+    }
+  ]
+}

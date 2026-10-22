@@ -1,0 +1,11 @@
+{
+  "note": "fixed by c8342ea (test: tools/test/guards.test.mjs 'bashWrites: ... cd ...' — paths('cd \"$WT\" && echo x > README.md') must be ['?README.md']). A cd whose target the guard cannot resolve (a variable, a command substitution) keeps the old folder, so a later relative write such as 'cd \"$WT\" && echo x > README.md' is judged against the wrong folder and allowed: the guard fails open.",
+  "findings": [
+    {
+      "file": "core/scripts/lib/guard.mjs",
+      "line": 330,
+      "rule": ["logic", "security", "runtime", "fail open", "correctness"],
+      "severity": "major"
+    }
+  ]
+}

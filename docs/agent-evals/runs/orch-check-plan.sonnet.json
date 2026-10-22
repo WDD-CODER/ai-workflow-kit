@@ -1,0 +1,90 @@
+{
+  "agent": "orch-check-plan",
+  "model": "sonnet",
+  "cases": [
+    {
+      "name": "clean-019-compare-and-score",
+      "runs": 2,
+      "tp": 0,
+      "fn": 0,
+      "fp": 0,
+      "recall": 1,
+      "precision": 1,
+      "noise": 0,
+      "tokens": 250949,
+      "costUsd": 0.1244325,
+      "errors": 0,
+      "errorDetails": []
+    },
+    {
+      "name": "fixed-010-scope-and-done-when",
+      "runs": 2,
+      "tp": 2,
+      "fn": 2,
+      "fp": 0,
+      "recall": 0.5,
+      "precision": 1,
+      "noise": 0,
+      "tokens": 281614,
+      "costUsd": 0.18803209999999998,
+      "errors": 0,
+      "errorDetails": []
+    },
+    {
+      "name": "fixed-014-report-by-page",
+      "runs": 2,
+      "tp": 1,
+      "fn": 1,
+      "fp": 3,
+      "recall": 0.5,
+      "precision": 0.25,
+      "noise": 1,
+      "tokens": 247606,
+      "costUsd": 0.11943079999999999,
+      "errors": 0,
+      "errorDetails": []
+    },
+    {
+      "name": "fixed-018-ui-items-not-held",
+      "runs": 2,
+      "tp": 0,
+      "fn": 2,
+      "fp": 0,
+      "recall": 0,
+      "precision": 1,
+      "noise": 0,
+      "tokens": 282004,
+      "costUsd": 0.1904912,
+      "errors": 0,
+      "errorDetails": []
+    },
+    {
+      "name": "planted-ticked-subtask-missing",
+      "runs": 2,
+      "tp": 0,
+      "fn": 2,
+      "fp": 2,
+      "recall": 0,
+      "precision": 0,
+      "noise": 0,
+      "tokens": 246506,
+      "costUsd": 0.10541370000000001,
+      "errors": 0,
+      "errorDetails": []
+    }
+  ],
+  "total": {
+    "name": "TOTAL",
+    "runs": 10,
+    "tp": 3,
+    "fn": 7,
+    "fp": 5,
+    "recall": 0.3,
+    "precision": 0.375,
+    "noise": 0.2,
+    "tokens": 1308679,
+    "costUsd": 0.7278003000000001,
+    "errors": 0
+  },
+  "below": []
+}

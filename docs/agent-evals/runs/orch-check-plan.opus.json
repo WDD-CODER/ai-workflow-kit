@@ -1,0 +1,93 @@
+{
+  "agent": "orch-check-plan",
+  "model": "opus",
+  "cases": [
+    {
+      "name": "clean-019-compare-and-score",
+      "runs": 2,
+      "tp": 0,
+      "fn": 0,
+      "fp": 0,
+      "recall": 1,
+      "precision": 1,
+      "noise": 0,
+      "tokens": 251105,
+      "costUsd": 0.2565666,
+      "errors": 0,
+      "errorDetails": []
+    },
+    {
+      "name": "fixed-010-scope-and-done-when",
+      "runs": 2,
+      "tp": 0,
+      "fn": 4,
+      "fp": 0,
+      "recall": 0,
+      "precision": 1,
+      "noise": 0,
+      "tokens": 282322,
+      "costUsd": 0.3947938,
+      "errors": 2,
+      "errorDetails": [
+        "no JSON result: Unterminated string in JSON at position 529 (line 11 column 254)",
+        "no JSON result: Unterminated string in JSON at position 499 (line 11 column 224)"
+      ]
+    },
+    {
+      "name": "fixed-014-report-by-page",
+      "runs": 2,
+      "tp": 1,
+      "fn": 1,
+      "fp": 1,
+      "recall": 0.5,
+      "precision": 0.5,
+      "noise": 1,
+      "tokens": 246806,
+      "costUsd": 0.2273952,
+      "errors": 0,
+      "errorDetails": []
+    },
+    {
+      "name": "fixed-018-ui-items-not-held",
+      "runs": 2,
+      "tp": 0,
+      "fn": 2,
+      "fp": 11,
+      "recall": 0,
+      "precision": 0,
+      "noise": 1,
+      "tokens": 569943,
+      "costUsd": 0.5726422,
+      "errors": 0,
+      "errorDetails": []
+    },
+    {
+      "name": "planted-ticked-subtask-missing",
+      "runs": 2,
+      "tp": 0,
+      "fn": 2,
+      "fp": 2,
+      "recall": 0,
+      "precision": 0,
+      "noise": 0,
+      "tokens": 370199,
+      "costUsd": 0.2554528,
+      "errors": 0,
+      "errorDetails": []
+    }
+  ],
+  "total": {
+    "name": "TOTAL",
+    "runs": 10,
+    "tp": 1,
+    "fn": 9,
+    "fp": 14,
+    "recall": 0.1,
+    "precision": 0.06666666666666667,
+    "noise": 0.4,
+    "tokens": 1720375,
+    "costUsd": 1.7068506,
+    "errors": 2
+  },
+  "below": []
+}

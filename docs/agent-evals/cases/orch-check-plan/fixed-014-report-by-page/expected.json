@@ -1,0 +1,11 @@
+{
+  "note": "fixed by 7e2bca1 (test: tools/test/orchestrator.test.mjs 'validation list by page'; validationList() added to core/scripts/lib/orch-run.mjs). The plan's P0 Report requirement asks for one validation list grouped by page with evidence; formatReport (line 84) lists only each plan's [human] items under the plan's title — no page grouping, no evidence.",
+  "findings": [
+    {
+      "file": "core/scripts/lib/orch-run.mjs",
+      "line": 84,
+      "rule": ["report", "p0", "must have", "must have (p0)", "requirement", "a2", "plan", "validation list"],
+      "severity": "major"
+    }
+  ]
+}

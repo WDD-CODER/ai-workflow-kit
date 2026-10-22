@@ -20,7 +20,30 @@ Nothing. Rendered files that change (`kit-update`): `.claude/workflows/orchestra
 `scripts/lib/slot-procs.mjs`, `docs/agent/standards-git.md`, `docs/agent/workflow-map.md`. A project with `commands.dev` set now needs its dev server answering on the base port
 (or startable by `scripts/slot-serve.mjs`) before `/orchestrate` starts a run.
 
+The validating agents' model tier adds nothing a project must do: the new tier `models.review` defaults to `sonnet`, which is what the
+validating agents ran on before. Rendered files that change: `.claude/agents/orch-check-plan.md`,
+`orch-check-bugs.md`, `orch-check-rules.md`, `orch-verify.md`, `orch-security.md`, `orch-ui.md` (model from
+`models.review`), `.claude/agents/git-agent.md` (`omitClaudeMd: true`), `.claude/commands/review-it.md`,
+`docs/agent/model-routing.md`. A project that set `models.analysis` to Haiku keeps its checkers on Sonnet now.
+
+### Added
+
+- `models.review`: the model tier of every validating agent — the three finders, the verifier, the
+  security and UI validators, and so `/review-it`'s checkers. Default `sonnet`; install and sync refuse `haiku` or a
+  `claude-haiku-*` id for it, naming the key (a review is never done by the weakest model). `models.analysis` keeps
+  `kit-prevalidate`, `orch-merge`, `techdebt` and `/docs-refresh`.
+- The kit's own agent-eval case set: 25 cases under `docs/agent-evals/cases/` for `orch-check-bugs`,
+  `orch-check-plan`, `orch-check-rules` and `orch-verify`, built from this repo's history — problems a checker found
+  and a later commit fixed with a test (`fixed by <sha>`), plans that passed with no finding (`clean:`), and planted
+  bugs (`planted:`). `tools/test/eval-cases.test.mjs` refuses a label without one of those sources;
+  `tools/fixtures/agent-evals/stub-perfect.mjs` proves the set parses without a model call.
+- `docs/agent-evals/BASELINE.md`: recall, precision, noise, tokens and cost per model (Opus, Sonnet) for each of the
+  four roles, two runs per case, and the cheapest model per role within 0.05 of the best.
+
 ### Changed
+
+- `git-agent` starts without the project instructions (`omitClaudeMd: true`, like `kit-runner`): its prompt carries
+  everything it needs. The field needs Claude Code v2.1.271 or later and is ignored before that.
 
 - Guards: strict mode for complex shell writes on guarded folders. A Bash command that writes and uses `$(…)`,
   `${…}`, backticks, `<(…)`/`>(…)`, `[[`, `((`, `$'…'`/`$"…"` or `eval` is refused (`BRANCH_GUARD:` /

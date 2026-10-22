@@ -1,0 +1,268 @@
+diff --git a/.kit/install.json b/.kit/install.json
+index ae6b3df..c7f33bf 100644
+--- a/.kit/install.json
++++ b/.kit/install.json
+@@ -3,7 +3,7 @@
+     "version": "1.3.1"
+   },
+   "source": "local:.",
+-  "commit": "0bf851ca43caa09914f3dc780ae5685da8a52daf",
++  "commit": "4a144ccbe4f8173015c2e9a8f04f3f14f5782e0f",
+   "packs": [],
+   "layers": [],
+   "cursor": false,
+@@ -465,7 +465,7 @@
+       "source": "core/scripts/lib/plan-scope.mjs"
+     },
+     "scripts/lib/slot-procs.mjs": {
+-      "sha256": "18477abb1fc6744724d4dc03d9d9d1f4551605625a16e54bf9a85a4c64c66135",
++      "sha256": "de96f626a0f48d3909bda5b741359a5b7b04a955bd9df01a8d7f3c8335516d50",
+       "kind": "managed",
+       "source": "core/scripts/lib/slot-procs.mjs"
+     },
+@@ -595,7 +595,7 @@
+       "source": "core/scripts/ship-prep.mjs"
+     },
+     "scripts/slot-serve.mjs": {
+-      "sha256": "c3aea7a9bbc481b8ac189b2510a575eb731193cfb27bb33e053dbfff0e705586",
++      "sha256": "1c9a54aa768b1df2dc710b925a8d35d99cbd77a0eacd456b20246ce68e6305f5",
+       "kind": "managed",
+       "source": "core/scripts/slot-serve.mjs"
+     },
+@@ -605,7 +605,7 @@
+       "source": "core/scripts/slot-stop.mjs"
+     },
+     "scripts/take-plan.mjs": {
+-      "sha256": "ce775946bfe6733be05d430e364beed6f5074c71e464a2f0c5cd3dd8c13de5e2",
++      "sha256": "96e92b2ccd3ff399485e7b94d1d884f5cd78e11d3152d21e9522eabd3a80dfa8",
+       "kind": "managed",
+       "source": "core/scripts/take-plan.mjs"
+     },
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index fb3f9d6..ad0660a 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -39,6 +39,14 @@ outside a slot too. Rendered files that change (`kit-update`): `scripts/scope-ch
+   `ship-prep.mjs` runs the scope gate in a slot **or** on such a branch (a branch that names no plan: no gate, as
+   before).
+ 
++### Fixed
++- `slot-serve.mjs` and `take-plan.mjs` install a folder's packages when they are missing (no
++  `node_modules/.package-lock.json`), not only when its lockfile changed: a stale `.last-npm-install-hash-*` no
++  longer hides a missing `server/node_modules`. They print `npm install ran in <label> (packages missing|lockfile
++  changed)`, and a failed install names the exact command to run by hand. New pure check `installNeed(dir,
++  hashPath)` in `scripts/lib/slot-procs.mjs`. Rendered files that change (`kit-update`): `scripts/lib/slot-procs.mjs`,
++  `scripts/slot-serve.mjs`, `scripts/take-plan.mjs`.
++
+ The validation hand-off moves to the end of the work: a finished plan with `[human]` items now ends with the
+ servers running and HOW TO VALIDATE cards grouped by page, before any `/ship`, PR or merge.
+ 
+diff --git a/core/scripts/lib/slot-procs.mjs b/core/scripts/lib/slot-procs.mjs
+index 924b06b..6d159ea 100644
+--- a/core/scripts/lib/slot-procs.mjs
++++ b/core/scripts/lib/slot-procs.mjs
+@@ -483,21 +483,45 @@ export function installDirs(root = repoRoot) {
+   return out
+ }
+ 
+-/** npm install when package-lock.json changed since the last install here. Returns true when it ran. */
+-export function npmInstallIfChanged(dir, hashFileName, root = repoRoot) {
++const lockHash = (lockPath) => createHash('sha256').update(readFileSync(lockPath)).digest('hex')
++
++/**
++ * Whether `dir` needs an npm install, without side effects: null (no lockfile, or the lockfile is unchanged since
++ * the last install and the packages are there), 'changed' (no hash file at `hashPath`, or the lockfile's hash
++ * differs) or 'missing' (hash matches, but <dir>/node_modules or its .package-lock.json is absent - a stale hash
++ * must not hide packages that were never installed or were removed).
++ */
++export function installNeed(dir, hashPath) {
+   const lockPath = join(dir, 'package-lock.json')
+-  if (!existsSync(lockPath)) return false
+-  const hashPath = join(root, '.claude', hashFileName)
+-  const newHash = createHash('sha256').update(readFileSync(lockPath)).digest('hex')
++  if (!existsSync(lockPath)) return null
+   const oldHash = existsSync(hashPath) ? readFileSync(hashPath, 'utf8').trim() : null
+-  if (newHash === oldHash) return false
++  if (lockHash(lockPath) !== oldHash) return 'changed'
++  if (!existsSync(join(dir, 'node_modules', '.package-lock.json'))) return 'missing'
++  return null
++}
++
++/** The words for an installNeed reason in the install messages. */
++export const installReason = (need) => (need === 'missing' ? 'packages missing' : 'lockfile changed')
+ 
+-  // Windows: npm.cmd needs a shell, and a shell must get one command string, not an args array (DEP0190).
+-  if (isWin) execSync('npm install', { cwd: dir, stdio: 'ignore' })
+-  else execFileSync('npm', ['install'], { cwd: dir, stdio: 'ignore' })
++/**
++ * npm install when installNeed says so. Returns the reason ('changed' | 'missing', truthy) when it ran, else false.
++ * A failed install throws an Error whose first line names the exact command to run by hand.
++ */
++export function npmInstallIfChanged(dir, hashFileName, root = repoRoot) {
++  const hashPath = join(root, '.claude', hashFileName)
++  const need = installNeed(dir, hashPath)
++  if (!need) return false
++
++  try {
++    // Windows: npm.cmd needs a shell, and a shell must get one command string, not an args array (DEP0190).
++    if (isWin) execSync('npm install', { cwd: dir, stdio: 'ignore' })
++    else execFileSync('npm', ['install'], { cwd: dir, stdio: 'ignore' })
++  } catch (e) {
++    throw new Error(`${String(e.message).split('\n')[0]} - run \`npm install\` in ${dir} by hand`)
++  }
+   mkdirSync(dirname(hashPath), { recursive: true })
+-  writeFileSync(hashPath, newHash)
+-  return true
++  writeFileSync(hashPath, lockHash(join(dir, 'package-lock.json')))
++  return need
+ }
+ 
+ /**
+diff --git a/core/scripts/slot-serve.mjs b/core/scripts/slot-serve.mjs
+index 170c90f..dd46efa 100644
+--- a/core/scripts/slot-serve.mjs
++++ b/core/scripts/slot-serve.mjs
+@@ -8,7 +8,7 @@
+  *   node scripts/slot-serve.mjs            # start what is not running, keep what is
+  *   node scripts/slot-serve.mjs --restart  # stop this slot's servers first, then start both
+  *
+- * Steps: npm install when a lockfile changed (running servers are restarted on the new dependencies), then
++ * Steps: npm install when a lockfile changed or a folder's packages are missing (running servers are restarted on the new dependencies), then
+  * each server is kept when this slot already runs it (a watcher that is restarting its app counts), refused
+  * when its port is held by anything else (a second start would leave an idle watcher behind), or started.
+  * environment.slot.ts and the optional prepare step run only before a start, so a kept server is never
+@@ -22,7 +22,7 @@ import { isSlot, slotNumber, ports, activePlanPath } from './lib/slot.mjs'
+ import {
+   repoRoot, portState, processTable, listeners, devChains, killTree, readSlotPids, writeSlotPids,
+   stopSlotServers, waitForPort, waitForPortFree, startServer, npmInstallIfChanged, generateEnvironmentSlot,
+-  hasFrontend as projectHasFrontend, frontendArgs, isFrontendCmd, installDirs
++  hasFrontend as projectHasFrontend, frontendArgs, isFrontendCmd, installDirs, installReason
+ } from './lib/slot-procs.mjs'
+ 
+ const isWin = process.platform === 'win32'
+@@ -57,7 +57,9 @@ let installed = false
+ for (const [dir, hashFile, label] of installDirs(repoRoot)) {
+   try {
+     // The workflow scripts' own dependencies are not loaded by the servers: no restart for them.
+-    if (npmInstallIfChanged(dir, hashFile) && label !== 'scripts') installed = true
++    const ran = npmInstallIfChanged(dir, hashFile)
++    if (ran) console.log(`SLOT_SERVE: npm install ran in ${label} (${installReason(ran)})`)
++    if (ran && label !== 'scripts') installed = true
+   } catch (e) {
+     fail(`npm install failed in ${label} - servers not started.\n${String(e.message).split('\n')[0]}`)
+   }
+diff --git a/core/scripts/take-plan.mjs b/core/scripts/take-plan.mjs
+index b7257c9..27f4ddb 100644
+--- a/core/scripts/take-plan.mjs
++++ b/core/scripts/take-plan.mjs
+@@ -32,7 +32,7 @@ import { extractScopeGlobs } from './lib/plan-scope.mjs'
+ import { findOpenPlanIn } from './lib/plan-paths.mjs'
+ import { parseInvariants, checkPlanArch } from './lib/invariants.mjs'
+ import { planDependencies, planTitle, isFinishedStatus, atomicStats } from './lib/plan-deps.mjs'
+-import { portState, waitForPortFree, stopSlotServers, npmInstallIfChanged, generateEnvironmentSlot, hasFrontend as projectHasFrontend, installDirs } from './lib/slot-procs.mjs'
++import { portState, waitForPortFree, stopSlotServers, npmInstallIfChanged, installReason, generateEnvironmentSlot, hasFrontend as projectHasFrontend, installDirs } from './lib/slot-procs.mjs'
+ import { ensureLocalExcludes } from './local-excludes.mjs'
+ 
+ const __dirname = dirname(fileURLToPath(import.meta.url))
+@@ -349,11 +349,13 @@ if (previousPlan !== match || !existsSync(planStartPath)) writeFileSync(planStar
+ const statePointer = join(repoRoot, '.claude', '.session-state-path')
+ if (existsSync(statePointer)) unlinkSync(statePointer)
+ 
+-// --- (f) after the claim, nothing can fail it: npm install if the lockfile changed + environment.slot.ts
+-// A build needs the dependencies; a failed install is reported, never a refusal (slot-serve.mjs retries it).
++// --- (f) after the claim, nothing can fail it: npm install if the lockfile changed or packages are missing
++// + environment.slot.ts. A build needs the dependencies; a failed install is reported, never a refusal
++// (slot-serve.mjs retries it).
+ for (const [dir, hashFile, label] of installDirs(repoRoot)) {
+   try {
+-    if (npmInstallIfChanged(dir, hashFile)) console.log(`TAKE_PLAN: npm install ran in ${label} (lockfile changed)`)
++    const ran = npmInstallIfChanged(dir, hashFile)
++    if (ran) console.log(`TAKE_PLAN: npm install ran in ${label} (${installReason(ran)})`)
+   } catch (e) {
+     const why = String(e.message).split('\n')[0]
+     console.log(`TAKE_PLAN: warning - npm install failed in ${label} (${why}); slot-serve.mjs retries it`)
+diff --git a/tools/test/slot-procs-install.test.mjs b/tools/test/slot-procs-install.test.mjs
+new file mode 100644
+index 0000000..62977d6
+--- /dev/null
++++ b/tools/test/slot-procs-install.test.mjs
+@@ -0,0 +1,79 @@
++// installNeed (plan 010): when a slot needs `npm install` - the lockfile changed, or its packages are missing even
++// though the lockfile hash still matches. Pure check on temp folders; npm never runs.
++//   node --test tools/test/slot-procs-install.test.mjs
++// Imports the installed copy (scripts/lib/slot-procs.mjs, after `node tools/sync.mjs --target . --apply`), since
++// the core/ source carries template placeholders. SLOT_PROCS_ROOT=<project> tests another installed copy.
++import { test, after } from 'node:test'
++import assert from 'node:assert/strict'
++import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
++import { join, resolve } from 'node:path'
++import { tmpdir } from 'node:os'
++import { createHash } from 'node:crypto'
++import { fileURLToPath, pathToFileURL } from 'node:url'
++
++const kit = resolve(fileURLToPath(new URL('../..', import.meta.url)))
++const project = process.env.SLOT_PROCS_ROOT ? resolve(process.env.SLOT_PROCS_ROOT) : kit
++const { installNeed, installReason } = await import(pathToFileURL(join(project, 'scripts', 'lib', 'slot-procs.mjs')).href)
++
++const scratch = []
++after(() => {
++  for (const d of scratch) rmSync(d, { recursive: true, force: true })
++})
++
++const LOCK = '{"name":"fixture","lockfileVersion":3,"packages":{}}\n'
++const sha = (s) => createHash('sha256').update(s).digest('hex')
++
++/** A temp package folder: optional lockfile, hash file (matching or stale) and installed node_modules. */
++function fixture({ lock = true, hash = 'match', modules = true } = {}) {
++  const root = mkdtempSync(join(tmpdir(), 'kit-installneed-'))
++  scratch.push(root)
++  const dir = join(root, 'server')
++  mkdirSync(dir, { recursive: true })
++  if (lock) writeFileSync(join(dir, 'package-lock.json'), LOCK)
++  const hashPath = join(root, '.claude', '.last-npm-install-hash-server')
++  if (hash) {
++    mkdirSync(join(root, '.claude'), { recursive: true })
++    writeFileSync(hashPath, hash === 'match' ? sha(LOCK) : sha('an older lockfile'))
++  }
++  if (modules) {
++    mkdirSync(join(dir, 'node_modules'), { recursive: true })
++    writeFileSync(join(dir, 'node_modules', '.package-lock.json'), LOCK)
++  }
++  return { dir, hashPath }
++}
++
++test('hash unchanged but node_modules missing -> missing', () => {
++  const { dir, hashPath } = fixture({ modules: false })
++  assert.equal(installNeed(dir, hashPath), 'missing')
++})
++
++test('hash unchanged, node_modules present but incomplete (no .package-lock.json) -> missing', () => {
++  const { dir, hashPath } = fixture({ modules: false })
++  mkdirSync(join(dir, 'node_modules', 'cross-env'), { recursive: true })
++  assert.equal(installNeed(dir, hashPath), 'missing')
++})
++
++test('hash unchanged and node_modules present -> no install', () => {
++  const { dir, hashPath } = fixture()
++  assert.equal(installNeed(dir, hashPath), null)
++})
++
++test('hash changed -> changed', () => {
++  const { dir, hashPath } = fixture({ hash: 'stale' })
++  assert.equal(installNeed(dir, hashPath), 'changed')
++})
++
++test('no hash file yet -> changed', () => {
++  const { dir, hashPath } = fixture({ hash: null })
++  assert.equal(installNeed(dir, hashPath), 'changed')
++})
++
++test('no lockfile -> no install', () => {
++  const { dir, hashPath } = fixture({ lock: false, modules: false })
++  assert.equal(installNeed(dir, hashPath), null)
++})
++
++test('the reason words the messages print', () => {
++  assert.equal(installReason('missing'), 'packages missing')
++  assert.equal(installReason('changed'), 'lockfile changed')
++})

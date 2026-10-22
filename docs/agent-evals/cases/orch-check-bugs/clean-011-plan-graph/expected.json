@@ -1,0 +1,4 @@
+{
+  "note": "clean: plan 011 passed with no finding — core/scripts/lib/plan-graph.mjs has not changed since 7845500 (git log) and tools/test/plan-order.test.mjs covers it. Every reported finding is a false alarm.",
+  "findings": []
+}

@@ -1,0 +1,7 @@
+{
+  "note": "fixed by ea53cd2 (tests: tools/test/guards.test.mjs 1, 5 and 7 on CI windows-latest; 16/16 after the fix): bugs-1 is real (keep). bugs-2 is refuted by core/scripts/lib/guard.mjs:297, which falls back to env.USERPROFILE and then '~' — never 'undefined'.",
+  "verdicts": [
+    { "id": "bugs-1", "verdict": "keep" },
+    { "id": "bugs-2", "verdict": "refuted" }
+  ]
+}

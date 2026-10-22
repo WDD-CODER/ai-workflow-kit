@@ -1,0 +1,11 @@
+{
+  "note": "planted: in the real 35140fb orch-run.mjs, planBranchProblem's '&&' became '||', so any string passes ('feat/../x', 'a b', '-rf' all return null) and the check allows everything.",
+  "findings": [
+    {
+      "file": "core/scripts/lib/orch-run.mjs",
+      "line": 33,
+      "rule": ["logic", "security", "validation", "correctness", "fail open"],
+      "severity": "major"
+    }
+  ]
+}

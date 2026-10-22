@@ -1,0 +1,11 @@
+{
+  "note": "fixed by c8342ea (test: tools/test/guards.test.mjs 'scopedPlanPath (the /ship scope gate) ... agrees with the hook on a missing one'). Outside a slot, scopedPlanPath returns activePlanPath(), which returns the .worktree-plan path even when that file no longer exists (on an orch/<run> branch that names no plan), while guard.mjs scopedPlan ignores a marker whose file is missing: /ship and the hooks disagree on which plan's scope applies.",
+  "findings": [
+    {
+      "file": "core/scripts/lib/slot.mjs",
+      "line": 79,
+      "rule": ["logic", "contract", "runtime", "correctness", "consistency"],
+      "severity": "major"
+    }
+  ]
+}

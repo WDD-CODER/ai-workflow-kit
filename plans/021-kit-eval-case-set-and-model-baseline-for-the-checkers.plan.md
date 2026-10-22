@@ -1,6 +1,6 @@
 # Plan 021 — Kit Eval Case Set and Model Baseline for the Checkers
 
-Status: draft
+Status: active
 Snapshot: 305fce2
 Depends-on: 019, 020
 
@@ -120,15 +120,15 @@ per commit: `ok` or `conflict: <what>`. STOP for a go only on a `conflict`.
 
 These are the plan's milestones: a Worker does them in order and ticks each one after it is checked.
 
-- [ ] A1: Build cases from problems the run's checkers found and a later commit fixed, so each label is proved by code — plan + pre-fix diff + changed files as input, the fixed problem as the label, note "fixed by <sha>" — docs/agent-evals/cases/
-- [ ] A2: Build clean cases from plans that passed with no finding, to measure false alarms — docs/agent-evals/cases/
-- [ ] A3: Add planted-bug cases with one exact known answer each — docs/agent-evals/cases/
-- [ ] A4: Add verifier cases that mix real findings with refutable false alarms — docs/agent-evals/cases/orch-verify/
-- [ ] A5: Prove every case parses and every label has a code-backed source, before spending tokens — stub runner and a case test — tools/fixtures/agent-evals/stub-perfect.mjs, tools/test/eval-cases.test.mjs
-- [ ] A0: Give validating agents their own model tier that can never be Haiku, so a review is never done by the weakest model — models.review default sonnet, refused when haiku; checker, verifier, security, UI agents and the review command use it; routing doc and install check updated — kit.config.json, .kit/config.json, tools/lib/kit.mjs, tools/install-check.mjs, core/.claude/agents/orch-check-*.md, orch-verify.md, orch-security.md, orch-ui.md, core/.claude/commands/review-it.md, core/docs/agent/model-routing.md
-- [ ] A0b: Start the commit-message agent without the project instructions, since it gets everything from its prompt — omitClaudeMd true, like kit-runner; note in the routing doc that the field needs Claude Code v2.1.271 or later and is ignored before that — core/.claude/agents/git-agent.md, core/docs/agent/model-routing.md
-- [ ] A6: Run each checker and the verifier on Opus and Sonnet and write the baseline report — two runs per case, one run at a time — docs/agent-evals/BASELINE.md
-- [ ] A7: Record the outcome in the changelog and the plan's notes — CHANGELOG.md
+- [x] A1: Build cases from problems the run's checkers found and a later commit fixed, so each label is proved by code — plan + pre-fix diff + changed files as input, the fixed problem as the label, note "fixed by <sha>" — docs/agent-evals/cases/
+- [x] A2: Build clean cases from plans that passed with no finding, to measure false alarms — docs/agent-evals/cases/
+- [x] A3: Add planted-bug cases with one exact known answer each — docs/agent-evals/cases/
+- [x] A4: Add verifier cases that mix real findings with refutable false alarms — docs/agent-evals/cases/orch-verify/
+- [x] A5: Prove every case parses and every label has a code-backed source, before spending tokens — stub runner and a case test — tools/fixtures/agent-evals/stub-perfect.mjs, tools/test/eval-cases.test.mjs
+- [x] A0: Give validating agents their own model tier that can never be Haiku, so a review is never done by the weakest model — models.review default sonnet, refused when haiku; checker, verifier, security, UI agents and the review command use it; routing doc and install check updated — kit.config.json, .kit/config.json, tools/lib/kit.mjs, tools/install-check.mjs, core/.claude/agents/orch-check-*.md, orch-verify.md, orch-security.md, orch-ui.md, core/.claude/commands/review-it.md, core/docs/agent/model-routing.md
+- [x] A0b: Start the commit-message agent without the project instructions, since it gets everything from its prompt — omitClaudeMd true, like kit-runner; note in the routing doc that the field needs Claude Code v2.1.271 or later and is ignored before that — core/.claude/agents/git-agent.md, core/docs/agent/model-routing.md
+- [x] A6: Run each checker and the verifier on Opus and Sonnet and write the baseline report — two runs per case, one run at a time — docs/agent-evals/BASELINE.md
+- [x] A7: Record the outcome in the changelog and the plan's notes — CHANGELOG.md
 
 ## Technical Considerations
 - Dependencies: `tools/agent-eval.mjs`, `tools/lib/agent-result.mjs`, the `.claude/agents/orch-*.md` files after 020.
@@ -152,3 +152,46 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 
 ## Execution Notes
 Asked for by Dandan on 2026-10-22 ("plan and run 021 when done"), after plan 020.
+
+Build (builder, 2026-10-22, branch `feat/021-kit-eval-baseline` off `origin/main` 9173793, worktree
+`ai-workflow-kit-021`; no Human available — conservative choices logged here):
+- Step 0 not run: the plan's snapshot 305fce2 is an ancestor of main; nothing in scope moved under it.
+- A0: `models.review` (default `sonnet`) in `kit.config.json`; `tools/lib/kit.mjs` validates it with the other tiers
+  and refuses `haiku` / `claude-haiku-*` ("models.review is "haiku" — validating agents never run on Haiku …").
+  `orch-check-plan/bugs/rules`, `orch-verify`, `orch-security`, `orch-ui` render `model: {{models.review}}`;
+  `orch-merge` stays on `analysis`. `review-it.md` says the finders and verifier run on the review tier.
+  `.kit/config.json` not edited: it takes the scaffold default. install-check: new fixtures `models.review` haiku and
+  claude-haiku-4-5 refused (exit 2, nothing written); `models.analysis: haiku` keeps all six validators on `sonnet`;
+  the all-inherit fixture now sets `review` too.
+- A0b: `git-agent.md` `omitClaudeMd: true`; model-routing rule 2 names the v2.1.271 requirement.
+- Decision (scope): `core/docs/agent/agent-roles.md` line 68 still says the finders run "on the `analysis` tier" and
+  `core/docs/agent/agent-evals.md` shows `--model haiku` as an example; both files are outside this plan's scope and
+  were left as they are — a follow-up should say `review` there.
+- A1–A4: 25 cases in `docs/agent-evals/cases/` — orch-check-bugs 14 (7 fixed: daf4f2c, c8342ea ×2, ea53cd2, 7e2bca1,
+  35140fb, dbc4ce4; 5 planted: off-by-one, allow-all check, inverted comparison, lost escape, unchecked error; 2 clean:
+  011 plan-graph, 013 agent-result), orch-check-plan 5 (3 fixed: daf4f2c, 7e2bca1, dbc4ce4; 1 planted; 1 clean 019),
+  orch-check-rules 3 (2 planted; 1 clean 019), orch-verify 3 (fixed findings + refutable false alarms).
+  Inputs are the plan (or a marked excerpt when the full diff was > 60 KB), the pre-fix diff of the touched file and
+  the file at the pre-fix commit, extracted with `git show` / `git diff`. Decision: the plan's clean list named
+  plan 011's diff, but `plan-deps.mjs` was fixed later (a129759, "Depends-on stops at a dash"), so the clean cases use
+  files that never changed after their plan (`plan-graph.mjs`, `agent-result.mjs`, `compare.mjs`, `score.mjs`).
+- A5: `node tools/agent-eval.mjs --agent .claude/agents/orch-check-bugs.md --cases docs/agent-evals/cases --runner
+  tools/fixtures/agent-evals/stub-perfect.mjs` → exit 0, TOTAL 1.00 / 1.00, 0 errors (14 cases).
+  `node --test tools/test/eval-cases.test.mjs` → pass 4, fail 0 (≥ 20 cases, shapes, note sources and shas, stub
+  scores 1/1 on all four roles).
+- A6: eight runs, one at a time, `--runs 2`, all exit 0 (17:41–18:49); reports in `docs/agent-evals/runs/`.
+  `docs/agent-evals/BASELINE.md`: Sonnet is the cheapest within 0.05 on every role; recall is low on both models.
+  A diagnostic one-run Sonnet replay (raw reply kept in the scratchpad) shows why much of it is the scorer: on
+  planted-inverted-comparison the agent found the exact line but said `blocker` / `wrong result` where the label says
+  `major` / `logic`. Decision: the measured numbers are reported as they are, not re-run after relabelling (that
+  would tune labels to the results); BASELINE.md "Next" proposes a severity tolerance and the prompt's categories as a
+  harness change outside this scope. Opus `orch-check-plan` returned invalid JSON twice (counted as errors).
+- A7: CHANGELOG `[Unreleased]` — Added (`models.review`, case set, BASELINE.md), Changed (`git-agent`), and the
+  rendered files a project gets. First lint run failed on "plan 021" in CHANGELOG (leak-check history rule); reworded.
+- Checks, one at a time, each exit 0: `node tools/sync.mjs --target . --apply` (0 kit-update after the last source
+  change); `npm run build` (PACK_CHECK: ok); `npm run lint` (LEAK_CHECK: ok ×3); `npm run test` (INSTALL_CHECK: ok,
+  WORKFLOW_LINK_CHECK: ok — 0 missing); `node tools/e2e-check.mjs` (E2E_CHECK: ok — 53 cases passed);
+  `node tools/drift-check.mjs --target .` (KIT_DRIFT: ok — 0 undeclared differences); `node --test
+  tools/test/*.test.mjs` (tests 120, pass 120, fail 0); `node tools/orchestrator-e2e.mjs` (ORCHESTRATOR_E2E: ok — 64
+  cases passed). `npm run e2e` is left to CI.
+- Open ([human]): Dandan reads BASELINE.md and picks the default model per checker role.

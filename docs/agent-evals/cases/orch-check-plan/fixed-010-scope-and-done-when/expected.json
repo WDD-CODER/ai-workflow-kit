@@ -1,0 +1,15 @@
+{
+  "note": "fixed by daf4f2c (the plan's scope block gains .kit/install.json; the Done-when command becomes node --test \"tools/test/*.test.mjs\", proved by its run: tests 22, pass 22). The diff writes .kit/install.json, which is outside the Read-Write Scope with no scope-extended note, and the [auto] Done-when command node --test tools/test/ fails on Node 24, so the item was checked with a different command than the plan names.",
+  "findings": [
+    {
+      "file": ".kit/install.json",
+      "rule": ["scope", "read-write scope", "out of scope", "outside scope", "scope violation"],
+      "severity": "minor"
+    },
+    {
+      "file": "plan.md",
+      "rule": ["done-when", "evidence", "D3", "auto", "[auto] done-when"],
+      "severity": "minor"
+    }
+  ]
+}

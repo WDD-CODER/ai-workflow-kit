@@ -1,0 +1,18 @@
+[
+  {
+    "id": "bugs-1",
+    "file": "core/scripts/lib/guard.mjs",
+    "line": 44,
+    "rule": "security: Windows short path compares unequal",
+    "reasoning": "same() and inside() compare path text only. A file path in 8.3 short form (C:/Users/RUNNER~1/...) and git's long worktree path differ, so inside() says the file is outside every slot and the write is allowed.",
+    "severity": "major"
+  },
+  {
+    "id": "bugs-2",
+    "file": "core/scripts/lib/guard.mjs",
+    "line": 297,
+    "rule": "runtime: HOME unset on Windows",
+    "reasoning": "On Windows HOME is often unset, so '~/x' expands to 'undefined/x' and the guard checks the wrong path.",
+    "severity": "major"
+  }
+]

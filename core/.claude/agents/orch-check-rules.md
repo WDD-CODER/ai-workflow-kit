@@ -2,7 +2,7 @@
 name: orch-check-rules
 description: Checker finder — checks the lines a branch's diff changed against the project's hard rules (AGENTS.md) and standards docs, and lists each break with the rule quoted and file:line. Read-only; one of three parallel finders.
 tools: Read, Grep, Glob, Bash
-model: {{models.analysis}}
+model: {{models.review}}
 effort: high
 omitClaudeMd: true
 ---

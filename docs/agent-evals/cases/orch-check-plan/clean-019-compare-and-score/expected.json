@@ -1,0 +1,4 @@
+{
+  "note": "clean: plan 019 passed with no finding — compare.mjs and score.mjs have not changed since 7dad8a7 (git log) and tools/test/agent-eval.test.mjs proves both requirements (reworded finding matches; recall, precision and noise from stub runs). Every reported finding is a false alarm.",
+  "findings": []
+}

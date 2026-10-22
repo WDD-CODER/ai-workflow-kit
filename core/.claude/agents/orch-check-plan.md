@@ -2,7 +2,7 @@
 name: orch-check-plan
 description: Checker finder — compares a branch's diff with its plan and lists where the diff misses, exceeds or contradicts what the plan asks, with file:line evidence. Read-only; one of three parallel finders.
 tools: Read, Grep, Glob, Bash
-model: {{models.analysis}}
+model: {{models.review}}
 effort: high
 omitClaudeMd: true
 ---

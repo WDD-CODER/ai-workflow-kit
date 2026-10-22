@@ -1,0 +1,7 @@
+{
+  "note": "fixed by dbc4ce4 (test: tools/test/ui-tier.test.mjs 'tag lint: ...' with '- [X] [ui] Done with a capital box'): bugs-1 is real (keep). rules-1 is refuted by core/scripts/lib/done-when.mjs:8, which replaces \\r\\n with \\n before splitting.",
+  "verdicts": [
+    { "id": "bugs-1", "verdict": "keep" },
+    { "id": "rules-1", "verdict": "refuted" }
+  ]
+}

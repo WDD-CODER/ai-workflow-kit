@@ -40,7 +40,8 @@ result schema are in `docs/agent/agent-roles.md`.
 
 3. **Finders, in parallel** — start `orch-check-plan`, `orch-check-bugs` and `orch-check-rules`
    (`.claude/agents/`) in one message, each with the plan path, the branch `<ref>`, the review folder and the base
-   `origin/{{git.mainBranch}}`.
+   `origin/{{git.mainBranch}}`. They run on the `review` tier (`{{models.review}}`, never Haiku — their agent files
+   pin it); never pass a cheaper `model` to these calls.
    When the diff touches auth, guards, interceptors, secrets handling or `{{paths.serverRoot}}middleware`, start
    `orch-security` too, with the changed files on those paths. Without sub-agents, read the diff once per lens
    (plan, bugs, rules) inline and write the candidates in the same shape.

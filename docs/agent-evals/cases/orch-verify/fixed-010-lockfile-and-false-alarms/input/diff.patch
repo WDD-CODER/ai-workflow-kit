@@ -1,0 +1,61 @@
+diff --git a/core/scripts/lib/slot-procs.mjs b/core/scripts/lib/slot-procs.mjs
+index 924b06b..6d159ea 100644
+--- a/core/scripts/lib/slot-procs.mjs
++++ b/core/scripts/lib/slot-procs.mjs
+@@ -483,21 +483,45 @@ export function installDirs(root = repoRoot) {
+   return out
+ }
+ 
+-/** npm install when package-lock.json changed since the last install here. Returns true when it ran. */
+-export function npmInstallIfChanged(dir, hashFileName, root = repoRoot) {
++const lockHash = (lockPath) => createHash('sha256').update(readFileSync(lockPath)).digest('hex')
++
++/**
++ * Whether `dir` needs an npm install, without side effects: null (no lockfile, or the lockfile is unchanged since
++ * the last install and the packages are there), 'changed' (no hash file at `hashPath`, or the lockfile's hash
++ * differs) or 'missing' (hash matches, but <dir>/node_modules or its .package-lock.json is absent - a stale hash
++ * must not hide packages that were never installed or were removed).
++ */
++export function installNeed(dir, hashPath) {
+   const lockPath = join(dir, 'package-lock.json')
+-  if (!existsSync(lockPath)) return false
+-  const hashPath = join(root, '.claude', hashFileName)
+-  const newHash = createHash('sha256').update(readFileSync(lockPath)).digest('hex')
++  if (!existsSync(lockPath)) return null
+   const oldHash = existsSync(hashPath) ? readFileSync(hashPath, 'utf8').trim() : null
+-  if (newHash === oldHash) return false
++  if (lockHash(lockPath) !== oldHash) return 'changed'
++  if (!existsSync(join(dir, 'node_modules', '.package-lock.json'))) return 'missing'
++  return null
++}
++
++/** The words for an installNeed reason in the install messages. */
++export const installReason = (need) => (need === 'missing' ? 'packages missing' : 'lockfile changed')
+ 
+-  // Windows: npm.cmd needs a shell, and a shell must get one command string, not an args array (DEP0190).
+-  if (isWin) execSync('npm install', { cwd: dir, stdio: 'ignore' })
+-  else execFileSync('npm', ['install'], { cwd: dir, stdio: 'ignore' })
++/**
++ * npm install when installNeed says so. Returns the reason ('changed' | 'missing', truthy) when it ran, else false.
++ * A failed install throws an Error whose first line names the exact command to run by hand.
++ */
++export function npmInstallIfChanged(dir, hashFileName, root = repoRoot) {
++  const hashPath = join(root, '.claude', hashFileName)
++  const need = installNeed(dir, hashPath)
++  if (!need) return false
++
++  try {
++    // Windows: npm.cmd needs a shell, and a shell must get one command string, not an args array (DEP0190).
++    if (isWin) execSync('npm install', { cwd: dir, stdio: 'ignore' })
++    else execFileSync('npm', ['install'], { cwd: dir, stdio: 'ignore' })
++  } catch (e) {
++    throw new Error(`${String(e.message).split('\n')[0]} - run \`npm install\` in ${dir} by hand`)
++  }
+   mkdirSync(dirname(hashPath), { recursive: true })
+-  writeFileSync(hashPath, newHash)
+-  return true
++  writeFileSync(hashPath, lockHash(join(dir, 'package-lock.json')))
++  return need
+ }
+ 
+ /**

@@ -4,6 +4,7 @@ description: Prepares git diffs and commit messages for the Human Director. Neve
 tools: Read, Grep, Glob, Bash
 model: {{models.mechanical}}
 effort: low
+omitClaudeMd: true
 ---
 
 # Git Agent — Diff & Message Prep Only ({{project.name}})

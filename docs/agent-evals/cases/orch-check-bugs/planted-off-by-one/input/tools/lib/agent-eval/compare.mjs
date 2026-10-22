@@ -1,0 +1,110 @@
+/**
+ * Structural comparison of an agent's findings with a case's expected findings (contract: docs/agent/agent-evals.md).
+ *
+ *   import { compareCase } from './compare.mjs'
+ *   const { tp, fn, fp, keys } = compareCase(expected, result, { role })
+ *
+ * A finding matches an expected one when `file`, `rule` and `severity` match and the line is within ±LINE_TOLERANCE.
+ * The reasoning text is never compared, so a reworded finding still matches. `rule` matches when the normalized
+ * strings are equal, or when the expected rule is a bare category (no ':') equal to the category before the actual
+ * rule's ':' ("logic" matches "logic: off-by-one in the loop bound"). An expected `rule` may be a list of accepted
+ * rules. Node built-ins only.
+ */
+import { KEEP_THRESHOLD } from '../agent-result.mjs'
+
+export const LINE_TOLERANCE = 3
+
+const norm = (s) => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
+export const normFile = (f) => String(f ?? '').trim().replace(/\\/g, '/').replace(/^(\.\/)+/, '')
+const category = (rule) => {
+  const r = norm(rule)
+  const at = r.indexOf(':')
+  return at < 0 ? r : r.slice(0, at).trim()
+}
+
+/** True when the actual rule satisfies the expected rule (a string or a list of accepted strings). */
+export function ruleMatches(expectedRule, actualRule) {
+  const accepted = Array.isArray(expectedRule) ? expectedRule : [expectedRule]
+  const actual = norm(actualRule)
+  return accepted.some((e) => {
+    const exp = norm(e)
+    if (!exp) return false
+    if (exp === actual) return true
+    return !exp.includes(':') && exp === category(actual)
+  })
+}
+
+/** True when one actual finding matches one expected finding (file, rule, severity; line within the tolerance). */
+export function findingMatches(expected, actual, tolerance = LINE_TOLERANCE) {
+  if (normFile(expected.file) !== normFile(actual.file)) return false
+  if (norm(expected.severity) !== norm(actual.severity)) return false
+  if (!ruleMatches(expected.rule, actual.rule)) return false
+  if (expected.line === undefined || expected.line === null) return true
+  return Number.isInteger(actual.line) && Math.abs(actual.line - expected.line) < tolerance
+}
+
+/**
+ * Pair expected and actual findings one-to-one. Each expected finding takes the closest-line unmatched actual one.
+ * Returns { matched: [[expectedIndex, actualIndex]], missed: [expectedIndex], extra: [actualIndex] }.
+ */
+export function matchFindings(expectedList, actualList, tolerance = LINE_TOLERANCE) {
+  const used = new Set()
+  const matched = []
+  const missed = []
+  expectedList.forEach((exp, ei) => {
+    let best = -1
+    let bestDist = Infinity
+    actualList.forEach((act, ai) => {
+      if (used.has(ai) || !findingMatches(exp, act, tolerance)) return
+      const dist = exp.line == null ? 0 : Math.abs(act.line - exp.line)
+      if (dist < bestDist) { best = ai; bestDist = dist }
+    })
+    if (best < 0) missed.push(ei)
+    else { used.add(best); matched.push([ei, best]) }
+  })
+  const extra = actualList.map((_, ai) => ai).filter((ai) => !used.has(ai))
+  return { matched, missed, extra }
+}
+
+/** The kind of comparison a case's expected.json asks for. */
+export function caseKind(expected) {
+  if (Array.isArray(expected?.findings)) return 'findings'
+  if (Array.isArray(expected?.verdicts)) return 'verdicts'
+  if (typeof expected?.pass === 'boolean') return 'pass'
+  throw new Error('expected.json needs "findings": [...], "verdicts": [...] or "pass": true|false')
+}
+
+/**
+ * Compare one run's result with a case's expectation. `result` is the parsed agent result (or null when the run
+ * produced no valid result); `pass` is the validator's computed pass for pass/fail cases.
+ * Returns { tp, fn, fp, keys } where `keys` is a stable signature set of what the run reported (for noise).
+ */
+export function compareCase(expected, result, { pass = null } = {}) {
+  const kind = caseKind(expected)
+  if (kind === 'findings') {
+    const actual = Array.isArray(result?.problems) ? result.problems : []
+    const { matched, missed, extra } = matchFindings(expected.findings, actual)
+    const keys = [
+      ...matched.map(([ei]) => `expected#${ei}`),
+      ...extra.map((ai) => {
+        const a = actual[ai]
+        return `extra:${normFile(a.file)}|${norm(a.rule)}|${norm(a.severity)}|${Math.round((a.line ?? 0) / (LINE_TOLERANCE * 2 + 1))}`
+      }),
+    ]
+    return { tp: matched.length, fn: missed.length, fp: extra.length, keys }
+  }
+  if (kind === 'verdicts') {
+    // A verifier reports a candidate when it keeps it with confidence ≥ KEEP_THRESHOLD; expected "keep" ids should be
+    // reported, expected "refuted" ids should not.
+    const want = new Set(expected.verdicts.filter((v) => v.verdict === 'keep').map((v) => String(v.id)))
+    const got = new Set((Array.isArray(result?.verdicts) ? result.verdicts : [])
+      .filter((v) => v?.verdict === 'keep' && Number(v.confidence) >= KEEP_THRESHOLD)
+      .map((v) => String(v.id)))
+    const tp = [...want].filter((id) => got.has(id)).length
+    return { tp, fn: want.size - tp, fp: [...got].filter((id) => !want.has(id)).length, keys: [...got].sort().map((id) => `keep:${id}`) }
+  }
+  // pass/fail: an expected failure is one thing to find; a reported failure is one finding.
+  const wantFail = expected.pass === false
+  const gotFail = pass === false
+  return { tp: wantFail && gotFail ? 1 : 0, fn: wantFail && !gotFail ? 1 : 0, fp: !wantFail && gotFail ? 1 : 0, keys: [gotFail ? 'fail' : pass === true ? 'pass' : 'no-result'] }
+}

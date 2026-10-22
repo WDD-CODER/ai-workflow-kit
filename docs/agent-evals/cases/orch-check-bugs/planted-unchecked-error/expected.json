@@ -1,0 +1,11 @@
+{
+  "note": "planted: in the real 7dad8a7 run.mjs, the claude child's 'close' handler lost its 'if (code !== 0) reject(...)': a failed claude run (auth error, crash) resolves with its stdout, JSON.parse then throws a confusing error or an empty result is scored as a run that found nothing.",
+  "findings": [
+    {
+      "file": "tools/lib/agent-eval/run.mjs",
+      "line": 194,
+      "rule": ["error handling", "error-handling", "runtime", "logic", "correctness"],
+      "severity": "major"
+    }
+  ]
+}

@@ -1011,7 +1011,7 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   rmSync(md, { recursive: true, force: true })
 
   const mi = tmp('models-inherit')
-  writeFileSync(join(mi, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { mechanical: 'inherit', analysis: 'inherit', judgment: 'inherit', build: 'inherit' } }))
+  writeFileSync(join(mi, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { mechanical: 'inherit', analysis: 'inherit', judgment: 'inherit', build: 'inherit', review: 'inherit' } }))
   const i = run('install.mjs', ['--target', mi])
   const notInherit = i.status === 0 ? modelLines(mi).filter(([, v]) => v !== 'inherit') : []
   if (i.status !== 0 || !modelLines(mi).length || notInherit.length) fail(`all tiers inherit must render only model: inherit (routing off): exit ${i.status}, others ${JSON.stringify(notInherit)}`)
@@ -1046,6 +1046,29 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   const b = run('install.mjs', ['--target', mb])
   if (b.status !== 2 || !b.stderr.includes('models.analysis is "gpt-4" — allowed: "haiku", "sonnet", "opus", "fable", "inherit" or a full model id starting "claude-"') || files(mb).length !== 1) fail(`install with models.analysis gpt-4: exit ${b.status}, ${b.stderr.trim().split('\n')[0]}`)
   rmSync(mb, { recursive: true, force: true })
+
+  // models.review (plan 021): the validating agents never run on Haiku — install refuses it, naming the key, and
+  // writes nothing; a cheaper models.analysis never moves a checker.
+  for (const haiku of ['haiku', 'claude-haiku-4-5']) {
+    const mr = tmp('models-review-haiku')
+    writeFileSync(join(mr, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { review: haiku } }))
+    const r = run('install.mjs', ['--target', mr])
+    if (r.status !== 2 || !r.stderr.includes(`models.review is "${haiku}" — validating agents never run on Haiku`) || files(mr).length !== 1) fail(`install with models.review ${haiku}: exit ${r.status}, ${r.stderr.trim().split('\n')[0]}`)
+    rmSync(mr, { recursive: true, force: true })
+  }
+  const ma = tmp('models-analysis-haiku')
+  writeFileSync(join(ma, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { analysis: 'haiku' } }))
+  const a = run('install.mjs', ['--target', ma])
+  if (a.status !== 0) fail(`install with models.analysis haiku: exit ${a.status}`)
+  else {
+    expect(ma, 'models.analysis haiku keeps validators on review', {
+      '.claude/agents/orch-check-plan.md': 'sonnet', '.claude/agents/orch-check-bugs.md': 'sonnet', '.claude/agents/orch-check-rules.md': 'sonnet',
+      '.claude/agents/orch-verify.md': 'sonnet', '.claude/agents/orch-security.md': 'sonnet', '.claude/agents/orch-ui.md': 'sonnet',
+      '.claude/agents/orch-merge.md': 'haiku', '.claude/agents/kit-prevalidate.md': 'haiku',
+    })
+    if (!/^omitClaudeMd: true$/m.test(read(ma, '.claude/agents/git-agent.md'))) fail('git-agent.md does not set omitClaudeMd: true')
+  }
+  rmSync(ma, { recursive: true, force: true })
 }
 
 // sync --apply that updates the kit-managed scripts/package.json refreshes the project's scripts/package-lock.json
