@@ -19,7 +19,7 @@ a passing test back it, or when the bug is planted on purpose.
 - 019 merged (harness) and 020 merged (its fixes touch the agents measured here).
 
 ## Goals & Success Criteria
-**Primary:** a baseline table — recall, precision, noise, tokens and cost per model (Opus, Sonnet, Haiku) — for
+**Primary:** a baseline table — recall, precision, noise, tokens and cost per model (Opus, Sonnet; Haiku is never a validator — Human rule 2026-10-22) — for
 `orch-check-bugs`, `orch-check-plan`, `orch-check-rules` and `orch-verify` on 20–25 real or planted cases, recorded in
 `docs/agent-evals/BASELINE.md`.
 
@@ -32,6 +32,9 @@ a passing test back it, or when the bug is planted on purpose.
   exists in `git log`.
 - [auto] `docs/agent-evals/BASELINE.md` has one table per agent with one row per model and the columns recall,
   precision, noise, tokens, cost, from runs with `--runs 2`.
+- [auto] `node tools/install-check.mjs` passes with a fixture where `models.review: "haiku"` (and
+  `"claude-haiku-4-5"`) makes install refuse with a message naming `models.review`; every rendered validating agent
+  (`orch-check-*`, `orch-verify`, `orch-security`, `orch-ui`) carries `model: sonnet` by default.
 - [auto] `npm run build`, `npm run lint`, `npm run test`, `node tools/drift-check.mjs --target .` exit 0.
 - [human] Dandan reads `BASELINE.md` and picks the default model per checker role (or keeps Sonnet); the choice goes
   into `.kit/config.json` / `kit.config.json` defaults in a later change.
@@ -40,8 +43,8 @@ a passing test back it, or when the bug is planted on purpose.
 - Parallel: no — runs after 020; model runs are token- and memory-heavy, one at a time.
 - Concurrent plans: none.
 - Isolated DB: no.
-- Kit edits: kit branch `feat/021-kit-eval-baseline` + kit PR; Dandan merges. No release needed (cases and a report in
-  the kit's own docs; nothing installed into projects changes).
+- Kit edits: kit branch `feat/021-kit-eval-baseline` + kit PR; Dandan merges. Release: minor, with 020's fixes if not yet
+  released (new config key `models.review`; nothing a project must do).
 
 ## Read-Write Scope
 
@@ -51,6 +54,17 @@ Always allowed: this plan file itself and `.claude/sessions/**`.
 docs/agent-evals/**
 tools/test/eval-cases.test.mjs
 tools/fixtures/agent-evals/stub-perfect.mjs
+core/.claude/agents/**
+core/.claude/commands/review-it.md
+core/docs/agent/model-routing.md
+kit.config.json
+.kit/config.json
+.kit/install.json
+tools/lib/kit.mjs
+tools/install-check.mjs
+.claude/agents/**
+.claude/commands/**
+docs/agent/**
 CHANGELOG.md
 ```
 
@@ -88,7 +102,10 @@ per commit: `ok` or `conflict: <what>`. STOP for a go only on a `conflict`.
 - [ ] Planted cases: small diffs with one known bug each (off by one, a check that allows everything, an inverted
   comparison, a lost escape, an unchecked error path).
 - [ ] Verifier cases: candidate lists mixing confirmed findings (from the fixed cases) and refutable false alarms.
-- [ ] Runs: each finder and the verifier on Opus, Sonnet, Haiku, `--runs 2`, one run at a time.
+- [ ] Runs: each finder and the verifier on Opus and Sonnet, `--runs 2`, one run at a time.
+- [ ] Validators never run below Sonnet: a new tier `models.review` (default `sonnet`) for `orch-check-bugs`,
+  `orch-check-plan`, `orch-check-rules`, `orch-verify`, `orch-security`, `orch-ui` and `/review-it`'s checkers; install
+  and sync refuse `haiku` or a `claude-haiku-*` id for it, naming the key. `models.analysis` keeps its other users.
 
 ### Should Have (P1)
 - [ ] `BASELINE.md` names, per role, the cheapest model whose recall and precision are within 0.05 of the best.
@@ -108,19 +125,20 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 - [ ] A3: Add planted-bug cases with one exact known answer each — docs/agent-evals/cases/
 - [ ] A4: Add verifier cases that mix real findings with refutable false alarms — docs/agent-evals/cases/orch-verify/
 - [ ] A5: Prove every case parses and every label has a code-backed source, before spending tokens — stub runner and a case test — tools/fixtures/agent-evals/stub-perfect.mjs, tools/test/eval-cases.test.mjs
-- [ ] A6: Run each checker and the verifier on Opus, Sonnet and Haiku and write the baseline report — two runs per case, one run at a time — docs/agent-evals/BASELINE.md
+- [ ] A0: Give validating agents their own model tier that can never be Haiku, so a review is never done by the weakest model — models.review default sonnet, refused when haiku; checker, verifier, security, UI agents and the review command use it; routing doc and install check updated — kit.config.json, .kit/config.json, tools/lib/kit.mjs, tools/install-check.mjs, core/.claude/agents/orch-check-*.md, orch-verify.md, orch-security.md, orch-ui.md, core/.claude/commands/review-it.md, core/docs/agent/model-routing.md
+- [ ] A6: Run each checker and the verifier on Opus and Sonnet and write the baseline report — two runs per case, one run at a time — docs/agent-evals/BASELINE.md
 - [ ] A7: Record the outcome in the changelog and the plan's notes — CHANGELOG.md
 
 ## Technical Considerations
 - Dependencies: `tools/agent-eval.mjs`, `tools/lib/agent-result.mjs`, the `.claude/agents/orch-*.md` files after 020.
 - New files needed: the case folders, `BASELINE.md`, the stub runner, the case test.
-- Model changes: none (the default change is the `[human]` follow-up).
+- Model changes: new tier `models.review` (default `sonnet`, never Haiku) for every validating agent (A0).
 - Backend / API: none.
 - Auth and validation: none.
 - Security surface: none — cases hold kit code only; no secrets.
 - Data / migration: none.
 - Project checks: none.
-- Cost: about 18 agent runs per case (4 agents × 3 models × 2 runs, less for role-specific cases) → roughly 2–4M
+- Cost: about 18 agent runs per case (4 agents × 2 models × 2 runs, less for role-specific cases) → roughly 1.5–3M
   tokens. Runs one at a time because the machine is low on memory.
 
 ## Out of Scope
