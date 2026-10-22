@@ -228,3 +228,22 @@ Checker round 1 (builder, 2026-10-22):
   tools/drift-check.mjs --target .` (exit 0, 0 undeclared differences); `node --test tools/test/*.test.mjs` — first
   run tests 120 / pass 119 / fail 1 (output not kept, failing test not named), the next two runs exit 0, pass 120 /
   fail 0: logged as a one-off flake, not traced; `node tools/orchestrator-e2e.mjs` (exit 0, 64 cases).
+
+### Checker round 2
+
+- Major (`models.review` default silently moved validators off a project's own `models.analysis`) — fixed with the
+  checker's option 1, the conservative one (no project has to act): `tools/lib/kit.mjs` `resolveConfig` — when the
+  project config sets `models.analysis` and not `models.review`, `models.review` takes that value; a Haiku value
+  (`/haiku/i`, the same test the refusal uses) gives `sonnet`. An explicit `models.review` always wins.
+  `tools/install-check.mjs`: the all-inherit fixture is back to the four pre-021 keys (no `review`) and still renders
+  only `model: inherit`; new fixtures: `analysis: opus` → all six validators `opus`; `analysis: opus` + `review:
+  sonnet` → `orch-verify` `sonnet`, `kit-prevalidate` `opus`. CHANGELOG upgrade note + Added entry, the
+  `kit.config.json` `$comment` and `core/docs/agent/model-routing.md` ("all five inherit" line) now say this.
+- Fresh run (scratch installs, `--packs` from `stack.packs: []`): `{"models":{"analysis":"opus"}}` → install exit 0,
+  `orch-verify.md`, `orch-check-bugs.md`, `orch-ui.md` all `model: opus`; the four old keys at `inherit` and no
+  `review` → install exit 0, every agent file `model: inherit` (14 of 14).
+- Checks after round 2, one at a time: sync `--apply` (exit 0, 1 kit-update: docs/agent/model-routing.md); `npm run
+  build` (exit 0, PACK_CHECK: ok); `npm run lint` (exit 0, LEAK_CHECK: ok ×3); `npm run test` (exit 0,
+  WORKFLOW_LINK_CHECK: ok, install-check passed); `node tools/e2e-check.mjs` (exit 0, 53 cases); `node
+  tools/drift-check.mjs --target .` (exit 0, 0 undeclared differences); `node --test tools/test/*.test.mjs` (exit 0,
+  tests 120 / pass 120 / fail 0); `node tools/orchestrator-e2e.mjs` (exit 0, 64 cases).

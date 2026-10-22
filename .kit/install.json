@@ -3,7 +3,7 @@
     "version": "1.4.0"
   },
   "source": "local:.",
-  "commit": "631f5a8440490a9f959c9ff9c897ff969389c4ef",
+  "commit": "0a746b21b96f7dff06f71a16914a25dd4cdb6847",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -320,7 +320,7 @@
       "source": "core/docs/agent/job-validation.md"
     },
     "docs/agent/model-routing.md": {
-      "sha256": "14e145ebc34ae39e518c4d9063569bc0ad1288972377c96497d1fe70606d44a7",
+      "sha256": "7b8342b96f3c384453c3be42662ed7fcbc9fd5495e6d7118dc13b483d72480a5",
       "kind": "managed",
       "source": "core/docs/agent/model-routing.md"
     },

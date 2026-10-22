@@ -14,7 +14,9 @@ a step whose outcome decides code quality never moves to a cheaper model.
 | `build` | `{{models.build}}` | Writes the code of one plan on its own branch (`orch-builder`) | Review its own work, merge, message the coordinator |
 | `review` | `{{models.review}}` | Validates: the checkers, the verifier, the security and UI validators — finds and proves problems with `file:line` | Run on Haiku — install and sync refuse `haiku` or a `claude-haiku-*` id for this key |
 
-`inherit` means the main session's model. All five set to `inherit` turns the routing off. The `review` tier exists
+`inherit` means the main session's model. All five set to `inherit` turns the routing off; a project that set the
+older four to `inherit` and not `review` stays off too, because an unset `review` takes the project's own `analysis`
+value (a Haiku `analysis` gives `sonnet`). The `review` tier exists
 so a validation is never done by the weakest model: lowering `models.analysis` or `models.mechanical` never moves a
 checker. The measured recall, precision and cost per model are in the kit repository's agent-eval baseline
 (BASELINE.md next to its eval cases).

@@ -20,8 +20,10 @@ Nothing. Rendered files that change (`kit-update`): `.claude/workflows/orchestra
 `scripts/lib/slot-procs.mjs`, `docs/agent/standards-git.md`, `docs/agent/workflow-map.md`. A project with `commands.dev` set now needs its dev server answering on the base port
 (or startable by `scripts/slot-serve.mjs`) before `/orchestrate` starts a run.
 
-The validating agents' model tier adds nothing a project must do: the new tier `models.review` defaults to `sonnet`, which is what the
-validating agents ran on before. Rendered files that change: `.claude/agents/orch-check-plan.md`,
+The validating agents' model tier adds nothing a project must do: the new tier `models.review` takes the project's own
+`models.analysis` when the project set that and not `review` (so an `opus`, `fable`, `inherit` or `claude-` id project
+keeps its validators where they were, and the all-`inherit` routing-off setup stays off), and `sonnet` otherwise — what
+the validating agents ran on before. Rendered files that change: `.claude/agents/orch-check-plan.md`,
 `orch-check-bugs.md`, `orch-check-rules.md`, `orch-verify.md`, `orch-security.md`, `orch-ui.md` (model from
 `models.review`), `.claude/agents/git-agent.md` (`omitClaudeMd: true`), `.claude/commands/review-it.md`,
 `docs/agent/model-routing.md`. A project that set `models.analysis` to Haiku keeps its checkers on Sonnet now.
@@ -29,7 +31,8 @@ validating agents ran on before. Rendered files that change: `.claude/agents/orc
 ### Added
 
 - `models.review`: the model tier of every validating agent — the three finders, the verifier, the
-  security and UI validators, and so `/review-it`'s checkers. Default `sonnet`; install and sync refuse `haiku` or a
+  security and UI validators, and so `/review-it`'s checkers. Default `sonnet` (or the project's own non-Haiku
+  `models.analysis` when `review` is unset); install and sync refuse `haiku` or a
   `claude-haiku-*` id for it, naming the key (a review is never done by the weakest model). `models.analysis` keeps
   `kit-prevalidate`, `orch-merge`, `techdebt` and `/docs-refresh`.
 - The kit's own agent-eval case set: 25 cases under `docs/agent-evals/cases/` for `orch-check-bugs`,

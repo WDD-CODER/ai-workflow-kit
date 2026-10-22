@@ -1011,7 +1011,7 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   rmSync(md, { recursive: true, force: true })
 
   const mi = tmp('models-inherit')
-  writeFileSync(join(mi, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { mechanical: 'inherit', analysis: 'inherit', judgment: 'inherit', build: 'inherit', review: 'inherit' } }))
+  writeFileSync(join(mi, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { mechanical: 'inherit', analysis: 'inherit', judgment: 'inherit', build: 'inherit' } }))
   const i = run('install.mjs', ['--target', mi])
   const notInherit = i.status === 0 ? modelLines(mi).filter(([, v]) => v !== 'inherit') : []
   if (i.status !== 0 || !modelLines(mi).length || notInherit.length) fail(`all tiers inherit must render only model: inherit (routing off): exit ${i.status}, others ${JSON.stringify(notInherit)}`)
@@ -1069,6 +1069,23 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     if (!/^omitClaudeMd: true$/m.test(read(ma, '.claude/agents/git-agent.md'))) fail('git-agent.md does not set omitClaudeMd: true')
   }
   rmSync(ma, { recursive: true, force: true })
+
+  // A project that set models.analysis before models.review existed keeps its validators on that model.
+  const mo = tmp('models-analysis-opus')
+  writeFileSync(join(mo, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { analysis: 'opus' } }))
+  const o = run('install.mjs', ['--target', mo])
+  if (o.status !== 0) fail(`install with models.analysis opus: exit ${o.status}`)
+  else expect(mo, 'models.analysis opus keeps validators on opus', {
+    '.claude/agents/orch-check-plan.md': 'opus', '.claude/agents/orch-check-bugs.md': 'opus', '.claude/agents/orch-check-rules.md': 'opus',
+    '.claude/agents/orch-verify.md': 'opus', '.claude/agents/orch-security.md': 'opus', '.claude/agents/orch-ui.md': 'opus',
+  })
+  rmSync(mo, { recursive: true, force: true })
+  const mos = tmp('models-analysis-opus-review-sonnet')
+  writeFileSync(join(mos, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { analysis: 'opus', review: 'sonnet' } }))
+  const os = run('install.mjs', ['--target', mos])
+  if (os.status !== 0) fail(`install with models.analysis opus + review sonnet: exit ${os.status}`)
+  else expect(mos, 'an explicit models.review wins over models.analysis', { '.claude/agents/orch-verify.md': 'sonnet', '.claude/agents/kit-prevalidate.md': 'opus' })
+  rmSync(mos, { recursive: true, force: true })
 }
 
 // sync --apply that updates the kit-managed scripts/package.json refreshes the project's scripts/package-lock.json

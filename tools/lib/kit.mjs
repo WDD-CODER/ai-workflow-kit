@@ -530,6 +530,12 @@ export function resolveConfig({ kitRoot, project, packs, layers = [], target, pl
   for (const key of new Set([...Object.keys(base), ...Object.keys(packLayer), ...Object.keys(proj)])) {
     vals[key] = !isEmpty(proj[key]) ? proj[key] : !isEmpty(packLayer[key]) ? packLayer[key] : base[key]
   }
+  // models.review took the validating agents over from models.analysis: a project that set analysis but not review
+  // keeps its validators where they were (opus, inherit, a claude- id) — except Haiku, which never validates (sonnet).
+  if (isEmpty(proj['models.review']) && !isEmpty(proj['models.analysis'])) {
+    const a = String(proj['models.analysis'])
+    vals['models.review'] = /haiku/i.test(a) ? 'sonnet' : a
+  }
   vals['stack.packs'] = packs
   vals['stack.layers'] = layers
   const name = isEmpty(vals['project.name']) ? basename(resolve(target)) : vals['project.name']
