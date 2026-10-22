@@ -3,7 +3,7 @@
     "version": "1.4.0"
   },
   "source": "local:.",
-  "commit": "0a746b21b96f7dff06f71a16914a25dd4cdb6847",
+  "commit": "f4145f64721004b747920840d13fb51debdff3b1",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -300,12 +300,12 @@
       "source": "core/README_WORKFLOW.md"
     },
     "docs/agent/agent-evals.md": {
-      "sha256": "52df5c20fcf8471dc836c2189b3c5996b941cbfdd605350a3d620d0c808020da",
+      "sha256": "a28e75eb59381df3bc3eb6d36c51719b1fea2ce30c4d8982b2a13c91d5771097",
       "kind": "managed",
       "source": "core/docs/agent/agent-evals.md"
     },
     "docs/agent/agent-roles.md": {
-      "sha256": "22e47a9ca55c83501d97c5a894839e4e4ba34c8a54f606ad8c0aeb84f0db0845",
+      "sha256": "040a289f51394568083361c2c23bac54792d97b3c21e78992093852733eea14c",
       "kind": "managed",
       "source": "core/docs/agent/agent-roles.md"
     },

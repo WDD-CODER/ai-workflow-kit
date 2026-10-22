@@ -66,6 +66,8 @@ tools/install-check.mjs
 .claude/commands/**
 docs/agent/**
 CHANGELOG.md
+core/docs/agent/agent-roles.md
+core/docs/agent/agent-evals.md
 ```
 
 ## Read Scope
@@ -247,3 +249,8 @@ Checker round 1 (builder, 2026-10-22):
   WORKFLOW_LINK_CHECK: ok, install-check passed); `node tools/e2e-check.mjs` (exit 0, 53 cases); `node
   tools/drift-check.mjs --target .` (exit 0, 0 undeclared differences); `node --test tools/test/*.test.mjs` (exit 0,
   tests 120 / pass 120 / fail 0); `node tools/orchestrator-e2e.mjs` (exit 0, 64 cases).
+
+- scope extended: core/docs/agent/agent-roles.md, core/docs/agent/agent-evals.md — approved by the Human in chat
+  2026-10-22; both now name the `review` tier and show no Haiku example.
+- [human] Default model per checker role: Human decision 2026-10-22 "keep sonnet" — `models.review` stays `sonnet`
+  for every validating role (BASELINE.md: Opus no better on any role, about 2x the cost).

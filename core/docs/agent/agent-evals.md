@@ -12,8 +12,10 @@ From the kit checkout (the harness is a kit-side tool; it is not installed into 
 
 ```bash
 node tools/agent-eval.mjs --agent <project>/.claude/agents/orch-check-bugs.md --cases <project>/docs/agent-evals/cases --runs 2
-node tools/agent-eval.mjs --agent <agent.md> --cases <dir> --model haiku --min-recall 0.9 --min-precision 0.8
+node tools/agent-eval.mjs --agent <agent.md> --cases <dir> --model opus --min-recall 0.9 --min-precision 0.8
 ```
+
+Validating roles are compared on Sonnet and Opus only; Haiku is never a validator (`models.review` refuses it).
 
 | Flag | Meaning |
 | --- | --- |
