@@ -28,7 +28,9 @@ branch himself.
 ## The run
 
 1. **Readiness.** `plan-order --json` gives the waves. One `orch-readiness` agent per plan reports open questions,
-   environment needs and the commands the plan will run; `orch-preflight.mjs` checks the environment. The command
+   environment needs and the commands the plan will run; `orch-preflight.mjs` checks the environment (with
+   `commands.dev` set, the dev server must answer on the base port or start through `scripts/slot-serve.mjs`; a failed
+   start stops the run before any builder). The command
    asks the Human every question in **one batch**, writes each answer into that plan's `## Execution Notes` (a plan
    commit on `{{git.mainBranch}}`), and leaves out a plan whose question stays unanswered. Then the Human says `go`.
 2. **Start.** `orch-state.mjs init` creates `{{orchestrator.runBranchPrefix}}<run>` from `origin/{{git.mainBranch}}` (or reuses it on a
@@ -55,9 +57,13 @@ branch himself.
 
 A plan's `[ui]` Done-when items (`docs/agent/job-validation.md` Tier 1b) are checked cheapest first:
 
-1. **Script.** The builder writes one short e2e test per item that saves a screenshot, and returns `uiCards`: card,
-   page, test command, screenshot path. A gate (`orch-gate`, label `ui-gate`) runs each test. A pass is recorded in
-   `status.json` with `via: script` and its screenshot, and never reaches the browser agent.
+1. **Script.** The builder writes one short e2e test per item that saves a screenshot, and returns `uiCards`: card
+   (the item's text — a card covers only the item it equals, never by part of the title), page, test command,
+   screenshot path. The test command passes the same allowlist as the plan's check commands; any other is not run (a
+   run note says why) and the card counts as one no script can check. A gate (`orch-gate`, label `ui-gate`) runs each
+   test. A pass is recorded in `status.json` with `via: script` and its screenshot, and never reaches the browser
+   agent. The items are the `[ui]` bullets of the plan's Done-when sections only (Goals & Success Criteria, Success
+   Criteria, Done when).
 2. **Environment.** Before any browser step, `orch-preflight.mjs --ui --pages <the cards' pages> [--login <url>]
    [--api <url>]` (`args.uiLogin` / `args.uiApi`, or `ORCH_UI_LOGIN_URL` / `ORCH_UI_API_URL`; the QA user comes from
    `ORCH_QA_USER` / `ORCH_QA_PASSWORD` in the environment and is never printed). A page server that does not

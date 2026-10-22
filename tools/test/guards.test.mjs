@@ -3,6 +3,8 @@
 // Runs the installed scripts of the kit repo (scripts/, after `node tools/sync.mjs --target . --apply` and
 // `npm ci` inside scripts/). GUARDS_ROOT=<project> runs another installed copy instead (tools/e2e-check.mjs points it
 // at its fresh e2e project). The scripts are copied into the scratch repo, because a guard judges its own folder.
+// The out-of-scope file is NOTES.md, never README.md or CHANGELOG.md: those are the kit repo's own hotspots
+// (paths.hotspots), which every plan may append to.
 //
 // Folders of the scratch repo (all worktrees of one repository):
 //   proj/        the main (Planner) folder, branch main
@@ -68,7 +70,7 @@ before(() => {
   mkdirSync(join(main, 'src'))
   writeFileSync(join(main, 'plans', '001-alpha.plan.md'), plan('001', 'alpha', ['src/**']))
   writeFileSync(join(main, 'src', 'a.js'), 'export const a = 1\n')
-  writeFileSync(join(main, 'README.md'), '# scratch\n')
+  writeFileSync(join(main, 'NOTES.md'), '# scratch\n')
   writeFileSync(join(main, '.gitignore'), ['scripts/node_modules/', '.worktree-*', '.claude/sessions/', '.claude/.session-state-path', ''].join('\n'))
   gitIn(main, 'add', '-A')
   gitIn(main, 'commit', '-q', '-m', 'scratch')
@@ -103,7 +105,7 @@ before(() => {
   mkdirSync(solo)
   gitIn(solo, 'init', '-q', '-b', 'chore/solo')
   addScripts(solo)
-  writeFileSync(join(solo, 'README.md'), '# solo\n')
+  writeFileSync(join(solo, 'NOTES.md'), '# solo\n')
   gitIn(solo, 'add', '-A')
   gitIn(solo, 'commit', '-q', '-m', 'solo')
   linkModules(solo)
@@ -125,7 +127,7 @@ const bash = (from, script, command, opts) => hook(from, script, { command }, { 
 
 // (1) + (2): an agent whose session runs in the main folder writes into the slot.
 test('(1) a main-folder session writing into wt-1 outside the plan scope is denied with SCOPE_GUARD:', () => {
-  const r = write(main, 'scope-guard.sh', join(slot, 'README.md'))
+  const r = write(main, 'scope-guard.sh', join(slot, 'NOTES.md'))
   assert.equal(r.decision, 'deny', r.out)
   assert.match(r.out, /SCOPE_GUARD:/)
 })
@@ -162,23 +164,23 @@ test('(5) a Bash command that writes into a guarded path is denied: on main and 
     assert.equal(r.decision, 'deny', `${cmd}\n${r.out}`)
     assert.match(r.out, /BRANCH_GUARD:/)
   }
-  for (const cmd of writes('README.md')) {
+  for (const cmd of writes('NOTES.md')) {
     const r = bash(main, 'scope-guard.sh', cmd, { cwd: slot })
     assert.equal(r.decision, 'deny', `${cmd}\n${r.out}`)
     assert.match(r.out, /SCOPE_GUARD:/)
   }
   // An absolute path into the slot, from a session in the main folder.
-  const abs = bash(main, 'scope-guard.sh', `echo x > "${join(slot, 'README.md').replace(/\\/g, '/')}"`)
+  const abs = bash(main, 'scope-guard.sh', `echo x > "${join(slot, 'NOTES.md').replace(/\\/g, '/')}"`)
   assert.equal(abs.decision, 'deny', abs.out)
   // sed -i, cp and mv targets.
-  for (const cmd of ['sed -i s/a/b/ README.md', 'cp src/a.js README.md', 'mv src/a.js notes.md']) {
+  for (const cmd of ['sed -i s/a/b/ NOTES.md', 'cp src/a.js NOTES.md', 'mv src/a.js notes.md']) {
     const r = bash(main, 'scope-guard.sh', cmd, { cwd: slot })
     assert.equal(r.decision, 'deny', `${cmd}\n${r.out}`)
   }
 })
 
 test('(5) read-only and in-scope Bash commands are allowed', () => {
-  for (const cmd of ['cat README.md', 'git status', 'ls -la src 2>&1 | head -5', 'node -e "1" > /dev/null 2>&1', 'grep -n x README.md >&2']) {
+  for (const cmd of ['cat NOTES.md', 'git status', 'ls -la src 2>&1 | head -5', 'node -e "1" > /dev/null 2>&1', 'grep -n x NOTES.md >&2']) {
     const r = bash(main, 'branch-guard.sh', cmd)
     assert.equal(r.decision, 'allow', `${cmd}\n${r.out}`)
     const s = bash(main, 'scope-guard.sh', cmd, { cwd: slot })
@@ -193,18 +195,18 @@ test('(5) read-only and in-scope Bash commands are allowed', () => {
 })
 
 test('merge folder on feat/NNN-slug (not a slot): plan NNN scope applies', () => {
-  const out = write(merge, 'scope-guard.sh', join(merge, 'README.md'))
+  const out = write(merge, 'scope-guard.sh', join(merge, 'NOTES.md'))
   assert.equal(out.decision, 'deny', out.out)
   assert.match(out.out, /SCOPE_GUARD:/)
   assert.match(out.out, /approved: /)
   const inside = write(merge, 'scope-guard.sh', join(merge, 'src', 'b.js'))
   assert.equal(inside.decision, 'allow', inside.out)
-  const fromMain = write(main, 'scope-guard.sh', join(merge, 'README.md'))
+  const fromMain = write(main, 'scope-guard.sh', join(merge, 'NOTES.md'))
   assert.equal(fromMain.decision, 'deny', fromMain.out)
 })
 
 test('merge folder on orch/<run> naming its plan in .worktree-plan: plan scope applies', () => {
-  const out = write(orch, 'scope-guard.sh', join(orch, 'README.md'))
+  const out = write(orch, 'scope-guard.sh', join(orch, 'NOTES.md'))
   assert.equal(out.decision, 'deny', out.out)
   assert.match(out.out, /SCOPE_GUARD:/)
   const inside = write(orch, 'scope-guard.sh', join(orch, 'src', 'b.js'))
@@ -212,9 +214,9 @@ test('merge folder on orch/<run> naming its plan in .worktree-plan: plan scope a
 })
 
 test('a branch that names no plan has no plan scope; main still refuses', () => {
-  const r = write(free, 'scope-guard.sh', join(free, 'README.md'))
+  const r = write(free, 'scope-guard.sh', join(free, 'NOTES.md'))
   assert.equal(r.decision, 'allow', r.out)
-  const onMain = write(main, 'branch-guard.sh', join(main, 'README.md'))
+  const onMain = write(main, 'branch-guard.sh', join(main, 'NOTES.md'))
   assert.equal(onMain.decision, 'deny', onMain.out)
 })
 
@@ -255,7 +257,7 @@ test(`each guard run on a no-op input takes under ${LIMIT_MS} ms and makes at mo
   assert.equal(p.decision, 'allow', p.out)
   assert.ok(p.ms < LIMIT_MS, `branch-guard on a plan took ${p.ms} ms`)
   assert.ok(Number((p.stderr.match(/GUARD_GIT_CALLS: (\d+)/) || [])[1] ?? 99) <= 1, p.stderr)
-  const f = write(free, 'scope-guard.sh', join(free, 'README.md'), { env: { KIT_GUARD_TRACE: '1' } })
+  const f = write(free, 'scope-guard.sh', join(free, 'NOTES.md'), { env: { KIT_GUARD_TRACE: '1' } })
   assert.equal(f.decision, 'allow', f.out)
   assert.ok(f.ms < LIMIT_MS, `scope-guard in a no-plan folder took ${f.ms} ms`)
   assert.ok(Number((f.stderr.match(/GUARD_GIT_CALLS: (\d+)/) || [])[1] ?? 99) <= 1, f.stderr)
@@ -265,7 +267,7 @@ test('a shell target the guard cannot resolve ($VAR, $(...)) is refused where a 
   const onMain = bash(main, 'branch-guard.sh', 'echo x > "$OUT_FILE"')
   assert.equal(onMain.decision, 'deny', onMain.out)
   assert.match(onMain.out, /cannot tell which file/)
-  const inSlot = bash(main, 'scope-guard.sh', 'echo x > $(pwd)/README.md', { cwd: slot })
+  const inSlot = bash(main, 'scope-guard.sh', 'echo x > $(pwd)/NOTES.md', { cwd: slot })
   assert.equal(inSlot.decision, 'deny', inSlot.out)
   // From a folder with no plan: a sibling worktree of the repository holds a plan, and the target may be there.
   const free_ = bash(free, 'scope-guard.sh', 'echo x > "$OUT_FILE"')
@@ -360,8 +362,319 @@ test('bashWrites: redirects, heredocs, tee, sed -i, cp/mv, cd and bash -c; quote
   }
   assert.deepEqual(paths('echo x > "$HOME_NOT_KNOWN/x"'), ['?$HOME_NOT_KNOWN/x'])
   // A cd the guard cannot follow makes the folder unknown: later relative targets fail closed until a resolvable cd.
-  assert.deepEqual(paths('cd "$WT" && echo x > README.md'), ['?README.md'])
+  assert.deepEqual(paths('cd "$WT" && echo x > NOTES.md'), ['?NOTES.md'])
   assert.deepEqual(paths('cd $(git rev-parse --show-toplevel)/../x && echo x > f.txt && tee g.txt'), ['?f.txt', '?g.txt'])
   assert.deepEqual(paths('cd "$WT" && bash -c "echo x > h.txt"'), ['?h.txt'])
   assert.deepEqual(paths(`cd "$WT" && cd "${cwd.split(sep).join('/')}" && echo x > k.txt`), ['k.txt'])
+})
+
+test('bashWrites: a write inside $( … ) or backticks counts; > in [[ … ]] and (( … )) is a comparison', async () => {
+  const { bashWrites } = await import(pathToFileURL(join(project, 'scripts', 'lib', 'guard.mjs')).href)
+  const cwd = main
+  const paths = (cmd) => bashWrites(cmd, cwd).map((t) => (t.path ? relative(cwd, t.path).split(sep).join('/') : `?${t.unresolved}`))
+  assert.deepEqual(paths(`x=$(cat > NOTES.md <<'EOF'\nhello\nEOF\n)`), ['NOTES.md'])
+  assert.deepEqual(paths('echo "$(echo x > a.txt)"'), ['a.txt'])
+  assert.deepEqual(paths('y=`tee b.txt < /dev/null`'), ['b.txt'])
+  assert.deepEqual(paths('echo $(cd src && echo x > c.js)'), ['src/c.js'])
+  assert.deepEqual(paths('if [[ $a > $b ]]; then :; fi'), [])
+  assert.deepEqual(paths('while [[ "$x" > "$y" && $z < $w ]]; do :; done'), [])
+  assert.deepEqual(paths('(( a > b )) && echo ok'), [])
+  assert.deepEqual(paths('for ((i = 0; i < 3; i++)); do echo $i; done'), [])
+  assert.deepEqual(paths('echo $(( 4 > 2 ))'), [])
+  // After the test, a real redirect still counts; a reserved word before a command does not hide it.
+  assert.deepEqual(paths('if [[ $a > $b ]]; then echo x > d.txt; fi'), ['d.txt'])
+  assert.deepEqual(paths('if cp a.js e.js; then :; fi'), ['e.js'])
+  // Nested subshells that only look like (( … )) are commands.
+  assert.deepEqual(paths('((echo x > f.txt) )'), ['f.txt'])
+})
+
+test('a write hidden in $( … ) on a guarded folder is denied; an [[ … ]] comparison is allowed', () => {
+  const sub = `x=$(cat > NOTES.md <<'EOF'\nhello\nEOF\n)`
+  const onMain = bash(main, 'branch-guard.sh', sub)
+  assert.equal(onMain.decision, 'deny', onMain.out)
+  assert.match(onMain.out, /BRANCH_GUARD:/)
+  const inSlot = bash(main, 'scope-guard.sh', sub, { cwd: slot })
+  assert.equal(inSlot.decision, 'deny', inSlot.out)
+  assert.match(inSlot.out, /SCOPE_GUARD:/)
+  for (const script of ['branch-guard.sh', 'scope-guard.sh']) {
+    const r = bash(main, script, 'if [[ $a > $b ]]; then :; fi', { cwd: script === 'scope-guard.sh' ? slot : main })
+    assert.equal(r.decision, 'allow', `${script}: ${r.out}`)
+  }
+})
+
+test('bashWrites: a quoted or escaped [[ is a word, an unclosed [[ fails closed, (( … )) substitutions count', async () => {
+  const { bashWrites } = await import(pathToFileURL(join(project, 'scripts', 'lib', 'guard.mjs')).href)
+  const cwd = main
+  const paths = (cmd) => bashWrites(cmd, cwd).map((t) => (t.path ? relative(cwd, t.path).split(sep).join('/') : `?${t.unresolved}`))
+  assert.deepEqual(paths("echo '[[' > g1.txt"), ['g1.txt'])
+  assert.deepEqual(paths('echo "[[" > g2.txt'), ['g2.txt'])
+  assert.deepEqual(paths('echo \\[\\[ > g3.txt'), ['g3.txt'])
+  assert.deepEqual(paths("'[[' x > g4.txt"), ['g4.txt'])
+  assert.deepEqual(paths('[[ x > g5.txt'), ['g5.txt'])
+  assert.deepEqual(paths('[[ x > g6.txt; echo ok'), ['g6.txt'])
+  assert.deepEqual(paths("[[ a > b ']]' > g7.txt"), ['b', 'g7.txt'])
+  assert.deepEqual(paths('(( $(cat > g8.txt <<<x) ))'), ['g8.txt'])
+  assert.deepEqual(paths('echo $(( `tee g9.txt < /dev/null` + 1 ))'), ['g9.txt'])
+  assert.deepEqual(paths('echo "$(( $(( $(echo x > g10.txt) )) ))"'), ['g10.txt'])
+  // Still comparisons.
+  assert.deepEqual(paths('if [[ $a > $b ]]; then :; fi'), [])
+  assert.deepEqual(paths('(( a > b ))'), [])
+  assert.deepEqual(paths('echo $(( 4 > 2 ))'), [])
+})
+
+test('a quoted [[, an unclosed [[ or a substitution inside (( … )) cannot hide a write on main', () => {
+  for (const cmd of [
+    "echo '[[' > NOTES.md",
+    'echo \\[\\[ > NOTES.md',
+    '[[ x > NOTES.md',
+    '(( $(cat > NOTES.md <<<x) ))',
+    'echo $(( `tee NOTES.md < /dev/null` ))',
+  ]) {
+    const r = bash(main, 'branch-guard.sh', cmd)
+    assert.equal(r.decision, 'deny', `${cmd}: ${r.out}`)
+    assert.match(r.out, /BRANCH_GUARD:/)
+  }
+  for (const cmd of ['if [[ $a > $b ]]; then :; fi', '(( a > b ))']) {
+    const r = bash(main, 'branch-guard.sh', cmd)
+    assert.equal(r.decision, 'allow', `${cmd}: ${r.out}`)
+  }
+})
+
+test('the Bash matcher runs the plan-file guard: a shell command writing a new, name-similar plan is denied', () => {
+  const settings = JSON.parse(readFileSync(join(project, '.claude', 'settings.json'), 'utf8'))
+  const bashHooks = settings.hooks.PreToolUse.find((h) => h.matcher === 'Bash').hooks.map((h) => h.command).join('\n')
+  assert.match(bashHooks, /scripts\/lib\/guard\.mjs" plan/)
+  assert.match(bashHooks, /branch-guard\.sh/)
+  assert.match(bashHooks, /scope-guard\.sh/)
+  const planGuard = (command) => {
+    const input = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command }, cwd: main })
+    const r = spawnSync(process.execPath, [join(main, 'scripts', 'lib', 'guard.mjs'), 'plan'], { cwd: main, input, encoding: 'utf8', timeout: 30000 })
+    const m = (r.stdout ?? '').match(/"permission":"(allow|deny)"/)
+    return { decision: m ? m[1] : `unparsed (${r.stdout}${r.stderr})`, out: `${r.stdout}${r.stderr}` }
+  }
+  // plans/001-alpha.plan.md exists: 009-alpha is name-similar.
+  const similar = planGuard(`cat > plans/009-alpha.plan.md <<'EOF'\n# Plan 009 — alpha\nEOF`)
+  assert.equal(similar.decision, 'deny', similar.out)
+  assert.match(similar.out, /PLAN_WRITE_GUARD: blocked new plan write/)
+  // An existing plan, a command that only names a plan, and an unrelated write are allowed.
+  for (const cmd of ['echo x >> plans/001-alpha.plan.md', 'cat plans/009-alpha.plan.md', 'node scripts/plan-name-similarity.mjs --file=plans/009-alpha.plan.md', 'echo x > notes.txt']) {
+    const r = planGuard(cmd)
+    assert.equal(r.decision, 'allow', `${cmd}: ${r.out}`)
+  }
+  // The ack names the new plan: allowed once, and the ack is consumed.
+  mkdirSync(join(main, '.claude'), { recursive: true })
+  writeFileSync(join(main, '.claude', '.plan-write-ack'), 'plans/009-alpha.plan.md')
+  const acked = planGuard(`echo x > plans/009-alpha.plan.md`)
+  assert.equal(acked.decision, 'allow', acked.out)
+  assert.equal(existsSync(join(main, '.claude', '.plan-write-ack')), false)
+})
+
+// /review-it round 1 (plan 020): three ways a write hid from the reader, and a plain mv of a plan.
+test('bashWrites: a redirection before [[ makes it a word; <( … ) / >( … ) and ${ … } substitutions are read for writes', async () => {
+  const { bashWrites } = await import(pathToFileURL(join(project, 'scripts', 'lib', 'guard.mjs')).href)
+  const cwd = main
+  const paths = (cmd) => bashWrites(cmd, cwd).map((t) => (t.path ? relative(cwd, t.path).split(sep).join('/') : `?${t.unresolved}`))
+  // bash: `[[` is the keyword only at the start of a simple command — after a redirection it is a command name.
+  assert.deepEqual(paths('2>/dev/null [[ a > README.md ]]'), ['README.md'])
+  assert.deepEqual(paths('</dev/null [[ a > r1.md ]]'), ['r1.md'])
+  // `<((…))` / `>((…))` are process substitutions holding a subshell, never arithmetic.
+  assert.deepEqual(paths('cat <((echo x > README.md))'), ['README.md'])
+  assert.deepEqual(paths('tee >((cat > README.md))'), ['README.md'])
+  assert.deepEqual(paths('diff <(echo x > r2.md) <(sort b)'), ['r2.md'])
+  // A process substitution is no file target; a real file next to it still is.
+  assert.deepEqual(paths('tee >(grep x) out.txt'), ['out.txt'])
+  // Substitutions inside an unquoted `${…}` run (nested `${…}` too).
+  assert.deepEqual(paths('echo ${x:-$(cat > README.md)}'), ['README.md'])
+  assert.deepEqual(paths('echo ${x:-`cat > README.md`}'), ['README.md'])
+  assert.deepEqual(paths('echo ${x:-${y:-$(tee r3.md)}}'), ['r3.md'])
+  // Still comparisons / no writes.
+  assert.deepEqual(paths('if [[ $a > $b ]]; then :; fi'), [])
+  assert.deepEqual(paths('[[ $a > $b ]] && echo ${x:-y}'), [])
+  assert.deepEqual(paths('for ((i = 0; i < (3); i++)); do :; done'), [])
+})
+
+test('a redirect before [[, a process substitution or a ${ … } substitution cannot hide a write on main', () => {
+  for (const cmd of ['2>/dev/null [[ a > NOTES.md ]]', 'cat <((echo x > NOTES.md))', 'tee >((cat > NOTES.md))', 'echo ${x:-$(cat > NOTES.md)}', 'echo ${x:-`cat > NOTES.md`}']) {
+    const r = bash(main, 'branch-guard.sh', cmd)
+    assert.equal(r.decision, 'deny', `${cmd}: ${r.out}`)
+    assert.match(r.out, /BRANCH_GUARD:/)
+  }
+  const r = bash(main, 'branch-guard.sh', 'if [[ $a > $b ]]; then :; fi')
+  assert.equal(r.decision, 'allow', r.out)
+})
+
+// Security review round 3 (plan 020): an escaped `\${` or a `$${` does not nest, an unclosed `${` and a word that
+// mixes a process substitution with other text fail closed.
+test('bashWrites: \\${ and $${ do not nest a ${ … }; an unclosed ${ or a word mixing text and <( … ) is unresolved', async () => {
+  const { bashWrites } = await import(pathToFileURL(join(project, 'scripts', 'lib', 'guard.mjs')).href)
+  const cwd = main
+  const paths = (cmd) => bashWrites(cmd, cwd).map((t) => (t.path ? relative(cwd, t.path).split(sep).join('/') : `?${t.unresolved}`))
+  // bash: `${x:-\${}` ends at the first `}` — the commands after it run.
+  assert.deepEqual(paths('echo ${x:-\\${}; cat > README.md; echo }'), ['README.md'])
+  assert.deepEqual(paths('echo ${x:-$${}; cat > r4.md; echo }'), ['r4.md'])
+  assert.deepEqual(paths('echo ${x:-$$${y}}; cat > r5.md'), ['r5.md'])
+  // No closing `}`: where the word ends is unknown.
+  assert.deepEqual(paths('echo ${x; cat > README.md'), ['?${x; cat > README.md'])
+  assert.deepEqual(paths('echo ${x:-$(cat > README.md)'), ['?${x:-$(cat > README.md)', 'README.md'])
+  // A process substitution glued to other text is no lone /dev/fd/N: an unresolved target.
+  assert.deepEqual(paths('tee out<(true)'), ['?out<(true)'])
+  assert.deepEqual(paths('tee x>(cat)y'), ['?x>(cat)y'])
+  assert.deepEqual(paths('echo hi > out<(true)'), ['?out<(true)'])
+  assert.deepEqual(paths('tee <(true)<(true)'), ['?<(true)<(true)'])
+  // A lone process substitution is still no target; its body is still read.
+  assert.deepEqual(paths('tee >(grep x) out.txt'), ['out.txt'])
+  assert.deepEqual(paths('tee x>(cat > r6.md)'), ['r6.md', '?x>(cat > r6.md)'])
+  assert.deepEqual(paths('diff <(sort a) <(sort b)'), [])
+  assert.deepEqual(paths('echo ${x:-\\$} ${a}${b}'), [])
+})
+
+test('an escaped \\${, an unclosed ${ or a process substitution glued to a word cannot hide a write on main', () => {
+  for (const cmd of ['echo ${x:-\\${}; cat > NOTES.md; echo }', 'echo ${x; cat > NOTES.md', 'echo ${x:-$(cat > NOTES.md)', 'tee out<(true)', 'tee x>(cat)y']) {
+    const r = bash(main, 'branch-guard.sh', cmd)
+    assert.equal(r.decision, 'deny', `${cmd}: ${r.out}`)
+    assert.match(r.out, /BRANCH_GUARD:/)
+  }
+  for (const cmd of ['diff <(sort a) <(sort b)', 'tee >(grep x) /dev/null']) {
+    const r = bash(main, 'branch-guard.sh', cmd)
+    assert.equal(r.decision, 'allow', `${cmd}: ${r.out}`)
+  }
+})
+
+test('plan-file guard: a plain mv of an existing plan into plans/done/ is a move, not a new plan', () => {
+  const planGuard = (command) => {
+    const input = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command }, cwd: main })
+    const r = spawnSync(process.execPath, [join(main, 'scripts', 'lib', 'guard.mjs'), 'plan'], { cwd: main, input, encoding: 'utf8', timeout: 30000 })
+    const m = (r.stdout ?? '').match(/"permission":"(allow|deny)"/)
+    return { decision: m ? m[1] : `unparsed (${r.stdout}${r.stderr})`, out: `${r.stdout}${r.stderr}` }
+  }
+  assert.ok(existsSync(join(main, 'plans', '001-alpha.plan.md')))
+  const moved = planGuard('mv plans/001-alpha.plan.md plans/done/001-alpha.plan.md')
+  assert.equal(moved.decision, 'allow', moved.out)
+  // A copy, or a mv under a new name, still writes a new name-similar plan.
+  for (const cmd of ['cp plans/001-alpha.plan.md plans/done/001-alpha.plan.md', 'mv plans/001-alpha.plan.md plans/009-alpha.plan.md']) {
+    const r = planGuard(cmd)
+    assert.equal(r.decision, 'deny', `${cmd}: ${r.out}`)
+    assert.match(r.out, /PLAN_WRITE_GUARD: blocked new plan write/)
+  }
+})
+
+// Strict guard (plan 020, decided by the Human 2026-10-22): a complex command ($(…), ${…}, backticks, <(…), [[, ((,
+// $'…') that writes passes only when every write is a top-level plain target the reader found. Every bypass the review
+// rounds found is refused by it, whatever the reader makes of it.
+const STRICT_BYPASSES = [
+  '2>/dev/null [[ a > README.md ]]',
+  'cat <((echo x > README.md))',
+  'echo ${x:-$(cat > README.md)}',
+  'echo ${x:-\\${}; cat > README.md; echo }',
+  'tee out<(true)',
+  "'[[' x > README.md",
+  "echo $'a\\' > README.md' > /dev/null",
+  "x=$'\\''; cat > README.md",
+  "echo $'\\'' > /dev/null; cat > README.md",
+  'cat <<EOF > /dev/null\n$(cat > README.md)\nEOF',
+  "echo '<<EOF'\n$(cat > README.md)\nEOF",
+  'bash -lc "echo $(date) > README.md"',
+]
+const STRICT_ALLOWED = [
+  'npm run build > log.txt',
+  "cat > plans/003-gamma.plan.md <<'EOF'\n# x `code` $(not run) > not-a-target\nEOF",
+  'mv plans/001-alpha.plan.md plans/done/001-alpha.plan.md',
+  'if [[ $a > $b ]]; then :; fi',
+  '(( a > b ))',
+  'diff <(sort a) <(sort b)',
+  'echo "$(date)" > notes.md',
+  `git commit -m "$(cat <<'EOF'\nfeat: a -> b "quoted" (open\nCo-Authored-By: X <x@example.invalid>\nEOF\n)" && git push`,
+  'tee >(grep x) /dev/null',
+]
+
+test('strictShell: every bypass of the earlier rounds and $\'…\' quoting is refused; plain and read-only commands pass', async () => {
+  const { bashWrites, strictShell } = await import(pathToFileURL(join(project, 'scripts', 'lib', 'guard.mjs')).href)
+  const cwd = main
+  const strict = (cmd) => strictShell(cmd, cwd, bashWrites(cmd, cwd))
+  // One bypass is a plain top-level redirect to strict mode: it passes it on only because the reader found README.md
+  // (which the normal rule then judges); every other one is refused outright (round 2: `[[` as a command word after a
+  // redirect is a command name holding a glob, refused by default).
+  const plainToStrict = ["'[[' x > README.md"]
+  for (const cmd of plainToStrict) {
+    assert.equal(strict(cmd), null, cmd)
+    assert.ok(bashWrites(cmd, cwd).some((t) => t.path && basename(t.path) === 'README.md'), cmd)
+    assert.equal(typeof strictShell(cmd, cwd, []), 'string', `refused when the reader misses README.md: ${cmd}`)
+  }
+  for (const cmd of STRICT_BYPASSES.filter((c) => !plainToStrict.includes(c))) assert.equal(typeof strict(cmd), 'string', `refused: ${JSON.stringify(cmd)}`)
+  for (const cmd of STRICT_ALLOWED) assert.equal(strict(cmd), null, `passes: ${JSON.stringify(cmd)}`)
+  // A write inside a substitution, a non-literal target, a write behind a prefix with options: refused.
+  for (const cmd of ['echo "$(echo x > a.txt)"', 'cp a.txt "$(pwd)/b"', 'sudo -u x tee a.txt < $(echo a)', '$(echo cp) a.txt b.txt; echo $(date)']) {
+    assert.equal(typeof strict(cmd), 'string', `refused: ${cmd}`)
+  }
+  // A cd the reader follows, and a comment holding a quote, keep plain targets plain.
+  assert.equal(strict('cd src && echo $(date) > y.js'), null)
+  assert.equal(strict("echo $(date) # it's\ncat > g.txt # it's"), null)
+})
+
+test('strict guard on main: a complex command that writes is refused unless its only writes are plain targets', () => {
+  for (const cmd of STRICT_BYPASSES) {
+    const r = bash(main, 'branch-guard.sh', cmd)
+    assert.equal(r.decision, 'deny', `${JSON.stringify(cmd)}: ${r.out}`)
+    assert.match(r.out, /BRANCH_GUARD:/)
+  }
+  const ansi = bash(main, 'branch-guard.sh', "x=$'\\''; cat > README.md")
+  assert.match(ansi.out, /the guard cannot verify every target/)
+  assert.match(ansi.out, /Write\/Edit tool, or use a plain redirect to a literal path/)
+  for (const cmd of ['if [[ $a > $b ]]; then :; fi', '(( a > b ))', 'diff <(sort a) <(sort b)', "cat > plans/003-gamma.plan.md <<'EOF'\n# x `code` $(not run) > nope\nEOF"]) {
+    const r = bash(main, 'branch-guard.sh', cmd)
+    assert.equal(r.decision, 'allow', `${JSON.stringify(cmd)}: ${r.out}`)
+  }
+  // A complex command whose only write is a plain top-level redirect is judged by the normal rule: refused on main for
+  // a code file — with the ordinary message, not the strict one.
+  const code = bash(main, 'branch-guard.sh', 'echo "$(date)" > src/notes.md')
+  assert.equal(code.decision, 'deny', code.out)
+  assert.doesNotMatch(code.out, /cannot verify every target/)
+})
+
+test('strict guard in a plan folder: a plain target in scope stays allowed, a hidden one is refused', () => {
+  for (const cmd of ['npm run build > src/log.txt', 'echo "$(date)" > src/notes.md']) {
+    const r = bash(main, 'scope-guard.sh', cmd, { cwd: slot })
+    assert.equal(r.decision, 'allow', `${cmd}: ${r.out}`)
+  }
+  // Round 2: names inside [[ … ]] in a command that writes are refused (deny by default), even with a plain target.
+  for (const cmd of ['echo $(echo x > src/e.js)', "x=$'\\''; cat > src/f.js", 'if [[ $a > $b ]]; then echo x > src/d.js; fi']) {
+    const r = bash(main, 'scope-guard.sh', cmd, { cwd: slot })
+    assert.equal(r.decision, 'deny', `${cmd}: ${r.out}`)
+    assert.match(r.out, /SCOPE_GUARD: this shell command writes/)
+  }
+})
+
+// Strict guard round 2 (2026-10-22): deny by default inside a complex command that writes — shells in any -c form,
+// a script read from stdin, quoted command words, wrapper prefixes, and names inside ((…)) / [[ … ]].
+const STRICT_ROUND2_DENIED = [
+  "echo \"$(date)\"; bash -ce 'cat > README.md'",
+  "echo \"$(date)\"; bash -o errexit -c 'cat > README.md'",
+  "echo \"$(date)\"; sh /dev/stdin <<'EOF'\ncat > README.md\nEOF",
+  "echo \"$(true)\"; env bash -c 'x > README.md'",
+  "echo \"$(date)\"; \"bash\" -c 'cat > README.md'",
+  "x='a[$(cat > README.md)]'; (( x ))",
+  '[[ $(true) ]] && xargs tee README.md',
+]
+const COMMIT_HEREDOC = `git commit -m "$(cat <<'EOF'\nfix(020): a -> b, tee and bash in the text\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\nEOF\n)"`
+const PR_HEREDOC = `gh pr create --title "x" --body "$(cat <<'EOF'\n## Summary\n- a > b; sed, perl and sh -c in prose\nEOF\n)"`
+
+test('strictShell round 2: shells, wrappers, -c variants, stdin scripts and names in arithmetic are refused', async () => {
+  const { bashWrites, strictShell } = await import(pathToFileURL(join(project, 'scripts', 'lib', 'guard.mjs')).href)
+  const strict = (cmd) => strictShell(cmd, main, bashWrites(cmd, main))
+  for (const cmd of STRICT_ROUND2_DENIED) assert.equal(typeof strict(cmd), 'string', `refused: ${JSON.stringify(cmd)}`)
+  for (const cmd of [COMMIT_HEREDOC, PR_HEREDOC, 'echo "$(date)" > notes.md', 'if [[ $a > $b ]]; then :; fi', '(( 1 > 0 ))', 'npm run build > log.txt', "cat > plans/003-gamma.plan.md <<'EOF'\n# x\nEOF", 'mv plans/001-alpha.plan.md plans/done/001-alpha.plan.md']) {
+    assert.equal(strict(cmd), null, `passes: ${JSON.stringify(cmd)}`)
+  }
+})
+
+// (mv into plans/done/ is checked above at strictShell level only: on main the ordinary branch rule judges it.)
+test('strict guard round 2 on main: each bypass is denied; the commit/PR heredoc, a comparison and a plan write are allowed', () => {
+  for (const cmd of STRICT_ROUND2_DENIED) {
+    const r = bash(main, 'branch-guard.sh', cmd)
+    assert.equal(r.decision, 'deny', `${JSON.stringify(cmd)}: ${r.out}`)
+  }
+  for (const cmd of [COMMIT_HEREDOC, PR_HEREDOC, 'if [[ $a > $b ]]; then :; fi', '(( 1 > 0 ))', "cat > plans/003-gamma.plan.md <<'EOF'\n# x\nEOF"]) {
+    const r = bash(main, 'branch-guard.sh', cmd)
+    assert.equal(r.decision, 'allow', `${JSON.stringify(cmd)}: ${r.out}`)
+  }
 })

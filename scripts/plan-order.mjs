@@ -8,7 +8,7 @@
  *
  * No plans named = every open plan. A dependency that is an open plan but not named is added to the order.
  * A dependency counts as met (done) when its plan is closed (moved out of the open plan folders), its Status: says
- * done/superseded/closed, or — with --branch <b> --merged-from git — a commit subject on <b> reads exactly
+ * done/superseded/closed, every Atomic Sub-task is [x] (the same rule take-plan uses), or — with --branch <b> --merged-from git — a commit subject on <b> reads exactly
  *   Merge <source-branch> into <b> (plan NNN)
  * (anchored: "plan NNN" anywhere else in a subject never counts). A named plan that is done is left out of the waves.
  *
@@ -25,7 +25,7 @@ import { resolve, dirname, join, isAbsolute, relative } from 'path'
 import { fileURLToPath } from 'url'
 import { extractScopeGlobs } from './lib/plan-scope.mjs'
 import { listOpenPlans, isOpenPlanPath, OPEN_PLAN_DIRS } from './lib/plan-paths.mjs'
-import { planNumber, planTitle, planDependencies, isFinishedStatus, mergedPlansFromSubjects } from './lib/plan-deps.mjs'
+import { planNumber, planTitle, planDependencies, planDoneReason, mergedPlansFromSubjects } from './lib/plan-deps.mjs'
 import { computeOrder, formatOrder } from './lib/plan-graph.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -33,7 +33,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 // Append-only files every plan may touch (the same list scope-check.mjs allows): never a conflict.
 const HOTSPOTS = [
   '',
-  ''
+  'CHANGELOG.md', 'README.md'
 ].filter(Boolean)
 
 function parseArgs(argv) {
@@ -112,7 +112,13 @@ const readPlan = (rel) => {
   if (!texts.has(rel)) texts.set(rel, readFileSync(join(root, rel), 'utf8'))
   return texts.get(rel)
 }
-for (const [n, p] of openByNnn) if (!done.has(n) && isFinishedStatus(readPlan(p))) done.set(n, `Status: done in ${p}`)
+// An open plan that is done already (lib/plan-deps.mjs planDoneReason — the rule take-plan uses too): its Status: says
+// finished, or every Atomic Sub-task is [x].
+for (const [n, p] of openByNnn) {
+  if (done.has(n)) continue
+  const why = planDoneReason(readPlan(p))
+  if (why) done.set(n, `${why} in ${p}`)
+}
 
 // The named plans (numbers or paths); none named = every open plan.
 const requested = []

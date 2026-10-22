@@ -97,6 +97,20 @@ test('validator: verifier keeps only >= 80 confidence, and a refutation must be 
   assert.equal(v([{ id: 'a', verdict: 'refuted', confidence: 90, severity: 'major', refutation: 'src/a.mjs:4 guards null' }], true).ok, true)
 })
 
+test('the merge agent and the orchestrator merge prompt give the same steps: --no-ff --no-commit, checks, then the commit', () => {
+  const agentText = read('orch-merge.md')
+  const workflow = readFileSync(join(project, '.claude', 'workflows', 'orchestrate.js'), 'utf8')
+  const prompt = (/Steps: git fetch origin;[^\n]*/.exec(workflow) ?? [''])[0]
+  for (const [name, text] of [['orch-merge.md', agentText], ['orchestrate.js merge prompt', prompt]]) {
+    assert.match(text, /git merge --ff-only origin\//, `${name}: fast-forward the run branch first`)
+    assert.match(text, /git merge --no-ff --no-commit origin\//, `${name}: the merge is staged, not committed`)
+    assert.match(text, /CHECKS/, `${name}: runs the checks before the commit`)
+    assert.match(text, /git merge --abort/, `${name}: a conflict or a failing check aborts`)
+    assert.match(text, /git commit -m/, `${name}: commits with the subject after the checks`)
+  }
+  assert.doesNotMatch(agentText, /git merge --no-ff origin\/<plan branch> -m/, 'no direct merge commit in the agent file')
+})
+
 test('validator: gate, builder, merge and the reply parser', () => {
   const gate = (results, pass) => validateAgentResult({ role: 'orch-gate', model: 'm', effort: 'low', results, pass })
   assert.equal(gate([{ command: 'x', status: 'fail' }], false).ok, false, 'a failed command needs its tail')

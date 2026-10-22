@@ -29,7 +29,7 @@
  *   builders   <parent>/<repo>-orch-<run>-<NNN> (a worktree on the plan branch)
  * ORCH_FREE_GB (a number) replaces the measured free disk — for tests only.
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync, statfsSync, openSync, closeSync, statSync, unlinkSync, renameSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, statfsSync, openSync, closeSync, statSync, unlinkSync, renameSync, linkSync } from 'fs'
 import { spawnSync } from 'child_process'
 import { resolve, dirname, join } from 'path'
 import { fileURLToPath } from 'url'
@@ -110,37 +110,82 @@ const mergeFolder = (run) => join(parent, `${repoName}-orch-merge-${run}`)
 const builderFolder = (run, nnn) => join(parent, `${repoName}-orch-${run}-${nnn}`)
 
 // Plans of one wave run in parallel, so several orch-state processes can read-modify-write status.json at once.
-// Every read takes the run's lock file (an O_EXCL create, retried; a lock older than LOCK_STALE_MS is taken over) and
-// holds it until this short-lived process exits; every write goes to a temp file renamed into place.
+// Every read takes the run's lock file (an O_EXCL create, retried; a lock older than LOCK_STALE_MS is taken over, see
+// takeOverStale) and holds it until this short-lived process exits; every write goes to a temp file renamed into place.
 const LOCK_STALE_MS = 30000
 const LOCK_WAIT_MS = 60000
+// The lock file holds its owner's token. A stale lock is taken over by renaming it to a name of this process's own
+// (a rename moves one file once, so two takers never both remove the same lock) and checking the moved file is the
+// stale lock that was seen; a fresh lock moved by mistake (another taker replaced the stale one in between) is put
+// back with an exclusive link. Only the O_EXCL create makes an owner. On exit a process removes the lock only while
+// it still holds its own token.
 const lockPath = (run) => join(runsDir(), `${run}.lock`)
-const heldLocks = new Set()
+const heldLocks = new Map()
 const pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+const readLock = (p) => {
+  try {
+    return readFileSync(p, 'utf8')
+  } catch {
+    return null
+  }
+}
+function takeOverStale(p, token) {
+  let seen
+  try {
+    if (Date.now() - statSync(p).mtimeMs <= LOCK_STALE_MS) return
+    seen = readLock(p)
+  } catch {
+    return // gone already
+  }
+  if (seen === null) return
+  const moved = `${p}.${token}.stale`
+  try {
+    renameSync(p, moved)
+  } catch {
+    return // another taker moved it first
+  }
+  let movedStale = false
+  try {
+    movedStale = Date.now() - statSync(moved).mtimeMs > LOCK_STALE_MS
+  } catch { /* unreadable: treated as fresh */ }
+  if (!movedStale || readLock(moved) !== seen) {
+    // Not the stale lock seen above: a fresh owner's lock. Put it back (link fails when a lock exists again).
+    try {
+      linkSync(moved, p)
+    } catch { /* a new lock is in place */ }
+  }
+  try {
+    unlinkSync(moved)
+  } catch { /* already gone */ }
+}
 function lockRun(run) {
   if (heldLocks.has(run)) return
   const p = lockPath(run)
   mkdirSync(runsDir(), { recursive: true })
+  const token = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
   const until = Date.now() + LOCK_WAIT_MS
   for (;;) {
     try {
-      closeSync(openSync(p, 'wx'))
-      heldLocks.add(run)
+      const fd = openSync(p, 'wx')
+      try {
+        writeFileSync(fd, token)
+      } finally {
+        closeSync(fd)
+      }
+      heldLocks.set(run, token)
       return
     } catch (e) {
       if (!['EEXIST', 'EPERM', 'EACCES'].includes(e.code)) throw e
     }
-    try {
-      if (Date.now() - statSync(p).mtimeMs > LOCK_STALE_MS) unlinkSync(p)
-    } catch { /* gone already, or another process took it over */ }
+    takeOverStale(p, token)
     if (Date.now() > until) fail(`status.json of run "${run}" stays locked by ${p} — another orch-state process is stuck`, { envFailure: true })
     pause(15 + Math.floor(Math.random() * 25))
   }
 }
 process.on('exit', () => {
-  for (const run of heldLocks) {
+  for (const [run, token] of heldLocks) {
     try {
-      unlinkSync(lockPath(run))
+      if (readLock(lockPath(run)) === token) unlinkSync(lockPath(run))
     } catch { /* already gone */ }
   }
 })

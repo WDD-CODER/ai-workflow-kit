@@ -9,10 +9,18 @@ result schema are in `docs/agent/agent-roles.md`.
 
 ## Steps
 
-1. **Target** — The branch under review is the one the Human names, else the current branch. Its plan is
-   `plans/NNN-*.plan.md` from the branch name (`feat/NNN-<slug>`, `fix/NNN-<slug>`); no plan number → ask the Human
-   for the plan path and STOP. Read the plan. The diff under review is `git diff origin/main...HEAD`; when
-   it is empty, STOP and tell the Human there is nothing to review.
+1. **Target** — The branch under review (`<branch>` below) is the one the Human names (`/review-it feat/NNN-<slug>`),
+   else the current branch. `git fetch origin`, then `<ref>` is `origin/<branch>` when that exists, else the local
+   `<branch>`; neither exists → tell the Human the branch is not found and STOP. Its plan is `plans/NNN-*.plan.md`
+   from the branch name (`feat/NNN-<slug>`, `fix/NNN-<slug>`); no plan number → ask the Human for the plan path and
+   STOP. Read the plan. The diff under review is `git diff origin/main...<ref>` — never `...HEAD` when
+   the Human named a branch other than the current one; when it is empty, STOP and tell the Human there is nothing
+   to review.
+   **Review folder:** `<branch>` is the current branch → this folder. Otherwise the commands below must see that
+   branch, not this folder's: check it out read-only in a temporary folder,
+   `git worktree add --detach ../<this folder's name>-review-<NNN> <ref>`, run every command of steps 2–3 there
+   (finders get that folder and `<ref>` as the branch), and `git worktree remove ../<this folder's name>-review-<NNN>`
+   after the verdict. Never switch this folder's branch for a review.
 
 2. **Commands (one `kit-runner` call):** hand the `kit-runner` agent (`.claude/agents/kit-runner.md`) the commands of
    the checks below — the architecture check and the log query (when set), both marked `[capture]` because they exit 0
@@ -28,7 +36,8 @@ result schema are in `docs/agent/agent-roles.md`.
      look for what these commands catch.
 
 3. **Finders, in parallel** — start `orch-check-plan`, `orch-check-bugs` and `orch-check-rules`
-   (`.claude/agents/`) in one message, each with the plan path, the branch and the base `origin/main`.
+   (`.claude/agents/`) in one message, each with the plan path, the branch `<ref>`, the review folder and the base
+   `origin/main`.
    When the diff touches auth, guards, interceptors, secrets handling or `middleware`, start
    `orch-security` too, with the changed files on those paths. Without sub-agents, read the diff once per lens
    (plan, bugs, rules) inline and write the candidates in the same shape.

@@ -22,7 +22,8 @@ const PROJECT_CHECKS = ["build", "lint", "test"].filter((s) => typeof s === 'str
 const FAILING = ['blocker', 'major']
 const KEEP_THRESHOLD = 80
 const FINDERS = ['orch-check-plan', 'orch-check-bugs', 'orch-check-rules']
-// Commands no agent may run (docs/agent/agent-roles.md deny list); a readiness command matching one is dropped.
+// Commands no agent may run (docs/agent/agent-roles.md deny list); a readiness command matching one is dropped. Every
+// command a plan or a builder supplies (readiness commands, args.checks, a [ui] card's test) also passes checkProblem.
 const DENY = /\brm\s+-[a-z]*[rf]|reset\s+--hard|push\s+(?:[^\n]*\s)?(?:--force|-f\b|--force-with-lease)|git\s+clean|branch\s+-D|stash\s+clear|filter-branch/
 // A plan's extra check commands (readiness `commands`, args.checks) are allowlisted, not just deny-listed: `npm run
 // <script>` with a script package.json has (plan-info's npmScripts; null before plan-info = shape only), `node tools/…`
@@ -268,12 +269,14 @@ async function checkers(ctx) {
 // The plan's own [ui] items (plan-info) are held against the builder's cards: an item no card covers is never dropped
 // — it joins as a card with no script, so the browser agent checks it (args.ui) or it is recorded `unchecked` and
 // reaches the Human in the run report.
+// A card covers an item only when its title is the item's text (case, quotes and spaces aside): a short card title
+// that is part of a longer item ("Save" inside "Save shows Saved in the header") covers nothing.
 const normCard = (s) => String(s ?? '').toLowerCase().replace(/[`"'‘’“”]/g, '').replace(/\s+/g, ' ').trim()
 function uiItemsMissing(items, cards) {
-  const have = cards.map((c) => normCard(c.card)).filter(Boolean)
+  const have = new Set(cards.map((c) => normCard(c.card)).filter(Boolean))
   return (items ?? []).filter((item) => {
     const n = normCard(item)
-    return n && !have.some((h) => h === n || h.includes(n) || n.includes(h))
+    return n && !have.has(n)
   })
 }
 async function ui(ctx) {
@@ -284,7 +287,11 @@ async function ui(ctx) {
   if (!cards.length && A.ui !== true) return {}
   const record = (c, status, via, shots) => setPlan(ctx.nnn, { round: ctx.round, card: c.card, 'card-status': status, page: c.page || undefined, shots: (shots ?? []).filter(Boolean).join(',') || undefined, via })
   const results = []
-  const scripted = cards.filter((c) => c.test && !DENY.test(c.test))
+  // A card's test command goes through the same allowlist as the plan's extra checks: one that is not allowed is not
+  // run (a run note says why) and the card is treated as one no script can check.
+  const scripts = Array.isArray(ctx.info?.npmScripts) ? ctx.info.npmScripts : []
+  for (const c of cards.filter((x) => x.test && checkProblem(x.test, scripts))) await note(`[ui] card test dropped, not run: ${c.card}: ${checkProblem(c.test, scripts)}`, ctx.nnn)
+  const scripted = cards.filter((c) => c.test && !checkProblem(c.test, scripts))
   const failed = []
   const passed = []
   if (scripted.length) {

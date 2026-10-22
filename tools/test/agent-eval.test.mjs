@@ -7,14 +7,14 @@
 // Uses the kit's installed agents (after `node tools/sync.mjs --target . --apply`) and the kit fixture cases.
 import { test, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, chmodSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { findingMatches, matchFindings, compareCase, ruleMatches } from '../lib/agent-eval/compare.mjs'
 import { noise } from '../lib/agent-eval/score.mjs'
-import { evaluate, loadAgent, writeRefusal, claudeArgs, usageTokens, formatTable, casePrompt } from '../lib/agent-eval/run.mjs'
+import { evaluate, loadAgent, writeRefusal, claudeArgs, claudeRunner, usageTokens, formatTable, casePrompt } from '../lib/agent-eval/run.mjs'
 import { makeStub } from './fixtures/agent-eval-stub.mjs'
 
 const kit = resolve(fileURLToPath(new URL('../..', import.meta.url)))
@@ -148,7 +148,48 @@ test('a write-capable agent is refused unless --allow-write is passed', () => {
   const allowed = runCli(['--agent', writer, '--cases', cases, '--runner', stubFile, '--allow-write'])
   assert.equal(allowed.status, 0, allowed.out)
   assert.match(writeRefusal({ name: 'x', tools: null }), /inherits every tool/)
-  assert.equal(writeRefusal(loadAgent(agent('orch-verify'))), null, 'the read-only verifier is allowed')
+  assert.equal(writeRefusal(loadAgent(agent('orch-verify')), false, { isolated: true }), null, 'the verifier (Read, Bash) is allowed on an isolating runner')
+  assert.equal(writeRefusal(loadAgent(agent('orch-security'))), null, 'a read-only agent with no Bash needs no isolation')
+})
+
+test('Bash can write: an agent with Bash is refused on a runner that does not isolate its cases', async () => {
+  assert.match(writeRefusal({ name: 'x', tools: ['Read', 'Bash'] }), /can write files through Bash/)
+  assert.equal(writeRefusal({ name: 'x', tools: ['Read', 'Bash'] }, true), null, '--allow-write still runs it')
+  await assert.rejects(evaluate({ agentFile: agent('orch-check-bugs'), casesDir: cases, runs: 1, runner: makeStub('perfect', { isolated: false }) }), /through Bash/)
+  assert.equal(claudeRunner().isolated, true, 'the default runner isolates each case')
+})
+
+test('model inherit passes no --model to claude (the session default), a named model does', () => {
+  const a = loadAgent(agent('orch-check-bugs'))
+  assert.ok(!claudeArgs({ agent: a, model: 'inherit', systemPromptFile: 's.md' }).includes('--model'))
+  assert.ok(!claudeArgs({ agent: a, model: null, systemPromptFile: 's.md' }).includes('--model'))
+  assert.ok(claudeArgs({ agent: a, model: 'sonnet', systemPromptFile: 's.md' }).includes('--model'))
+})
+
+test('the real runner runs each case in a scratch copy: a file the agent writes never lands in the case folder', async () => {
+  const caseInput = join(tmp, 'iso-case', 'input')
+  mkdirSync(caseInput, { recursive: true })
+  writeFileSync(join(caseInput, 'diff.patch'), '')
+  // A fake `claude`: writes a file in its working folder and answers with that folder.
+  const fake = join(tmp, 'fake-claude.mjs')
+  writeFileSync(fake, [
+    "import { writeFileSync, existsSync } from 'node:fs'",
+    "writeFileSync('written-by-agent.txt', 'x')",
+    "process.stdin.resume(); process.stdin.on('end', () => console.log(JSON.stringify({ result: JSON.stringify({ cwd: process.cwd(), copied: existsSync('diff.patch') }), usage: { input_tokens: 1 }, total_cost_usd: 0 })))",
+  ].join('\n'))
+  let bin
+  if (process.platform === 'win32') bin = `"${process.execPath}" "${fake}"`
+  else {
+    bin = join(tmp, 'fake-claude')
+    writeFileSync(bin, `#!/bin/sh\nexec "${process.execPath}" "${fake}" "$@"\n`)
+    chmodSync(bin, 0o755)
+  }
+  const reply = await claudeRunner({ bin, timeoutMs: 60_000 })({ agent: loadAgent(agent('orch-check-bugs')), model: 'inherit', role: 'orch-check-bugs', inputDir: caseInput })
+  const seen = JSON.parse(reply.text)
+  assert.equal(seen.copied, true, 'the case input is copied into the scratch folder')
+  assert.notEqual(resolve(seen.cwd), resolve(caseInput))
+  assert.equal(existsSync(join(caseInput, 'written-by-agent.txt')), false, 'the case folder is untouched')
+  assert.equal(existsSync(seen.cwd), false, 'the scratch copy is removed after the run')
 })
 
 test('the real runner calls Claude Code non-interactively with the agent prompt, model and read-only tools', () => {

@@ -9,6 +9,56 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+The orchestrator run's follow-ups: the gaps its checkers left open, each closed with a test.
+
+### What a project must do
+
+Nothing. Rendered files that change (`kit-update`): `.claude/workflows/orchestrate.js`, `.claude/agents/orch-merge.md`,
+`.claude/commands/review-it.md`, `.claude/settings.json` (the Bash matcher gains a plan-file guard),
+`docs/agent/orchestrator.md`, `scripts/plan-order.mjs`, `scripts/take-plan.mjs`, `scripts/orch-state.mjs`,
+`scripts/orch-preflight.mjs`, `scripts/lib/guard.mjs`, `scripts/lib/plan-deps.mjs`, `scripts/lib/done-when.mjs`,
+`scripts/lib/slot-procs.mjs`, `docs/agent/standards-git.md`, `docs/agent/workflow-map.md`. A project with `commands.dev` set now needs its dev server answering on the base port
+(or startable by `scripts/slot-serve.mjs`) before `/orchestrate` starts a run.
+
+### Changed
+
+- Guards: strict mode for complex shell writes on guarded folders. A Bash command that writes and uses `$(…)`,
+  `${…}`, backticks, `<(…)`/`>(…)`, `[[`, `((`, `$'…'`/`$"…"` or `eval` is refused (`BRANCH_GUARD:` /
+  `SCOPE_GUARD:` "… the guard cannot verify every target") unless every write in it is a top-level redirect or
+  `tee`/`cp`/`mv`/`install`/`ln`/`touch`/`truncate`/`sed -i`/`perl -i` to a plain literal path the reader found.
+  Why: five review rounds each found a new shell construct (quoted or unclosed `[[`, a redirect before `[[`,
+  `<((…))`, `${…}`, `\${`/`$${`, process-substitution words, ANSI-C `$'…'` quoting) that hid a write from the reader;
+  the rule stops that by failing closed. Use the Write/Edit tool or a plain redirect to a literal path instead.
+  Commands without those constructs are judged exactly as before.
+
+### Fixed
+
+- A `[ui]` card's test command passes the same allowlist as the plan's check commands; any other is not run, a run
+  note says why, and the card counts as unscripted.
+- `plan-order` and `take-plan` share one "already done" rule (`planDoneReason`): Status: finished, or at least one
+  sub-task `[x]` and none open — `plan-order` no longer schedules a plan that is already on `main`.
+- The guards' Bash reader follows writes inside `$( … )` and backticks, reads `>` inside `[[ … ]]` and `(( … ))` as a
+  comparison, and sees a command after a reserved word (`if cp a b`). The Bash matcher runs the plan-file rule too
+  (`node scripts/lib/guard.mjs plan`): a shell command that writes a new, name-similar `plans/*.plan.md` is denied.
+- The orchestrator preflight proves the dev server answers, or starts it, when `commands.dev` is set; a failed start
+  stops the run before any builder.
+- `/review-it <branch>` reviews that branch (`origin/<main>...<ref>`, in a temporary detached worktree when it is not
+  the current branch), not always `HEAD`.
+- A `Depends-on:` line stops at a dash: a note after it (`— after release 1.3`) adds no plan numbers.
+- `agent-eval`: `model: inherit` passes no `--model`; an agent with Bash runs only on a runner that isolates each case
+  (the default one now runs every case in a scratch copy of its input folder).
+- `orch-state`: a stale lock is taken over by an atomic rename with a token check. This closes the common race of two
+  takers removing the same stale lock; a window of microseconds remains (a fresh lock moved by mistake cannot be put
+  back when a third process created one in between), so two owners at once stay possible, just very unlikely.
+- The Bash write guard reads a quoted or escaped `[[` (`'[['`, `"[["`, `\[\[`) as a plain word, not the test keyword;
+  a `[[` the command leaves unclosed fails closed (every `>` target inside it counts as a write); and the `$(…)` and
+  backtick substitutions inside `(( … ))` / `$(( … ))` are read for writes like any other.
+- `[ui]` items are read from the Done-when sections only, and a card covers only the item whose text it equals.
+- The merge agent's steps match the orchestrator's merge prompt (`--no-ff --no-commit`, the checks, then the commit).
+- `slot-serve`'s "packages missing" check works with npm 6 (no `node_modules/.package-lock.json`).
+- The kit repo sets `paths.hotspots` (`CHANGELOG.md`, `README.md`), so they no longer put every kit plan in one lock
+  group.
+
 ## [1.4.0] - 2026-10-22
 
 The kit uses its own workflow: it is installed into the kit repo and works solo (plan on `main`, build on a
