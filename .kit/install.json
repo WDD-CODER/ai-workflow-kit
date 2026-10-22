@@ -3,7 +3,7 @@
     "version": "1.4.0"
   },
   "source": "local:.",
-  "commit": "4e0e48e79ba2d69a1a09f5888ddfdfc0af6e418e",
+  "commit": "305fce2d4747bd04bb009059ad2a14379d430632",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -50,7 +50,7 @@
       "source": "core/.claude/agents/orch-gate.md"
     },
     ".claude/agents/orch-merge.md": {
-      "sha256": "a28930bc8d392e1b7e640e08dd76ec16ffa00233d65d1c113af033c163e5c8a8",
+      "sha256": "621169cece6cb54f5edbfb65b2c21cd1c57fa74eb66ed60f332d99ffe63d6280",
       "kind": "managed",
       "source": "core/.claude/agents/orch-merge.md"
     },
@@ -80,7 +80,7 @@
       "source": "core/.claude/agents/orch-verify.md"
     },
     ".claude/commands/auto-solve.md": {
-      "sha256": "c5e353912a220f1fbdd1f6f44c0c6f40d0bea1ea8b7edcd09bf2c69b2226081d",
+      "sha256": "2773e2ea9b595eeac701ded6a903463021a823b484429acb8ccde9c122a2a2d2",
       "kind": "managed",
       "source": "core/.claude/commands/auto-solve.md"
     },
@@ -145,7 +145,7 @@
       "source": "core/.claude/commands/refactor.md"
     },
     ".claude/commands/review-it.md": {
-      "sha256": "8b6f016905a0c666783c325f20076678d31f37434af3daeda64397a488acf8d6",
+      "sha256": "d82bd1671b58a465548ff62fdf0a435390a403215248ff388a5f549d04c6833c",
       "kind": "managed",
       "source": "core/.claude/commands/review-it.md"
     },
@@ -160,7 +160,7 @@
       "source": "core/.claude/commands/security.md"
     },
     ".claude/commands/ship.md": {
-      "sha256": "1c78d6d4212762e232edd5b9fe6a37f2a17d1eb660358cd414254066bf77c6e6",
+      "sha256": "6afaf3a8582b2ce3c56ee83a953d69e966cc7beedc6e2084ddaca75fd9846361",
       "kind": "managed",
       "source": "core/.claude/commands/ship.md"
     },
@@ -200,12 +200,12 @@
       "source": "core/.claude/references/hld-template.md"
     },
     ".claude/references/prd-template.md": {
-      "sha256": "55987b12120016744732c6db8adc5fa59a1065945914fd22075a183f4e02ad8c",
+      "sha256": "a0757a2ec42d0380e121097beba5b82e5afb95c5fe1dd9e7af6e99353c2d7254",
       "kind": "managed",
       "source": "core/.claude/references/prd-template.md"
     },
     ".claude/settings.json": {
-      "sha256": "b87f6df7402f75e8c3896fd911437274494aa04de9192dce54c2ed3c530599a5",
+      "sha256": "0caf68e422857a035f1f3a5ae7a3d49537274ad04f23f5144aa06f60be62a455",
       "kind": "managed",
       "source": "core/.claude/settings.json"
     },
@@ -250,7 +250,7 @@
       "source": "core/.claude/skills/worktree-setup/SKILL.md"
     },
     ".claude/workflows/orchestrate.js": {
-      "sha256": "6dd1a3930893cd32cc3daf25e8ac827b8621f244528199ff6a01cece336cdd0d",
+      "sha256": "f6dc16234f1920f4474d424b59f4e30850c044218a336baa445901cc62979a40",
       "kind": "managed",
       "source": "core/.claude/workflows/orchestrate.js"
     },
@@ -325,7 +325,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "20df6affdda61b6a8587c2833e3b46fb14ae0e32b6a08006ae9675b00f555dc2",
+      "sha256": "7a1ddd538461fc17b7fd4f2fa1f3cdd0bf353d99047ade666e8c1420c9c94e76",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -515,7 +515,7 @@
       "source": "core/scripts/kit-manifest-check.mjs"
     },
     "scripts/lib/done-when.mjs": {
-      "sha256": "b8998c4adb731232affe48ff5354d75c3cf1e2934fe34c516ae72501f2cddc79",
+      "sha256": "325a18471b65b4e517538fdd95d4f7ff14f52d62980c2437594b4b57cb1db031",
       "kind": "managed",
       "source": "core/scripts/lib/done-when.mjs"
     },
@@ -525,7 +525,7 @@
       "source": "core/scripts/lib/fe-command.mjs"
     },
     "scripts/lib/guard.mjs": {
-      "sha256": "c555cf01f5f1fbc3d3057c48fc284e4d039fd9eefe5368e24a0f1dfa7fe48414",
+      "sha256": "be90386a83309a7935dc3ed7d7280400a8c76060122d1288cc087c04b20f381e",
       "kind": "managed",
       "source": "core/scripts/lib/guard.mjs"
     },
@@ -540,7 +540,7 @@
       "source": "core/scripts/lib/orch-run.mjs"
     },
     "scripts/lib/plan-deps.mjs": {
-      "sha256": "7de8fa271a44df128b8d25c7b291902ac8ffdd50fc72dbd439fe966022096243",
+      "sha256": "b534e3fd9dd125048b9e130406bb54dc298af10090185e40f15432a7473889ad",
       "kind": "managed",
       "source": "core/scripts/lib/plan-deps.mjs"
     },
@@ -560,7 +560,7 @@
       "source": "core/scripts/lib/plan-scope.mjs"
     },
     "scripts/lib/slot-procs.mjs": {
-      "sha256": "80faf2d723863722e5fe679db426f185d80a7b4b0d41f228f33ce64da2c289e3",
+      "sha256": "cb5d4c44ccdfa8c4dc29971842e226ee7dfb0f9c54dd8430b6428628022f481f",
       "kind": "managed",
       "source": "core/scripts/lib/slot-procs.mjs"
     },
@@ -585,12 +585,12 @@
       "source": "core/scripts/next-plan-number.mjs"
     },
     "scripts/orch-preflight.mjs": {
-      "sha256": "895182f51236485a5da8fc568452fad8250961cee86589703f1f58047da8b7a4",
+      "sha256": "bb7b8effb571d5a527b8186eac987bc4a46d13bc79e68e8e9b6ec9cd9bb173fd",
       "kind": "managed",
       "source": "core/scripts/orch-preflight.mjs"
     },
     "scripts/orch-state.mjs": {
-      "sha256": "37bbdaa4e736eca5b65fc813f7d3d7d3e815fb03b015bf37152475ee6d7eb992",
+      "sha256": "df6da5e48a8425510ef3530e997052e4f2abbb6c1e074a89091325d10b7be7a4",
       "kind": "managed",
       "source": "core/scripts/orch-state.mjs"
     },
@@ -620,7 +620,7 @@
       "source": "core/scripts/plan-name-similarity.mjs"
     },
     "scripts/plan-order.mjs": {
-      "sha256": "ffe1c9455f3ad4939f9c1a1cbc6c068fc2ce7a319363bb8bb8d0dfd697e53fb1",
+      "sha256": "277050b45f364af2796c37a3d061bdd4a147ee168af154fff96b96856fa9e051",
       "kind": "managed",
       "source": "core/scripts/plan-order.mjs"
     },
@@ -660,7 +660,7 @@
       "source": "core/scripts/run-python.sh"
     },
     "scripts/scope-check.mjs": {
-      "sha256": "93aff59a5b90fbeadb2fa8955c41fb8018ee840783c3d3cb61c20010eca6bc19",
+      "sha256": "5428f0365a53fdefbbde9c6f5acedcea2a22486ed41bd1d87766289b276a0a6e",
       "kind": "managed",
       "source": "core/scripts/scope-check.mjs"
     },
@@ -710,7 +710,7 @@
       "source": "core/scripts/slot-stop.mjs"
     },
     "scripts/take-plan.mjs": {
-      "sha256": "96e92b2ccd3ff399485e7b94d1d884f5cd78e11d3152d21e9522eabd3a80dfa8",
+      "sha256": "25681dbf6d4a7c89693342de5719f090bb705b76313e96626976f61639ea020a",
       "kind": "managed",
       "source": "core/scripts/take-plan.mjs"
     },

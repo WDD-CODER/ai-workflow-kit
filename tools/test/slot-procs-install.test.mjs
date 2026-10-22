@@ -85,6 +85,23 @@ test('v1 lockfile with dependencies, hash unchanged, no node_modules -> missing'
   assert.equal(installNeed(dir, hashPath), 'missing')
 })
 
+test('npm 6 (no node_modules/.package-lock.json): every top-level package present -> no install; one missing -> missing', () => {
+  const lock = '{"name":"fixture","lockfileVersion":2,"packages":{"":{"name":"fixture"},"node_modules/cross-env":{"version":"7.0.3"},"node_modules/@scope/pkg":{"version":"1.0.0"},"node_modules/cross-env/node_modules/nested":{"version":"1.0.0"},"node_modules/fsevents":{"version":"2.3.3","optional":true}}}\n'
+  const { dir, hashPath } = fixture({ modules: false, lockText: lock })
+  for (const name of ['cross-env', '@scope/pkg']) {
+    mkdirSync(join(dir, 'node_modules', name), { recursive: true })
+    writeFileSync(join(dir, 'node_modules', name, 'package.json'), '{}')
+  }
+  assert.equal(installNeed(dir, hashPath), null, 'npm 6 wrote no .package-lock.json, but the packages are there (optional fsevents aside)')
+  rmSync(join(dir, 'node_modules', '@scope'), { recursive: true, force: true })
+  assert.equal(installNeed(dir, hashPath), 'missing')
+  const v1 = '{"name":"fixture","lockfileVersion":1,"dependencies":{"cross-env":{"version":"7.0.3"}}}\n'
+  const old = fixture({ modules: false, lockText: v1 })
+  mkdirSync(join(old.dir, 'node_modules', 'cross-env'), { recursive: true })
+  writeFileSync(join(old.dir, 'node_modules', 'cross-env', 'package.json'), '{}')
+  assert.equal(installNeed(old.dir, old.hashPath), null, 'a v1 lockfile with its packages installed by npm 6')
+})
+
 test('the reason words the messages print', () => {
   assert.equal(installReason('missing'), 'packages missing')
   assert.equal(installReason('changed'), 'lockfile changed')

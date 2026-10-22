@@ -3,6 +3,8 @@
 // Runs the installed scripts of the kit repo (scripts/, after `node tools/sync.mjs --target . --apply` and
 // `npm ci` inside scripts/). GUARDS_ROOT=<project> runs another installed copy instead (tools/e2e-check.mjs points it
 // at its fresh e2e project). The scripts are copied into the scratch repo, because a guard judges its own folder.
+// The out-of-scope file is NOTES.md, never README.md or CHANGELOG.md: those are the kit repo's own hotspots
+// (paths.hotspots), which every plan may append to.
 //
 // Folders of the scratch repo (all worktrees of one repository):
 //   proj/        the main (Planner) folder, branch main
@@ -68,7 +70,7 @@ before(() => {
   mkdirSync(join(main, 'src'))
   writeFileSync(join(main, 'plans', '001-alpha.plan.md'), plan('001', 'alpha', ['src/**']))
   writeFileSync(join(main, 'src', 'a.js'), 'export const a = 1\n')
-  writeFileSync(join(main, 'README.md'), '# scratch\n')
+  writeFileSync(join(main, 'NOTES.md'), '# scratch\n')
   writeFileSync(join(main, '.gitignore'), ['scripts/node_modules/', '.worktree-*', '.claude/sessions/', '.claude/.session-state-path', ''].join('\n'))
   gitIn(main, 'add', '-A')
   gitIn(main, 'commit', '-q', '-m', 'scratch')
@@ -103,7 +105,7 @@ before(() => {
   mkdirSync(solo)
   gitIn(solo, 'init', '-q', '-b', 'chore/solo')
   addScripts(solo)
-  writeFileSync(join(solo, 'README.md'), '# solo\n')
+  writeFileSync(join(solo, 'NOTES.md'), '# solo\n')
   gitIn(solo, 'add', '-A')
   gitIn(solo, 'commit', '-q', '-m', 'solo')
   linkModules(solo)
@@ -125,7 +127,7 @@ const bash = (from, script, command, opts) => hook(from, script, { command }, { 
 
 // (1) + (2): an agent whose session runs in the main folder writes into the slot.
 test('(1) a main-folder session writing into wt-1 outside the plan scope is denied with SCOPE_GUARD:', () => {
-  const r = write(main, 'scope-guard.sh', join(slot, 'README.md'))
+  const r = write(main, 'scope-guard.sh', join(slot, 'NOTES.md'))
   assert.equal(r.decision, 'deny', r.out)
   assert.match(r.out, /SCOPE_GUARD:/)
 })
@@ -162,23 +164,23 @@ test('(5) a Bash command that writes into a guarded path is denied: on main and 
     assert.equal(r.decision, 'deny', `${cmd}\n${r.out}`)
     assert.match(r.out, /BRANCH_GUARD:/)
   }
-  for (const cmd of writes('README.md')) {
+  for (const cmd of writes('NOTES.md')) {
     const r = bash(main, 'scope-guard.sh', cmd, { cwd: slot })
     assert.equal(r.decision, 'deny', `${cmd}\n${r.out}`)
     assert.match(r.out, /SCOPE_GUARD:/)
   }
   // An absolute path into the slot, from a session in the main folder.
-  const abs = bash(main, 'scope-guard.sh', `echo x > "${join(slot, 'README.md').replace(/\\/g, '/')}"`)
+  const abs = bash(main, 'scope-guard.sh', `echo x > "${join(slot, 'NOTES.md').replace(/\\/g, '/')}"`)
   assert.equal(abs.decision, 'deny', abs.out)
   // sed -i, cp and mv targets.
-  for (const cmd of ['sed -i s/a/b/ README.md', 'cp src/a.js README.md', 'mv src/a.js notes.md']) {
+  for (const cmd of ['sed -i s/a/b/ NOTES.md', 'cp src/a.js NOTES.md', 'mv src/a.js notes.md']) {
     const r = bash(main, 'scope-guard.sh', cmd, { cwd: slot })
     assert.equal(r.decision, 'deny', `${cmd}\n${r.out}`)
   }
 })
 
 test('(5) read-only and in-scope Bash commands are allowed', () => {
-  for (const cmd of ['cat README.md', 'git status', 'ls -la src 2>&1 | head -5', 'node -e "1" > /dev/null 2>&1', 'grep -n x README.md >&2']) {
+  for (const cmd of ['cat NOTES.md', 'git status', 'ls -la src 2>&1 | head -5', 'node -e "1" > /dev/null 2>&1', 'grep -n x NOTES.md >&2']) {
     const r = bash(main, 'branch-guard.sh', cmd)
     assert.equal(r.decision, 'allow', `${cmd}\n${r.out}`)
     const s = bash(main, 'scope-guard.sh', cmd, { cwd: slot })
@@ -193,18 +195,18 @@ test('(5) read-only and in-scope Bash commands are allowed', () => {
 })
 
 test('merge folder on feat/NNN-slug (not a slot): plan NNN scope applies', () => {
-  const out = write(merge, 'scope-guard.sh', join(merge, 'README.md'))
+  const out = write(merge, 'scope-guard.sh', join(merge, 'NOTES.md'))
   assert.equal(out.decision, 'deny', out.out)
   assert.match(out.out, /SCOPE_GUARD:/)
   assert.match(out.out, /approved: /)
   const inside = write(merge, 'scope-guard.sh', join(merge, 'src', 'b.js'))
   assert.equal(inside.decision, 'allow', inside.out)
-  const fromMain = write(main, 'scope-guard.sh', join(merge, 'README.md'))
+  const fromMain = write(main, 'scope-guard.sh', join(merge, 'NOTES.md'))
   assert.equal(fromMain.decision, 'deny', fromMain.out)
 })
 
 test('merge folder on orch/<run> naming its plan in .worktree-plan: plan scope applies', () => {
-  const out = write(orch, 'scope-guard.sh', join(orch, 'README.md'))
+  const out = write(orch, 'scope-guard.sh', join(orch, 'NOTES.md'))
   assert.equal(out.decision, 'deny', out.out)
   assert.match(out.out, /SCOPE_GUARD:/)
   const inside = write(orch, 'scope-guard.sh', join(orch, 'src', 'b.js'))
@@ -212,9 +214,9 @@ test('merge folder on orch/<run> naming its plan in .worktree-plan: plan scope a
 })
 
 test('a branch that names no plan has no plan scope; main still refuses', () => {
-  const r = write(free, 'scope-guard.sh', join(free, 'README.md'))
+  const r = write(free, 'scope-guard.sh', join(free, 'NOTES.md'))
   assert.equal(r.decision, 'allow', r.out)
-  const onMain = write(main, 'branch-guard.sh', join(main, 'README.md'))
+  const onMain = write(main, 'branch-guard.sh', join(main, 'NOTES.md'))
   assert.equal(onMain.decision, 'deny', onMain.out)
 })
 
@@ -255,7 +257,7 @@ test(`each guard run on a no-op input takes under ${LIMIT_MS} ms and makes at mo
   assert.equal(p.decision, 'allow', p.out)
   assert.ok(p.ms < LIMIT_MS, `branch-guard on a plan took ${p.ms} ms`)
   assert.ok(Number((p.stderr.match(/GUARD_GIT_CALLS: (\d+)/) || [])[1] ?? 99) <= 1, p.stderr)
-  const f = write(free, 'scope-guard.sh', join(free, 'README.md'), { env: { KIT_GUARD_TRACE: '1' } })
+  const f = write(free, 'scope-guard.sh', join(free, 'NOTES.md'), { env: { KIT_GUARD_TRACE: '1' } })
   assert.equal(f.decision, 'allow', f.out)
   assert.ok(f.ms < LIMIT_MS, `scope-guard in a no-plan folder took ${f.ms} ms`)
   assert.ok(Number((f.stderr.match(/GUARD_GIT_CALLS: (\d+)/) || [])[1] ?? 99) <= 1, f.stderr)
@@ -265,7 +267,7 @@ test('a shell target the guard cannot resolve ($VAR, $(...)) is refused where a 
   const onMain = bash(main, 'branch-guard.sh', 'echo x > "$OUT_FILE"')
   assert.equal(onMain.decision, 'deny', onMain.out)
   assert.match(onMain.out, /cannot tell which file/)
-  const inSlot = bash(main, 'scope-guard.sh', 'echo x > $(pwd)/README.md', { cwd: slot })
+  const inSlot = bash(main, 'scope-guard.sh', 'echo x > $(pwd)/NOTES.md', { cwd: slot })
   assert.equal(inSlot.decision, 'deny', inSlot.out)
   // From a folder with no plan: a sibling worktree of the repository holds a plan, and the target may be there.
   const free_ = bash(free, 'scope-guard.sh', 'echo x > "$OUT_FILE"')
@@ -360,8 +362,71 @@ test('bashWrites: redirects, heredocs, tee, sed -i, cp/mv, cd and bash -c; quote
   }
   assert.deepEqual(paths('echo x > "$HOME_NOT_KNOWN/x"'), ['?$HOME_NOT_KNOWN/x'])
   // A cd the guard cannot follow makes the folder unknown: later relative targets fail closed until a resolvable cd.
-  assert.deepEqual(paths('cd "$WT" && echo x > README.md'), ['?README.md'])
+  assert.deepEqual(paths('cd "$WT" && echo x > NOTES.md'), ['?NOTES.md'])
   assert.deepEqual(paths('cd $(git rev-parse --show-toplevel)/../x && echo x > f.txt && tee g.txt'), ['?f.txt', '?g.txt'])
   assert.deepEqual(paths('cd "$WT" && bash -c "echo x > h.txt"'), ['?h.txt'])
   assert.deepEqual(paths(`cd "$WT" && cd "${cwd.split(sep).join('/')}" && echo x > k.txt`), ['k.txt'])
+})
+
+test('bashWrites: a write inside $( … ) or backticks counts; > in [[ … ]] and (( … )) is a comparison', async () => {
+  const { bashWrites } = await import(pathToFileURL(join(project, 'scripts', 'lib', 'guard.mjs')).href)
+  const cwd = main
+  const paths = (cmd) => bashWrites(cmd, cwd).map((t) => (t.path ? relative(cwd, t.path).split(sep).join('/') : `?${t.unresolved}`))
+  assert.deepEqual(paths(`x=$(cat > NOTES.md <<'EOF'\nhello\nEOF\n)`), ['NOTES.md'])
+  assert.deepEqual(paths('echo "$(echo x > a.txt)"'), ['a.txt'])
+  assert.deepEqual(paths('y=`tee b.txt < /dev/null`'), ['b.txt'])
+  assert.deepEqual(paths('echo $(cd src && echo x > c.js)'), ['src/c.js'])
+  assert.deepEqual(paths('if [[ $a > $b ]]; then :; fi'), [])
+  assert.deepEqual(paths('while [[ "$x" > "$y" && $z < $w ]]; do :; done'), [])
+  assert.deepEqual(paths('(( a > b )) && echo ok'), [])
+  assert.deepEqual(paths('for ((i = 0; i < 3; i++)); do echo $i; done'), [])
+  assert.deepEqual(paths('echo $(( 4 > 2 ))'), [])
+  // After the test, a real redirect still counts; a reserved word before a command does not hide it.
+  assert.deepEqual(paths('if [[ $a > $b ]]; then echo x > d.txt; fi'), ['d.txt'])
+  assert.deepEqual(paths('if cp a.js e.js; then :; fi'), ['e.js'])
+  // Nested subshells that only look like (( … )) are commands.
+  assert.deepEqual(paths('((echo x > f.txt) )'), ['f.txt'])
+})
+
+test('a write hidden in $( … ) on a guarded folder is denied; an [[ … ]] comparison is allowed', () => {
+  const sub = `x=$(cat > NOTES.md <<'EOF'\nhello\nEOF\n)`
+  const onMain = bash(main, 'branch-guard.sh', sub)
+  assert.equal(onMain.decision, 'deny', onMain.out)
+  assert.match(onMain.out, /BRANCH_GUARD:/)
+  const inSlot = bash(main, 'scope-guard.sh', sub, { cwd: slot })
+  assert.equal(inSlot.decision, 'deny', inSlot.out)
+  assert.match(inSlot.out, /SCOPE_GUARD:/)
+  for (const script of ['branch-guard.sh', 'scope-guard.sh']) {
+    const r = bash(main, script, 'if [[ $a > $b ]]; then :; fi', { cwd: script === 'scope-guard.sh' ? slot : main })
+    assert.equal(r.decision, 'allow', `${script}: ${r.out}`)
+  }
+})
+
+test('the Bash matcher runs the plan-file guard: a shell command writing a new, name-similar plan is denied', () => {
+  const settings = JSON.parse(readFileSync(join(project, '.claude', 'settings.json'), 'utf8'))
+  const bashHooks = settings.hooks.PreToolUse.find((h) => h.matcher === 'Bash').hooks.map((h) => h.command).join('\n')
+  assert.match(bashHooks, /scripts\/lib\/guard\.mjs" plan/)
+  assert.match(bashHooks, /branch-guard\.sh/)
+  assert.match(bashHooks, /scope-guard\.sh/)
+  const planGuard = (command) => {
+    const input = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command }, cwd: main })
+    const r = spawnSync(process.execPath, [join(main, 'scripts', 'lib', 'guard.mjs'), 'plan'], { cwd: main, input, encoding: 'utf8', timeout: 30000 })
+    const m = (r.stdout ?? '').match(/"permission":"(allow|deny)"/)
+    return { decision: m ? m[1] : `unparsed (${r.stdout}${r.stderr})`, out: `${r.stdout}${r.stderr}` }
+  }
+  // plans/001-alpha.plan.md exists: 009-alpha is name-similar.
+  const similar = planGuard(`cat > plans/009-alpha.plan.md <<'EOF'\n# Plan 009 — alpha\nEOF`)
+  assert.equal(similar.decision, 'deny', similar.out)
+  assert.match(similar.out, /PLAN_WRITE_GUARD: blocked new plan write/)
+  // An existing plan, a command that only names a plan, and an unrelated write are allowed.
+  for (const cmd of ['echo x >> plans/001-alpha.plan.md', 'cat plans/009-alpha.plan.md', 'node scripts/plan-name-similarity.mjs --file=plans/009-alpha.plan.md', 'echo x > notes.txt']) {
+    const r = planGuard(cmd)
+    assert.equal(r.decision, 'allow', `${cmd}: ${r.out}`)
+  }
+  // The ack names the new plan: allowed once, and the ack is consumed.
+  mkdirSync(join(main, '.claude'), { recursive: true })
+  writeFileSync(join(main, '.claude', '.plan-write-ack'), 'plans/009-alpha.plan.md')
+  const acked = planGuard(`echo x > plans/009-alpha.plan.md`)
+  assert.equal(acked.decision, 'allow', acked.out)
+  assert.equal(existsSync(join(main, '.claude', '.plan-write-ack')), false)
 })

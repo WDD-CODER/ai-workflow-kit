@@ -3,6 +3,7 @@
  *
  *   node scripts/lib/guard.mjs scope    plan Read-Write Scope (+ kit-owned files)
  *   node scripts/lib/guard.mjs branch   no code writes on {{git.mainBranch}}
+ *   node scripts/lib/guard.mjs plan     a Bash command's new plans/*.plan.md files (the Bash half of plan-write-guard.sh)
  *
  * Input: the hook's JSON on stdin ({ tool_name, tool_input, cwd }). Output: one JSON decision on stdout, in both
  * formats (Cursor reads "permission", Claude Code reads hookSpecificOutput). Exit code is always 0.
@@ -12,7 +13,8 @@
  *     judged by that worktree's own guard (its branch, its plan), a file outside every worktree of this repo is
  *     not this guard's business;
  *   - a Bash command is read for the files it writes (redirects, heredocs, tee, sed -i / perl -i, cp/mv/install
- *     targets, touch; `cd` and `bash -c` are followed) and each target gets the same rule. This is best-effort — it
+ *     targets, touch; `cd`, `bash -c` and `$(…)` / backtick substitutions are followed; `>` inside `[[ … ]]` and
+ *     `(( … ))` is a comparison) and each target gets the same rule. This is best-effort — it
  *     cannot parse every shell construct — so a target it cannot resolve (a `$VAR` or `$(...)` path) is refused
  *     when this folder, the shell's folder or any worktree of the repository is guarded (fail closed). /ship's scope
  *     gate and CI drift-check stay the backstop.
@@ -26,7 +28,7 @@
  * Speed (the hook limit is 10 s; Git Bash start-up on Windows is slow): one node process, the branch and git dirs
  * read from files, no git call on the allow path. KIT_GUARD_TRACE=1 prints `GUARD_GIT_CALLS: <n>` to stderr.
  */
-import { readFileSync, readdirSync, existsSync, statSync, realpathSync } from 'fs'
+import { readFileSync, readdirSync, existsSync, statSync, realpathSync, unlinkSync } from 'fs'
 import { spawnSync } from 'child_process'
 import { join, resolve, dirname, relative, isAbsolute, basename } from 'path'
 import { fileURLToPath } from 'url'
@@ -184,8 +186,18 @@ function substEnd(src, i) {
   return src.length
 }
 
-/** Shell words and operators of a command (heredoc bodies removed first). Each word: { w, dyn } — dyn when it has
- *  an unquoted/double-quoted `$` or a backtick. Operators: { op }. */
+/** Is the `(` at src[open] the first of an arithmetic `((…))` (bash's rule: the `(` after it closes, then `)` follows
+ *  at once)? Otherwise `((` opens nested subshells, whose commands are read as commands. */
+function arithAt(src, open) {
+  if (src[open] !== '(' || src[open + 1] !== '(') return false
+  const e = substEnd(src, open) // the end of the inner ( … ), scanning from open + 1
+  return e < src.length && src[e] === ')'
+}
+
+/** Shell words and operators of a command (heredoc bodies removed first). Each word: { w, dyn, subs? } — dyn when it
+ *  has an unquoted/double-quoted `$` or a backtick; subs: the commands of its `$(…)` / backtick substitutions (never
+ *  of an arithmetic `$((…))`), read for writes like any other command. A `((…))` arithmetic command is one word.
+ *  Operators: { op }. */
 export function lex(cmd) {
   const src = stripHeredocs(cmd)
   const out = []
@@ -196,6 +208,7 @@ export function lex(cmd) {
     word = null
   }
   const ensure = () => (word ??= { w: '', dyn: false })
+  const addSub = (body) => (ensure().subs ??= []).push(body)
   while (i < src.length) {
     const c = src[i]
     if (c === '\n') {
@@ -231,11 +244,20 @@ export function lex(cmd) {
         if (src[j] === '$' && src[j + 1] === '(') {
           const e = substEnd(src, j)
           ensure().dyn = true
+          if (!arithAt(src, j + 1)) addSub(src.slice(j + 2, src[e - 1] === ')' ? e - 1 : e))
           s += src.slice(j, e)
           j = e
           continue
         }
-        if (src[j] === '$' || src[j] === '`') ensure().dyn = true
+        if (src[j] === '`') {
+          const end = src.indexOf('`', j + 1)
+          ensure().dyn = true
+          addSub(src.slice(j + 1, end < 0 ? src.length : end))
+          s += src.slice(j, end < 0 ? src.length : end + 1)
+          j = end < 0 ? src.length : end + 1
+          continue
+        }
+        if (src[j] === '$') ensure().dyn = true
         s += src[j++]
       }
       ensure().w += s
@@ -256,6 +278,7 @@ export function lex(cmd) {
       // Keep $(...) / `...` / ${...} inside one word.
       if (c === '$' && src[i + 1] === '(') {
         const e = substEnd(src, i)
+        if (!arithAt(src, i + 1)) addSub(src.slice(i + 2, src[e - 1] === ')' ? e - 1 : e))
         word.w += src.slice(i, e)
         i = e
         continue
@@ -268,12 +291,20 @@ export function lex(cmd) {
       }
       if (c === '`') {
         const end = src.indexOf('`', i + 1)
+        addSub(src.slice(i + 1, end < 0 ? src.length : end))
         word.w += src.slice(i, end < 0 ? src.length : end + 1)
         i = end < 0 ? src.length : end + 1
         continue
       }
       word.w += c
       i++
+      continue
+    }
+    // An arithmetic command `(( a > b ))` / `for ((i=0; i<3; i++))`: one word, its `>` and `<` are comparisons.
+    if (c === '(' && !word && arithAt(src, i)) {
+      const e = substEnd(src, i) + 1
+      out.push({ w: src.slice(i, e), dyn: false, arith: true })
+      i = e
       continue
     }
     // Redirections: [n]> [n]>> >| &> &>> [n]>&m  <  << <<- <<< (an fd number glued to the operator).
@@ -309,6 +340,10 @@ export function lex(cmd) {
 
 const SEPARATORS = new Set(['\n', '&&', '||', ';', ';;', '|', '&', '(', ')'])
 const PREFIXES = new Set(['sudo', 'command', 'builtin', 'exec', 'nohup', 'time', 'env', 'xargs', 'nice'])
+// Reserved words that may come before a command (`if cp a b`, `then echo x > f`, `! cmd`): skipped like a prefix.
+const RESERVED = new Set(['if', 'then', 'elif', 'else', 'do', 'while', 'until', '!', '{'])
+// Inside `[[ … ]]` these join tests, not commands: they do not end the test.
+const TEST_JOINERS = new Set(['&&', '||', '(', ')'])
 
 /** Absolute path for a shell word, or null when it cannot be resolved (a variable or command substitution left, or a
  *  relative word while the shell's folder is unknown: cwd null after a `cd` the guard could not follow). */
@@ -353,7 +388,7 @@ export function bashWrites(command, cwd, env = process.env) {
     cmd = []
     if (!words.length) return
     let k = 0
-    while (k < words.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[k].w) || PREFIXES.has(words[k].w))) k++
+    while (k < words.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[k].w) || PREFIXES.has(words[k].w) || RESERVED.has(words[k].w))) k++
     const argv = words.slice(k)
     if (!argv.length) return
     const name = basename(argv[0].w)
@@ -419,10 +454,16 @@ export function bashWrites(command, cwd, env = process.env) {
       if (name === 'mv') for (const s of sources) add(s, dir) // the source is removed
     }
   }
+  // A `$(…)` or backtick substitution is a command of its own: its writes count, read from the shell's folder there.
+  const subWrites = (word) => {
+    for (const body of word?.subs ?? []) for (const t of bashWrites(body, dir, env)) targets.push(t)
+  }
+  // inTest: inside `[[ … ]]` (after any reserved words: `if [[ $a > $b ]]`), where `>` and `<` compare strings.
   let inTest = false
   for (let j = 0; j < toks.length; j++) {
     const t = toks[j]
     if (t.op && SEPARATORS.has(t.op)) {
+      if (inTest && TEST_JOINERS.has(t.op)) continue
       flush()
       inTest = false
       continue
@@ -430,6 +471,7 @@ export function bashWrites(command, cwd, env = process.env) {
     if (t.op === '>' || t.op === '>>') {
       const next = toks[j + 1]
       if (!inTest && next && !next.op) {
+        subWrites(next)
         add(next, dir)
         j++
       }
@@ -438,17 +480,23 @@ export function bashWrites(command, cwd, env = process.env) {
     if (t.op === '>&') {
       const next = toks[j + 1]
       if (next && !next.op) {
+        subWrites(next)
         if (!/^(\d+|-)$/.test(next.w)) add(next, dir)
         j++
       }
       continue
     }
     if (t.op === '<') {
-      if (toks[j + 1] && !toks[j + 1].op) j++
+      if (toks[j + 1] && !toks[j + 1].op) {
+        subWrites(toks[j + 1])
+        j++
+      }
       continue
     }
     if (t.op) continue
-    if (!cmd.length && (t.w === '[[' || t.w === '((')) inTest = true
+    subWrites(t)
+    if (t.w === '[[' && cmd.every((w) => RESERVED.has(w.w))) inTest = true
+    else if (t.w === ']]' && inTest) inTest = false
     cmd.push(t)
   }
   flush()
@@ -681,6 +729,63 @@ function readStdin(ms) {
 }
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+/**
+ * The plan-file rule for a Bash command (the Bash half of plan-write-guard.sh, which judges Edit/Write): every
+ * plans/*.plan.md file the command writes gets the same rule as a Write of it — an existing plan is allowed, a new one
+ * named in .claude/.plan-write-ack is allowed once (the ack is consumed), a new one with name-similar plans is denied.
+ * A command that only names a plan (cat, git add, plan-name-similarity --file=…) writes none and is allowed. A target
+ * the reader cannot resolve is left to the branch and scope guards (they fail closed); like plan-write-guard.sh, an
+ * input that cannot be read is allowed.
+ */
+export function planWriteDecision(input, repo, similarity) {
+  let d
+  try {
+    d = JSON.parse(input)
+  } catch {
+    return allow()
+  }
+  const ti = d.tool_input || d.input || d
+  if (typeof ti?.command !== 'string') return allow()
+  const cwd = nativePath(typeof d.cwd === 'string' && d.cwd ? d.cwd : process.cwd())
+  const ackFile = join(repo, '.claude', '.plan-write-ack')
+  const notes = []
+  for (const t of bashWrites(ti.command, cwd)) {
+    const norm = t.path ? toPosix(t.path) : ''
+    if (!/plans\/.+\.plan\.md$/.test(norm) || existsSync(t.path)) continue
+    const ack = readTrim(ackFile).replace(/\\/g, '/')
+    const rel = norm.replace(/^.*(plans\/.*\.plan\.md)$/, '$1')
+    if (ack && (norm.endsWith(ack) || ack.endsWith(rel))) {
+      try {
+        unlinkSync(ackFile)
+      } catch {}
+      notes.push(`PLAN_WRITE_GUARD: ack consumed - write allowed for ${rel}`)
+      continue
+    }
+    const out = similarity(rel)
+    if (/no similar plans/.test(out)) continue
+    if (/similar plan/.test(out)) {
+      return deny(`PLAN_WRITE_GUARD: blocked new plan write from a shell command - similar plan(s) exist. Run: node scripts/plan-name-similarity.mjs --file=${rel} then ask Human: rewrite existing / save as new / cancel. On save-as-new: write the relative path to .claude/.plan-write-ack then retry. On rewrite: Edit the existing plan path instead.\n${out.trim()}`)
+    }
+    notes.push('PLAN_WRITE_GUARD: could not run similarity check - follow .claude/skills/save-plan/SKILL.md before writing plans/')
+  }
+  return allow(notes.join('\n'))
+}
+
+if (isMain && process.argv[2] === 'plan') {
+  const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
+  const similarity = (rel) => {
+    const r = spawnSync(process.execPath, [join(repo, 'scripts', 'plan-name-similarity.mjs'), `--file=${rel}`], { cwd: repo, encoding: 'utf8', timeout: 8000 })
+    return `${r.stdout || ''}${r.stderr || ''}`
+  }
+  let result
+  try {
+    result = planWriteDecision(await readStdin(1000), repo, similarity)
+  } catch {
+    result = allow()
+  }
+  emit(result)
+  process.exit(0)
+}
 if (isMain) {
   const mode = process.argv[2] === 'branch' ? 'branch' : 'scope'
   const scriptsRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')

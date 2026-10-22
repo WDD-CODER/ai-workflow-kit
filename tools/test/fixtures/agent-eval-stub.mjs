@@ -6,8 +6,10 @@ import { join } from 'node:path'
 
 const EXTRA = { file: 'src/extra.mjs', line: 1, rule: 'logic: stub extra finding', reasoning: 'stub', severity: 'major' }
 
-export function makeStub(mode = 'perfect') {
-  return async ({ role, model, caseDir, run }) => {
+// isolated: the stub never runs the agent, so an agent with Bash writes nothing (tools/lib/agent-eval/run.mjs
+// writeRefusal); makeStub(mode, { isolated: false }) is a runner that does not isolate its cases.
+export function makeStub(mode = 'perfect', { isolated = true } = {}) {
+  const stub = async ({ role, model, caseDir, run }) => {
     const calls = (makeStub.calls ??= [])
     calls.push({ role, model, run })
     if (mode === 'garbage') return { text: 'not json at all', tokens: 5, costUsd: 0 }
@@ -32,6 +34,8 @@ export function makeStub(mode = 'perfect') {
     }
     return { text: '```json\n' + JSON.stringify(result) + '\n```', tokens: 100, costUsd: 0.001 }
   }
+  stub.isolated = isolated
+  return stub
 }
 
 export default makeStub(process.env.AGENT_EVAL_STUB ?? 'perfect')

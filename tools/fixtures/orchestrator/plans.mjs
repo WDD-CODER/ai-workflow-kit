@@ -20,13 +20,17 @@
  *     402  run "ui-down": its card's page server does not answer → stops before the browser agent, no fix round
  *     403  run "ui-login": the QA login answers 401 → stops before the browser agent, no fix round
  *     404  run "ui-cors": the backend does not allow the page's origin → stops before the browser agent, no fix round
- *     405  run "epsilon" (UI step off): the builder reports a card for one of its two [ui] items only → the left-out
- *          item is still recorded (`unchecked`) and reaches the Human in the run report
+ *     405  run "epsilon" (UI step off): the builder reports a card for one of its three [ui] items only → the left-out
+ *          items are still recorded (`unchecked`) and reach the Human in the run report; the card "Save shows Saved"
+ *          does not cover the longer item "Save shows Saved in the header" (titles match whole, not by substring); a
+ *          [ui] bullet in the Execution Notes is not an item
  *   run "zeta" (security follow-up)
  *     501  extra check commands allowlisted; its first gate leaves a check out (a fail); its builder reports [ui] card
  *          values that must not be recorded (a title starting with "-", a non-http page, an unsafe screenshot path)
+ *          and a card whose test is not an allowed check (dropped with a run note, the card left unchecked)
+ *   run "devfail" (plan 020): commands.dev set and the dev server does not start → the preflight stops the run
  */
-const plan = ({ nnn, title, deps = [], inv = 'INV-none: preserves — a toy plan', ui = [] }) => `# Plan ${nnn} — ${title}
+const plan = ({ nnn, title, deps = [], inv = 'INV-none: preserves — a toy plan', ui = [], notes = '' }) => `# Plan ${nnn} — ${title}
 
 Status: active
 Depends-on: ${deps.length ? deps.join(', ') : 'none'}
@@ -49,7 +53,7 @@ work/${nnn}.txt
 - [ ] A1: write work/${nnn}.txt
 
 ## Execution Notes
-`
+${notes}`
 
 export const PLANS = {
   '101': plan({ nnn: '101', title: 'Diamond root' }),
@@ -66,7 +70,7 @@ export const PLANS = {
   '402': plan({ nnn: '402', title: 'UI page server down', ui: ['Home shows Hello'] }),
   '403': plan({ nnn: '403', title: 'UI login failing', ui: ['Account shows the name'] }),
   '404': plan({ nnn: '404', title: 'UI backend cross origin', ui: ['List shows items'] }),
-  '405': plan({ nnn: '405', title: 'UI item the builder left out', ui: ['Save shows Saved', 'Profile shows the avatar'] }),
+  '405': plan({ nnn: '405', title: 'UI item the builder left out', ui: ['Save shows Saved', 'Profile shows the avatar', 'Save shows Saved in the header'], notes: '- [ui] Not a goal: a note that only mentions the tag\n' }),
   '501': plan({ nnn: '501', title: 'Security follow-up inputs' }),
 }
 

@@ -488,16 +488,39 @@ const lockHash = (lockPath) => createHash('sha256').update(readFileSync(lockPath
 /**
  * Whether `dir` needs an npm install, without side effects: null (no lockfile, or the lockfile is unchanged since
  * the last install and the packages are there), 'changed' (no hash file at `hashPath`, or the lockfile's hash
- * differs) or 'missing' (hash matches, the lockfile lists packages, but <dir>/node_modules or its .package-lock.json
- * is absent - a stale hash must not hide packages that were never installed or were removed).
+ * differs) or 'missing' (hash matches, the lockfile lists packages, but <dir>/node_modules does not hold them: no
+ * .package-lock.json there and, for npm 6 which writes none, a top-level package missing - a stale hash must not hide
+ * packages that were never installed or were removed).
  */
 export function installNeed(dir, hashPath) {
   const lockPath = join(dir, 'package-lock.json')
   if (!existsSync(lockPath)) return null
   const oldHash = existsSync(hashPath) ? readFileSync(hashPath, 'utf8').trim() : null
   if (lockHash(lockPath) !== oldHash) return 'changed'
-  if (lockHasDeps(lockPath) && !existsSync(join(dir, 'node_modules', '.package-lock.json'))) return 'missing'
+  if (lockHasDeps(lockPath) && !packagesInstalled(dir, lockPath)) return 'missing'
   return null
+}
+
+/**
+ * Whether <dir>/node_modules holds the lockfile's packages: npm 7+ writes node_modules/.package-lock.json; npm 6 does
+ * not, so without it every top-level package the lockfile lists (optional ones aside) must have its package.json.
+ */
+function packagesInstalled(dir, lockPath) {
+  if (existsSync(join(dir, 'node_modules', '.package-lock.json'))) return true
+  let names = []
+  try {
+    const lock = JSON.parse(readFileSync(lockPath, 'utf8'))
+    if (lock.packages && typeof lock.packages === 'object') {
+      names = Object.entries(lock.packages)
+        .filter(([k, v]) => /^node_modules\/(?:@[^/]+\/)?[^/]+$/.test(k) && !v?.optional)
+        .map(([k]) => k.slice('node_modules/'.length))
+    } else if (lock.dependencies && typeof lock.dependencies === 'object') {
+      names = Object.entries(lock.dependencies).filter(([, v]) => !v?.optional).map(([k]) => k)
+    }
+  } catch {
+    return false
+  }
+  return names.length > 0 && names.every((n) => existsSync(join(dir, 'node_modules', n, 'package.json')))
 }
 
 /**

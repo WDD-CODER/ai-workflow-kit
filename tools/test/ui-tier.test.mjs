@@ -24,6 +24,11 @@ test('tag lint: [auto], [ui] and [human] items pass, boxes and continuation line
   assert.deepEqual(tags.uiItems(t), ['On /settings, Save shows "Saved"', 'Done already', 'Done with a capital box'])
 })
 
+test('[ui] items come from the Done-when sections only, not from notes or sub-tasks', () => {
+  const t = `${plan(['- [ui] Home shows the list'])}\n## Execution Notes\n- [ui] a note that only mentions the tag\n\n## Done when\n- [ui] Profile shows the avatar\n`
+  assert.deepEqual(tags.uiItems(t), ['Home shows the list', 'Profile shows the avatar'])
+})
+
 test('tag lint: [ui (unclosed) and [UI] (wrong case) are rejected, and an untagged item still is', () => {
   const unclosed = tags.doneWhenTagProblems(plan(['- [ui On /settings, Save shows "Saved"']))
   assert.equal(unclosed.length, 1)

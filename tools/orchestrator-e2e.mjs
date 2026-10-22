@@ -22,6 +22,9 @@
  * agent; a failing one goes to the browser agent with the pre-checked list and comes back as plan drift, reported in
  * its own section with no severity; a page server down, a failing login and a backend the page's origin cannot reach
  * each stop before the browser agent with the reason in status.json and no fix round.
+ * Plan 020: a [ui] card test that is not an allowed check is dropped with a run note; a card title covers only the
+ * [ui] item it equals; a [ui] bullet outside the Done-when sections is no item; a dev server that does not start
+ * (commands.dev set, a stub slot-serve exiting 1) stops the run at the preflight, before any builder.
  * The scripts' package (picomatch) is copied from --deps-from, else from the kit's own scripts/node_modules, else
  * installed with npm (network). Exit 0 = every case passed, 1 = failures (one line per case).
  */
@@ -144,8 +147,10 @@ const base = (role, opts) => ({ role, model: MODEL_OF(opts), effort: opts.effort
 
 // The [ui] cards each 4xx builder reports (pages on the local test server; UI is set once the server is up).
 const UI = { base: '', dead: '', api: '' }
-const PASS_TEST = 'node -e "process.exit(0)"'
-const FAIL_TEST = 'node -e "process.exit(1)"'
+// Card tests pass the same allowlist as extra checks (node tools/…); the stub UI gate passes the ui-pass one.
+const PASS_TEST = 'node tools/ui-pass.mjs'
+const FAIL_TEST = 'node tools/ui-fail.mjs'
+const BAD_TEST = 'node -e "process.exit(0)"'
 const UI_CARDS = {
   '401': () => [
     { card: 'Save shows Saved', page: `${UI.base}/settings`, test: PASS_TEST, screenshot: 'screens/401-1.png' },
@@ -172,7 +177,7 @@ function stubBuilder(t, opts) {
   const c = git(wt, 'commit', '-q', '-m', `feat(${nnn}): attempt ${n}`)
   const p = git(wt, 'push', '-q', '-u', 'origin', t.BRANCH)
   if (c.status !== 0 || p.status !== 0) return { ...r, status: 'blocked', blocker: `stub commit/push failed: ${tail(c.out + p.out)}` }
-  const cards = nnn === '501' ? [{ card: '--state=merged', page: 'https://app.example/x' }, { card: 'Bad page', page: 'file:///etc/passwd' }, { card: 'Bad shot', page: 'https://app.example/y', test: PASS_TEST, screenshot: '-rf' }] : UI_CARDS[nnn]?.()
+  const cards = nnn === '501' ? [{ card: '--state=merged', page: 'https://app.example/x' }, { card: 'Bad page', page: 'file:///etc/passwd' }, { card: 'Bad shot', page: 'https://app.example/y', test: PASS_TEST, screenshot: '-rf' }, { card: 'Bad test', page: 'https://app.example/z', test: BAD_TEST }] : UI_CARDS[nnn]?.()
   return { ...r, status: 'built', headSha: git(wt, 'rev-parse', 'HEAD').stdout.trim(), ...(cards ? { uiCards: cards } : {}) }
 }
 
@@ -230,7 +235,7 @@ async function agent(prompt, opts = {}) {
   if (role === 'orch-builder') return stubBuilder(t, opts)
   if (type === 'orch-gate' && /^ui-gate /.test(opts.label ?? '')) {
     // The [ui] cards' own tests: pass or fail by the exit code the test command names.
-    return { ...base('orch-gate', opts), results: json(t.COMMANDS).map((c) => (/exit\(0\)/.test(c) ? { command: c, status: 'pass' } : { command: c, status: 'fail', tail: 'stub: expected "Error", page shows "Problem"' })) }
+    return { ...base('orch-gate', opts), results: json(t.COMMANDS).map((c) => (c === PASS_TEST ? { command: c, status: 'pass' } : { command: c, status: 'fail', tail: 'stub: expected "Error", page shows "Problem"' })) }
   }
   if (type === 'orch-gate') return stubGate(t, opts, nnn)
   if (['orch-check-plan', 'orch-check-bugs', 'orch-check-rules', 'orch-security'].includes(type)) return stubFinder(type, opts, nnn)
@@ -401,8 +406,10 @@ async function main() {
   const e = await runWorkflow({ mode: 'run', run: 'epsilon', plans: ['405'], startedAt: '2026-01-04T12:00:00.000Z', root: proj })
   const se = JSON.parse(readFileSync(join(proj, '.claude', 'orchestrator-runs', 'epsilon', 'status.json'), 'utf8'))
   const eCard = (title) => (se.plans['405']?.uiCards ?? []).find((c) => c.card === title)
-  check('epsilon: 405 merged; its reported card passed by script, the left-out [ui] item is recorded unchecked', e?.ok === true && se.plans['405']?.state === 'merged' && eCard('Save shows Saved')?.status === 'pass' && eCard('Save shows Saved').via === 'script' && eCard('Profile shows the avatar')?.status === 'unchecked' && eCard('Profile shows the avatar').via === 'none', JSON.stringify(se.plans['405']?.uiCards))
-  check('epsilon: a run note names the [ui] item the builder left out', (se.notes ?? []).some((n) => n.plan === '405' && /builder reported no card for 1 \[ui\] item\(s\).*Profile shows the avatar/.test(n.text)), JSON.stringify(se.notes))
+  check('epsilon: 405 merged; its reported card passed by script, the left-out [ui] items are recorded unchecked', e?.ok === true && se.plans['405']?.state === 'merged' && eCard('Save shows Saved')?.status === 'pass' && eCard('Save shows Saved').via === 'script' && eCard('Profile shows the avatar')?.status === 'unchecked' && eCard('Profile shows the avatar').via === 'none', JSON.stringify(se.plans['405']?.uiCards))
+  check('epsilon: a run note names the [ui] items the builder left out', (se.notes ?? []).some((n) => n.plan === '405' && /builder reported no card for 2 \[ui\] item\(s\).*Profile shows the avatar/.test(n.text)), JSON.stringify(se.notes))
+  check('epsilon: a card title covers only the item it equals — "Save shows Saved" does not cover "Save shows Saved in the header"', eCard('Save shows Saved in the header')?.status === 'unchecked', JSON.stringify(se.plans['405']?.uiCards))
+  check('epsilon: a [ui] bullet in the Execution Notes is not a [ui] item', !(se.plans['405']?.uiCards ?? []).some((c) => /Not a goal/.test(c.card)) && !(se.notes ?? []).some((n) => /Not a goal/.test(n.text)), JSON.stringify(se.plans['405']?.uiCards))
   const re = readFileSync(join(proj, '.claude', 'orchestrator-runs', 'epsilon.md'), 'utf8')
   check('epsilon: the run report hands the left-out [ui] item to the Human', /\d+\. 405: Profile shows the avatar — a \[ui\] card no script could check and the browser step was off/.test(re), (re.split('## What only the Human can do')[1] ?? re).slice(0, 400))
 
@@ -420,7 +427,11 @@ async function main() {
   check('zeta: a gate result left out is a fail (fix round 1), not a pass', z?.ok === true && sz.plans['501']?.state === 'merged' && sz.plans['501'].round === 1 && builderCalls('501').length === zBuilders + 2 && /the gate returned no result for this check/.test(JSON.stringify(builderCalls('501').at(-1)?.findings ?? [])), JSON.stringify({ round: sz.plans['501']?.round, f: builderCalls('501').at(-1)?.findings }))
   const zCards = (sz.plans['501']?.uiCards ?? []).map((c) => c.card)
   const cardNotes = (sz.notes ?? []).filter((n) => /\[ui\] card not recorded/.test(n.text)).map((n) => n.text).join(' | ')
-  check('zeta: a card title starting with "-", a non-http page and an unsafe screenshot path are not recorded', zCards.length === 0 && /starts with - or is empty/.test(cardNotes) && /not an http\(s\) URL/.test(cardNotes) && /not a safe relative path/.test(cardNotes) && sz.plans['501'].state === 'merged', `${JSON.stringify(zCards)} ${cardNotes}`)
+  check('zeta: a card title starting with "-", a non-http page and an unsafe screenshot path are not recorded', !zCards.some((c) => c !== 'Bad test') && /starts with - or is empty/.test(cardNotes) && /not an http\(s\) URL/.test(cardNotes) && /not a safe relative path/.test(cardNotes) && sz.plans['501'].state === 'merged', `${JSON.stringify(zCards)} ${cardNotes}`)
+  const zUiGates = calls.filter((c) => c.nnn === '501' && /^ui-gate /.test(c.label ?? '')).flatMap((c) => c.commands ?? [])
+  const testNote = (sz.notes ?? []).filter((n) => n.plan === '501' && /^\[ui\] card test dropped, not run: /.test(n.text)).map((n) => n.text).join(' | ')
+  const badTestCard = (sz.plans['501']?.uiCards ?? []).find((c) => c.card === 'Bad test')
+  check('zeta: a [ui] card test that is not an allowed check never reaches the gate; a run note says why; the card is left unchecked', !zUiGates.includes(BAD_TEST) && zUiGates.includes(PASS_TEST) && /Bad test: node -e\W+process\.exit\(0\)\W+not an allowed check/.test(testNote) && badTestCard?.status === 'unchecked', JSON.stringify({ zUiGates, testNote, badTestCard }))
   const zSets = runnerCommands.filter((c) => c.startsWith('node scripts/orch-state.mjs set ') && c.includes('--run=zeta'))
   check('zeta: every orch-state argument is one --key=value token', zSets.length > 0 && runnerCommands.filter((c) => c.startsWith('node scripts/orch-state.mjs ')).every((c) => words(c).slice(3).every((w) => /^--[a-z-]+=/.test(w))), zSets[0] ?? 'none')
 
@@ -460,6 +471,26 @@ async function main() {
     }
   } finally {
     server.child.kill()
+  }
+
+  // Run devfail (plan 020): commands.dev set and the dev server does not start (a stub slot-serve that exits 1) — the
+  // preflight reports it as an environment failure and no builder runs. The scratch project has no commands.dev, so
+  // the installed preflight gets one (and the stub) in a local commit, restored after; origin is not touched.
+  const preFile = join(proj, 'scripts', 'orch-preflight.mjs')
+  const serveFile = join(proj, 'scripts', 'slot-serve.mjs')
+  const preSrc = readFileSync(preFile, 'utf8')
+  const serveSrc = readFileSync(serveFile, 'utf8')
+  if (check('devfail: the installed preflight renders commands.dev as an empty string here', /^const DEV = ''$/m.test(preSrc), 'no const DEV line')) {
+    writeFileSync(preFile, preSrc.replace(/^const DEV = ''$/m, "const DEV = 'dev'"))
+    writeFileSync(serveFile, "console.error('SLOT_SERVE: stub - the dev server did not come up')\nprocess.exit(1)\n")
+    git(proj, 'commit', '-q', '-am', 'test: a dev command whose server does not start')
+    const buildersBefore = calls.filter((c) => c.role === 'orch-builder').length
+    const df = await runWorkflow({ mode: 'run', run: 'devfail', plans: ['101'], startedAt: '2026-01-07T00:00:00.000Z', root: proj })
+    const devProblem = (df?.problems ?? []).find((p) => /^dev server: /.test(p)) ?? ''
+    check('devfail: the run stops at the preflight with the dev server start failure, before any builder', df?.ok === false && df.stopped === 'preflight' && /slot-serve\.mjs did not start it \(exit 1: .*did not come up\)/.test(devProblem) && calls.filter((c) => c.role === 'orch-builder').length === buildersBefore && !existsSync(join(proj, '.claude', 'orchestrator-runs', 'devfail', 'status.json')), JSON.stringify(df))
+    writeFileSync(preFile, preSrc)
+    writeFileSync(serveFile, serveSrc)
+    git(proj, 'commit', '-q', '-am', 'test: restore the preflight and slot-serve')
   }
 
   // Every state write went through orch-state.mjs (the runner ran nothing else).

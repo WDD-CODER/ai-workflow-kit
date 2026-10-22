@@ -3,8 +3,10 @@
 // The end-to-end run is tools/orchestrator-e2e.mjs.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { join, resolve } from 'path'
-import { spawnSync } from 'child_process'
+import { join, resolve, basename } from 'path'
+import { spawnSync, spawn } from 'child_process'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, cpSync, utimesSync, readdirSync, realpathSync } from 'fs'
+import { tmpdir } from 'os'
 import { pathToFileURL, fileURLToPath } from 'url'
 import { orchestratorProblems, commandProblems } from '../lib/kit.mjs'
 
@@ -138,4 +140,35 @@ test('orch-state.mjs: unknown flags (--root among them), a value that looks like
   const ok = run('disk', '--min=0')
   assert.equal(ok.status, 0, `${ok.stdout}${ok.stderr}`)
   assert.match(ok.stdout, /^ORCH_JSON \{"ok":true/m)
+})
+
+test('orch-state lock: concurrent takers of a stale lock never both hold it (no note is lost)', async () => {
+  // A scratch copy of the installed scripts and their packages (orch-state.mjs works in its own project folder).
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'orch-lock-')))
+  try {
+    cpSync(join(root, 'scripts'), join(dir, 'scripts'), { recursive: true, dereference: true })
+    const runs = join(dir, '.claude', 'orchestrator-runs')
+    mkdirSync(join(runs, 'race'), { recursive: true })
+    writeFileSync(join(runs, 'race', 'status.json'), `${JSON.stringify({ run: 'race', phase: 'running', plans: {}, notes: [] })}\n`)
+    // A stale lock left by a process that died: older than the 30 s takeover limit.
+    const lock = join(runs, 'race.lock')
+    writeFileSync(lock, 'dead-owner')
+    const old = new Date(Date.now() - 10 * 60 * 1000)
+    utimesSync(lock, old, old)
+    const N = 4
+    const note = (i) => new Promise((done) => {
+      const c = spawn(process.execPath, [join(dir, 'scripts', 'orch-state.mjs'), 'note', '--run=race', `--text=note ${i}`], { cwd: dir })
+      let out = ''
+      c.stdout.on('data', (d) => (out += d))
+      c.on('close', (code) => done({ code, out }))
+    })
+    const results = await Promise.all(Array.from({ length: N }, (_, i) => note(i)))
+    for (const r of results) assert.equal(r.code, 0, r.out)
+    const status = JSON.parse(readFileSync(join(runs, 'race', 'status.json'), 'utf8'))
+    assert.deepEqual(status.notes.map((n) => n.text).sort(), Array.from({ length: N }, (_, i) => `note ${i}`).sort(), 'every note is there: no two writers held the lock at once')
+    assert.equal(existsSync(lock), false, 'the lock is released')
+    assert.deepEqual(readdirSync(runs).filter((f) => /\.stale$/.test(f)), [], 'no moved stale lock is left behind')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })

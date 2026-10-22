@@ -8,7 +8,8 @@
  *   disk         free disk >= orchestrator.minFreeDiskGb (ORCH_FREE_GB replaces the measured value, for tests)
  *   database     a TCP connection to DB_PORT / --db-port (SKIP when neither is set)
  *   packages     scripts/node_modules has the workflow scripts' packages; a project with a frontend has node_modules
- *   dev server   commands.dev set → scripts/slot-serve.mjs is installed (it starts the server in each builder's folder)
+ *   dev server   commands.dev set → the dev server answers on the base port (kit config slots.fePorts), else
+ *                scripts/slot-serve.mjs starts it; a failed start is a FAIL (an environment failure before any builder)
  *   git identity user.name and user.email are set
  *   remote       origin/<main branch> is known (a fetch has run)
  *   main folder  on the main branch with no uncommitted tracked file (a run never writes it; plans are committed first)
@@ -40,6 +41,7 @@ const MAIN = 'main'
 const MIN_FREE_GB = 5
 const DEV = ''
 const LIVE_MS = 2 * 60 * 60 * 1000
+const SERVE_TIMEOUT_MS = 4 * 60 * 1000
 
 const argv = process.argv.slice(2)
 const flag = (name) => {
@@ -91,10 +93,31 @@ function packages() {
   ok('packages')
 }
 
-function devServer() {
+// The main folder's dev server port: kit config slots.fePorts (the base port; main = base), as preflight.mjs reads it.
+function devPort() {
+  for (const f of ['kit.config.json', join('.kit', 'config.json')]) {
+    try {
+      const port = Number(JSON.parse(readFileSync(join(root, f), 'utf8')).slots?.fePorts)
+      if (Number.isInteger(port) && port > 0) return port
+    } catch { /* no such config */ }
+  }
+  return null
+}
+
+// commands.dev set: the dev server must answer, or start. A server that already answers on the base port passes;
+// otherwise scripts/slot-serve.mjs runs once and its failure (in the main folder it starts nothing: the main folder's
+// servers are the Human's) is an environment failure before any builder runs.
+async function devServer() {
   if (!DEV) return skip('dev server', 'commands.dev is not set (no frontend)')
-  if (!existsSync(join(root, 'scripts', 'slot-serve.mjs'))) return bad('dev server', 'scripts/slot-serve.mjs is missing — run the kit sync')
-  ok('dev server')
+  const serve = join(root, 'scripts', 'slot-serve.mjs')
+  if (!existsSync(serve)) return bad('dev server', 'scripts/slot-serve.mjs is missing — run the kit sync')
+  const port = devPort()
+  const url = port ? `http://localhost:${port}/` : null
+  if (url && !serverProblem(url, await ask(url))) return ok('dev server')
+  const r = spawnSync(process.execPath, [serve], { cwd: root, encoding: 'utf8', timeout: SERVE_TIMEOUT_MS })
+  if (r.status === 0) return ok('dev server')
+  const tail = `${r.stdout ?? ''}${r.stderr ?? ''}`.trim().split(/\r?\n/).slice(-2).join(' | ')
+  bad('dev server', `${url ? `nothing answers on ${url} and ` : ''}scripts/slot-serve.mjs did not start it (exit ${r.status ?? 'timeout'}: ${tail || 'no output'}) — start the dev server, then relaunch`)
 }
 
 function identity() {
@@ -204,7 +227,7 @@ else {
   packages()
 }
 if (!envOnly && !uiOnly) {
-  devServer()
+  await devServer()
   identity()
   remote()
   mainFolder()

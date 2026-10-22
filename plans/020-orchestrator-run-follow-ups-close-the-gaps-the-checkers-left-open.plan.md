@@ -1,6 +1,6 @@
 # Plan 020 — Orchestrator Run Follow-ups: Close the Gaps the Checkers Left Open
 
-Status: draft
+Status: active
 Snapshot: 6bc9d95
 Depends-on: 011, 013, 014, 017, 018, 019
 
@@ -129,14 +129,14 @@ per commit: `ok` or `conflict: <what>`. STOP for a go only on a `conflict`.
 
 These are the plan's milestones: a Worker does them in order and ticks each one after it is checked.
 
-- [ ] A1: Check UI card test commands with the same allowlist as other checks, so no unchecked command reaches the gate — drop with a run note like the other dropped checks — core/.claude/workflows/orchestrate.js, tools/orchestrator-e2e.mjs
-- [ ] A2: Give planning tools one rule for "already done", so the run order matches what a Worker may take — open plan with zero open sub-tasks on main counts as done in both — core/scripts/lib/plan-deps.mjs, core/scripts/plan-order.mjs, core/scripts/take-plan.mjs
-- [ ] A3: Stop the changelog and readme from forcing every kit plan into one lock group — set paths.hotspots in the kit's own config, re-sync — .kit/config.json, .kit/install.json
-- [ ] A4: Make the guard see writes hidden in command substitutions and ignore comparisons in conditions, and run the plan-file guard on shell commands too — core/scripts/lib/guard.mjs, core/.claude/settings.json, tools/test/guards.test.mjs
-- [ ] A5: Make the run's preflight prove the dev servers start, so a broken server stops the run before any builder — core/scripts/orch-preflight.mjs, tools/orchestrator-e2e.mjs
-- [ ] A6: Make the review command review the branch the Human names, not always the current one — core/.claude/commands/review-it.md
-- [ ] A7: Fix the smaller checker findings, each with a test — Depends-on em dash, agent-eval inherit and Bash refusal, lock race, UI item scope and title match, merge prompt vs merge agent, missing-packages fallback — core/scripts/lib/plan-deps.mjs, tools/lib/agent-eval/run.mjs, core/scripts/orch-state.mjs, core/scripts/lib/done-when.mjs, core/.claude/workflows/orchestrate.js, core/.claude/agents/orch-merge.md, core/scripts/lib/slot-procs.mjs, tools/test/
-- [ ] A8: Sync the installed copies, run every kit check and add the changelog entry — node tools/sync.mjs --target . --apply — CHANGELOG.md, scripts/, .claude/, docs/agent/
+- [x] A1: Check UI card test commands with the same allowlist as other checks, so no unchecked command reaches the gate — drop with a run note like the other dropped checks — core/.claude/workflows/orchestrate.js, tools/orchestrator-e2e.mjs
+- [x] A2: Give planning tools one rule for "already done", so the run order matches what a Worker may take — open plan with zero open sub-tasks on main counts as done in both — core/scripts/lib/plan-deps.mjs, core/scripts/plan-order.mjs, core/scripts/take-plan.mjs
+- [x] A3: Stop the changelog and readme from forcing every kit plan into one lock group — set paths.hotspots in the kit's own config, re-sync — .kit/config.json, .kit/install.json
+- [x] A4: Make the guard see writes hidden in command substitutions and ignore comparisons in conditions, and run the plan-file guard on shell commands too — core/scripts/lib/guard.mjs, core/.claude/settings.json, tools/test/guards.test.mjs
+- [x] A5: Make the run's preflight prove the dev servers start, so a broken server stops the run before any builder — core/scripts/orch-preflight.mjs, tools/orchestrator-e2e.mjs
+- [x] A6: Make the review command review the branch the Human names, not always the current one — core/.claude/commands/review-it.md
+- [x] A7: Fix the smaller checker findings, each with a test — Depends-on em dash, agent-eval inherit and Bash refusal, lock race, UI item scope and title match, merge prompt vs merge agent, missing-packages fallback — core/scripts/lib/plan-deps.mjs, tools/lib/agent-eval/run.mjs, core/scripts/orch-state.mjs, core/scripts/lib/done-when.mjs, core/.claude/workflows/orchestrate.js, core/.claude/agents/orch-merge.md, core/scripts/lib/slot-procs.mjs, tools/test/
+- [x] A8: Sync the installed copies, run every kit check and add the changelog entry — node tools/sync.mjs --target . --apply — CHANGELOG.md, scripts/, .claude/, docs/agent/
 
 ## Technical Considerations
 - Dependencies: v1.4.0 code from plans 011, 013, 014, 017, 018, 019.
@@ -158,3 +158,45 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 ## Execution Notes
 Written by the Planner on 2026-10-22 from the orchestrator run's checker findings (minors and nits) and the security
 follow-up's open note. Dandan asked for this plan ("yes" to the follow-up plan question).
+
+Builder, 2026-10-22 (branch `feat/020-orchestrator-follow-ups`, worktree `ai-workflow-kit-020`). Decisions taken
+without the Human (the conservative option each time):
+- **Scope, not extended.** `core/scripts/plan-write-guard.sh` is outside the Read-Write Scope and the scope guard
+  refused the edit; no `approved:` was available. The Bash half of the plan-file rule went into
+  `core/scripts/lib/guard.mjs` instead (`planWriteDecision`, `node scripts/lib/guard.mjs plan`), and the Bash matcher
+  in `core/.claude/settings.json` runs it. `plan-write-guard.sh` itself is unchanged (Edit|Write only). Its line in
+  `core/docs/agent/workflow-map.md` (also outside scope) still names only Edit|Write — a one-line docs follow-up.
+- **"Done" rule (A2).** `planDoneReason`: Status: finished, or at least one sub-task `[x]` and none open. A plan with
+  no sub-task checkbox at all is not done (plan-order would otherwise skip a malformed plan silently); this makes
+  take-plan's dependency check slightly stricter than before (it counted zero open as merged even with zero ticked).
+- **Dev server (A5).** The builder folders are not slots, so `slot-serve.mjs` cannot start servers for them; the
+  preflight passes when the server already answers on the base port (`slots.fePorts`), else runs `slot-serve.mjs`
+  once, whose failure (in the main folder it starts nothing) is a FAIL. A project with `commands.dev` must have its
+  dev server up before a run; written in the CHANGELOG.
+- **agent-eval Bash (A7).** Refusing every Bash agent would refuse every finder; instead an agent with Bash runs only
+  on a runner marked `isolated` — `claudeRunner` now runs each case in a scratch copy of its input in the OS temp
+  folder (removed after); the test stub is marked isolated (it never runs the agent).
+- **Card titles (A7).** A card covers an item only on equal text (case, quotes, spaces aside) — a near-miss title now
+  adds the item as unchecked for the Human rather than hiding it.
+- **Merge prompt vs agent (A7).** The agent file now follows the prompt (`--no-ff --no-commit`, CHECKS, commit).
+- **Test file rename.** `tools/test/guards.test.mjs` uses `NOTES.md` as its out-of-scope file: README.md became a
+  hotspot of the kit repo (A3), and hotspots are writable by every plan.
+
+Evidence (worktree `C:/coding projects/Cursor/ai-workflow-kit-020`, after `node tools/sync.mjs --target . --apply`):
+- `npm run build` → exit 0 (`PACK_CHECK: ok`); `npm run lint` → exit 0 (3× `LEAK_CHECK: ok`); `npm run test` → exit 0
+  (`WORKFLOW_LINK_CHECK: ok`); `npm run e2e` → exit 0 (`ACCEPTANCE_CHECK: ok — 122 checks passed`).
+- `node tools/e2e-check.mjs` → exit 0 (`E2E_CHECK: ok — 53 cases passed`); `node tools/drift-check.mjs --target .` →
+  exit 0 (`KIT_DRIFT: ok — 0 undeclared differences`).
+- `node --test tools/test/*.test.mjs` → exit 0 (`# tests 104`, `# pass 104`, `# fail 0`). New cases: guards
+  (`$( … )` write denied on main and in the slot; `if [[ $a > $b ]]` allowed; `(( ))`, backticks, reserved words;
+  Bash plan-file guard denies a name-similar new plan, allows reads/ack), plan-order (`parseDependsOn("011 — after
+  release 1.3")` → `["011"]`; all-`[x]` plan is done and skipped), agent-eval (inherit → no `--model`; Bash agent
+  refused on a non-isolating runner; real runner works in a scratch copy), orchestrator (4 concurrent `note` takers of
+  a stale lock: no note lost, lock released), ui-tier (`[ui]` items from Done-when sections only), slot-procs (npm 6
+  layout), agent-contracts (merge agent and merge prompt give the same steps).
+- `node tools/orchestrator-e2e.mjs` → exit 0 (`ORCHESTRATOR_E2E: ok — 64 cases passed`), including `zeta: a [ui]
+  card test that is not an allowed check never reaches the gate…`, `epsilon: a card title covers only the item it
+  equals…`, `devfail: the run stops at the preflight with the dev server start failure, before any builder`.
+- `node scripts/plan-order.mjs --json` → exit 0; one conflict group, none of its globs is `CHANGELOG.md` or
+  `README.md`; `done` lists 011, 013, 014, 017, 018, 019 ("all N sub-task(s) [x]").
+- Open: the `[human]` `/review-it feat/<branch>` check; CI on ubuntu and windows (runs on the PR).

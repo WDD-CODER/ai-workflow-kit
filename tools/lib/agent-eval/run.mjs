@@ -10,7 +10,7 @@
  * Tests pass a stub runner; real use takes `claudeRunner`, which calls Claude Code non-interactively
  * (`claude -p --output-format json`) with the agent file's body as the system prompt. Node built-ins only.
  */
-import { readFileSync, readdirSync, existsSync, statSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { readFileSync, readdirSync, existsSync, statSync, writeFileSync, mkdtempSync, rmSync, cpSync, mkdirSync } from 'node:fs'
 import { join, resolve, dirname, relative } from 'node:path'
 import { tmpdir } from 'node:os'
 import { spawn } from 'node:child_process'
@@ -34,13 +34,17 @@ export function loadAgent(agentFile) {
 
 /**
  * Refuse a write-capable agent: one whose `tools:` names a write tool, or that has no `tools:` line (it would inherit
- * every tool). Returns null when allowed, else the reason.
+ * every tool). Bash can write files too: an agent with Bash runs only on a runner that isolates each case (`isolated`:
+ * the case runs in a scratch copy of its input folder, outside the repository — claudeRunner does; a stub that never
+ * runs the agent may say so too). Returns null when allowed, else the reason.
  */
-export function writeRefusal(agent, allowWrite = false) {
+export function writeRefusal(agent, allowWrite = false, { isolated = false } = {}) {
   if (allowWrite) return null
   if (agent.tools === null) return `${agent.name} has no tools: line, so it inherits every tool including Edit and Write — pass --allow-write to run it anyway`
   const found = agent.tools.filter((t) => WRITE_TOOLS.includes(t))
-  return found.length ? `${agent.name} can write files (tools: ${found.join(', ')}) — pass --allow-write to run it anyway` : null
+  if (found.length) return `${agent.name} can write files (tools: ${found.join(', ')}) — pass --allow-write to run it anyway`
+  if (agent.tools.includes('Bash') && !isolated) return `${agent.name} can write files through Bash and this runner does not run cases in a scratch copy — use a runner that does (the default one), or pass --allow-write`
+  return null
 }
 
 /**
@@ -85,7 +89,7 @@ export function scoreRun(expected, reply, role) {
 /** Run the agent on every case `runs` times and score it. Returns { agent, model, cases: [...], total }. */
 export async function evaluate({ agentFile, casesDir, runs = 2, model = null, runner, allowWrite = false }) {
   const agent = loadAgent(agentFile)
-  const refusal = writeRefusal(agent, allowWrite)
+  const refusal = writeRefusal(agent, allowWrite, { isolated: runner?.isolated === true })
   if (refusal) throw new Error(refusal)
   if (!Number.isInteger(runs) || runs < 1) throw new Error('--runs must be a whole number ≥ 1')
   const useModel = model ?? agent.model
@@ -155,7 +159,8 @@ export function casePrompt({ role, inputDir }) {
 /** Arguments for `claude -p` (exported for tests; no model is called here). */
 export function claudeArgs({ agent, model, systemPromptFile }) {
   const args = ['-p', '--output-format', 'json', '--system-prompt-file', systemPromptFile]
-  if (model) args.push('--model', model)
+  // "inherit" is a kit model tier (the main session's model), not a model name: no --model, Claude Code's default.
+  if (model && model !== 'inherit') args.push('--model', model)
   if (agent.tools?.length) args.push('--tools', agent.tools.join(','))
   if (!agent.tools?.some((t) => WRITE_TOOLS.includes(t))) args.push('--disallowedTools', WRITE_TOOLS.join(','))
   return args
@@ -169,12 +174,17 @@ export function usageTokens(usage) {
 
 /**
  * Runner that calls Claude Code: the agent body (plus the shared agent-roles contract when it sits next to the
- * agent's repo) as the system prompt, the case input as the prompt, cwd = the case input folder.
+ * agent's repo) as the system prompt, the case input as the prompt, cwd = a scratch copy of the case input folder in
+ * the OS temp folder (removed after the run), so a file the agent writes with Bash never lands in the cases or the
+ * repository. `isolated: true` says so to evaluate().
  */
 export function claudeRunner({ bin = process.env.AGENT_EVAL_CLAUDE ?? 'claude', timeoutMs = 600_000 } = {}) {
-  return async ({ agent, model, role, inputDir }) => {
+  const run = async ({ agent, model, role, inputDir: caseInput }) => {
     const tmp = mkdtempSync(join(tmpdir(), 'agent-eval-'))
+    const inputDir = join(tmp, 'input')
     try {
+      if (existsSync(caseInput)) cpSync(caseInput, inputDir, { recursive: true })
+      else mkdirSync(inputDir)
       const roles = join(dirname(agent.file), '..', '..', 'docs', 'agent', 'agent-roles.md')
       const system = existsSync(roles) ? `${agent.body}\n\n---\n# docs/agent/agent-roles.md\n\n${readFileSync(roles, 'utf8')}` : agent.body
       const systemPromptFile = join(tmp, 'system.md')
@@ -202,4 +212,6 @@ export function claudeRunner({ bin = process.env.AGENT_EVAL_CLAUDE ?? 'claude', 
       rmSync(tmp, { recursive: true, force: true })
     }
   }
+  run.isolated = true
+  return run
 }

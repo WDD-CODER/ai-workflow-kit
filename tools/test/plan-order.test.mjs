@@ -165,6 +165,27 @@ test('the shared parser: Depends-on line, none, prose, self', async () => {
   assert.equal(both.declared, true)
   assert.deepEqual(both.deps, [{ nnn: '005', reason: 'Depends-on:' }])
   assert.equal(d.planTitle('# Plan 011 — Plans Declare Dependencies\n'), 'Plans Declare Dependencies')
+  // A note after a dash is not a dependency list: "after release 1.3" adds no plan 001 or 003.
+  assert.deepEqual(d.parseDependsOn('Depends-on: 011 — after release 1.3\n'), ['011'])
+  assert.deepEqual(d.parseDependsOn('Depends-on: 011, 012 – both merged in v1.2\n'), ['011', '012'])
+  assert.deepEqual(d.parseDependsOn('Depends-on: 011 - see note 4\n'), ['011'])
+})
+
+test('one "already done" rule: every sub-task [x] counts as done in plan-order, as in take-plan', async () => {
+  const d = await lib('plan-deps.mjs')
+  const ticked = plan('001').replace('- [ ] T1:', '- [x] T1:')
+  assert.match(d.planDoneReason(ticked), /sub-task/)
+  assert.equal(d.planDoneReason(plan('001')), null, 'an open sub-task: not done')
+  assert.equal(d.planDoneReason(plan('001').replace(/## Atomic Sub-tasks[\s\S]*$/, '## Atomic Sub-tasks\n')), null, 'no sub-task at all: not done')
+  assert.equal(d.planDoneReason(plan('001').replace('Status: draft', 'Status: done')), 'Status: done')
+  const dir = fixture({ '001': { header: 'Depends-on: none' }, '002': { header: 'Depends-on: 001' } })
+  writeFileSync(join(dir, 'plans', '001-p001.plan.md'), ticked)
+  const all = orderJson(dir)
+  assert.deepEqual(all.waves, [['002']], 'the done plan is not scheduled again')
+  assert.match(all.done['001'], /^all 1 sub-task\(s\) \[x\] in plans\/001-p001\.plan\.md$/)
+  const named = orderJson(dir, '001', '002')
+  assert.deepEqual(named.skipped, ['001'])
+  assert.deepEqual(named.waves, [['002']])
 })
 
 test('merged on an integration branch: only the anchored merge subject counts', () => {

@@ -27,6 +27,12 @@
       "plans"
     ]
   },
+  "paths": {
+    "hotspots": [
+      "CHANGELOG.md",
+      "README.md"
+    ]
+  },
   "security": {
     "sensitivePaths": [
       "tools/lib/source.mjs",

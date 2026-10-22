@@ -41,7 +41,8 @@ export function parseDependsOn(text) {
   if (!m) return null
   const value = m[1].trim()
   if (!value || /^(none|-|—|n\/a)\b/i.test(value)) return []
-  return [...new Set(numbersIn(value.split(/[(;]/)[0]))]
+  // Numbers before the first ( ; — – or " - ": what follows is a note (a version such as "after release 1.3" names no plan).
+  return [...new Set(numbersIn(value.split(/[(;—–]|\s-\s/)[0]))]
 }
 
 /** Plan numbers named only in prose (legacy plans): "Prerequisite: plan NNN merged", "must run after plan 7", … */
@@ -80,6 +81,18 @@ export function isFinishedStatus(text) {
 export function atomicStats(text) {
   const sec = (String(text).match(/^## Atomic Sub-tasks[^\n]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m) || [])[1] || ''
   return { open: (sec.match(/^\s*- \[ \]/gm) || []).length, done: (sec.match(/^\s*- \[x\]/gim) || []).length }
+}
+
+/**
+ * The one "already done" rule plan-order and take-plan share, for a plan file that is still in an open folder: its
+ * Status: says finished, or its Atomic Sub-tasks have at least one [x] and none open. Returns the reason, or null when
+ * the plan is not done. (A plan moved out of the open folders is done too; the callers check that from the path.)
+ */
+export function planDoneReason(text) {
+  if (isFinishedStatus(text)) return 'Status: done'
+  const st = atomicStats(text)
+  if (st.done > 0 && st.open === 0) return `all ${st.done} sub-task(s) [x]`
+  return null
 }
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

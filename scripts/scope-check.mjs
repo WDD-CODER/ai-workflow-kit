@@ -60,7 +60,7 @@ const repoRoot = resolve(__dirname, '..')
 // project.i18nFile may be one file, a glob (src/locales/**) or a folder (src/locales/ = everything under it).
 const HOTSPOTS = [
   '',
-  ''
+  'CHANGELOG.md', 'README.md'
 ].filter(Boolean) // an unset key renders '' (a project with no i18n file or hotspots)
   .map((p) => (p.endsWith('/') ? `${p}**` : p))
 

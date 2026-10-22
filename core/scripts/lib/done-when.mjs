@@ -3,10 +3,20 @@
  * scripts/scope-check.mjs --tags (the save-plan shape lint) and scripts/orch-state.mjs plan-info (the [ui] items the
  * orchestrator holds the builder's cards against). Pure: callers pass the plan text.
  */
-/** The plan's `[ui]` items (Goals / Done-when), verbatim without the tag, in file order. */
+/** A `## Goals & Success Criteria`, `## Success Criteria` or `## Done when` heading: where Done-when items live. */
+const DONE_WHEN_SECTION_RE = /^##\s+.*(?:success criteria|done[- ]when)/i
+
+/** The plan's `[ui]` items, verbatim without the tag, in file order — only from its Done-when sections (Goals &
+ *  Success Criteria, Success Criteria, Done when): a `[ui]` bullet in the notes or the sub-tasks is not an item. */
 export function uiItems(planText) {
   const out = []
+  let inSection = false
   for (const line of String(planText).replace(/\r\n/g, '\n').split('\n')) {
+    if (/^#{1,6}\s/.test(line)) {
+      inSection = DONE_WHEN_SECTION_RE.test(line)
+      continue
+    }
+    if (!inSection) continue
     const m = /^\s*[-*]\s*(?:\[[ xX]\]\s*)?\[ui\]\s*(.+)$/.exec(line)
     if (m) out.push(m[1].trim())
   }
@@ -27,7 +37,7 @@ export function doneWhenTagProblems(planText) {
   const lines = String(planText).replace(/\r\n/g, '\n').split('\n')
   lines.forEach((line, i) => {
     if (/^#{1,6}\s/.test(line)) {
-      inSection = /^##\s+.*(?:success criteria|done[- ]when)/i.test(line)
+      inSection = DONE_WHEN_SECTION_RE.test(line)
       return
     }
     if (!inSection) return

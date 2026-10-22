@@ -31,7 +31,7 @@ import { isSlot, slotNumber, ports, listSlots } from './lib/slot.mjs'
 import { extractScopeGlobs } from './lib/plan-scope.mjs'
 import { findOpenPlanIn } from './lib/plan-paths.mjs'
 import { parseInvariants, checkPlanArch } from './lib/invariants.mjs'
-import { planDependencies, planTitle, isFinishedStatus, atomicStats } from './lib/plan-deps.mjs'
+import { planDependencies, planTitle, planDoneReason, atomicStats } from './lib/plan-deps.mjs'
 import { portState, waitForPortFree, stopSlotServers, npmInstallIfChanged, installReason, generateEnvironmentSlot, hasFrontend as projectHasFrontend, installDirs } from './lib/slot-procs.mjs'
 import { ensureLocalExcludes } from './local-excludes.mjs'
 
@@ -207,8 +207,8 @@ if (isDirty()) {
 
 // Plan order (scripts/lib/plan-deps.mjs, the parser plan-order and scope-check --deps use): the plan's "Depends-on:"
 // line plus legacy prose ("Prerequisite: plan NNN merged", "must run after plan 7"). A dependency is merged when its
-// plan is closed on main (moved out of the open folders), its Status: says done, or all its sub-tasks are [x]
-// there. A Depends-on: plan with no file on main at all is not merged either; an unknown prose number is skipped.
+// plan is closed on main (moved out of the open folders), or lib/plan-deps.mjs planDoneReason says done there
+// (Status: finished, or at least one sub-task [x] and none open — the rule plan-order uses). A Depends-on: plan with no file on main at all is not merged either; an unknown prose number is skipped.
 const { deps } = planDependencies(remotePlanText, nnn)
 if (!process.argv.includes('--ignore-order')) {
   for (const { nnn: p, reason } of deps) {
@@ -219,11 +219,10 @@ if (!process.argv.includes('--ignore-order')) {
       fail(`NOT_READY: plan ${p} (no plans/${p}-*.plan.md on main) is not merged - plan ${nnn} depends on it (${reason}). Take another plan, or re-run with --ignore-order if the Human says so. Nothing was changed.`)
     }
     const prereqText = tryGit(['show', `origin/main:${file}`])
-    if (isFinishedStatus(prereqText)) continue // finished another way
+    if (planDoneReason(prereqText)) continue // the rule plan-order uses: Status: finished, or every sub-task [x]
     const st = atomicStats(prereqText)
-    if (st.open > 0) {
-      fail(`NOT_READY: plan ${p} (${planTitle(prereqText) || file}) is not merged - plan ${nnn} depends on it (${reason}); ${st.open} open sub-task(s) on main in ${file}. Take another plan, or re-run with --ignore-order if the Human says so. Nothing was changed.`)
-    }
+    const left = st.open > 0 ? `${st.open} open sub-task(s)` : 'no sub-task ticked'
+    fail(`NOT_READY: plan ${p} (${planTitle(prereqText) || file}) is not merged - plan ${nnn} depends on it (${reason}); ${left} on main in ${file}. Take another plan, or re-run with --ignore-order if the Human says so. Nothing was changed.`)
   }
 }
 
@@ -238,8 +237,8 @@ const leftover = !resuming && Boolean(tryGit(['rev-parse', '--verify', '--quiet'
 const leftoverPr = leftover && !isAncestorOfMain(branchName) ? mergedPrFor(branchName) : null
 const leftoverMerged = leftover && (Boolean(leftoverPr) || isAncestorOfMain(branchName))
 if (leftoverMerged) {
-  const st = atomicStats(remotePlanText)
-  if (st.done > 0 && st.open === 0) fail(`plan ${nnn} is already done (all sub-tasks [x] on main, branch ${branchName} merged) - pick another plan. Nothing was changed.`)
+  const doneWhy = planDoneReason(remotePlanText)
+  if (doneWhy) fail(`plan ${nnn} is already done (${doneWhy} on main, branch ${branchName} merged) - pick another plan. Nothing was changed.`)
 }
 
 if (resuming) {
