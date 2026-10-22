@@ -36,7 +36,12 @@ Nothing. Rendered files that change (`kit-update`): `.claude/workflows/orchestra
 - A `Depends-on:` line stops at a dash: a note after it (`— after release 1.3`) adds no plan numbers.
 - `agent-eval`: `model: inherit` passes no `--model`; an agent with Bash runs only on a runner that isolates each case
   (the default one now runs every case in a scratch copy of its input folder).
-- `orch-state`: a stale lock is taken over by an atomic rename with a token check, so two takers never both hold it.
+- `orch-state`: a stale lock is taken over by an atomic rename with a token check. This closes the common race of two
+  takers removing the same stale lock; a window of microseconds remains (a fresh lock moved by mistake cannot be put
+  back when a third process created one in between), so two owners at once stay possible, just very unlikely.
+- The Bash write guard reads a quoted or escaped `[[` (`'[['`, `"[["`, `\[\[`) as a plain word, not the test keyword;
+  a `[[` the command leaves unclosed fails closed (every `>` target inside it counts as a write); and the `$(…)` and
+  backtick substitutions inside `(( … ))` / `$(( … ))` are read for writes like any other.
 - `[ui]` items are read from the Done-when sections only, and a card covers only the item whose text it equals.
 - The merge agent's steps match the orchestrator's merge prompt (`--no-ff --no-commit`, the checks, then the commit).
 - `slot-serve`'s "packages missing" check works with npm 6 (no `node_modules/.package-lock.json`).

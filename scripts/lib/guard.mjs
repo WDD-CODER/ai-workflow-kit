@@ -194,10 +194,33 @@ function arithAt(src, open) {
   return e < src.length && src[e] === ')'
 }
 
-/** Shell words and operators of a command (heredoc bodies removed first). Each word: { w, dyn, subs? } — dyn when it
- *  has an unquoted/double-quoted `$` or a backtick; subs: the commands of its `$(…)` / backtick substitutions (never
- *  of an arithmetic `$((…))`), read for writes like any other command. A `((…))` arithmetic command is one word.
- *  Operators: { op }. */
+/** The commands of the `$(…)` / backtick substitutions inside an arithmetic body (`((…))` / `$((…))`): bash expands
+ *  them before it evaluates, so `(( $(cat > f) ))` writes f. Quotes are not skipped — reading too much fails closed. */
+function arithSubs(body) {
+  const subs = []
+  for (let j = 0; j < body.length; j++) {
+    const c = body[j]
+    if (c === '\\') j++
+    else if (c === '$' && body[j + 1] === '(') {
+      const e = substEnd(body, j)
+      const inner = body.slice(j + 2, body[e - 1] === ')' ? e - 1 : e)
+      if (arithAt(body, j + 1)) subs.push(...arithSubs(inner))
+      else subs.push(inner)
+      j = e - 1
+    } else if (c === '`') {
+      const end = body.indexOf('`', j + 1)
+      subs.push(body.slice(j + 1, end < 0 ? body.length : end))
+      j = end < 0 ? body.length : end
+    }
+  }
+  return subs
+}
+
+/** Shell words and operators of a command (heredoc bodies removed first). Each word: { w, dyn, quoted?, subs? } — dyn
+ *  when it has an unquoted/double-quoted `$` or a backtick; quoted when any part of it was quoted or escaped (`'[['`
+ *  and `\[\[` are plain words, not the test keyword); subs: the commands of its `$(…)` / backtick substitutions,
+ *  including those inside an arithmetic `$((…))`, read for writes like any other command. A `((…))` arithmetic
+ *  command is one word (its substitutions in subs). Operators: { op }. */
 export function lex(cmd) {
   const src = stripHeredocs(cmd)
   const out = []
@@ -209,6 +232,12 @@ export function lex(cmd) {
   }
   const ensure = () => (word ??= { w: '', dyn: false })
   const addSub = (body) => (ensure().subs ??= []).push(body)
+  // The body of the `$(…)` at src[j] (end e): a command substitution, or an arithmetic one whose nested ones count.
+  const addSubst = (j, e) => {
+    const body = src.slice(j + 2, src[e - 1] === ')' ? e - 1 : e)
+    if (!arithAt(src, j + 1)) addSub(body)
+    else for (const b of arithSubs(body)) addSub(b)
+  }
   while (i < src.length) {
     const c = src[i]
     if (c === '\n') {
@@ -228,13 +257,15 @@ export function lex(cmd) {
     }
     if (c === "'") {
       const end = src.indexOf("'", i + 1)
-      ensure().w += src.slice(i + 1, end < 0 ? src.length : end)
+      ensure().quoted = true
+      word.w += src.slice(i + 1, end < 0 ? src.length : end)
       i = end < 0 ? src.length : end + 1
       continue
     }
     if (c === '"') {
       let j = i + 1
       let s = ''
+      ensure().quoted = true
       while (j < src.length && src[j] !== '"') {
         if (src[j] === '\\' && j + 1 < src.length && '"\\$`'.includes(src[j + 1])) {
           s += src[j + 1]
@@ -244,7 +275,7 @@ export function lex(cmd) {
         if (src[j] === '$' && src[j + 1] === '(') {
           const e = substEnd(src, j)
           ensure().dyn = true
-          if (!arithAt(src, j + 1)) addSub(src.slice(j + 2, src[e - 1] === ')' ? e - 1 : e))
+          addSubst(j, e)
           s += src.slice(j, e)
           j = e
           continue
@@ -269,7 +300,8 @@ export function lex(cmd) {
         i += 2
         continue
       }
-      ensure().w += src[i + 1] ?? ''
+      ensure().quoted = true
+      word.w += src[i + 1] ?? ''
       i += 2
       continue
     }
@@ -278,7 +310,7 @@ export function lex(cmd) {
       // Keep $(...) / `...` / ${...} inside one word.
       if (c === '$' && src[i + 1] === '(') {
         const e = substEnd(src, i)
-        if (!arithAt(src, i + 1)) addSub(src.slice(i + 2, src[e - 1] === ')' ? e - 1 : e))
+        addSubst(i, e)
         word.w += src.slice(i, e)
         i = e
         continue
@@ -303,7 +335,8 @@ export function lex(cmd) {
     // An arithmetic command `(( a > b ))` / `for ((i=0; i<3; i++))`: one word, its `>` and `<` are comparisons.
     if (c === '(' && !word && arithAt(src, i)) {
       const e = substEnd(src, i) + 1
-      out.push({ w: src.slice(i, e), dyn: false, arith: true })
+      const subs = arithSubs(src.slice(i + 2, e - 2))
+      out.push({ w: src.slice(i, e), dyn: false, arith: true, ...(subs.length ? { subs } : {}) })
       i = e
       continue
     }
@@ -459,18 +492,30 @@ export function bashWrites(command, cwd, env = process.env) {
     for (const body of word?.subs ?? []) for (const t of bashWrites(body, dir, env)) targets.push(t)
   }
   // inTest: inside `[[ … ]]` (after any reserved words: `if [[ $a > $b ]]`), where `>` and `<` compare strings.
+  // Only a raw, unquoted `[[` opens a test and only a raw `]]` closes it. The words after a `>` inside it wait in
+  // testOperands; a test the command or the input leaves unclosed fails closed: each of them counts as a write target.
   let inTest = false
+  let testOperands = []
+  const endTest = (closed) => {
+    if (!closed) for (const w of testOperands) add(w, dir)
+    testOperands = []
+    inTest = false
+  }
   for (let j = 0; j < toks.length; j++) {
     const t = toks[j]
     if (t.op && SEPARATORS.has(t.op)) {
       if (inTest && TEST_JOINERS.has(t.op)) continue
+      if (inTest) endTest(false)
       flush()
-      inTest = false
       continue
     }
     if (t.op === '>' || t.op === '>>') {
       const next = toks[j + 1]
-      if (!inTest && next && !next.op) {
+      if (inTest) {
+        if (next && !next.op && !(next.w === ']]' && !next.quoted)) testOperands.push(next)
+        continue
+      }
+      if (next && !next.op) {
         subWrites(next)
         add(next, dir)
         j++
@@ -495,10 +540,11 @@ export function bashWrites(command, cwd, env = process.env) {
     }
     if (t.op) continue
     subWrites(t)
-    if (t.w === '[[' && cmd.every((w) => RESERVED.has(w.w))) inTest = true
-    else if (t.w === ']]' && inTest) inTest = false
+    if (t.w === '[[' && !t.quoted && cmd.every((w) => RESERVED.has(w.w) && !w.quoted)) inTest = true
+    else if (t.w === ']]' && !t.quoted && inTest) endTest(true)
     cmd.push(t)
   }
+  if (inTest) endTest(false)
   flush()
   return targets
 }

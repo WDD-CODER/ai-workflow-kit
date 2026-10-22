@@ -402,6 +402,44 @@ test('a write hidden in $( … ) on a guarded folder is denied; an [[ … ]] com
   }
 })
 
+test('bashWrites: a quoted or escaped [[ is a word, an unclosed [[ fails closed, (( … )) substitutions count', async () => {
+  const { bashWrites } = await import(pathToFileURL(join(project, 'scripts', 'lib', 'guard.mjs')).href)
+  const cwd = main
+  const paths = (cmd) => bashWrites(cmd, cwd).map((t) => (t.path ? relative(cwd, t.path).split(sep).join('/') : `?${t.unresolved}`))
+  assert.deepEqual(paths("echo '[[' > g1.txt"), ['g1.txt'])
+  assert.deepEqual(paths('echo "[[" > g2.txt'), ['g2.txt'])
+  assert.deepEqual(paths('echo \\[\\[ > g3.txt'), ['g3.txt'])
+  assert.deepEqual(paths("'[[' x > g4.txt"), ['g4.txt'])
+  assert.deepEqual(paths('[[ x > g5.txt'), ['g5.txt'])
+  assert.deepEqual(paths('[[ x > g6.txt; echo ok'), ['g6.txt'])
+  assert.deepEqual(paths("[[ a > b ']]' > g7.txt"), ['b', 'g7.txt'])
+  assert.deepEqual(paths('(( $(cat > g8.txt <<<x) ))'), ['g8.txt'])
+  assert.deepEqual(paths('echo $(( `tee g9.txt < /dev/null` + 1 ))'), ['g9.txt'])
+  assert.deepEqual(paths('echo "$(( $(( $(echo x > g10.txt) )) ))"'), ['g10.txt'])
+  // Still comparisons.
+  assert.deepEqual(paths('if [[ $a > $b ]]; then :; fi'), [])
+  assert.deepEqual(paths('(( a > b ))'), [])
+  assert.deepEqual(paths('echo $(( 4 > 2 ))'), [])
+})
+
+test('a quoted [[, an unclosed [[ or a substitution inside (( … )) cannot hide a write on main', () => {
+  for (const cmd of [
+    "echo '[[' > NOTES.md",
+    'echo \\[\\[ > NOTES.md',
+    '[[ x > NOTES.md',
+    '(( $(cat > NOTES.md <<<x) ))',
+    'echo $(( `tee NOTES.md < /dev/null` ))',
+  ]) {
+    const r = bash(main, 'branch-guard.sh', cmd)
+    assert.equal(r.decision, 'deny', `${cmd}: ${r.out}`)
+    assert.match(r.out, /BRANCH_GUARD:/)
+  }
+  for (const cmd of ['if [[ $a > $b ]]; then :; fi', '(( a > b ))']) {
+    const r = bash(main, 'branch-guard.sh', cmd)
+    assert.equal(r.decision, 'allow', `${cmd}: ${r.out}`)
+  }
+})
+
 test('the Bash matcher runs the plan-file guard: a shell command writing a new, name-similar plan is denied', () => {
   const settings = JSON.parse(readFileSync(join(project, '.claude', 'settings.json'), 'utf8'))
   const bashHooks = settings.hooks.PreToolUse.find((h) => h.matcher === 'Bash').hooks.map((h) => h.command).join('\n')

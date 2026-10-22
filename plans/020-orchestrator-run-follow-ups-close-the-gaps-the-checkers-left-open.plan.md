@@ -200,3 +200,19 @@ Evidence (worktree `C:/coding projects/Cursor/ai-workflow-kit-020`, after `node 
 - `node scripts/plan-order.mjs --json` → exit 0; one conflict group, none of its globs is `CHANGELOG.md` or
   `README.md`; `done` lists 011, 013, 014, 017, 018, 019 ("all N sub-task(s) [x]").
 - Open: the `[human]` `/review-it feat/<branch>` check; CI on ubuntu and windows (runs on the PR).
+
+Security-review follow-up (2026-10-22):
+- HIGH `[[`: the lexer marks quoted/escaped words (`quoted`); only a raw unquoted `[[` in command position opens a
+  test, only a raw `]]` closes it; a test left unclosed (separator or end of input) fails closed — every `>` operand
+  seen inside it is a write target.
+- MEDIUM arithmetic: `arithSubs` collects `$( … )` / backtick substitutions inside `(( … ))` and `$(( … ))` (nested
+  too); they are read for writes like any other substitution.
+- `orch-state` lock: the CHANGELOG no longer claims two takers never both hold it — the common race is closed, a
+  microsecond window remains (no small code fix: a fresh lock moved by mistake cannot be restored atomically).
+- Evidence (after `node tools/sync.mjs --target . --apply`): `npm run build` → exit 0 (`PACK_CHECK: ok`); `npm run
+  lint` → exit 0 (3× `LEAK_CHECK: ok`); `npm run test` → exit 0 (`WORKFLOW_LINK_CHECK: ok`); `node
+  tools/e2e-check.mjs` → exit 0 (`E2E_CHECK: ok — 53 cases passed`); `node tools/drift-check.mjs --target .` → exit 0
+  (`KIT_DRIFT: ok — 0 undeclared differences`); `node --test tools/test/*.test.mjs` → exit 0 (`tests 106`, `pass
+  106`, `fail 0`); `node tools/orchestrator-e2e.mjs` → exit 0 (`ORCHESTRATOR_E2E: ok — 64 cases passed`). New guards
+  tests: `bashWrites: a quoted or escaped [[ is a word, an unclosed [[ fails closed, (( … )) substitutions count` and
+  `a quoted [[, an unclosed [[ or a substitution inside (( … )) cannot hide a write on main` (branch-guard denies).
