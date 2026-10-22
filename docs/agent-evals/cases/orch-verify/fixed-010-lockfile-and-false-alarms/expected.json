@@ -1,0 +1,8 @@
+{
+  "note": "fixed by daf4f2c (test: tools/test/slot-procs-install.test.mjs 'lockfile with no dependencies ... -> no install'): bugs-1 is real (keep). bugs-2 is refuted by core/scripts/lib/slot-procs.mjs:523 (npmInstallIfChanged writes the hash after a successful install); bugs-3 is refuted by line 496 (installNeed returns null before lockHash when there is no lockfile).",
+  "verdicts": [
+    { "id": "bugs-1", "verdict": "keep" },
+    { "id": "bugs-2", "verdict": "refuted" },
+    { "id": "bugs-3", "verdict": "refuted" }
+  ]
+}

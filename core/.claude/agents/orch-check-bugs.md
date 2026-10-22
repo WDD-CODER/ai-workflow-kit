@@ -2,7 +2,7 @@
 name: orch-check-bugs
 description: Checker finder — reads only the lines a branch's diff changed and lists real logic and runtime bugs in them, with file:line and a concrete failing input. Read-only; one of three parallel finders.
 tools: Read, Grep, Glob, Bash
-model: {{models.analysis}}
+model: {{models.review}}
 effort: high
 omitClaudeMd: true
 ---

@@ -1,0 +1,10 @@
+{
+  "note": "planted: plan 010's real 9d26599 change to the installed copy scripts/lib/slot-procs.mjs, with the source core/scripts/lib/slot-procs.mjs left out of the diff — AGENTS.md 'Edit sources, never the installed copies': the next sync overwrites the change and CI drift-check fails.",
+  "findings": [
+    {
+      "file": "scripts/lib/slot-procs.mjs",
+      "rule": ["agents.md", "installed copy", "edit sources, never the installed copies", "hard rule", "source"],
+      "severity": "major"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+[
+  {
+    "id": "bugs-1",
+    "file": "core/scripts/lib/slot-procs.mjs",
+    "line": 499,
+    "rule": "logic: missing reported for a lockfile with no packages",
+    "reasoning": "npm never creates node_modules/.package-lock.json for a lockfile that lists no packages besides the root, so installNeed returns 'missing' on every run and slot-serve reinstalls and restarts the servers each time.",
+    "severity": "major"
+  },
+  {
+    "id": "bugs-2",
+    "file": "core/scripts/lib/slot-procs.mjs",
+    "line": 497,
+    "rule": "logic: hash never written",
+    "reasoning": "When the hash file is missing installNeed returns 'changed', and nothing ever writes the hash file, so every run reinstalls.",
+    "severity": "major"
+  },
+  {
+    "id": "bugs-3",
+    "file": "core/scripts/lib/slot-procs.mjs",
+    "line": 498,
+    "rule": "runtime: lockHash on a missing lockfile",
+    "reasoning": "lockHash(lockPath) reads package-lock.json without checking it exists, so a folder without a lockfile throws ENOENT.",
+    "severity": "major"
+  }
+]

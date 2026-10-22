@@ -1,0 +1,127 @@
+diff --git a/core/.claude/workflows/orchestrate.js b/core/.claude/workflows/orchestrate.js
+index 03e1107..140ba1e 100644
+--- a/core/.claude/workflows/orchestrate.js
++++ b/core/.claude/workflows/orchestrate.js
+@@ -52,7 +52,11 @@ const SCHEMA = {
+   },
+   builder: {
+     type: 'object',
+-    properties: { ...COMMON, status: { type: 'string', enum: ['built', 'blocked', 'ESCALATE'] }, branch: str, headSha: str, summary: str, evidence: strList, blocker: str, envFailure: { type: 'boolean' } },
++    properties: {
++      ...COMMON, status: { type: 'string', enum: ['built', 'blocked', 'ESCALATE'] }, branch: str, headSha: str, summary: str, evidence: strList, blocker: str, envFailure: { type: 'boolean' },
++      // The plan's [ui] cards: page, the one short e2e test that checks it (none = no script can) and its screenshot.
++      uiCards: { type: 'array', items: { type: 'object', properties: { card: str, page: str, test: str, screenshot: str }, required: ['card', 'page'] } },
++    },
+     required: ['role', 'model', 'effort', 'status', 'branch', 'summary', 'evidence'],
+   },
+   gate: {
+@@ -212,16 +216,67 @@ async function checkers(ctx) {
+   return { results, diff }
+ }
+ 
++// The [ui] tier (docs/agent/job-validation.md): each card's own script first, run by the gate; the browser agent only
++// for a card whose script failed or that no script can check, after the UI environment check. A passing script card
++// never reaches the browser agent. Verdicts: pass / fail / plan-drift; plan drift has no severity and is not a bug.
+ async function ui(ctx) {
+-  if (A.ui !== true) return {}
+-  const r = await agent(`UI cards of plan ${ctx.nnn} of run ${RUN}. Follow .claude/agents/orch-ui.md, and give each card the page URL it was checked on in \`page\`.\n\n${task({ PLAN: ctx.info.path, FOLDER: ctx.wt.path })}`,
+-    { agentType: 'orch-ui', schema: SCHEMA.ui, label: `ui ${ctx.nnn}`, phase: 'Build' })
+-  if (!r) return { fail: true, why: 'the UI agent returned nothing', findings: [] }
+-  // Each card result (page, status, screenshot paths) goes into status.json: the run report's validation list by page.
+-  for (const c of r.cards) await setPlan(ctx.nnn, { round: ctx.round, card: c.card, 'card-status': c.status, page: c.page || undefined, shots: c.screenshots.join(',') || undefined })
+-  const bad = r.cards.filter((c) => c.status !== 'pass')
+-  if (bad.length) return { r, fail: true, why: `ui: ${bad.map((c) => `${c.card} ${c.status}`).join('; ')}`, findings: bad.map((c, i) => ({ id: `ui-${i + 1}`, file: c.card, line: 1, rule: `ui ${c.status}`, reasoning: c.screenshots.join(', '), severity: 'major' })) }
+-  return { r }
++  const cards = ctx.uiCards ?? []
++  if (!cards.length && A.ui !== true) return {}
++  const record = (c, status, via, shots) => setPlan(ctx.nnn, { round: ctx.round, card: c.card, 'card-status': status, page: c.page || undefined, shots: (shots ?? []).filter(Boolean).join(',') || undefined, via })
++  const results = []
++  const scripted = cards.filter((c) => c.test && !DENY.test(c.test))
++  const failed = []
++  const passed = []
++  if (scripted.length) {
++    const g = await agent([
++      `UI gate for plan ${ctx.nnn} of run ${RUN}: run each [ui] card's own e2e test. Follow .claude/agents/orch-gate.md.`,
++      task({ FOLDER: ctx.wt.path, COMMANDS: scripted.map((c) => c.test) }),
++    ].join('\n\n'), { agentType: 'orch-gate', schema: SCHEMA.gate, label: `ui-gate ${ctx.nnn}`, phase: 'Build', effort: 'low' })
++    if (!g) return { env: true, why: 'the UI gate agent returned nothing' }
++    results.push(g)
++    const env = g.results.filter((x) => x.status === 'env-fail')
++    if (env.length) return { results, env: true, why: `ui gate env-fail: ${env.map((x) => x.command).join(', ')}` }
++    for (const c of scripted) {
++      const r = g.results.find((x) => x.command === c.test)
++      if (r?.status === 'pass') {
++        passed.push(c)
++        await record(c, 'pass', 'script', [c.screenshot])
++      }
++      else failed.push({ ...c, tail: r?.tail ?? 'the gate did not run this test' })
++    }
++  }
++  const unscripted = cards.filter((c) => !scripted.includes(c))
++  const forBrowser = [...failed, ...unscripted]
++  if (cards.length && !forBrowser.length) return { results }
++  if (A.ui !== true) {
++    // The browser step is off: a failed script is a bug for the builder; a card no script can check goes to the Human.
++    for (const c of unscripted) await record(c, 'unchecked', 'none', [])
++    for (const c of failed) await record(c, 'fail', 'script', [c.screenshot])
++    if (!failed.length) return { results }
++    return { results, fail: true, why: `ui: ${failed.map((c) => `${c.card} fail`).join('; ')}`,
++      findings: failed.map((c, i) => ({ id: `ui-${i + 1}`, file: c.card, line: 1, rule: 'ui fail', reasoning: `${c.test}: ${c.tail}`, severity: 'major' })) }
++  }
++  // Environment before any browser step: the pages' servers, the QA login, the backend from the page's origin.
++  const pages = [...new Set(forBrowser.map((c) => c.page).filter(Boolean))]
++  const preArgs = ['--ui', ...(pages.length ? ['--pages', pages.join(',')] : []), ...(A.uiLogin ? ['--login', A.uiLogin] : []), ...(A.uiApi ? ['--api', A.uiApi] : [])]
++  const pre = await runner('orch-preflight.mjs', preArgs, `ui env ${ctx.nnn}`)
++  if (!pre.ok) return { results, blocked: true, why: `UI environment blocked before the browser step: ${(pre.problems ?? [pre.error]).join('; ')}` }
++  const known = [...failed.map((c) => `${c.card}: its script failed — ${c.tail}`), ...(ctx.knownFindings ?? [])]
++  const r = await agent(`UI cards of plan ${ctx.nnn} of run ${RUN}. Follow .claude/agents/orch-ui.md, and give each card the page URL it was checked on in \`page\`.\n\n${task({
++    PLAN: ctx.info.path, FOLDER: ctx.wt.path, SCREENSHOTS: `.claude/sessions/orch-${RUN}/screens-${ctx.nnn}`,
++    CARDS: cards.length ? forBrowser.map((c) => ({ card: c.card, page: c.page, scriptFailed: failed.includes(c) })) : undefined,
++    PRE_CHECKED: passed.length ? passed.map((c) => c.card) : undefined,
++    KNOWN_FINDINGS: known.length ? known : undefined,
++  })}`, { agentType: 'orch-ui', schema: SCHEMA.ui, label: `ui ${ctx.nnn}`, phase: 'Build' })
++  if (!r) return { results, fail: true, why: 'the UI agent returned nothing', findings: [] }
++  results.push(r)
++  // Each card result (page, status, screenshot paths) goes into status.json: the run report's grid by page.
++  for (const c of r.cards) await record({ card: c.card, page: c.page || forBrowser.find((x) => x.card === c.card)?.page }, c.status, 'browser', c.screenshots)
++  const drift = r.cards.filter((c) => c.status === 'plan-drift')
++  if (drift.length) await note(`plan drift (not a bug, no fix round): ${drift.map((c) => c.card).join('; ')}`, ctx.nnn)
++  const bad = r.cards.filter((c) => c.status === 'fail')
++  if (bad.length) return { results, fail: true, why: `ui: ${bad.map((c) => `${c.card} fail`).join('; ')}`, findings: bad.map((c, i) => ({ id: `ui-${i + 1}`, file: c.card, line: 1, rule: 'ui fail', reasoning: c.screenshots.join(', '), severity: 'major' })) }
++  return { results }
+ }
+ 
+ async function merge(ctx) {
+@@ -278,6 +333,7 @@ async function runPlan(nnn) {
+     else if (b.envFailure) failure = { env: true, why: `builder: ${b.blocker ?? 'environment failure'}` }
+     else if (b.status !== 'built') failure = { why: `builder ${b.status}: ${b.blocker ?? ''}`, escalate: true }
+     else if (b.branch !== ctx.info.branch) failure = { why: `builder pushed ${b.branch}, expected ${ctx.info.branch}`, findings: [] }
++    if (b?.status === 'built' && Array.isArray(b.uiCards)) ctx.uiCards = b.uiCards
+     if (!failure) {
+       await setPlan(nnn, { state: 'gate', round: ctx.round, tier: ctx.tier, sha: b.headSha }, results)
+       results = []
+@@ -292,8 +348,14 @@ async function runPlan(nnn) {
+         if (c.env || c.fail) failure = c
+         else {
+           const u = await ui(ctx)
+-          if (u.r) results.push(u.r)
+-          if (u.fail) failure = u
++          results.push(...(u.results ?? []))
++          if (u.blocked) {
++            // A blocked UI environment stops before the browser agent and costs no fix round: the plan is parked with
++            // the reason, for the Human to fix the environment and relaunch.
++            await setPlan(nnn, { round: ctx.round }, results)
++            return park(u.why)
++          }
++          if (u.env || u.fail) failure = u
+           else {
+             await setPlan(nnn, { state: 'checking', round: ctx.round }, results)
+             results = []
+@@ -323,6 +385,7 @@ async function runPlan(nnn) {
+     if (ctx.round >= MAX_FIX_ROUNDS || (ctx.tier === 'judgment' && ctx.escalated)) return park(`${failure.why} (fix rounds used: ${ctx.round} of ${MAX_FIX_ROUNDS})`)
+     ctx.round += 1
+     findings = failure.findings ?? []
++    ctx.knownFindings = findings.filter((f) => /^ui-/.test(f.id)).map((f) => `${f.file}: ${f.reasoning}`)
+     if (failure.escalate || ctx.round >= 2) {
+       // A persisting failure, an ESCALATE / blocked builder or a second finding: a fresh builder on the judgment tier.
+       const w = await state(['handoff', '--run', RUN, '--plan', nnn, '--step', `round ${ctx.round}`, '--check', failure.check ?? failure.why, '--tail', failure.tail ?? failure.why, '--tried', `${ctx.tier} builder, mode ${mode}`], `handoff ${nnn}`)

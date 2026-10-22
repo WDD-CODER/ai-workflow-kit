@@ -1,0 +1,4 @@
+{
+  "note": "clean: plan 019 passed with no finding — tools/lib/agent-eval/compare.mjs is a kit-side tool (not rendered from core/), has not changed since 7dad8a7 (git log), and leak-check passed on it. Every reported finding is a false alarm.",
+  "findings": []
+}

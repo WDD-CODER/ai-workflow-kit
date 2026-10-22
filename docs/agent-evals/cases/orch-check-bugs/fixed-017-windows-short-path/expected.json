@@ -1,0 +1,21 @@
+{
+  "note": "fixed by ea53cd2 (tests: tools/test/guards.test.mjs 1, 5 and 7 failed on CI windows-latest and with a short-name TEMP locally; 16/16 after the fix). same() and inside() compare path text only, so a file path given in Windows 8.3 short form (NAME~1) and git's long worktree path compare unequal: the guard judges the file to be outside every slot and allows the write.",
+  "findings": [
+    {
+      "file": "core/scripts/lib/guard.mjs",
+      "line": 44,
+      "rule": [
+        "logic",
+        "security",
+        "runtime",
+        "platform",
+        "windows",
+        "correctness",
+        "fail open",
+        "wrong result",
+        "wrong results"
+      ],
+      "severity": "major"
+    }
+  ]
+}

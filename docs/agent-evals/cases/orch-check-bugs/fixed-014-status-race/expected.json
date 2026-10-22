@@ -1,0 +1,23 @@
+{
+  "note": "fixed by 7e2bca1 (repro in the plan's notes: 30 concurrent 'orch-state.mjs set' calls lost plans from status.json before the fix, '30 of 30' and '90 of 90' after; lock + temp-file rename added). readStatus/writeStatus do an unlocked read-modify-write of status.json and write it in place, while the plans of one wave call orch-state.mjs at the same time: updates are lost and a reader can see a half-written file.",
+  "findings": [
+    {
+      "file": "core/scripts/orch-state.mjs",
+      "line": 101,
+      "rule": [
+        "concurrency",
+        "race",
+        "race condition",
+        "logic",
+        "runtime",
+        "data loss",
+        "correctness",
+        "wrong result",
+        "wrong results",
+        "crash",
+        "crashes"
+      ],
+      "severity": "minor"
+    }
+  ]
+}

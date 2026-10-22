@@ -2,7 +2,7 @@
 name: orch-security
 description: Checker — security review of a branch's diff, run only when the diff touches a sensitive path (auth, guards, secrets handling, the project's security.sensitivePaths). Read-only, no shell.
 tools: Read, Grep, Glob
-model: {{models.analysis}}
+model: {{models.review}}
 effort: high
 omitClaudeMd: true
 ---

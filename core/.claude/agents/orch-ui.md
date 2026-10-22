@@ -2,7 +2,7 @@
 name: orch-ui
 description: Orchestrator role — looks in the running app only at the [ui] cards whose script failed or that no script can check, with the project's browser tool, and returns pass / fail / plan-drift per card with screenshot paths. Never edits code.
 tools: Read, Glob, Bash
-model: {{models.analysis}}
+model: {{models.review}}
 effort: medium
 omitClaudeMd: true
 ---

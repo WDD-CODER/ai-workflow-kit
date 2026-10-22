@@ -1,0 +1,18 @@
+{
+  "note": "fixed by daf4f2c (test: tools/test/slot-procs-install.test.mjs 'lockfile with no dependencies, hash unchanged, no node_modules -> no install'). installNeed returns 'missing' whenever node_modules/.package-lock.json is absent, but npm never creates it for a lockfile that lists no packages, so slot-serve reinstalls and restarts servers on every run.",
+  "findings": [
+    {
+      "file": "core/scripts/lib/slot-procs.mjs",
+      "line": 499,
+      "rule": [
+        "logic",
+        "runtime",
+        "contract",
+        "correctness",
+        "wrong result",
+        "wrong results"
+      ],
+      "severity": "major"
+    }
+  ]
+}

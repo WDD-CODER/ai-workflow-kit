@@ -1,0 +1,11 @@
+{
+  "note": "fixed by dbc4ce4 (test: tools/orchestrator-e2e.mjs run 'epsilon', plan 405 — 'the left-out [ui] item is recorded unchecked' and 'the run report hands the left-out [ui] item to the Human'). The plan's Primary goal is a test per [ui] item, but ui() takes the builder's own uiCards list as the whole truth: a [ui] item the builder leaves out is never checked by a script, the browser agent or the Human.",
+  "findings": [
+    {
+      "file": "core/.claude/workflows/orchestrate.js",
+      "line": 223,
+      "rule": ["primary", "goal", "goals", "a3", "a5", "must have", "p0", "requirement", "[ui]", "ui", "plan", "done-when"],
+      "severity": "major"
+    }
+  ]
+}

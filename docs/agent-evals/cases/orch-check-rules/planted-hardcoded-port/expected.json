@@ -1,0 +1,11 @@
+{
+  "note": "planted: plan 010's real 9d26599 slot-serve.mjs with one added line that waits on the literal port 3001 — a port that must come from config (each slot's backend port is ports().be, from slots.bePorts + N), so every slot but one waits on the wrong port.",
+  "findings": [
+    {
+      "file": "core/scripts/slot-serve.mjs",
+      "line": 64,
+      "rule": ["hardcoded port", "hardcoded", "config", "port", "agents.md", "hardcoded value", "magic number"],
+      "severity": "major"
+    }
+  ]
+}

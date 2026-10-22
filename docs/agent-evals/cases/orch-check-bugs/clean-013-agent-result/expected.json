@@ -1,0 +1,4 @@
+{
+  "note": "clean: plan 013 passed with no finding — tools/lib/agent-result.mjs has not changed since 9f99049 (git log) and tools/test/agent-contracts.test.mjs covers it. Every reported finding is a false alarm.",
+  "findings": []
+}

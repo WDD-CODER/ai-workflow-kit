@@ -59,6 +59,8 @@ export function commandProblems(vals) {
   for (const key of MODEL_KEYS) {
     const v = vals[key]
     if (isEmpty(v) || !MODEL_VALUE.test(v)) out.push(`${key} is "${isEmpty(v) ? '' : v}" — allowed: "haiku", "sonnet", "opus", "fable", "inherit" or a full model id starting "claude-"`)
+    // models.review runs every validating agent (checkers, verifier, security, UI): a review is never done by Haiku.
+    else if (key === 'models.review' && /haiku/i.test(v)) out.push(`models.review is "${v}" — validating agents never run on Haiku: set it to "sonnet", "opus", "fable", "inherit" or a non-Haiku "claude-" id`)
   }
   // mods.*: each enabled mod must be one the kit's marketplace serves; the repo is an owner/repo pair.
   for (const m of asList(vals['mods.enabled'])) if (!MODS.includes(m)) out.push(`mods.enabled names "${m}" — allowed: ${MODS.map((x) => `"${x}"`).join(', ')}`)
@@ -103,7 +105,7 @@ export function globProblem(g) {
   if (/^!/.test(g)) return 'negation (!) is not supported'
   return null
 }
-export const MODEL_KEYS = ['models.mechanical', 'models.analysis', 'models.judgment', 'models.build']
+export const MODEL_KEYS = ['models.mechanical', 'models.analysis', 'models.judgment', 'models.build', 'models.review']
 const MODEL_VALUE = /^(haiku|sonnet|opus|fable|inherit|claude-[a-z0-9][a-z0-9.-]*)$/
 const ENUMS = {
   'ci.lintScope': ['all', 'changed'],
@@ -527,6 +529,12 @@ export function resolveConfig({ kitRoot, project, packs, layers = [], target, pl
   const vals = {}
   for (const key of new Set([...Object.keys(base), ...Object.keys(packLayer), ...Object.keys(proj)])) {
     vals[key] = !isEmpty(proj[key]) ? proj[key] : !isEmpty(packLayer[key]) ? packLayer[key] : base[key]
+  }
+  // models.review took the validating agents over from models.analysis: a project that set analysis but not review
+  // keeps its validators where they were (opus, inherit, a claude- id) — except Haiku, which never validates (sonnet).
+  if (isEmpty(proj['models.review']) && !isEmpty(proj['models.analysis'])) {
+    const a = String(proj['models.analysis'])
+    vals['models.review'] = /haiku/i.test(a) ? 'sonnet' : a
   }
   vals['stack.packs'] = packs
   vals['stack.layers'] = layers

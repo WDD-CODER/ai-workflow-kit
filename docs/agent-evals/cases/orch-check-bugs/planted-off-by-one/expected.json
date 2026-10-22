@@ -1,0 +1,20 @@
+{
+  "note": "planted: in the real 7dad8a7 compare.mjs, findingMatches' '<= tolerance' became '< tolerance', so a finding 3 lines away no longer matches although the plan and the file header promise a line tolerance of ±3.",
+  "findings": [
+    {
+      "file": "tools/lib/agent-eval/compare.mjs",
+      "line": 43,
+      "rule": [
+        "logic",
+        "off-by-one",
+        "contract",
+        "correctness",
+        "wrong result",
+        "wrong results",
+        "broken contract",
+        "broken contracts"
+      ],
+      "severity": "major"
+    }
+  ]
+}

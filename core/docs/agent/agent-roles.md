@@ -65,8 +65,10 @@ Used by the orchestrator after the gate passes, and by `/review-it`.
 3. **Threshold:** only kept candidates with confidence ≥ 80 are reported.
 4. **Do not report:** issues that existed before the diff; lines the diff did not change; anything lint, typecheck or
    the build already catch; pedantic nits; changes that look intentional (named in the plan or a commit message).
-5. **Models:** the finders, `orch-security` and the verifier run on the `analysis` tier until a measured agent
-   evaluation shows a stronger model is needed; the security reviewer runs only on sensitive paths.
+5. **Models:** the finders, `orch-security`, the verifier and the UI validator run on the `review` tier
+   (`models.review`, default `sonnet`; never Haiku — install and sync refuse it). The kit's measured
+   baseline (its own eval cases) found Opus no better than Sonnet on these roles. The security reviewer
+   runs only on sensitive paths.
 6. **Mechanical checks stay with the gate.** Finders do not run the build, lint or the test suite to find problems;
    the gate (`orch-gate`, or `kit-runner` in `/review-it`) does, and its failures are reported as they are.
 

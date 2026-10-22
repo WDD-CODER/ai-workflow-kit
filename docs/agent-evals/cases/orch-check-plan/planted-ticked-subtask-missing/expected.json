@@ -1,0 +1,10 @@
+{
+  "note": "planted: plan 019's real compare.mjs diff with score.mjs left out — A3 (recall, precision, cost and noise in tools/lib/agent-eval/score.mjs) is ticked [x] but the diff adds no score.mjs, and the P0 requirement that the harness reports recall, precision, cost and noise is not met.",
+  "findings": [
+    {
+      "file": "plan.md",
+      "rule": ["A3", "a3: score.mjs", "sub-task", "atomic sub-tasks", "evidence", "p0", "must have"],
+      "severity": "major"
+    }
+  ]
+}

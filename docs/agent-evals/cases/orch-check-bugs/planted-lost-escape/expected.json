@@ -1,0 +1,21 @@
+{
+  "note": "planted: in the real 7845500 plan-deps.mjs, escapeRe's replacement '\\\\$&' became '$&', so nothing is escaped: mergeSubjectRe('orch/run.1') matches 'into orch/runX1', and a branch with '(' or '+' builds a wrong or invalid regex.",
+  "findings": [
+    {
+      "file": "core/scripts/lib/plan-deps.mjs",
+      "line": 85,
+      "rule": [
+        "logic",
+        "regex",
+        "escaping",
+        "correctness",
+        "runtime",
+        "wrong result",
+        "wrong results",
+        "crash",
+        "crashes"
+      ],
+      "severity": "major"
+    }
+  ]
+}

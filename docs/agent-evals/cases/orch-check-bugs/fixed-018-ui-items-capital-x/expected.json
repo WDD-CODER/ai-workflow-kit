@@ -1,0 +1,21 @@
+{
+  "note": "fixed by dbc4ce4 (test: tools/test/ui-tier.test.mjs 'tag lint: ...' now includes '- [X] [ui] Done with a capital box'). uiItems matches the box as [ x] only, while doneWhenTagProblems in the same file accepts [xX]: a ticked '- [X] [ui] ...' item passes the lint but is silently dropped from the [ui] items.",
+  "findings": [
+    {
+      "file": "core/scripts/lib/done-when.mjs",
+      "line": 9,
+      "rule": [
+        "logic",
+        "regex",
+        "contract",
+        "consistency",
+        "correctness",
+        "wrong result",
+        "wrong results",
+        "broken contract",
+        "broken contracts"
+      ],
+      "severity": "minor"
+    }
+  ]
+}

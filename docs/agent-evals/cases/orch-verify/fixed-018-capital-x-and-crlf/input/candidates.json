@@ -1,0 +1,18 @@
+[
+  {
+    "id": "bugs-1",
+    "file": "core/scripts/lib/done-when.mjs",
+    "line": 9,
+    "rule": "logic: [X] box not matched",
+    "reasoning": "uiItems accepts the box [ ] or [x] only, while doneWhenTagProblems (line 33) accepts [X] too: '- [X] [ui] Save shows Saved' passes the lint but is dropped from the [ui] items.",
+    "severity": "minor"
+  },
+  {
+    "id": "rules-1",
+    "file": "core/scripts/lib/done-when.mjs",
+    "line": 8,
+    "rule": "runtime: CRLF plan text",
+    "reasoning": "A plan saved on Windows has CRLF line ends; split('\\n') leaves a trailing \\r, so (.+)$ captures the \\r and every [ui] item text ends in a carriage return.",
+    "severity": "minor"
+  }
+]

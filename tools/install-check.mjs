@@ -1046,6 +1046,46 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   const b = run('install.mjs', ['--target', mb])
   if (b.status !== 2 || !b.stderr.includes('models.analysis is "gpt-4" — allowed: "haiku", "sonnet", "opus", "fable", "inherit" or a full model id starting "claude-"') || files(mb).length !== 1) fail(`install with models.analysis gpt-4: exit ${b.status}, ${b.stderr.trim().split('\n')[0]}`)
   rmSync(mb, { recursive: true, force: true })
+
+  // models.review (plan 021): the validating agents never run on Haiku — install refuses it, naming the key, and
+  // writes nothing; a cheaper models.analysis never moves a checker.
+  for (const haiku of ['haiku', 'claude-haiku-4-5', 'claude-3-5-haiku-20241022', 'claude-3-haiku-20240307']) {
+    const mr = tmp('models-review-haiku')
+    writeFileSync(join(mr, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { review: haiku } }))
+    const r = run('install.mjs', ['--target', mr])
+    if (r.status !== 2 || !r.stderr.includes(`models.review is "${haiku}" — validating agents never run on Haiku`) || files(mr).length !== 1) fail(`install with models.review ${haiku}: exit ${r.status}, ${r.stderr.trim().split('\n')[0]}`)
+    rmSync(mr, { recursive: true, force: true })
+  }
+  const ma = tmp('models-analysis-haiku')
+  writeFileSync(join(ma, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { analysis: 'haiku' } }))
+  const a = run('install.mjs', ['--target', ma])
+  if (a.status !== 0) fail(`install with models.analysis haiku: exit ${a.status}`)
+  else {
+    expect(ma, 'models.analysis haiku keeps validators on review', {
+      '.claude/agents/orch-check-plan.md': 'sonnet', '.claude/agents/orch-check-bugs.md': 'sonnet', '.claude/agents/orch-check-rules.md': 'sonnet',
+      '.claude/agents/orch-verify.md': 'sonnet', '.claude/agents/orch-security.md': 'sonnet', '.claude/agents/orch-ui.md': 'sonnet',
+      '.claude/agents/orch-merge.md': 'haiku', '.claude/agents/kit-prevalidate.md': 'haiku',
+    })
+    if (!/^omitClaudeMd: true$/m.test(read(ma, '.claude/agents/git-agent.md'))) fail('git-agent.md does not set omitClaudeMd: true')
+  }
+  rmSync(ma, { recursive: true, force: true })
+
+  // A project that set models.analysis before models.review existed keeps its validators on that model.
+  const mo = tmp('models-analysis-opus')
+  writeFileSync(join(mo, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { analysis: 'opus' } }))
+  const o = run('install.mjs', ['--target', mo])
+  if (o.status !== 0) fail(`install with models.analysis opus: exit ${o.status}`)
+  else expect(mo, 'models.analysis opus keeps validators on opus', {
+    '.claude/agents/orch-check-plan.md': 'opus', '.claude/agents/orch-check-bugs.md': 'opus', '.claude/agents/orch-check-rules.md': 'opus',
+    '.claude/agents/orch-verify.md': 'opus', '.claude/agents/orch-security.md': 'opus', '.claude/agents/orch-ui.md': 'opus',
+  })
+  rmSync(mo, { recursive: true, force: true })
+  const mos = tmp('models-analysis-opus-review-sonnet')
+  writeFileSync(join(mos, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { analysis: 'opus', review: 'sonnet' } }))
+  const os = run('install.mjs', ['--target', mos])
+  if (os.status !== 0) fail(`install with models.analysis opus + review sonnet: exit ${os.status}`)
+  else expect(mos, 'an explicit models.review wins over models.analysis', { '.claude/agents/orch-verify.md': 'sonnet', '.claude/agents/kit-prevalidate.md': 'opus' })
+  rmSync(mos, { recursive: true, force: true })
 }
 
 // sync --apply that updates the kit-managed scripts/package.json refreshes the project's scripts/package-lock.json

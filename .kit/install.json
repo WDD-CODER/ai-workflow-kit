@@ -3,14 +3,14 @@
     "version": "1.4.0"
   },
   "source": "local:.",
-  "commit": "4388a389e3c48d5d17ad98b6c2a3fb36ad16dd65",
+  "commit": "f4145f64721004b747920840d13fb51debdff3b1",
   "packs": [],
   "layers": [],
   "cursor": false,
   "yesChef": false,
   "files": {
     ".claude/agents/git-agent.md": {
-      "sha256": "1ec668cd500db0cbb8cccaa0b57ff1002f38948cf02877b8dd049848bffa2658",
+      "sha256": "2ebef457c0c52892c2f324662682e12956c3b481789d3c1f8dddf2109aa7a534",
       "kind": "managed",
       "source": "core/.claude/agents/git-agent.md"
     },
@@ -75,7 +75,7 @@
       "source": "core/.claude/agents/orch-ui.md"
     },
     ".claude/agents/orch-verify.md": {
-      "sha256": "4f2131be6163809081a6595b9cfad498c161b225ec64da720c61ef863ab79037",
+      "sha256": "21def0fbe34329e36a775b4230bc4a8f66a6dd87d5f18185fe5fbefdddffd7cf",
       "kind": "managed",
       "source": "core/.claude/agents/orch-verify.md"
     },
@@ -145,7 +145,7 @@
       "source": "core/.claude/commands/refactor.md"
     },
     ".claude/commands/review-it.md": {
-      "sha256": "d82bd1671b58a465548ff62fdf0a435390a403215248ff388a5f549d04c6833c",
+      "sha256": "4818536bdcf99f28fc5d4678c8c7e3d106703af7ccbee3f59af14372b6545e6a",
       "kind": "managed",
       "source": "core/.claude/commands/review-it.md"
     },
@@ -300,12 +300,12 @@
       "source": "core/README_WORKFLOW.md"
     },
     "docs/agent/agent-evals.md": {
-      "sha256": "52df5c20fcf8471dc836c2189b3c5996b941cbfdd605350a3d620d0c808020da",
+      "sha256": "a28e75eb59381df3bc3eb6d36c51719b1fea2ce30c4d8982b2a13c91d5771097",
       "kind": "managed",
       "source": "core/docs/agent/agent-evals.md"
     },
     "docs/agent/agent-roles.md": {
-      "sha256": "22e47a9ca55c83501d97c5a894839e4e4ba34c8a54f606ad8c0aeb84f0db0845",
+      "sha256": "040a289f51394568083361c2c23bac54792d97b3c21e78992093852733eea14c",
       "kind": "managed",
       "source": "core/docs/agent/agent-roles.md"
     },
@@ -320,7 +320,7 @@
       "source": "core/docs/agent/job-validation.md"
     },
     "docs/agent/model-routing.md": {
-      "sha256": "b9c0dd27403933c1c8bfd488207121e855399926e8b7faea11e37b8aaa8216f6",
+      "sha256": "7b8342b96f3c384453c3be42662ed7fcbc9fd5495e6d7118dc13b483d72480a5",
       "kind": "managed",
       "source": "core/docs/agent/model-routing.md"
     },
