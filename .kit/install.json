@@ -3,7 +3,7 @@
     "version": "1.3.1"
   },
   "source": "local:.",
-  "commit": "383a7ccbbd7b375aa85857ccd155e6982bf163ad",
+  "commit": "60bbbe4614eccb063a69001d6ce4b22b438ab5af",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -525,7 +525,7 @@
       "source": "core/scripts/lib/fe-command.mjs"
     },
     "scripts/lib/guard.mjs": {
-      "sha256": "4f73884bf82dc68cdd9250f93b3304d79ec213e373e58eb4a83cd83841b8fe08",
+      "sha256": "c555cf01f5f1fbc3d3057c48fc284e4d039fd9eefe5368e24a0f1dfa7fe48414",
       "kind": "managed",
       "source": "core/scripts/lib/guard.mjs"
     },

@@ -26,7 +26,7 @@
  * Speed (the hook limit is 10 s; Git Bash start-up on Windows is slow): one node process, the branch and git dirs
  * read from files, no git call on the allow path. KIT_GUARD_TRACE=1 prints `GUARD_GIT_CALLS: <n>` to stderr.
  */
-import { readFileSync, readdirSync, existsSync, statSync } from 'fs'
+import { readFileSync, readdirSync, existsSync, statSync, realpathSync } from 'fs'
 import { spawnSync } from 'child_process'
 import { join, resolve, dirname, relative, isAbsolute, basename } from 'path'
 import { fileURLToPath } from 'url'
@@ -40,9 +40,36 @@ const WIN = process.platform === 'win32'
 
 let gitCalls = 0
 const toPosix = (p) => String(p).replace(/\\/g, '/')
-const same = (a, b) => (WIN ? toPosix(a).toLowerCase() === toPosix(b).toLowerCase() : toPosix(a) === toPosix(b))
+// The long, real form of a path: Windows 8.3 short names (a profile folder shown as NAME~1) and symlinks expanded through the
+// nearest existing ancestor, so a short temp path and git's long path compare equal.
+const canonCache = new Map()
+const canon = (p) => {
+  const abs = resolve(String(p))
+  if (canonCache.has(abs)) return canonCache.get(abs)
+  let head = abs
+  const rest = []
+  let out = abs
+  for (;;) {
+    try {
+      out = join(realpathSync.native(head), ...rest)
+      break
+    } catch {
+      const up = dirname(head)
+      if (up === head) break
+      rest.unshift(basename(head))
+      head = up
+    }
+  }
+  canonCache.set(abs, out)
+  return out
+}
+const same = (a, b) => {
+  const x = toPosix(canon(a))
+  const y = toPosix(canon(b))
+  return WIN ? x.toLowerCase() === y.toLowerCase() : x === y
+}
 const inside = (root, p) => {
-  const rel = relative(root, p)
+  const rel = relative(canon(root), canon(p))
   return rel === '' || (!!rel && !rel.startsWith('..') && !isAbsolute(rel))
 }
 
@@ -473,7 +500,7 @@ function kitOwned(root, file) {
 const approvedRoute = (rel) => `STOP and tell the Human: file, exact change, why it can't be done in-scope. Wait for "approved: ${rel}", then append the path to the plan's scope block and retry.`
 
 function scopeRule(here, file, branch) {
-  const rel = toPosix(relative(here.root, file))
+  const rel = toPosix(relative(canon(here.root), canon(file)))
   const plan = scopedPlan(here.root, branch)
   const kit = kitOwned(here.root, file)
   const kitDeny = () => deny(kit.out.trim() || 'KIT_OWNED: yes - owned by the workflow kit')
@@ -504,14 +531,14 @@ const mainAllowed = (rel) => OPEN_PLAN_RE.test(rel) || rel === '.claude/todo.md'
  */
 function localFallback(mode, wt, file, why) {
   if (!folderGuarded(mode, wt)) return allow()
-  if (mode === 'branch' && mainAllowed(toPosix(relative(wt.root, file)))) return allow()
+  if (mode === 'branch' && mainAllowed(toPosix(relative(canon(wt.root), canon(file))))) return allow()
   const tag = mode === 'scope' ? 'SCOPE_GUARD' : 'BRANCH_GUARD'
   return deny(`${tag}: cannot check ${toPosix(file)} (${why}) and ${wt.root} is guarded - write refused (fail closed). Retry from a session in that folder.`)
 }
 
 function branchRule(here, file, branch, tool) {
   if (!MAIN_BRANCHES.includes(branch)) return allow()
-  const rel = toPosix(relative(here.root, file))
+  const rel = toPosix(relative(canon(here.root), canon(file)))
   if (OPEN_PLAN_RE.test(rel) || rel === '.claude/todo.md') return allow(`BRANCH_GUARD: Planner admin bypass - ${rel} stays on ${branch}.`)
   if (RUNTIME_ON_MAIN.some((re) => re.test(rel))) return allow()
   if (!existsSync(join(here.root, '.worktree-port'))) {
