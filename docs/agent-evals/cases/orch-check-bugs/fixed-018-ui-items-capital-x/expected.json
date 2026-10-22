@@ -4,7 +4,17 @@
     {
       "file": "core/scripts/lib/done-when.mjs",
       "line": 9,
-      "rule": ["logic", "regex", "contract", "consistency", "correctness"],
+      "rule": [
+        "logic",
+        "regex",
+        "contract",
+        "consistency",
+        "correctness",
+        "wrong result",
+        "wrong results",
+        "broken contract",
+        "broken contracts"
+      ],
       "severity": "minor"
     }
   ]

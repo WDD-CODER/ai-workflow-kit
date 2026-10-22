@@ -195,3 +195,36 @@ Build (builder, 2026-10-22, branch `feat/021-kit-eval-baseline` off `origin/main
   tools/test/*.test.mjs` (tests 120, pass 120, fail 0); `node tools/orchestrator-e2e.mjs` (ORCHESTRATOR_E2E: ok — 64
   cases passed). `npm run e2e` is left to CI.
 - Open ([human]): Dandan reads BASELINE.md and picks the default model per checker role.
+
+Checker round 1 (builder, 2026-10-22):
+- Major (bug labels miss the prompt's own categories) — fixed. The 12 orch-check-bugs labels with findings now also
+  accept the "Look for" headings of `core/.claude/agents/orch-check-bugs.md:18-22`, only those that fit each bug
+  (`wrong result(s)` on all 12; `crash(es)` on status-race and lost-escape; `broken contract(s)` on stale-worktree,
+  capital-x and off-by-one; `error handling` was already on the two error-handling cases). Severity is still exact
+  (not changed: that is the scorer's contract, logged in BASELINE "Next"). Reran the two orch-check-bugs runs, one at
+  a time, `--runs 2` (Sonnet 19:08–19:38, Opus 19:39–20:08, both exit 0). Conservative choice: only those two of the
+  eight runs were redone — the other three roles' labels did not change, so their scores cannot move from the relabel.
+  Result: Sonnet recall 0.27 / precision 0.22 / 3.03 USD / 1 error; Opus 0.19 / 0.12 / 9.86 USD / 3 errors (before:
+  both 0.13). BASELINE.md tables, pick row, per-case lines, "Read with care" and "Next" updated; Sonnet stays the pick.
+  Stub check: `node tools/agent-eval.mjs ... --runner tools/fixtures/agent-evals/stub-perfect.mjs` → TOTAL 1.00 / 1.00,
+  exit 0; `node --test tools/test/eval-cases.test.mjs` → pass 4, fail 0.
+- Minor (old Haiku ids pass `models.review`) — fixed. `tools/lib/kit.mjs` refuses any value matching `/haiku/i`;
+  install-check fixtures add `claude-3-5-haiku-20241022` and `claude-3-haiku-20240307`. Probe: `commandProblems` on
+  both returns the "validating agents never run on Haiku" problem; `sonnet`, `claude-sonnet-4-5`, `opus` return none.
+- Minor (one case from 35140fb) — partly fixed. `fixed-sec-diff-unread-fails-open` gained a second expected finding
+  from the same input file: pre-fix `orch-state.mjs:71` honours `--root <dir>` and parseArgs takes unknown flags as
+  `true` (35140fb test 'orch-state.mjs: unknown flags (--root among them) …'). Left out, with reasons: the plan-branch
+  slug check did not exist before 35140fb (no pre-fix line to point at; the function is already the planted
+  allow-all case); the branch / scope / sibling-worktree guard fail-closed fixes are in `guard.mjs`, whose pre-fix
+  code spans c8342ea/ea53cd2 and each would need its own input bundle (the guard family already has 3 fixed cases);
+  the `[ui]` card values arrive through the same parseArgs fix and would duplicate the new finding.
+- Minor (agent-roles.md / agent-evals.md still say `analysis` / `--model haiku`) — not fixed: both files are outside
+  this plan's Read-Write Scope and no Human can answer an `approved:` now. Conservative choice: left as they are.
+  Open for the Human: `approved: core/docs/agent/agent-roles.md` and `approved: core/docs/agent/agent-evals.md`
+  (reword to the `review` tier), before release.
+- Checks after round 1, one at a time: `node tools/sync.mjs --target . --apply` (exit 0, 0 kit-update);
+  `npm run build` (exit 0, PACK_CHECK: ok); `npm run lint` (exit 0, LEAK_CHECK: ok ×3); `npm run test` (exit 0,
+  INSTALL_CHECK: ok, WORKFLOW_LINK_CHECK: ok); `node tools/e2e-check.mjs` (exit 0, 53 cases); `node
+  tools/drift-check.mjs --target .` (exit 0, 0 undeclared differences); `node --test tools/test/*.test.mjs` — first
+  run tests 120 / pass 119 / fail 1 (output not kept, failing test not named), the next two runs exit 0, pass 120 /
+  fail 0: logged as a one-off flake, not traced; `node tools/orchestrator-e2e.mjs` (exit 0, 64 cases).

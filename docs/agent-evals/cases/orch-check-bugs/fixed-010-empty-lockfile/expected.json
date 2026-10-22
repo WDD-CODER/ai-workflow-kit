@@ -4,7 +4,14 @@
     {
       "file": "core/scripts/lib/slot-procs.mjs",
       "line": 499,
-      "rule": ["logic", "runtime", "contract", "correctness"],
+      "rule": [
+        "logic",
+        "runtime",
+        "contract",
+        "correctness",
+        "wrong result",
+        "wrong results"
+      ],
       "severity": "major"
     }
   ]

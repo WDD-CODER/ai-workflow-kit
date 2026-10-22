@@ -4,7 +4,17 @@
     {
       "file": "core/scripts/lib/slot.mjs",
       "line": 79,
-      "rule": ["logic", "contract", "runtime", "correctness", "consistency"],
+      "rule": [
+        "logic",
+        "contract",
+        "runtime",
+        "correctness",
+        "consistency",
+        "wrong result",
+        "wrong results",
+        "broken contract",
+        "broken contracts"
+      ],
       "severity": "major"
     }
   ]

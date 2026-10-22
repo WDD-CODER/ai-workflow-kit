@@ -4,7 +4,16 @@
     {
       "file": "tools/lib/agent-eval/compare.mjs",
       "line": 43,
-      "rule": ["logic", "off-by-one", "contract", "correctness"],
+      "rule": [
+        "logic",
+        "off-by-one",
+        "contract",
+        "correctness",
+        "wrong result",
+        "wrong results",
+        "broken contract",
+        "broken contracts"
+      ],
       "severity": "major"
     }
   ]

@@ -4,7 +4,14 @@
     {
       "file": "core/scripts/orch-preflight.mjs",
       "line": 59,
-      "rule": ["logic", "inverted condition", "correctness", "runtime"],
+      "rule": [
+        "logic",
+        "inverted condition",
+        "correctness",
+        "runtime",
+        "wrong result",
+        "wrong results"
+      ],
       "severity": "major"
     }
   ]

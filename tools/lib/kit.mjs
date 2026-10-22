@@ -60,7 +60,7 @@ export function commandProblems(vals) {
     const v = vals[key]
     if (isEmpty(v) || !MODEL_VALUE.test(v)) out.push(`${key} is "${isEmpty(v) ? '' : v}" — allowed: "haiku", "sonnet", "opus", "fable", "inherit" or a full model id starting "claude-"`)
     // models.review runs every validating agent (checkers, verifier, security, UI): a review is never done by Haiku.
-    else if (key === 'models.review' && /^(haiku$|claude-haiku)/.test(v)) out.push(`models.review is "${v}" — validating agents never run on Haiku: set it to "sonnet", "opus", "fable", "inherit" or a non-Haiku "claude-" id`)
+    else if (key === 'models.review' && /haiku/i.test(v)) out.push(`models.review is "${v}" — validating agents never run on Haiku: set it to "sonnet", "opus", "fable", "inherit" or a non-Haiku "claude-" id`)
   }
   // mods.*: each enabled mod must be one the kit's marketplace serves; the repo is an owner/repo pair.
   for (const m of asList(vals['mods.enabled'])) if (!MODS.includes(m)) out.push(`mods.enabled names "${m}" — allowed: ${MODS.map((x) => `"${x}"`).join(', ')}`)

@@ -4,7 +4,17 @@
     {
       "file": "core/scripts/lib/guard.mjs",
       "line": 44,
-      "rule": ["logic", "security", "runtime", "platform", "windows", "correctness", "fail open"],
+      "rule": [
+        "logic",
+        "security",
+        "runtime",
+        "platform",
+        "windows",
+        "correctness",
+        "fail open",
+        "wrong result",
+        "wrong results"
+      ],
       "severity": "major"
     }
   ]

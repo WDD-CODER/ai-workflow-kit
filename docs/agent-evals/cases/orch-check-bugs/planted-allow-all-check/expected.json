@@ -4,7 +4,15 @@
     {
       "file": "core/scripts/lib/orch-run.mjs",
       "line": 33,
-      "rule": ["logic", "security", "validation", "correctness", "fail open"],
+      "rule": [
+        "logic",
+        "security",
+        "validation",
+        "correctness",
+        "fail open",
+        "wrong result",
+        "wrong results"
+      ],
       "severity": "major"
     }
   ]

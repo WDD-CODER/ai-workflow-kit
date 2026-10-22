@@ -4,7 +4,15 @@
     {
       "file": "tools/lib/agent-eval/run.mjs",
       "line": 194,
-      "rule": ["error handling", "error-handling", "runtime", "logic", "correctness"],
+      "rule": [
+        "error handling",
+        "error-handling",
+        "runtime",
+        "logic",
+        "correctness",
+        "wrong result",
+        "wrong results"
+      ],
       "severity": "major"
     }
   ]

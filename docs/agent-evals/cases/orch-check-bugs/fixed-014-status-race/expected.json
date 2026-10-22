@@ -4,7 +4,19 @@
     {
       "file": "core/scripts/orch-state.mjs",
       "line": 101,
-      "rule": ["concurrency", "race", "race condition", "logic", "runtime", "data loss", "correctness"],
+      "rule": [
+        "concurrency",
+        "race",
+        "race condition",
+        "logic",
+        "runtime",
+        "data loss",
+        "correctness",
+        "wrong result",
+        "wrong results",
+        "crash",
+        "crashes"
+      ],
       "severity": "minor"
     }
   ]

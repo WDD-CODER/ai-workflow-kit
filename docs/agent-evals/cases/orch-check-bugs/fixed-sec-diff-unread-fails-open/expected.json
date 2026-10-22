@@ -1,10 +1,37 @@
 {
-  "note": "fixed by 35140fb (test: tools/test/orchestrator.test.mjs 'added-code check: a failed or cut-off git diff counts as sensitive (fail closed)'). The diff command's added-code scan ignores git's exit status and spawnSync's default 1 MB maxBuffer: a failed or cut-off 'git diff -U0' yields empty or partial output, so a diff that adds auth code is reported as not sensitive and the security reviewer is skipped (fail open).",
+  "note": "fixed by 35140fb (tests: tools/test/orchestrator.test.mjs 'added-code check: a failed or cut-off git diff counts as sensitive (fail closed)' and 'orch-state.mjs: unknown flags (--root among them), a value that looks like a flag and unsafe card values are refused'). (1) The diff command's added-code scan ignores git's exit status and spawnSync's default 1 MB maxBuffer: a failed or cut-off 'git diff -U0' yields empty or partial output, so a diff that adds auth code is reported as not sensitive and the security reviewer is skipped (fail open). (2) parseArgs accepts any flag and the script honours '--root <dir>': 'orch-state.mjs set --root ../other-repo ...' reads and writes another project's status.json and runs git there, and an unknown or misspelt flag (or '--reason' followed by '--x') is silently taken as true instead of refused.",
   "findings": [
     {
       "file": "core/scripts/orch-state.mjs",
       "line": 348,
-      "rule": ["security", "error handling", "error-handling", "logic", "runtime", "fail open", "correctness"],
+      "rule": [
+        "security",
+        "error handling",
+        "error-handling",
+        "logic",
+        "runtime",
+        "fail open",
+        "correctness",
+        "wrong result",
+        "wrong results"
+      ],
+      "severity": "major"
+    },
+    {
+      "file": "core/scripts/orch-state.mjs",
+      "line": 71,
+      "rule": [
+        "security",
+        "validation",
+        "input validation",
+        "logic",
+        "runtime",
+        "correctness",
+        "wrong result",
+        "wrong results",
+        "broken contract",
+        "broken contracts"
+      ],
       "severity": "major"
     }
   ]

@@ -4,7 +4,17 @@
     {
       "file": "core/scripts/lib/plan-deps.mjs",
       "line": 85,
-      "rule": ["logic", "regex", "escaping", "correctness", "runtime"],
+      "rule": [
+        "logic",
+        "regex",
+        "escaping",
+        "correctness",
+        "runtime",
+        "wrong result",
+        "wrong results",
+        "crash",
+        "crashes"
+      ],
       "severity": "major"
     }
   ]

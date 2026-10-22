@@ -1049,7 +1049,7 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
 
   // models.review (plan 021): the validating agents never run on Haiku — install refuses it, naming the key, and
   // writes nothing; a cheaper models.analysis never moves a checker.
-  for (const haiku of ['haiku', 'claude-haiku-4-5']) {
+  for (const haiku of ['haiku', 'claude-haiku-4-5', 'claude-3-5-haiku-20241022', 'claude-3-haiku-20240307']) {
     const mr = tmp('models-review-haiku')
     writeFileSync(join(mr, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { review: haiku } }))
     const r = run('install.mjs', ['--target', mr])
