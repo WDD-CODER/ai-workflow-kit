@@ -115,7 +115,7 @@ const npm = (cwd, cmd) => spawnSync(cmd, { cwd, env, encoding: 'utf8', shell: tr
 // The last 3 lines, plus any failing TAP test lines and their error message, so a CI failure names the test.
 const tail = (s) => {
   const lines = s.trim().split(/\r?\n/)
-  const failed = lines.filter((l) => /^\s*not ok \d+|^\s*error: /.test(l)).slice(0, 8)
+  const failed = lines.flatMap((l, i) => (/^\s*not ok \d+/.test(l) ? [l] : /^\s*error: /.test(l) ? lines.slice(i, i + 4).map((x) => x.trim()) : [])).slice(0, 24)
   return [...failed, ...lines.slice(-3)].join(' | ')
 }
 // True when nothing listens on `port` (a listen attempt succeeds); retried while a stop settles.
