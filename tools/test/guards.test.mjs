@@ -503,6 +503,43 @@ test('a redirect before [[, a process substitution or a ${ … } substitution ca
   assert.equal(r.decision, 'allow', r.out)
 })
 
+// Security review round 3 (plan 020): an escaped `\${` or a `$${` does not nest, an unclosed `${` and a word that
+// mixes a process substitution with other text fail closed.
+test('bashWrites: \\${ and $${ do not nest a ${ … }; an unclosed ${ or a word mixing text and <( … ) is unresolved', async () => {
+  const { bashWrites } = await import(pathToFileURL(join(project, 'scripts', 'lib', 'guard.mjs')).href)
+  const cwd = main
+  const paths = (cmd) => bashWrites(cmd, cwd).map((t) => (t.path ? relative(cwd, t.path).split(sep).join('/') : `?${t.unresolved}`))
+  // bash: `${x:-\${}` ends at the first `}` — the commands after it run.
+  assert.deepEqual(paths('echo ${x:-\\${}; cat > README.md; echo }'), ['README.md'])
+  assert.deepEqual(paths('echo ${x:-$${}; cat > r4.md; echo }'), ['r4.md'])
+  assert.deepEqual(paths('echo ${x:-$$${y}}; cat > r5.md'), ['r5.md'])
+  // No closing `}`: where the word ends is unknown.
+  assert.deepEqual(paths('echo ${x; cat > README.md'), ['?${x; cat > README.md'])
+  assert.deepEqual(paths('echo ${x:-$(cat > README.md)'), ['?${x:-$(cat > README.md)', 'README.md'])
+  // A process substitution glued to other text is no lone /dev/fd/N: an unresolved target.
+  assert.deepEqual(paths('tee out<(true)'), ['?out<(true)'])
+  assert.deepEqual(paths('tee x>(cat)y'), ['?x>(cat)y'])
+  assert.deepEqual(paths('echo hi > out<(true)'), ['?out<(true)'])
+  assert.deepEqual(paths('tee <(true)<(true)'), ['?<(true)<(true)'])
+  // A lone process substitution is still no target; its body is still read.
+  assert.deepEqual(paths('tee >(grep x) out.txt'), ['out.txt'])
+  assert.deepEqual(paths('tee x>(cat > r6.md)'), ['r6.md', '?x>(cat > r6.md)'])
+  assert.deepEqual(paths('diff <(sort a) <(sort b)'), [])
+  assert.deepEqual(paths('echo ${x:-\\$} ${a}${b}'), [])
+})
+
+test('an escaped \\${, an unclosed ${ or a process substitution glued to a word cannot hide a write on main', () => {
+  for (const cmd of ['echo ${x:-\\${}; cat > NOTES.md; echo }', 'echo ${x; cat > NOTES.md', 'echo ${x:-$(cat > NOTES.md)', 'tee out<(true)', 'tee x>(cat)y']) {
+    const r = bash(main, 'branch-guard.sh', cmd)
+    assert.equal(r.decision, 'deny', `${cmd}: ${r.out}`)
+    assert.match(r.out, /BRANCH_GUARD:/)
+  }
+  for (const cmd of ['diff <(sort a) <(sort b)', 'tee >(grep x) /dev/null']) {
+    const r = bash(main, 'branch-guard.sh', cmd)
+    assert.equal(r.decision, 'allow', `${cmd}: ${r.out}`)
+  }
+})
+
 test('plan-file guard: a plain mv of an existing plan into plans/done/ is a move, not a new plan', () => {
   const planGuard = (command) => {
     const input = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command }, cwd: main })

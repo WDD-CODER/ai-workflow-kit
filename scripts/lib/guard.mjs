@@ -186,12 +186,17 @@ function substEnd(src, i) {
   return src.length
 }
 
-/** The end index (exclusive) of a `${…}` that opens at src[i] === '$': like bash, only a nested `${` nests; quoted
- *  parts and `$(…)` / backtick substitutions inside are skipped whole. */
+/** { end, closed } of a `${…}` that opens at src[i] === '$': end is the index (exclusive) after its `}`. Like bash,
+ *  only a nested `${` nests — a `{` right after an unescaped `$` (`\${` is a literal `$` and a literal `{`); quoted
+ *  parts and `$(…)` / backtick substitutions inside are skipped whole. No closing `}`: closed false, end src.length
+ *  (the caller fails closed). */
 function braceEnd(src, i) {
-  let depth = 0
-  for (let j = i + 1; j < src.length; j++) {
+  let depth = 1
+  let dollar = false // the character before src[j] was an unescaped `$`
+  for (let j = i + 2; j < src.length; j++) {
     const c = src[j]
+    const afterDollar = dollar
+    dollar = false
     if (c === '\\') j++
     else if (c === "'") {
       const e = src.indexOf("'", j + 1)
@@ -202,10 +207,11 @@ function braceEnd(src, i) {
       const e = src.indexOf('`', j + 1)
       j = e < 0 ? src.length : e
     } else if (c === '$' && src[j + 1] === '(') j = substEnd(src, j) - 1
-    else if (c === '{' && (j === i + 1 || src[j - 1] === '$')) depth++
-    else if (c === '}' && --depth === 0) return j + 1
+    else if (c === '$') dollar = !afterDollar // `$$` is the PID: the `{` after it is literal
+    else if (c === '{' && afterDollar) depth++
+    else if (c === '}' && --depth === 0) return { end: j + 1, closed: true }
   }
-  return src.length
+  return { end: src.length, closed: false }
 }
 
 /** Is the `(` at src[open] the first of an arithmetic `((…))` (bash's rule: the `(` after it closes, then `)` follows
@@ -339,8 +345,9 @@ export function lex(cmd) {
       }
       if (c === '$' && src[i + 1] === '{') {
         // `${x:-$(cmd)}` / `${x:-`cmd`}`: the nested substitutions run; nested `${…}` count toward the end.
-        const e = braceEnd(src, i)
-        for (const b of arithSubs(src.slice(i + 2, src[e - 1] === '}' ? e - 1 : e))) addSub(b)
+        const { end: e, closed } = braceEnd(src, i)
+        if (!closed) word.unclosed = true // where it ends is unknown: the word is judged unresolved (fail closed)
+        for (const b of arithSubs(src.slice(i + 2, closed ? e - 1 : e))) addSub(b)
         word.w += src.slice(i, e)
         i = e
         continue
@@ -358,10 +365,13 @@ export function lex(cmd) {
     }
     // Process substitution `<(cmd)` / `>(cmd)`: part of a word (bash passes /dev/fd/N), its body a command of its own —
     // so `<((echo x > f))` is a subshell inside it, never arithmetic.
+    // procsub: its text when it starts the word, else true — a word that is exactly that text is one process
+    // substitution; one mixing it with anything else (`out<(true)`) is an unresolved target.
     if ((c === '<' || c === '>') && src[i + 1] === '(') {
       const e = substEnd(src, i)
+      const starts = !word
       ensure().dyn = true
-      word.procsub = true
+      word.procsub ??= starts ? src.slice(i, e) : true
       addSub(src.slice(i + 2, src[e - 1] === ')' ? e - 1 : e))
       word.w += src.slice(i, e)
       i = e
@@ -445,8 +455,13 @@ export function bashWrites(command, cwd, env = process.env) {
   let dir = cwd == null ? null : nativePath(cwd, env) // null: unknown folder (a cd the guard could not follow)
   // from: the file a mv moves to this target (the plan-file rule tells a moved plan from a new one).
   const add = (word, d, from) => {
-    // A process substitution `>(cmd)` is no file: its body's writes are read as a command (subWrites).
-    if (!word || DEV_SINKS.has(word.w) || word.procsub) return
+    if (!word || DEV_SINKS.has(word.w)) return
+    // A word that is exactly one process substitution `>(cmd)` is no file: its body's writes are read as a command
+    // (subWrites). A word mixing one with other text (`out<(true)`, `x>(cat)y`) is judged unresolved (fail closed).
+    if (word.procsub) {
+      if (word.w !== word.procsub) targets.push({ unresolved: word.w, dir: d })
+      return
+    }
     const p = resolveWord(word, d, env)
     // An unresolved target keeps the shell's folder at that point (null when unknown): the guard judges it too.
     targets.push(p ? { path: p, ...(from ? { from } : {}) } : { unresolved: word.w, dir: d })
@@ -532,7 +547,9 @@ export function bashWrites(command, cwd, env = process.env) {
     }
   }
   // A `$(…)` or backtick substitution is a command of its own: its writes count, read from the shell's folder there.
+  // A word with an unclosed `${` hides where the next command starts: it counts as an unresolved target.
   const subWrites = (word) => {
+    if (word?.unclosed) targets.push({ unresolved: word.w, dir })
     for (const body of word?.subs ?? []) for (const t of bashWrites(body, dir, env)) targets.push(t)
   }
   // inTest: inside `[[ … ]]` (after any reserved words: `if [[ $a > $b ]]`), where `>` and `<` compare strings.

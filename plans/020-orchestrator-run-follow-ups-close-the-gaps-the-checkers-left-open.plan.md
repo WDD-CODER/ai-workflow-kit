@@ -248,3 +248,22 @@ Security-review follow-up (2026-10-22):
   tools/e2e-check.mjs` → exit 0 (`E2E_CHECK: ok — 53 cases passed`); `node tools/drift-check.mjs --target .` → exit 0
   (`KIT_DRIFT: ok — 0 undeclared differences`); `node --test tools/test/*.test.mjs` → exit 0 (`tests 109`, `pass
   109`, `fail 0`); `node tools/orchestrator-e2e.mjs` → exit 0 (`ORCHESTRATOR_E2E: ok — 64 cases passed`).
+
+security review round 3 (2026-10-22):
+- HIGH `braceEnd()` nested on any `{` after a `$`, even an escaped `\$` (`echo ${x:-\${}; cat > README.md; echo }`
+  hid the `cat`), and an unclosed `${` ran to the end (fail open) → `core/scripts/lib/guard.mjs:193` tracks an
+  unescaped-`$` flag (cleared after every other character, `$$` toggles it off) and nests only `{` right after one;
+  it returns `{ end, closed }`, an unclosed `${` marks the word `unclosed` (`:349`) and `bashWrites` counts that word
+  as an unresolved target (`:552`), denied on a guarded folder.
+- HIGH a word mixing a process substitution with other text (`tee out<(true)`, `x>(cat)y`) was dropped → the lexer
+  stores `procsub` as the substitution's text only when it starts the word (`:374`); `add()` skips only a word that
+  is exactly that text and judges any other procsub word unresolved (`:461`). The body is still read for writes.
+- Tests: `bashWrites: \\${ and $${ do not nest a ${ … }; an unclosed ${ or a word mixing text and <( … ) is
+  unresolved` and `an escaped \\${, an unclosed ${ or a process substitution glued to a word cannot hide a write on
+  main` (`tee >(grep x) out.txt` still only `out.txt`; `diff <(sort a) <(sort b)` allowed). Against the previous
+  `scripts/lib/guard.mjs` (copied to the OS temp folder): 9 of 13 bashWrites cases fail; all pass on the fix.
+- Evidence (after `node tools/sync.mjs --target . --apply`): `npm run build` → exit 0 (`PACK_CHECK: ok`); `npm run
+  lint` → exit 0 (3× `LEAK_CHECK: ok`); `npm run test` → exit 0 (`WORKFLOW_LINK_CHECK: ok`); `node
+  tools/e2e-check.mjs` → exit 0 (`E2E_CHECK: ok — 53 cases passed`); `node tools/drift-check.mjs --target .` → exit 0
+  (`KIT_DRIFT: ok — 0 undeclared differences`); `node --test tools/test/*.test.mjs` → exit 0 (`tests 111`, `pass
+  111`, `fail 0`); `node tools/orchestrator-e2e.mjs` → exit 0 (`ORCHESTRATOR_E2E: ok — 64 cases passed`).
