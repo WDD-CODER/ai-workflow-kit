@@ -112,7 +112,12 @@ const sh = (cmd, args, cwd, input) => {
 const git = (cwd, ...args) => sh('git', args, cwd)
 const node = (cwd, ...args) => sh(process.execPath, args, cwd)
 const npm = (cwd, cmd) => spawnSync(cmd, { cwd, env, encoding: 'utf8', shell: true })
-const tail = (s) => s.trim().split(/\r?\n/).slice(-3).join(' | ')
+// The last 3 lines, plus any failing TAP test lines and their error message, so a CI failure names the test.
+const tail = (s) => {
+  const lines = s.trim().split(/\r?\n/)
+  const failed = lines.filter((l) => /^\s*not ok \d+|^\s*error: /.test(l)).slice(0, 8)
+  return [...failed, ...lines.slice(-3)].join(' | ')
+}
 // True when nothing listens on `port` (a listen attempt succeeds); retried while a stop settles.
 const portFree = (port) => {
   for (let i = 0; i < 20; i++) {
