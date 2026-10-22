@@ -72,6 +72,7 @@ tools/orchestrator-e2e.mjs
 tools/fixtures/orchestrator/**
 tools/test/**
 tools/e2e-check.mjs
+core/docs/agent/workflow-map.md
 .kit/config.json
 .kit/install.json
 scripts/**
@@ -216,3 +217,5 @@ Security-review follow-up (2026-10-22):
   106`, `fail 0`); `node tools/orchestrator-e2e.mjs` → exit 0 (`ORCHESTRATOR_E2E: ok — 64 cases passed`). New guards
   tests: `bashWrites: a quoted or escaped [[ is a word, an unclosed [[ fails closed, (( … )) substitutions count` and
   `a quoted [[, an unclosed [[ or a substitution inside (( … )) cannot hide a write on main` (branch-guard denies).
+
+- scope extended: core/docs/agent/workflow-map.md — approved by the Human in chat 2026-10-22 ("approved: core/docs/agent/workflow-map.md"); added the Bash plan-file guard row and corrected the scope-guard row (fail closed, not silent allow).

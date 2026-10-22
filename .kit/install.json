@@ -3,7 +3,7 @@
     "version": "1.4.0"
   },
   "source": "local:.",
-  "commit": "a129759aea7490fdf055f1f71862ba869fb859c1",
+  "commit": "fe0e4d21bb5e43e7b3fa2a1f6146141bd51c9865",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -355,7 +355,7 @@
       "source": "core/docs/agent/standards-security.md"
     },
     "docs/agent/workflow-map.md": {
-      "sha256": "f85434dd00a1673aa47e4c2d9463af6bd828ab7532d733d208fd7d569c52fcca",
+      "sha256": "7ccdfded887547b874d60d84bcb489998394ea525f6ac230f64584cd44acc0db",
       "kind": "managed",
       "source": "core/docs/agent/workflow-map.md"
     },
