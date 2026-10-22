@@ -186,6 +186,28 @@ function substEnd(src, i) {
   return src.length
 }
 
+/** The end index (exclusive) of a `${…}` that opens at src[i] === '$': like bash, only a nested `${` nests; quoted
+ *  parts and `$(…)` / backtick substitutions inside are skipped whole. */
+function braceEnd(src, i) {
+  let depth = 0
+  for (let j = i + 1; j < src.length; j++) {
+    const c = src[j]
+    if (c === '\\') j++
+    else if (c === "'") {
+      const e = src.indexOf("'", j + 1)
+      j = e < 0 ? src.length : e
+    } else if (c === '"') {
+      for (j++; j < src.length && src[j] !== '"'; j++) if (src[j] === '\\') j++
+    } else if (c === '`') {
+      const e = src.indexOf('`', j + 1)
+      j = e < 0 ? src.length : e
+    } else if (c === '$' && src[j + 1] === '(') j = substEnd(src, j) - 1
+    else if (c === '{' && (j === i + 1 || src[j - 1] === '$')) depth++
+    else if (c === '}' && --depth === 0) return j + 1
+  }
+  return src.length
+}
+
 /** Is the `(` at src[open] the first of an arithmetic `((…))` (bash's rule: the `(` after it closes, then `)` follows
  *  at once)? Otherwise `((` opens nested subshells, whose commands are read as commands. */
 function arithAt(src, open) {
@@ -316,9 +338,11 @@ export function lex(cmd) {
         continue
       }
       if (c === '$' && src[i + 1] === '{') {
-        const e = src.indexOf('}', i)
-        word.w += src.slice(i, e < 0 ? src.length : e + 1)
-        i = e < 0 ? src.length : e + 1
+        // `${x:-$(cmd)}` / `${x:-`cmd`}`: the nested substitutions run; nested `${…}` count toward the end.
+        const e = braceEnd(src, i)
+        for (const b of arithSubs(src.slice(i + 2, src[e - 1] === '}' ? e - 1 : e))) addSub(b)
+        word.w += src.slice(i, e)
+        i = e
         continue
       }
       if (c === '`') {
@@ -330,6 +354,17 @@ export function lex(cmd) {
       }
       word.w += c
       i++
+      continue
+    }
+    // Process substitution `<(cmd)` / `>(cmd)`: part of a word (bash passes /dev/fd/N), its body a command of its own —
+    // so `<((echo x > f))` is a subshell inside it, never arithmetic.
+    if ((c === '<' || c === '>') && src[i + 1] === '(') {
+      const e = substEnd(src, i)
+      ensure().dyn = true
+      word.procsub = true
+      addSub(src.slice(i + 2, src[e - 1] === ')' ? e - 1 : e))
+      word.w += src.slice(i, e)
+      i = e
       continue
     }
     // An arithmetic command `(( a > b ))` / `for ((i=0; i<3; i++))`: one word, its `>` and `<` are comparisons.
@@ -408,17 +443,22 @@ export function nativePath(p, env = process.env) {
 export function bashWrites(command, cwd, env = process.env) {
   const targets = []
   let dir = cwd == null ? null : nativePath(cwd, env) // null: unknown folder (a cd the guard could not follow)
-  const add = (word, d) => {
-    if (!word || DEV_SINKS.has(word.w)) return
+  // from: the file a mv moves to this target (the plan-file rule tells a moved plan from a new one).
+  const add = (word, d, from) => {
+    // A process substitution `>(cmd)` is no file: its body's writes are read as a command (subWrites).
+    if (!word || DEV_SINKS.has(word.w) || word.procsub) return
     const p = resolveWord(word, d, env)
     // An unresolved target keeps the shell's folder at that point (null when unknown): the guard judges it too.
-    targets.push(p ? { path: p } : { unresolved: word.w, dir: d })
+    targets.push(p ? { path: p, ...(from ? { from } : {}) } : { unresolved: word.w, dir: d })
   }
   const toks = lex(command)
   let cmd = []
+  // A redirection in the current simple command: after one, `[[` is a plain word, not the test keyword.
+  let cmdRedir = false
   const flush = () => {
     const words = cmd
     cmd = []
+    cmdRedir = false
     if (!words.length) return
     let k = 0
     while (k < words.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[k].w) || PREFIXES.has(words[k].w) || RESERVED.has(words[k].w))) k++
@@ -481,9 +521,13 @@ export function bashWrites(command, cwd, env = process.env) {
       try {
         isDir = !!d && statSync(d).isDirectory()
       } catch {}
-      if (isDir && t < 0 && sources.length) for (const s of sources) targets.push({ path: join(d, basename(s.w)) })
-      else if (isDir && t >= 0) for (const s of sources) targets.push({ path: join(d, basename(s.w)) })
-      else add(dest, dir)
+      const from = (s) => (name === 'mv' ? resolveWord(s, dir, env) : null)
+      const into = (s) => {
+        const f = from(s)
+        targets.push({ path: join(d, basename(s.w)), ...(f ? { from: f } : {}) })
+      }
+      if (isDir && (sources.length || t >= 0)) for (const s of sources) into(s)
+      else add(dest, dir, sources.length === 1 ? from(sources[0]) : null)
       if (name === 'mv') for (const s of sources) add(s, dir) // the source is removed
     }
   }
@@ -509,6 +553,7 @@ export function bashWrites(command, cwd, env = process.env) {
       flush()
       continue
     }
+    if (t.op && !inTest) cmdRedir = true
     if (t.op === '>' || t.op === '>>') {
       const next = toks[j + 1]
       if (inTest) {
@@ -540,7 +585,9 @@ export function bashWrites(command, cwd, env = process.env) {
     }
     if (t.op) continue
     subWrites(t)
-    if (t.w === '[[' && !t.quoted && cmd.every((w) => RESERVED.has(w.w) && !w.quoted)) inTest = true
+    // `[[` is the test keyword only at the start of a simple command: nothing but unquoted reserved words before it,
+    // and no redirection (`2>/dev/null [[ a > f ]]` runs a command named `[[` and writes f).
+    if (t.w === '[[' && !t.quoted && !cmdRedir && cmd.every((w) => RESERVED.has(w.w) && !w.quoted)) inTest = true
     else if (t.w === ']]' && !t.quoted && inTest) endTest(true)
     cmd.push(t)
   }
@@ -798,6 +845,8 @@ export function planWriteDecision(input, repo, similarity) {
   for (const t of bashWrites(ti.command, cwd)) {
     const norm = t.path ? toPosix(t.path) : ''
     if (!/plans\/.+\.plan\.md$/.test(norm) || existsSync(t.path)) continue
+    // `mv plans/NNN-x.plan.md plans/done/NNN-x.plan.md`: an existing plan moved under its own name is no new plan.
+    if (t.from && basename(t.from) === basename(t.path) && /plans\/.+\.plan\.md$/.test(toPosix(t.from)) && existsSync(t.from)) continue
     const ack = readTrim(ackFile).replace(/\\/g, '/')
     const rel = norm.replace(/^.*(plans\/.*\.plan\.md)$/, '$1')
     if (ack && (norm.endsWith(ack) || ack.endsWith(rel))) {

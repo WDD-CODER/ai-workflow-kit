@@ -468,3 +468,55 @@ test('the Bash matcher runs the plan-file guard: a shell command writing a new, 
   assert.equal(acked.decision, 'allow', acked.out)
   assert.equal(existsSync(join(main, '.claude', '.plan-write-ack')), false)
 })
+
+// /review-it round 1 (plan 020): three ways a write hid from the reader, and a plain mv of a plan.
+test('bashWrites: a redirection before [[ makes it a word; <( … ) / >( … ) and ${ … } substitutions are read for writes', async () => {
+  const { bashWrites } = await import(pathToFileURL(join(project, 'scripts', 'lib', 'guard.mjs')).href)
+  const cwd = main
+  const paths = (cmd) => bashWrites(cmd, cwd).map((t) => (t.path ? relative(cwd, t.path).split(sep).join('/') : `?${t.unresolved}`))
+  // bash: `[[` is the keyword only at the start of a simple command — after a redirection it is a command name.
+  assert.deepEqual(paths('2>/dev/null [[ a > README.md ]]'), ['README.md'])
+  assert.deepEqual(paths('</dev/null [[ a > r1.md ]]'), ['r1.md'])
+  // `<((…))` / `>((…))` are process substitutions holding a subshell, never arithmetic.
+  assert.deepEqual(paths('cat <((echo x > README.md))'), ['README.md'])
+  assert.deepEqual(paths('tee >((cat > README.md))'), ['README.md'])
+  assert.deepEqual(paths('diff <(echo x > r2.md) <(sort b)'), ['r2.md'])
+  // A process substitution is no file target; a real file next to it still is.
+  assert.deepEqual(paths('tee >(grep x) out.txt'), ['out.txt'])
+  // Substitutions inside an unquoted `${…}` run (nested `${…}` too).
+  assert.deepEqual(paths('echo ${x:-$(cat > README.md)}'), ['README.md'])
+  assert.deepEqual(paths('echo ${x:-`cat > README.md`}'), ['README.md'])
+  assert.deepEqual(paths('echo ${x:-${y:-$(tee r3.md)}}'), ['r3.md'])
+  // Still comparisons / no writes.
+  assert.deepEqual(paths('if [[ $a > $b ]]; then :; fi'), [])
+  assert.deepEqual(paths('[[ $a > $b ]] && echo ${x:-y}'), [])
+  assert.deepEqual(paths('for ((i = 0; i < (3); i++)); do :; done'), [])
+})
+
+test('a redirect before [[, a process substitution or a ${ … } substitution cannot hide a write on main', () => {
+  for (const cmd of ['2>/dev/null [[ a > NOTES.md ]]', 'cat <((echo x > NOTES.md))', 'tee >((cat > NOTES.md))', 'echo ${x:-$(cat > NOTES.md)}', 'echo ${x:-`cat > NOTES.md`}']) {
+    const r = bash(main, 'branch-guard.sh', cmd)
+    assert.equal(r.decision, 'deny', `${cmd}: ${r.out}`)
+    assert.match(r.out, /BRANCH_GUARD:/)
+  }
+  const r = bash(main, 'branch-guard.sh', 'if [[ $a > $b ]]; then :; fi')
+  assert.equal(r.decision, 'allow', r.out)
+})
+
+test('plan-file guard: a plain mv of an existing plan into plans/done/ is a move, not a new plan', () => {
+  const planGuard = (command) => {
+    const input = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command }, cwd: main })
+    const r = spawnSync(process.execPath, [join(main, 'scripts', 'lib', 'guard.mjs'), 'plan'], { cwd: main, input, encoding: 'utf8', timeout: 30000 })
+    const m = (r.stdout ?? '').match(/"permission":"(allow|deny)"/)
+    return { decision: m ? m[1] : `unparsed (${r.stdout}${r.stderr})`, out: `${r.stdout}${r.stderr}` }
+  }
+  assert.ok(existsSync(join(main, 'plans', '001-alpha.plan.md')))
+  const moved = planGuard('mv plans/001-alpha.plan.md plans/done/001-alpha.plan.md')
+  assert.equal(moved.decision, 'allow', moved.out)
+  // A copy, or a mv under a new name, still writes a new name-similar plan.
+  for (const cmd of ['cp plans/001-alpha.plan.md plans/done/001-alpha.plan.md', 'mv plans/001-alpha.plan.md plans/009-alpha.plan.md']) {
+    const r = planGuard(cmd)
+    assert.equal(r.decision, 'deny', `${cmd}: ${r.out}`)
+    assert.match(r.out, /PLAN_WRITE_GUARD: blocked new plan write/)
+  }
+})

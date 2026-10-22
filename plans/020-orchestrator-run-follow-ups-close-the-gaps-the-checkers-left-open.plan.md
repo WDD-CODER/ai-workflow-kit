@@ -79,6 +79,8 @@ scripts/**
 .claude/**
 docs/agent/**
 CHANGELOG.md
+core/.claude/commands/auto-solve.md
+.claude/commands/auto-solve.md
 ```
 
 ## Read Scope
@@ -219,3 +221,30 @@ Security-review follow-up (2026-10-22):
   `a quoted [[, an unclosed [[ or a substitution inside (( … )) cannot hide a write on main` (branch-guard denies).
 
 - scope extended: core/docs/agent/workflow-map.md — approved by the Human in chat 2026-10-22 ("approved: core/docs/agent/workflow-map.md"); added the Bash plan-file guard row and corrected the scope-guard row (fail closed, not silent allow).
+- scope extended: core/.claude/commands/auto-solve.md — /review-it finding bugs-2 is caused by this plan's A3 (orchestrator Planner decision, the Human approves at PR review)
+
+/review-it round 1 (2026-10-22):
+- MAJOR redirect before `[[` (`2>/dev/null [[ a > README.md ]]` opened test mode) → `core/scripts/lib/guard.mjs`
+  `bashWrites` tracks `cmdRedir` per simple command (reset in `flush()`); `[[` opens a test only with nothing but
+  unquoted reserved words before it and no redirection. Test: `bashWrites: a redirection before [[ makes it a word;
+  <( … ) / >( … ) and ${ … } substitutions are read for writes` + `a redirect before [[, a process substitution or a
+  ${ … } substitution cannot hide a write on main` (`if [[ $a > $b ]]` still allowed).
+- MAJOR `<((…))` read as arithmetic → the lexer reads `<(`/`>(` as a process substitution (one word, `procsub`, its
+  body a substitution read for writes; never a file target itself), so `((` after `<`/`>` is never arithmetic. Same
+  two tests (`cat <((echo x > README.md))`, `tee >((cat > README.md))`).
+- MAJOR unquoted `${…}` copied to the first `}` → new `braceEnd()` (only `${` nests, quotes and `$(…)`/backticks
+  skipped whole); the body's `$(…)`/backtick substitutions go through `addSub`. Same two tests
+  (`echo ${x:-$(cat > README.md)}`, the backtick form, a nested `${…${…$(…)}}`).
+- minor plain `mv` of a plan denied as a new plan → `bashWrites` marks a mv target with its source (`from`);
+  `planWriteDecision` allows a target whose source is an existing `plans/*.plan.md` with the same basename. Test:
+  `plan-file guard: a plain mv of an existing plan into plans/done/ is a move, not a new plan` (cp, and mv to a new
+  name, stay denied).
+- minor auto-solve UI gate listed `{{paths.hotspots}}` → `core/.claude/commands/auto-solve.md:80` names the UI text
+  file `{{project.i18nFile}}` and says that `(not set)` means only the component/page patterns count (scope extended
+  above). No test: a command text; drift-check covers the rendered copy.
+- The three new tests fail on the previous `scripts/lib/guard.mjs` (checked: 3 fail, 0 pass) and pass on the fix.
+- Evidence (after `node tools/sync.mjs --target . --apply`): `npm run build` → exit 0 (`PACK_CHECK: ok`); `npm run
+  lint` → exit 0 (3× `LEAK_CHECK: ok`); `npm run test` → exit 0 (`WORKFLOW_LINK_CHECK: ok`); `node
+  tools/e2e-check.mjs` → exit 0 (`E2E_CHECK: ok — 53 cases passed`); `node tools/drift-check.mjs --target .` → exit 0
+  (`KIT_DRIFT: ok — 0 undeclared differences`); `node --test tools/test/*.test.mjs` → exit 0 (`tests 109`, `pass
+  109`, `fail 0`); `node tools/orchestrator-e2e.mjs` → exit 0 (`ORCHESTRATOR_E2E: ok — 64 cases passed`).

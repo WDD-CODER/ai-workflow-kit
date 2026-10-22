@@ -77,7 +77,7 @@ Review what would be lost. Surface to user if significant changes detected.
 
 For each checkbox in the plan:
 
-**Step 1 — UI-DETECTION GATE:** Before pre-validating any checkboxes, scan the plan's target files. If any target file matches `**/*.component.html`, `**/*.component.ts`, `**/*.component.{{stack.stylesheetExt}}`, `**/*.page.html`, `**/*.page.ts`, `**/*.page.{{stack.stylesheetExt}}`, or `{{paths.hotspots}}` — the plan is **UI-TOUCHING**. For UI-TOUCHING plans, Phase 2 MUST invoke {{tools.browser}}` against the affected route(s) at least once, capture a snapshot, and include the snapshot summary in the pre-validation output. Grep-only verification is forbidden for UI-TOUCHING plans.
+**Step 1 — UI-DETECTION GATE:** Before pre-validating any checkboxes, scan the plan's target files. If any target file matches `**/*.component.html`, `**/*.component.ts`, `**/*.component.{{stack.stylesheetExt}}`, `**/*.page.html`, `**/*.page.ts`, `**/*.page.{{stack.stylesheetExt}}`, or the UI text file `{{project.i18nFile}}` (when it reads `(not set)`, the project has none and only the patterns before it count) — the plan is **UI-TOUCHING**. For UI-TOUCHING plans, Phase 2 MUST invoke {{tools.browser}}` against the affected route(s) at least once, capture a snapshot, and include the snapshot summary in the pre-validation output. Grep-only verification is forbidden for UI-TOUCHING plans.
 
 **Step 1a — Route identification:** To identify the affected route, read the page component's usage in `{{paths.routesFile}}`. If the route cannot be identified, ask the user which route to probe before proceeding. Do not guess.
 

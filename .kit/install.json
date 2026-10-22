@@ -3,7 +3,7 @@
     "version": "1.4.0"
   },
   "source": "local:.",
-  "commit": "fe0e4d21bb5e43e7b3fa2a1f6146141bd51c9865",
+  "commit": "66d80d079f71d7112b543543399bcb865e50a709",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -80,7 +80,7 @@
       "source": "core/.claude/agents/orch-verify.md"
     },
     ".claude/commands/auto-solve.md": {
-      "sha256": "2773e2ea9b595eeac701ded6a903463021a823b484429acb8ccde9c122a2a2d2",
+      "sha256": "88900c3ed22ef3a2ae670e942b5303959017dfb82d6de61d341da4b5c4f1e49e",
       "kind": "managed",
       "source": "core/.claude/commands/auto-solve.md"
     },
@@ -525,7 +525,7 @@
       "source": "core/scripts/lib/fe-command.mjs"
     },
     "scripts/lib/guard.mjs": {
-      "sha256": "0371293aa3f5224814669b780707bd7fab2e8107ec4f9fc16d1748b3a3cd252f",
+      "sha256": "3906a705829396468bfb9302cbdef877baa3c341bbb40e2f5b59a4c6a8644734",
       "kind": "managed",
       "source": "core/scripts/lib/guard.mjs"
     },
