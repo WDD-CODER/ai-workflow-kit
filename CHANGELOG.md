@@ -9,6 +9,8 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-22
+
 The kit uses its own workflow: it is installed into the kit repo and works solo (plan on `main`, build on a
 `feat/NNN-<slug>` branch in the same folder, `/ship`).
 
@@ -184,7 +186,7 @@ on every machine and a mod change reaches those machines with a kit release.
 - ship-pilot 0.4.0: no behaviour change (one shared copy from the marketplace).
 - CI runs `leak-check` on the mods (their tests are fixtures and are not scanned). Cloud sessions do not get the mods.
 
-### What a project must do
+### What a project must do (continued)
 
 Nothing. Sync and commit. Rendered files that change (`kit-update`): `docs/agent/job-validation.md`,
 `.claude/commands/take-plan.md`, `.claude/commands/ship.md`, `.claude/commands/done.md`, `AGENTS.md` and, with the
@@ -780,7 +782,8 @@ Phases 4 to 6A, never tagged. Projects installed from a local kit folder.
 Phases 1 and 2, before this repository existed: the workflow was extracted from its source project into a
 stack-neutral `core/` with `{{placeholder}}` config keys and a leak check.
 
-[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.4.0
 [1.3.1]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.3.1
 [1.3.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.3.0
 [1.2.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.2.0
