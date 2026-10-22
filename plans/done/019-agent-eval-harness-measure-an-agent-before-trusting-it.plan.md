@@ -1,6 +1,6 @@
 # Plan 019 — Agent Eval Harness: Measure an Agent Before Trusting It
 
-Status: active
+Status: done
 Snapshot: 3511799
 Depends-on: 013
 

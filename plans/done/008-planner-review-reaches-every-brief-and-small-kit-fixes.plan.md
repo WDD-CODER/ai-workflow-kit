@@ -1,6 +1,6 @@
 # Plan 008 — Planner Review Reaches Every Brief, and Small Kit Fixes
 
-Status: draft
+Status: done
 Snapshot: 76a46e5
 
 ## Problem Statement

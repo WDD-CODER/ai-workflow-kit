@@ -1,6 +1,6 @@
 # Plan 009 — Validation Hand-off at the End of Work: Servers Up, Cards Grouped by Page
 
-Status: draft
+Status: done
 Snapshot: f83d318
 
 ## Problem Statement

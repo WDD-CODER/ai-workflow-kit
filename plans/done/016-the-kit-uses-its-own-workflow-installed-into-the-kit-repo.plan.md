@@ -1,6 +1,6 @@
 # Plan 016 — The Kit Uses Its Own Workflow: Installed Into the Kit Repo, One Folder, No Slots
 
-Status: draft
+Status: done
 Snapshot: 812461f
 Depends-on: 015
 

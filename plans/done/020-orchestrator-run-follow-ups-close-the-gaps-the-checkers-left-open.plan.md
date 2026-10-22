@@ -1,6 +1,6 @@
 # Plan 020 — Orchestrator Run Follow-ups: Close the Gaps the Checkers Left Open
 
-Status: active
+Status: done
 Snapshot: 6bc9d95
 Depends-on: 011, 013, 014, 017, 018, 019
 

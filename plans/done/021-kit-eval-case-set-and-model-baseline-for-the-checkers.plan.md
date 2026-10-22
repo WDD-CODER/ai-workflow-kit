@@ -1,6 +1,6 @@
 # Plan 021 — Kit Eval Case Set and Model Baseline for the Checkers
 
-Status: active
+Status: done
 Snapshot: 305fce2
 Depends-on: 019, 020
 

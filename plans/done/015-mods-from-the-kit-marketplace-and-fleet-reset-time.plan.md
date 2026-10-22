@@ -1,6 +1,6 @@
 # Plan 015 — Mods From the Kit's Marketplace, Kept in Sync; fleet Shows When the 5-Hour Window Resets
 
-Status: in-progress
+Status: done
 Snapshot: 53ca2c6
 
 ## Problem Statement

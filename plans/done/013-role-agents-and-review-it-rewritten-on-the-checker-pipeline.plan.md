@@ -1,6 +1,6 @@
 # Plan 013 — Role Agents, and /review-it Rewritten on the Checker Pipeline
 
-Status: active
+Status: done
 Snapshot: 3511799
 Depends-on: 011, 012
 

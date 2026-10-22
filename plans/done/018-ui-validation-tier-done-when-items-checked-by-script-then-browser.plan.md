@@ -1,6 +1,6 @@
 # Plan 018 — UI Validation Tier: Done-When Items Checked by a Script First, a Browser Only for Failures
 
-Status: active
+Status: done
 Snapshot: 3511799
 Depends-on: 014
 

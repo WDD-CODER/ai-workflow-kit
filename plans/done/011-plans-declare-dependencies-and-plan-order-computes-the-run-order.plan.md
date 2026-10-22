@@ -1,6 +1,6 @@
 # Plan 011 — Plans Declare Dependencies, and plan-order Computes the Run Order
 
-Status: active
+Status: done
 Depends-on: none
 Snapshot: 3511799
 

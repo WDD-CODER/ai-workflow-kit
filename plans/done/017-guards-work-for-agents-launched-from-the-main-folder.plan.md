@@ -1,6 +1,6 @@
 # Plan 017 — Guards Work for Agents Launched From the Main Folder: Prove First, Then Fix the Gaps
 
-Status: active
+Status: done
 Snapshot: 3511799
 Depends-on: 011
 

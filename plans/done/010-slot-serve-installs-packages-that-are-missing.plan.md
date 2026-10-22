@@ -1,6 +1,6 @@
 # Plan 010 — Slot Serve Installs Packages That Are Missing, Not Only Ones That Changed
 
-Status: active
+Status: done
 Snapshot: 5704089
 
 ## Problem Statement
