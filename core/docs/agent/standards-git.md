@@ -17,6 +17,14 @@
   `$(...)` target is refused where a write needs a check. Outside a slot, a branch that names a plan (`feat/NNN-<slug>`,
   or `.worktree-plan` in a run's merge folder) is held to that plan's scope. An out-of-scope need goes to the Human as
   `approved: <path>`, never round the guard.
+* **Strict mode for complex shell writes.** On a guarded folder, a Bash command that writes and uses `$(…)`, `${…}`,
+  backticks, `<(…)`/`>(…)`, `[[`, `((`, `$'…'`/`$"…"` or `eval` is refused ("the guard cannot verify every target")
+  unless every write in it is a top-level redirect, `tee`, `cp`/`mv`/`install`/`ln`, `touch`, `truncate` or
+  `sed -i`/`perl -i` to a plain literal path the reader found — no write inside a substitution, a process
+  substitution, an unquoted here-document or a nested `sh -c`. Why: shell parsing kept producing new ways to hide a
+  write from the reader; this rule fails closed instead. Instead: write the file with the Write/Edit tool, or use a
+  plain redirect to a literal path (`echo "$(date)" > notes.md` is fine). Commands without those constructs are judged
+  as before.
 * Secrets live in `.env` only. Never stage, commit, or print secrets. Never weaken `.gitignore`.
 * Build gate: `npm run {{commands.build}}` must pass before any commit.
 * Lint gate: `npm run {{commands.lint}}` must pass before milestone sign-off.

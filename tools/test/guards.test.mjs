@@ -557,3 +557,87 @@ test('plan-file guard: a plain mv of an existing plan into plans/done/ is a move
     assert.match(r.out, /PLAN_WRITE_GUARD: blocked new plan write/)
   }
 })
+
+// Strict guard (plan 020, decided by the Human 2026-10-22): a complex command ($(…), ${…}, backticks, <(…), [[, ((,
+// $'…') that writes passes only when every write is a top-level plain target the reader found. Every bypass the review
+// rounds found is refused by it, whatever the reader makes of it.
+const STRICT_BYPASSES = [
+  '2>/dev/null [[ a > README.md ]]',
+  'cat <((echo x > README.md))',
+  'echo ${x:-$(cat > README.md)}',
+  'echo ${x:-\\${}; cat > README.md; echo }',
+  'tee out<(true)',
+  "'[[' x > README.md",
+  "echo $'a\\' > README.md' > /dev/null",
+  "x=$'\\''; cat > README.md",
+  "echo $'\\'' > /dev/null; cat > README.md",
+  'cat <<EOF > /dev/null\n$(cat > README.md)\nEOF',
+  "echo '<<EOF'\n$(cat > README.md)\nEOF",
+  'bash -lc "echo $(date) > README.md"',
+]
+const STRICT_ALLOWED = [
+  'npm run build > log.txt',
+  "cat > plans/003-gamma.plan.md <<'EOF'\n# x `code` $(not run) > not-a-target\nEOF",
+  'mv plans/001-alpha.plan.md plans/done/001-alpha.plan.md',
+  'if [[ $a > $b ]]; then :; fi',
+  '(( a > b ))',
+  'diff <(sort a) <(sort b)',
+  'echo "$(date)" > notes.md',
+  `git commit -m "$(cat <<'EOF'\nfeat: a -> b "quoted" (open\nCo-Authored-By: X <x@example.invalid>\nEOF\n)" && git push`,
+  'tee >(grep x) /dev/null',
+]
+
+test('strictShell: every bypass of the earlier rounds and $\'…\' quoting is refused; plain and read-only commands pass', async () => {
+  const { bashWrites, strictShell } = await import(pathToFileURL(join(project, 'scripts', 'lib', 'guard.mjs')).href)
+  const cwd = main
+  const strict = (cmd) => strictShell(cmd, cwd, bashWrites(cmd, cwd))
+  // Two bypasses are plain top-level redirects to strict mode: it passes them on only because the reader found
+  // README.md (which the normal rule then judges); every other one is refused outright.
+  const plainToStrict = ['2>/dev/null [[ a > README.md ]]', "'[[' x > README.md"]
+  for (const cmd of plainToStrict) {
+    assert.equal(strict(cmd), null, cmd)
+    assert.ok(bashWrites(cmd, cwd).some((t) => t.path && basename(t.path) === 'README.md'), cmd)
+    assert.equal(typeof strictShell(cmd, cwd, []), 'string', `refused when the reader misses README.md: ${cmd}`)
+  }
+  for (const cmd of STRICT_BYPASSES.filter((c) => !plainToStrict.includes(c))) assert.equal(typeof strict(cmd), 'string', `refused: ${JSON.stringify(cmd)}`)
+  for (const cmd of STRICT_ALLOWED) assert.equal(strict(cmd), null, `passes: ${JSON.stringify(cmd)}`)
+  // A write inside a substitution, a non-literal target, a write behind a prefix with options: refused.
+  for (const cmd of ['echo "$(echo x > a.txt)"', 'cp a.txt "$(pwd)/b"', 'sudo -u x tee a.txt < $(echo a)', '$(echo cp) a.txt b.txt; echo $(date)']) {
+    assert.equal(typeof strict(cmd), 'string', `refused: ${cmd}`)
+  }
+  // A cd the reader follows, and a comment holding a quote, keep plain targets plain.
+  assert.equal(strict('cd src && echo $(date) > y.js'), null)
+  assert.equal(strict("echo $(date) # it's\ncat > g.txt # it's"), null)
+})
+
+test('strict guard on main: a complex command that writes is refused unless its only writes are plain targets', () => {
+  for (const cmd of STRICT_BYPASSES) {
+    const r = bash(main, 'branch-guard.sh', cmd)
+    assert.equal(r.decision, 'deny', `${JSON.stringify(cmd)}: ${r.out}`)
+    assert.match(r.out, /BRANCH_GUARD:/)
+  }
+  const ansi = bash(main, 'branch-guard.sh', "x=$'\\''; cat > README.md")
+  assert.match(ansi.out, /the guard cannot verify every target/)
+  assert.match(ansi.out, /Write\/Edit tool, or use a plain redirect to a literal path/)
+  for (const cmd of ['if [[ $a > $b ]]; then :; fi', '(( a > b ))', 'diff <(sort a) <(sort b)', "cat > plans/003-gamma.plan.md <<'EOF'\n# x `code` $(not run) > nope\nEOF"]) {
+    const r = bash(main, 'branch-guard.sh', cmd)
+    assert.equal(r.decision, 'allow', `${JSON.stringify(cmd)}: ${r.out}`)
+  }
+  // A complex command whose only write is a plain top-level redirect is judged by the normal rule: refused on main for
+  // a code file — with the ordinary message, not the strict one.
+  const code = bash(main, 'branch-guard.sh', 'echo "$(date)" > src/notes.md')
+  assert.equal(code.decision, 'deny', code.out)
+  assert.doesNotMatch(code.out, /cannot verify every target/)
+})
+
+test('strict guard in a plan folder: a plain target in scope stays allowed, a hidden one is refused', () => {
+  for (const cmd of ['npm run build > src/log.txt', 'echo "$(date)" > src/notes.md', 'if [[ $a > $b ]]; then echo x > src/d.js; fi']) {
+    const r = bash(main, 'scope-guard.sh', cmd, { cwd: slot })
+    assert.equal(r.decision, 'allow', `${cmd}: ${r.out}`)
+  }
+  for (const cmd of ['echo $(echo x > src/e.js)', "x=$'\\''; cat > src/f.js"]) {
+    const r = bash(main, 'scope-guard.sh', cmd, { cwd: slot })
+    assert.equal(r.decision, 'deny', `${cmd}: ${r.out}`)
+    assert.match(r.out, /SCOPE_GUARD: this shell command writes/)
+  }
+})

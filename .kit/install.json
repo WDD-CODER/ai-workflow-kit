@@ -3,7 +3,7 @@
     "version": "1.4.0"
   },
   "source": "local:.",
-  "commit": "85f3f7ebae7ea260b66362d0e99103d4faf2bb85",
+  "commit": "931f14c0e3a7aeb6b2f715d0c79755d9a9c55960",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -345,7 +345,7 @@
       "source": "core/docs/agent/ship-regular.md"
     },
     "docs/agent/standards-git.md": {
-      "sha256": "cc7d953d7e4f2e160164c0f42d0bfa23eff07b6a9f8c85c773d58406fa412512",
+      "sha256": "1b6752742038d704a731cd0a193e88e4c0bbc2c53b4865adf1cb160a1a17bfc6",
       "kind": "managed",
       "source": "core/docs/agent/standards-git.md"
     },
@@ -355,7 +355,7 @@
       "source": "core/docs/agent/standards-security.md"
     },
     "docs/agent/workflow-map.md": {
-      "sha256": "7ccdfded887547b874d60d84bcb489998394ea525f6ac230f64584cd44acc0db",
+      "sha256": "7834a0eb9a96d29c112d9deea838fd0d5a540bbec0da6353374756346eb99fa3",
       "kind": "managed",
       "source": "core/docs/agent/workflow-map.md"
     },
@@ -525,7 +525,7 @@
       "source": "core/scripts/lib/fe-command.mjs"
     },
     "scripts/lib/guard.mjs": {
-      "sha256": "4f91efce84b764d12bca07267265c0029f31c7c8d504f3f4359e442177b84d7f",
+      "sha256": "dd1f5418df2decdcbd6444549b4068c708dc6d157238cff2f599837ab3e25f30",
       "kind": "managed",
       "source": "core/scripts/lib/guard.mjs"
     },

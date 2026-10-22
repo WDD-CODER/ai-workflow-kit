@@ -16,8 +16,10 @@
  *     targets, touch; `cd`, `bash -c` and `$(…)` / backtick substitutions are followed; `>` inside `[[ … ]]` and
  *     `(( … ))` is a comparison) and each target gets the same rule. This is best-effort — it
  *     cannot parse every shell construct — so a target it cannot resolve (a `$VAR` or `$(...)` path) is refused
- *     when this folder, the shell's folder or any worktree of the repository is guarded (fail closed). /ship's scope
- *     gate and CI drift-check stay the backstop.
+ *     when this folder, the shell's folder or any worktree of the repository is guarded (fail closed). Strict mode
+ *     (strictShell) is the backstop for the reader: a complex command ($(…), ${…}, backticks, <(…), [[, ((, $'…')
+ *     that writes is refused there too unless every write is a top-level plain target the reader found. /ship's
+ *     scope gate and CI drift-check stay the backstop.
  *   - a check that cannot run (empty/unparseable input, no file path, an error, a sibling guard with no answer, a
  *     scope check that crashes) refuses the write when the folder concerned is guarded, and allows it otherwise.
  *
@@ -613,6 +615,419 @@ export function bashWrites(command, cwd, env = process.env) {
   return targets
 }
 
+// ---------- strict mode: a complex shell command that writes ----------
+//
+// bashWrites is best-effort: every review round found another construct that hid a write from it. Strict mode is a
+// fail-closed backstop on top of it, for a command that is COMPLEX (its raw text holds `$(`, a backtick, `${`, `<(`,
+// `>(`, `$'`, `$"`, `[[`, `((`, the word eval, or an odd number of ' or ") and WRITES (a `>` that is not a
+// /dev/null-style or fd redirect, or one of the words tee cp mv install touch dd truncate ln sed perl eval and the
+// shells). Both tests read the raw text and over-include on purpose. Such a command passes only when strictScan reads
+// it whole with a small, deliberately narrow grammar and finds that
+//   - every write is at the top level — a redirect, or tee/touch/truncate/cp/mv/install/ln/sed -i/perl -i as the
+//     command — never inside a `$(…)`, backticks, a `<(…)`/`>(…)`, an unquoted here-document or a nested `sh -c`;
+//   - every write target is a plain literal path (no `$`, backtick, glob or brace), and bashWrites found each one;
+//   - nothing it cannot read for sure is present: `$'…'`, `$"…"`, `${…}` other than `${NAME}`, eval, a `((…))`
+//     with parens/quotes/substitutions inside, a process substitution glued to text, a command name built at run
+//     time, dd, a shell reading stdin, an unclosed quote/construct or here-document.
+// Anything else is refused on a guarded folder (decide): write the file with the Write/Edit tool, or use a plain
+// redirect to a literal path. A command that is not complex is judged exactly as before.
+
+const COMPLEX_RE = /\$\(|`|\$\{|<\(|>\(|\$'|\$"|\[\[|\(\(|(?:^|[^\w.-])eval(?![\w.-])/
+const SINK_REDIR_RE = /\d*>&\s*(?:\d+|-)(?![\w./-])|(?:&>>?|\d*>>?|>\|)\s*(?:\/dev\/(?:null|stdout|stderr|tty)|nul|NUL)(?![\w./-])/g
+const WRITE_WORD_RE = /(?:^|[^\w.-])(?:tee|cp|mv|install|touch|dd|truncate|ln|sed|perl|eval|bash|sh|zsh|dash|ksh)(?![\w.-])/
+const STRICT_WRITE_CMDS = new Set(['tee', 'touch', 'truncate', 'cp', 'mv', 'install', 'ln'])
+const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh'])
+const odd = (s, ch) => (s.split(ch).length - 1) % 2 === 1
+
+/** Does the raw command use a construct that can hide how it parses? */
+export function complexShell(cmd) {
+  const s = String(cmd)
+  return COMPLEX_RE.test(s) || odd(s, "'") || odd(s, '"')
+}
+
+/** Could the raw command write a file? (over-includes: quoted text counts too) */
+export function shellWrites(cmd) {
+  const s = String(cmd)
+  return />/.test(s.replace(SINK_REDIR_RE, '')) || WRITE_WORD_RE.test(s)
+}
+
+class StrictFail extends Error {}
+const sfail = (why) => {
+  throw new StrictFail(why)
+}
+const isSpace = (c) => c === ' ' || c === '\t' || c === '\r'
+const isBreak = (c) => c === undefined || isSpace(c) || c === '\n' || ';&|()<>'.includes(c)
+const posixBase = (w) => w.slice(w.lastIndexOf('/') + 1)
+
+/**
+ * Read a command with the strict grammar. Returns its top-level writes: [{ kind: 'redir', lit, abs }] and
+ * [{ kind: 'cmd', name, args: [{ lit, abs }] }] (abs: the path from the shell's folder there, null when unknown);
+ * throws StrictFail(<why>) on anything it cannot read for sure. level > 0: inside a substitution, where any write fails.
+ */
+function strictScan(src, level, cwd, env) {
+  const writes = []
+  const pending = [] // here-documents waiting for the next newline: { delim, quoted, tabs, level }
+  let pos = 0
+  let dir = cwd == null ? null : nativePath(cwd, env)
+  const abs = (lit) => resolveWord({ w: lit, dyn: false }, dir, env)
+
+  // $… at pos. inDq: inside "…" or an unquoted here-document, where $' and $" are plain text.
+  const dollar = (lvl, inDq) => {
+    const n = src[pos + 1]
+    if (n === "'" || n === '"') {
+      if (inDq) return void pos++
+      sfail(n === "'" ? "ANSI-C quoting $'…'" : 'locale quoting $"…"')
+    }
+    if (n === '(' && src[pos + 2] === '(') {
+      pos++
+      return arith()
+    }
+    if (n === '(') {
+      pos += 2
+      return list(lvl + 1, ')')
+    }
+    if (n === '{') {
+      const m = src.slice(pos).match(/^\$\{(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]|[@*#?$!-])\}/)
+      if (!m) sfail('a ${…} expansion other than ${NAME}')
+      return void (pos += m[0].length)
+    }
+    const m = src.slice(pos).match(/^\$(?:[A-Za-z_][A-Za-z0-9_]*|[0-9@*#?$!-])/)
+    pos += m ? m[0].length : 1
+  }
+  // `…` at pos: its body is read as a command of its own, one level down.
+  const backtick = (lvl) => {
+    const e = src.indexOf('`', pos + 1)
+    if (e < 0) sfail('an unclosed backtick')
+    const body = src.slice(pos + 1, e)
+    if (body.includes('\\')) sfail('a backslash inside backticks')
+    if (pending.length && body.includes('\n')) sfail('a here-document and a multi-line substitution')
+    strictScan(body, lvl + 1, dir, env)
+    pos = e + 1
+  }
+  // ((…)) at pos (the first `(`): plain arithmetic only — no parens, quotes, substitutions or braces inside.
+  const arith = () => {
+    const close = src.indexOf(')', pos + 2)
+    if (close < 0 || src[close + 1] !== ')') sfail('a ((…)) that is not plain arithmetic')
+    if (/[()'"`\\{}\n]/.test(src.slice(pos + 2, close))) sfail('a ((…)) that is not plain arithmetic')
+    pos = close + 2
+  }
+  // "…" from pos (after the opening quote).
+  const dq = (lvl) => {
+    let value = ''
+    let dyn = false
+    while (pos < src.length) {
+      const c = src[pos]
+      if (c === '"') {
+        pos++
+        return { value, dyn }
+      }
+      if (c === '\\') {
+        const n = src[pos + 1] ?? ''
+        if (!'"\\$`\n'.includes(n)) value += c
+        if (n !== '\n') value += n
+        pos += 2
+        continue
+      }
+      if (c === '$' || c === '`') {
+        if (c === '$') dollar(lvl, true)
+        else backtick(lvl)
+        dyn = true
+        continue
+      }
+      if (c === '\n' && pending.length) sfail('a here-document and a multi-line string')
+      value += c
+      pos++
+    }
+    sfail('an unclosed double quote')
+  }
+  // One word from pos: { value, dyn (a $ or backtick), glob (an unquoted * ? [ { }), quoted, raw }.
+  const word = (lvl) => {
+    const start = pos
+    let value = ''
+    let dyn = false
+    let glob = false
+    let quoted = false
+    while (pos < src.length && !isBreak(src[pos])) {
+      const c = src[pos]
+      if (c === "'") {
+        const e = src.indexOf("'", pos + 1)
+        if (e < 0) sfail('an unclosed single quote')
+        value += src.slice(pos + 1, e)
+        quoted = true
+        pos = e + 1
+      } else if (c === '"') {
+        pos++
+        const r = dq(lvl)
+        value += r.value
+        dyn ||= r.dyn
+        quoted = true
+      } else if (c === '\\') {
+        if (src[pos + 1] !== '\n') {
+          value += src[pos + 1] ?? ''
+          quoted = true
+        }
+        pos += 2
+      } else if (c === '$') {
+        dollar(lvl, false)
+        dyn = true
+      } else if (c === '`') {
+        backtick(lvl)
+        dyn = true
+      } else {
+        if ('*?[]{}'.includes(c)) glob = true
+        value += c
+        pos++
+      }
+    }
+    return { value, dyn, glob, quoted, raw: src.slice(start, pos) }
+  }
+  // The here-document bodies after a newline read at lvl: a quoted one is data; an unquoted one expands $(…)/`…`.
+  const bodies = (lvl) => {
+    if (pending.some((h) => h.level !== lvl)) sfail('a here-document across a substitution')
+    while (pending.length) {
+      const h = pending.shift()
+      for (;;) {
+        if (pos >= src.length) sfail(`an unterminated here-document (${h.delim})`)
+        let nl = src.indexOf('\n', pos)
+        if (nl < 0) nl = src.length
+        const line = src.slice(pos, nl).replace(/\r$/, '')
+        if ((h.tabs ? line.replace(/^\t+/, '') : line) === h.delim) {
+          pos = nl + 1
+          break
+        }
+        if (h.quoted) {
+          pos = nl + 1
+          continue
+        }
+        while (pos < src.length && src[pos] !== '\n') {
+          const c = src[pos]
+          if (c === '\\' && src[pos + 1] === '\n') sfail('a line continuation in a here-document')
+          if (c === '\\') pos += 2
+          else if (c === '$') dollar(lvl, true)
+          else if (c === '`') backtick(lvl)
+          else pos++
+        }
+        pos++
+      }
+    }
+  }
+  // A simple command's words, judged when it ends.
+  const command = (words, lvl) => {
+    let k = 0
+    let viaPrefix = false
+    while (k < words.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[k].value) || PREFIXES.has(words[k].value) || RESERVED.has(words[k].value))) {
+      if (PREFIXES.has(words[k].value)) viaPrefix = true
+      k++
+    }
+    const argv = words.slice(k).filter((w) => !w.arith)
+    if (!argv.length) return
+    if (argv[0].dyn || argv[0].procsub) sfail(`a command name built at run time (${argv[0].raw})`)
+    const name = posixBase(argv[0].value)
+    const args = argv.slice(1)
+    if (name === 'eval') sfail('eval')
+    if (name === 'dd') sfail('dd')
+    if (name === 'cd' || name === 'pushd' || name === 'popd') {
+      const to = args.find((a) => !a.value.startsWith('-') || a.value === '-')
+      dir = name === 'popd' || (to && (to.dyn || to.glob || to.value === '-')) ? null : to ? abs(to.value) : env.HOME || null
+      return
+    }
+    const shellAt = (j, atCmd) => {
+      const rest = args.slice(j)
+      const ci = rest.findIndex((a) => /^-[A-Za-z]*c$/.test(a.value))
+      if (ci < 0) {
+        if (!rest.some((a) => !a.value.startsWith('-'))) sfail(`${name} reading its commands from input`)
+        return
+      }
+      const body = rest[ci + 1]
+      if (!body || body.dyn) sfail('a shell -c body built at run time')
+      // The parser follows `bash -c <body>` at the top level: the body's writes must be plain too. Anywhere else
+      // (find -exec sh -c, a substitution) the body must not write at all.
+      if (atCmd && lvl === 0) writes.push(...strictScan(body.value, 0, dir, env))
+      else strictScan(body.value, lvl + 1, dir, env)
+    }
+    if (SHELLS.has(name)) return shellAt(0, true)
+    const inPlace = (name === 'sed' || name === 'perl') && args.some((a) => /^-[a-zA-Z]*i/.test(a.value) || a.value.startsWith('--in-place'))
+    if (STRICT_WRITE_CMDS.has(name) || inPlace) {
+      if (lvl > 0) sfail(`a write inside a substitution (${name})`)
+      const files = args.filter((a) => !a.procsub && !DEV_SINKS.has(a.value))
+      const bad = files.find((a) => a.dyn || a.glob)
+      if (bad) sfail(`${name} with a target that is not a plain path (${bad.raw})`)
+      const argAbs = (v) => (v.startsWith('--target-directory=') ? abs(v.slice(19)) : v.startsWith('-') ? null : abs(v))
+      writes.push({ kind: 'cmd', name, args: files.map((a) => ({ lit: a.value, abs: argAbs(a.value) })) })
+      return
+    }
+    for (let j = 0; j < args.length; j++) {
+      const a = posixBase(args[j].value)
+      if (args[j].quoted) continue
+      if (SHELLS.has(a)) shellAt(j + 1, false)
+      else if (a === 'eval') sfail('eval')
+      // A write command behind a prefix with options (`sudo -u x cp`, `xargs -0 tee`): the parser cannot follow it.
+      else if (viaPrefix && (STRICT_WRITE_CMDS.has(a) || ['dd', 'sed', 'perl'].includes(a))) sfail(`${a} after ${argv[0].value}`)
+    }
+  }
+  // Commands from pos until `closer` (')' ends a $(…) or <(…)) or the end of the text.
+  const list = (lvl, closer) => {
+    let words = []
+    let redirected = false
+    let test = false
+    let parens = 0
+    const end = () => {
+      if (test) sfail('an unclosed [[')
+      command(words, lvl)
+      words = []
+      redirected = false
+    }
+    while (pos < src.length) {
+      const c = src[pos]
+      if (c === '\n') {
+        end()
+        pos++
+        bodies(lvl)
+        continue
+      }
+      if (isSpace(c)) {
+        pos++
+        continue
+      }
+      if (c === '\\' && src[pos + 1] === '\n') {
+        pos += 2
+        continue
+      }
+      if (c === '#') {
+        while (pos < src.length && src[pos] !== '\n') pos++
+        continue
+      }
+      if ((c === '<' || c === '>') && src[pos + 1] === '(') {
+        // A process substitution: a word of its own (never glued to text), its body a command one level down.
+        if (!isBreak(src[pos - 1]) || src[pos - 1] === '<' || src[pos - 1] === '>') sfail('a process substitution glued to other text')
+        pos += 2
+        list(lvl + 1, ')')
+        if (!isBreak(src[pos])) sfail('a process substitution glued to other text')
+        if (!test) words.push({ value: '', procsub: true, raw: '<(…)' })
+        continue
+      }
+      if (test && (c === '<' || c === '>')) {
+        pos++ // a comparison inside [[ … ]]
+        continue
+      }
+      if (c === '<' || c === '>' || (c === '&' && src[pos + 1] === '>')) {
+        const op = src.slice(pos).match(/^(&>>|&>|>>|>\||>&|<<<|<<-|<<|<&|<>|>|<)/)[1]
+        pos += op.length
+        redirected = true
+        if (op === '<<' || op === '<<-') {
+          const m = src.slice(pos).match(/^[ \t]*(?:'([\w.-]+)'|"([\w.-]+)"|\\([\w.-]+)|([\w.-]+))(?=$|[\s;&|()<>])/)
+          if (!m) sfail('a here-document delimiter the guard cannot read')
+          pending.push({ delim: m[1] ?? m[2] ?? m[3] ?? m[4], quoted: m[4] === undefined, tabs: op === '<<-', level: lvl })
+          pos += m[0].length
+          continue
+        }
+        while (isSpace(src[pos])) pos++
+        const t = word(lvl)
+        if (!t.raw) sfail(`a ${op} redirect without a plain target`)
+        if (op === '<' || op === '<<<' || op === '<&') continue
+        if (op === '>&' && /^(\d+|-)$/.test(t.value) && !t.dyn) continue
+        if (!t.dyn && DEV_SINKS.has(t.value)) continue
+        if (lvl > 0) sfail(`a write inside a substitution (${op} ${t.raw})`)
+        if (t.dyn || t.glob) sfail(`a write to a target that is not a plain path (${t.raw})`)
+        writes.push({ kind: 'redir', lit: t.value, abs: abs(t.value) })
+        continue
+      }
+      if (c === ';' || c === '&' || c === '|') {
+        const two = src[pos + 1] === c || (c === '|' && src[pos + 1] === '&') || (c === ';' && src[pos + 1] === '&')
+        if (test) {
+          if (two && c !== ';') {
+            pos += 2
+            continue
+          }
+          sfail('a separator inside [[ … ]]')
+        }
+        pos += two ? 2 : 1
+        end()
+        continue
+      }
+      if (c === '(') {
+        if (test) {
+          pos++
+          continue
+        }
+        if (src[pos + 1] === '(') {
+          arith()
+          words.push({ value: '((', arith: true, raw: '((…))' })
+          continue
+        }
+        parens++
+        end()
+        pos++
+        continue
+      }
+      if (c === ')') {
+        pos++
+        if (test) continue
+        end()
+        if (parens > 0) parens--
+        else if (closer === ')') return
+        continue
+      }
+      const w = word(lvl)
+      // A word of digits right before a redirect is its fd number.
+      if (/^\d+$/.test(w.raw) && (src[pos] === '>' || src[pos] === '<')) continue
+      if (test) {
+        if (w.value === ']]' && !w.quoted) test = false
+        continue
+      }
+      if (w.value === '[[' && !w.quoted && !redirected && words.every((x) => RESERVED.has(x.value) && !x.quoted)) {
+        test = true
+        words.push(w)
+        continue
+      }
+      words.push(w)
+    }
+    end()
+    if (closer) sfail('an unclosed $(…) or process substitution')
+    if (parens) sfail('an unclosed (')
+    if (pending.length) sfail(`an unterminated here-document (${pending[0].delim})`)
+  }
+  list(level, null)
+  return writes
+}
+
+/**
+ * Strict mode for one Bash command: null when it is not complex, does not write, or passes; else the reason it is
+ * refused. targets: what bashWrites found for it — every top-level write strictScan reads must be among them.
+ */
+export function strictShell(command, cwd, targets, env = process.env) {
+  const cmd = String(command)
+  if (!complexShell(cmd) || !shellWrites(cmd)) return null
+  let writes
+  try {
+    writes = strictScan(cmd, 0, cwd, env)
+  } catch (e) {
+    if (e instanceof StrictFail) return e.message
+    throw e
+  }
+  const paths = targets.filter((t) => t.path).map((t) => t.path)
+  const found = (p, parentOk) => !!p && paths.some((t) => same(t, p) || (parentOk && same(dirname(t), p)))
+  for (const w of writes) {
+    if (w.kind === 'redir') {
+      if (!found(w.abs, false)) return `the guard did not find the target ${w.lit}`
+      continue
+    }
+    const files = w.args.filter((a) => !a.lit.startsWith('-') || a.lit === '-')
+    if (w.name === 'tee' || w.name === 'touch' || w.name === 'truncate') {
+      const miss = files.find((a) => a.lit !== '-' && !found(a.abs, false))
+      if (miss) return `the guard did not find the target ${miss.lit}`
+    } else if (w.name === 'sed' || w.name === 'perl') {
+      if (!files.some((a) => found(a.abs, false))) return `the guard did not find the file ${w.name} -i writes`
+    } else {
+      // cp / mv / install / ln: the destination (the -t directory or the last plain word) — a file or its folder.
+      const t = w.args.findIndex((a) => a.lit === '-t' || a.lit.startsWith('--target-directory'))
+      const dest = t < 0 ? files[files.length - 1] : w.args[t].lit.includes('=') ? w.args[t] : w.args[t + 1]
+      if (!dest || !found(dest.abs ?? null, true)) return `the guard did not find the ${w.name} target ${dest ? dest.lit : '(none)'}`
+    }
+  }
+  return null
+}
+
 // ---------- decisions ----------
 
 const allow = (msg = '') => ({ decision: 'allow', msg })
@@ -801,7 +1216,13 @@ export function decide(mode, input, here) {
   const cwd = nativePath(typeof d.cwd === 'string' && d.cwd ? d.cwd : process.cwd())
   let targets
   if (tool === 'Bash' || (typeof ti?.command === 'string' && !filesOf(ti).length)) {
-    targets = bashWrites(String(ti.command || ''), cwd)
+    const command = String(ti.command || '')
+    targets = bashWrites(command, cwd)
+    // Strict mode: a complex command that writes must use plain, top-level targets the reader found (fail closed).
+    const why = strictShell(command, cwd, targets)
+    if (why && unresolvedGuarded(mode, here, cwd)) {
+      return deny(`${mode === 'scope' ? 'SCOPE_GUARD' : 'BRANCH_GUARD'}: this shell command writes and uses $(…)/\${…}/backticks/<(…)/[[/((/$'…' — the guard cannot verify every target (${why}). Write the file with the Write/Edit tool, or use a plain redirect to a literal path.`)
+    }
   } else {
     targets = filesOf(ti).map((p) => ({ path: resolve(cwd, nativePath(p)) }))
     if (!targets.length) return null

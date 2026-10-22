@@ -17,8 +17,19 @@ Nothing. Rendered files that change (`kit-update`): `.claude/workflows/orchestra
 `.claude/commands/review-it.md`, `.claude/settings.json` (the Bash matcher gains a plan-file guard),
 `docs/agent/orchestrator.md`, `scripts/plan-order.mjs`, `scripts/take-plan.mjs`, `scripts/orch-state.mjs`,
 `scripts/orch-preflight.mjs`, `scripts/lib/guard.mjs`, `scripts/lib/plan-deps.mjs`, `scripts/lib/done-when.mjs`,
-`scripts/lib/slot-procs.mjs`. A project with `commands.dev` set now needs its dev server answering on the base port
+`scripts/lib/slot-procs.mjs`, `docs/agent/standards-git.md`, `docs/agent/workflow-map.md`. A project with `commands.dev` set now needs its dev server answering on the base port
 (or startable by `scripts/slot-serve.mjs`) before `/orchestrate` starts a run.
+
+### Changed
+
+- Guards: strict mode for complex shell writes on guarded folders. A Bash command that writes and uses `$(…)`,
+  `${…}`, backticks, `<(…)`/`>(…)`, `[[`, `((`, `$'…'`/`$"…"` or `eval` is refused (`BRANCH_GUARD:` /
+  `SCOPE_GUARD:` "… the guard cannot verify every target") unless every write in it is a top-level redirect or
+  `tee`/`cp`/`mv`/`install`/`ln`/`touch`/`truncate`/`sed -i`/`perl -i` to a plain literal path the reader found.
+  Why: five review rounds each found a new shell construct (quoted or unclosed `[[`, a redirect before `[[`,
+  `<((…))`, `${…}`, `\${`/`$${`, process-substitution words, ANSI-C `$'…'` quoting) that hid a write from the reader;
+  the rule stops that by failing closed. Use the Write/Edit tool or a plain redirect to a literal path instead.
+  Commands without those constructs are judged exactly as before.
 
 ### Fixed
 

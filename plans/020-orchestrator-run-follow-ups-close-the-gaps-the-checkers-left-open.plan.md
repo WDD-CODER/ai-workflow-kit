@@ -81,6 +81,7 @@ docs/agent/**
 CHANGELOG.md
 core/.claude/commands/auto-solve.md
 .claude/commands/auto-solve.md
+core/docs/agent/standards-git.md
 ```
 
 ## Read Scope
@@ -267,3 +268,31 @@ security review round 3 (2026-10-22):
   tools/e2e-check.mjs` → exit 0 (`E2E_CHECK: ok — 53 cases passed`); `node tools/drift-check.mjs --target .` → exit 0
   (`KIT_DRIFT: ok — 0 undeclared differences`); `node --test tools/test/*.test.mjs` → exit 0 (`tests 111`, `pass
   111`, `fail 0`); `node tools/orchestrator-e2e.mjs` → exit 0 (`ORCHESTRATOR_E2E: ok — 64 cases passed`).
+
+strict guard — decided by the Human 2026-10-22 ("strict guard"):
+- Why: five review rounds each found a new parsing bypass in `bashWrites`. Strict mode is a fail-closed backstop on
+  top of the reader, not a rewrite. `core/scripts/lib/guard.mjs:635-651` (`complexShell`, `shellWrites`: raw-text
+  gates that over-include), `:667` (`strictScan`, a narrow grammar), `:998` (`strictShell`), `:1222` (`decide`).
+- Rule: a command that is complex (`$(`, backtick, `${`, `<(`, `>(`, `$'`, `$"`, `[[`, `((`, eval, odd quote count)
+  and writes (a `>` that is no sink/fd redirect, or a write/shell word) is refused on a guarded folder — the same
+  `unresolvedGuarded` test an unresolved target gets — unless every write is a top-level redirect or
+  tee/touch/truncate/cp/mv/install/ln/sed -i/perl -i to a plain literal path AND `bashWrites` found that path. Refused
+  outright: `$'…'`, `$"…"`, `${…}` other than `${NAME}`, eval, dd, `((…))` with parens/quotes/substitutions, a
+  process substitution glued to text, a write inside `$(…)`/backticks/`<(…)`/an unquoted here-document/a nested
+  `sh -c`, a command name built at run time, an unclosed quote/construct/here-document. Message:
+  `BRANCH_GUARD:/SCOPE_GUARD: this shell command writes and uses $(…)/${…}/backticks/<(…)/[[/((/$'…' — the guard
+  cannot verify every target (<why>). Write the file with the Write/Edit tool, or use a plain redirect to a literal
+  path.` Not complex: unchanged.
+- Tests (`tools/test/guards.test.mjs`): `strictShell: every bypass of the earlier rounds and $'…' quoting is refused;
+  plain and read-only commands pass`, `strict guard on main: a complex command that writes is refused unless its only
+  writes are plain targets`, `strict guard in a plan folder: a plain target in scope stays allowed, a hidden one is
+  refused`. Against 931f14c's `scripts/lib/guard.mjs` (copied to the OS temp folder): 3 of 3 fail; its reader misses 6
+  of the 12 bypass forms (three `$'…'` forms, `$(…)` in an unquoted here-document body, a fake `'<<EOF'` here-document,
+  `bash -lc`).
+- scope extended: core/docs/agent/standards-git.md — strict guard decided by the Human 2026-10-22 (the "strict mode"
+  paragraph next to "Shell writes are guarded like Edit/Write").
+- Evidence (after `node tools/sync.mjs --target . --apply`): `npm run build` → exit 0 (`PACK_CHECK: ok`); `npm run
+  lint` → exit 0 (3× `LEAK_CHECK: ok`); `npm run test` → exit 0 (`WORKFLOW_LINK_CHECK: ok`); `node
+  tools/e2e-check.mjs` → exit 0 (`E2E_CHECK: ok — 53 cases passed`); `node tools/drift-check.mjs --target .` → exit 0
+  (`KIT_DRIFT: ok — 0 undeclared differences`); `node --test tools/test/*.test.mjs` → exit 0 (`tests 114`, `pass
+  114`, `fail 0`); `node tools/orchestrator-e2e.mjs` → exit 0 (`ORCHESTRATOR_E2E: ok — 64 cases passed`).
