@@ -104,23 +104,26 @@ Also proposing a brain entry:   # only when durable; may be 2 lines (pattern + p
   docs/brain/{gotchas/<domain>.md | patterns/*.md | decisions/NNNN-*.md} — "one-line title"
 
 VALIDATED BY HUMAN                      # the usual case: the close-out cards were answered before /ship
-  - ✓ ① {card title} — "{reply word}" (this chat)
-  - ✓ ② …
+  - ✓ [1] {card title} — "{reply word}" (this chat)
+  - ✓ [2] …
 
   — or, only when no close-out happened before /ship (servers started first; Y alone does not validate these) —
 
-HOW TO VALIDATE — {N} checks on {P} pages · reply: done | not yet | failed: <numbers>
-  ▸ {Page name} — {full URL}   (checks ①–②)
-  ① {plain title}
-     WHY     {what changed and what this check proves}
-     WHERE   {spot on the page and what to click}
-     SETUP   {only when needed}
-     DO      {action}  — or —  paste:  {exact text}
-     SEE ✓   {success}
-     FAIL ✗  {failure}
-  ② …
-  ▸ Outside the app — {exact window}   (check ③)
-  ③ …
+HOW TO VALIDATE - {N} checks on {P} places
+Reply with one line: done | not yet | failed: <numbers>
+  PAGE: {Page name}
+  URL:  {full URL}
+  [1] {plain title}
+      Before: {only when needed}
+      Do:
+        a) {action}, paste:
+           {exact value, alone on its line}
+      Expect: {success}
+      Fail:   {only when needed}
+  [2] …
+  PLACE: {exact window}
+  [3] …
+  (full layout and card rules: docs/agent/job-validation.md → Format and Card rules)
 
 Approve? (Y / merge / edit list / abort)   # Y = commit + push (+ PR); only "merge" merges; with cards above: "done Y"
 ~~~

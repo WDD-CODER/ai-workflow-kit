@@ -20,7 +20,7 @@ value is literal Hebrew data the app or database holds.
 ## Goals & Success Criteria
 **Primary:** every card the kit prints is plain text, and every value to type or paste can be copied from one line.
 
-- [auto] `grep -rEn "SEE ✓|FAIL ✗|WHY {2,}|WHERE {2,}|▸|[①②③④⑤⑥⑦⑧⑨]" core/docs/agent/job-validation.md core/.claude/commands/ship.md core/.claude/commands/done.md core/.claude/commands/take-plan.md layers/cursor/.cursor/commands/done.md layers/cursor/.cursor/commands/ship.md templates/AGENTS.md` prints nothing.
+- [auto] `grep -rnF -e "SEE ✓" -e "FAIL ✗" -e "WHY  " -e "WHERE  " -e "▸" -e "①" -e "②" -e "③" core/docs/agent/job-validation.md core/.claude/commands/ship.md core/.claude/commands/done.md core/.claude/commands/take-plan.md layers/cursor/.cursor/commands/done.md layers/cursor/.cursor/commands/ship.md templates/AGENTS.md` prints nothing.
 - [auto] `grep -c "Expect:" core/docs/agent/job-validation.md` prints a number greater than 3 (Format, example, Required close-out block).
 - [auto] `node tools/sync.mjs --target . --apply` then `node tools/drift-check.mjs --target .` exits 0.
 - [auto] `npm run build` exits 0.
@@ -79,16 +79,16 @@ checklist" in `core/docs/agent/job-validation.md` and the card blocks in `ship.m
 
 ## Atomic Sub-tasks
 
-- [ ] A1: Print cards as plain terminal text that reads the same in Claude Code and Cursor — new Format section and example: header, `PAGE:`/`URL:` lines, `[n]` numbers, labels Before/Do/Expect/Fail, one `=` rule between places; no colors, emoji, tables, circled digits or box drawing — core/docs/agent/job-validation.md
-- [ ] A2: Put every value the Human must type on its own line so one triple-click copies it — Core rule "copy-ready": no label, bullet or trailing words on that line; commands, paths, flags and numbers are English; Hebrew only for literal data the app or database holds, written exactly as the app has it, alone on its line, never mixed with English words on one line — core/docs/agent/job-validation.md
-- [ ] A3: Make cards shorter so long lists stay cheap to read — drop the WHY line (the title says what is proven), keep Before only when the check needs data that may not exist, keep Fail only when failure is more than "Expect did not happen" — core/docs/agent/job-validation.md
-- [ ] A4: Say on a card when it needs an earlier one first — "(needs [1] done first)" after the title whenever a check uses data another card creates — core/docs/agent/job-validation.md
-- [ ] A5: Use the same card layout in the chat-job close-out so both paths look alike — the "Required close-out block" and the `/done` block, reply words unchanged — core/docs/agent/job-validation.md, core/.claude/commands/done.md
-- [ ] A6: Use the same card layout in the ship approval tree and number answered cards as [1] — VALIDATED BY HUMAN lines and the fallback HOW TO VALIDATE block — core/.claude/commands/ship.md
-- [ ] A7: Update the take-plan close-out and both Cursor commands to name the new layout and the two rules — wording only — core/.claude/commands/take-plan.md, layers/cursor/.cursor/commands/done.md, layers/cursor/.cursor/commands/ship.md
-- [ ] A8: Mirror the two rules in one line of the always-loaded rules — Job validation hard rule — templates/AGENTS.md
-- [ ] A9: Re-render this repo's installed copies and prove nothing drifted — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .`, `npm run build` — rendered copies
-- [ ] A10: Record the change for the next release — CHANGELOG entry under Unreleased: no action for projects; rendered files that change — CHANGELOG.md
+- [x] A1: Print cards as plain terminal text that reads the same in Claude Code and Cursor — new Format section and example: header, `PAGE:`/`URL:` lines, `[n]` numbers, labels Before/Do/Expect/Fail, one `=` rule between places; no colors, emoji, tables, circled digits or box drawing — core/docs/agent/job-validation.md
+- [x] A2: Put every value the Human must type on its own line so one triple-click copies it — Core rule "copy-ready": no label, bullet or trailing words on that line; commands, paths, flags and numbers are English; Hebrew only for literal data the app or database holds, written exactly as the app has it, alone on its line, never mixed with English words on one line — core/docs/agent/job-validation.md
+- [x] A3: Make cards shorter so long lists stay cheap to read — drop the WHY line (the title says what is proven), keep Before only when the check needs data that may not exist, keep Fail only when failure is more than "Expect did not happen" — core/docs/agent/job-validation.md
+- [x] A4: Say on a card when it needs an earlier one first — "(needs [1] done first)" after the title whenever a check uses data another card creates — core/docs/agent/job-validation.md
+- [x] A5: Use the same card layout in the chat-job close-out so both paths look alike — the "Required close-out block" and the `/done` block, reply words unchanged — core/docs/agent/job-validation.md, core/.claude/commands/done.md
+- [x] A6: Use the same card layout in the ship approval tree and number answered cards as [1] — VALIDATED BY HUMAN lines and the fallback HOW TO VALIDATE block — core/.claude/commands/ship.md
+- [x] A7: Update the take-plan close-out and both Cursor commands to name the new layout and the two rules — wording only — core/.claude/commands/take-plan.md, layers/cursor/.cursor/commands/done.md, layers/cursor/.cursor/commands/ship.md
+- [x] A8: Mirror the two rules in one line of the always-loaded rules — Job validation hard rule — templates/AGENTS.md
+- [x] A9: Re-render this repo's installed copies and prove nothing drifted — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .`, `npm run build` — rendered copies
+- [x] A10: Record the change for the next release — CHANGELOG entry under Unreleased: no action for projects; rendered files that change — CHANGELOG.md
 
 ## Technical Considerations
 - Dependencies: plan 009's hand-off rules (servers first, page grouping, reply words) stay as they are; only the card text changes.
@@ -111,3 +111,10 @@ checklist" in `core/docs/agent/job-validation.md` and the card blocks in `ship.m
 - Q: Does Hebrew copied from a Windows terminal paste into the app in the right order? A: open — Dandan checks with the first real hand-off; if it fails, the rule changes to give the Hebrew value inside a code fence or in a `.txt` file the Human opens.
 
 ## Execution Notes
+2026-10-25 — A1–A10 done on `feat/022-validation-cards-plain-text` from `origin/main` `3e142c9`.
+- Done-when evidence: the old-format grep over the seven files printed nothing; `grep -c "Expect:"` in job-validation.md → 6; `node tools/drift-check.mjs --target .` → `KIT_DRIFT: ok — 0 undeclared differences`; `npm run build` → `PACK_CHECK: ok`; `npm test` → `WORKFLOW_LINK_CHECK: ok`.
+- The plan's first Done-when grep used a bracket class with circled digits, which matches single bytes in a non-UTF-8 locale and gave false hits; it was rewritten with fixed-string `-F -e` patterns.
+- `AGENTS.md` at the repo root is `local-only` (not rendered from `templates/AGENTS.md`), so the same one-line change was made in both by hand. `cursor=false` here, so the `.cursor` copies are not installed in this repo.
+- Not run: `/plan`'s full Architect + PM review (the plan was saved with the save-plan script checks only: similarity, deps, tags, arch).
+- The machine-wide hook `~/.claude/hooks/validation-handoff.mjs` is outside the kit and was not read; if it matches the old header or the `▸` line, it needs the same update.
+- V8 of plan 009 style release: tag and `kit-sync` into FoodVibe wait for Dandan.
