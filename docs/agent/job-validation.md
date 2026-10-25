@@ -35,7 +35,7 @@ The table below applies to `[human]` and untagged items:
 ### Core rule
 
 - **Cards only when a human is needed.** Every Done-when item `[auto]` → the `VERIFIED BY AGENT` evidence block, no cards, no servers.
-- **Cards when the work is finished** — never at plan start or at claim time. Show them and wait for `done` / `verified` / `not yet` / `failed: <numbers>` **before** `/ship`, opening a PR, or merging.
+- **Cards when the work is finished** — never at plan start or at claim time. Show them and wait for `ok: <numbers>` / `done` / `verified` / `not yet` / `failed: <numbers>` (answered page by page, see "Faster hand-off") **before** `/ship`, opening a PR, or merging.
 - **Servers first** (below): every page URL in the cards answers before the cards are shown.
 - **Grouped by page** (Format, below), so the Human opens each page once.
 
@@ -76,7 +76,9 @@ Places in click order: a page that creates data another page needs comes first. 
 
 ```text
 HOW TO VALIDATE - {N} checks on {P} places
-Reply with one line: done | not yet | failed: <numbers> | verify
+Reply any time, page by page: ok: <numbers> | failed: <numbers> <what you saw> | done | not yet | verify
+Open all pages (paste in PowerShell):
+Start-Process "{url 1}"; Start-Process "{url 2}"
 ==========================================================
 
 PAGE: {Page name}
@@ -110,7 +112,9 @@ Example (one app page, one terminal check):
 
 ```text
 HOW TO VALIDATE - 2 checks on 2 places
-Reply with one line: done | not yet | failed: <numbers> | verify
+Reply any time, page by page: ok: <numbers> | failed: <numbers> <what you saw> | done | not yet | verify
+Open all pages (paste in PowerShell):
+Start-Process "http://localhost:4200/records"
 ==========================================================
 
 PAGE: Saved records
@@ -155,6 +159,27 @@ PLACE: the Claude window of Worker slot 2
 - Bug fixes: the card triggers the previously broken scenario
 - Never ask the Human to open DevTools, read source files, or work out a command themselves
 - Non-visible changes (config, refactor, backend) with nothing to click: one line instead of cards: what changed and why no check is needed
+
+### Faster hand-off: answer page by page, open every page in one line, data prepared
+
+**Answering page by page.** The Human may answer in several messages while checking, in any order:
+
+- `ok: 1,2` validates those cards.
+- `failed: 3 <what you saw>` fails card 3; the words after the numbers are the first clue for the fix.
+- `done` validates every card still unanswered. `not yet` validates nothing more and the agent asks what remains. `verify` is unchanged.
+
+After each reply, before waiting again, the agent:
+
+1. Records the validated cards. They become the `VALIDATED BY HUMAN` lines for ship, for exactly those cards: `ok:` for some cards never validates the others.
+2. On `failed:`, starts the fix at once and does not wait for the other pages. It runs its own `[auto]` / `[ui]` checks, then re-shows only that card, marked `(re-check: fixed)` after the title.
+3. Re-shows as `(re-check: fixed)` any card already answered `ok:` on a page the fix touched. A fix in shared code is stated in one line with the pages it may affect.
+4. Queues replies that arrive during a fix and records them when the current step ends.
+
+The hand-off ends when every card is validated; only then `/ship`, a PR or a merge.
+
+**Open every page in one line.** After the servers answer (Servers first), the cards header carries two lines: a label line, then the command alone on its own line, with every page URL of the cards in click order. PowerShell: `Start-Process "<url>"` for each page, joined with `; `. Name another shell once in the label line when the Human is not on Windows (`open "<url>"` on macOS, `xdg-open "<url>"` on Linux). The URLs are exactly those in the PAGE blocks, with real ids. Print it whenever the cards name at least one page.
+
+**Prepare the data the cards need.** The agent creates any record a check needs (the project's seed command, a script, or its dev API) in the slot's own dev database and puts the real id in the card's URL. Never in shared or production data, never with real customer data. Before appears only when the agent cannot prepare it (a real login, an outside service, a physical action), with one line saying how. A card that creates data a later card uses keeps "(needs [n] done first)": the Human does that part.
 
 ### Brief-sourced criteria
 
@@ -258,7 +283,7 @@ VALIDATED BY HUMAN
   - ⚠ [3] {card title} — not answered yet → its card is repeated below
 ```
 
-Only cards the Human did not answer are repeated under a HOW TO VALIDATE heading beneath it. A `[human]` item is validated only by a validation word (`done` / `verified` / `approved` …) given after its card was shown — never by **Y** alone. A reply such as `done Y` both validates the cards and approves the commit.
+Only cards the Human did not answer are repeated under a HOW TO VALIDATE heading beneath it. A `[human]` item is validated only by a validation word (`done` / `verified` / `approved` …, or `ok: <numbers>` for exactly those cards) given after its card was shown — never by **Y** alone. A reply such as `done Y` both validates the cards and approves the commit.
 
 **All items `[auto]`:** the `VERIFIED BY AGENT` block replaces HOW TO VALIDATE in the Phase 4 tree. **Y** is still required as commit/push consent. Todos marked on ship **Y** get no `(auto-verified)` suffix.
 
@@ -283,7 +308,7 @@ For the last two cases:
    - If a commit is about to happen in the same turn → stage todo/plan files in that commit
    - If no commit yet → mark on disk and say: `Todo: marked [x] (uncommitted — include in next commit)`
 4. On `not yet` → leave `[ ]`; continue work.
-5. On `failed: <numbers>` → leave `[ ]`; fix those checks, re-check, then re-show only their cards and wait again.
+5. On `failed: <numbers>` → leave `[ ]`; start fixing those checks at once (do not wait for the other pages), re-check, then re-show only their cards as `(re-check: fixed)` and wait again. On `ok: <numbers>` → mark exactly those cards validated and keep waiting for the rest.
 6. On `edit list` → revise the matched-todo list; re-show the block; wait again.
 7. On `verify` → run the optional agent-verify flow above, then re-show JOB DONE and wait.
 
@@ -291,7 +316,9 @@ For the last two cases:
 
 ```text
 HOW TO VALIDATE - {N} checks on {P} places
-Reply with one line: done | not yet | failed: <numbers> | verify
+Reply any time, page by page: ok: <numbers> | failed: <numbers> <what you saw> | done | not yet | verify
+Open all pages (paste in PowerShell):
+Start-Process "{url 1}"; Start-Process "{url 2}"
 ==========================================================
 
 PAGE: {Page name}
@@ -319,7 +346,7 @@ JOB DONE — awaiting your validation
 Matched todos (still [ ]):
   - {plan / id / short text}
   - …
-Reply: done  |  not yet  |  failed: <numbers>  |  verify  |  edit list
+Reply: ok: <numbers>  |  failed: <numbers>  |  done  |  not yet  |  verify  |  edit list
 ```
 
 If the job has no user-visible effect, replace the cards with one line under HOW TO VALIDATE explaining what changed and why no click-test is needed — still show the block.
