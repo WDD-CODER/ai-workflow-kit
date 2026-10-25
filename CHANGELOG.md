@@ -11,7 +11,7 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ### Changed
 
-- Validation cards (plan 022) are plain terminal text: `PAGE:`/`URL:` lines, `[1]` numbers and the labels Before, Do,
+- Validation cards are plain terminal text: `PAGE:`/`URL:` lines, `[1]` numbers and the labels Before, Do,
   Expect, Fail; no WHY line, colors, emoji or circled digits. Every value the Human types or pastes sits alone on its own
   line, in English; the app's own language only as literal app data. A card says "(needs [n] done first)" when it uses data another card
   creates. A project does nothing; rendered files that change (`kit-update`): `docs/agent/job-validation.md`,
