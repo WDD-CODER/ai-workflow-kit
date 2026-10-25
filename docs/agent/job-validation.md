@@ -70,7 +70,7 @@ Cards are printed in a terminal (Claude Code) or in Cursor chat, so they are pla
 Two rules for everything the Human types:
 
 - **Copy-ready.** Anything the Human must type, paste or run sits alone on its own line, with no label, bullet or word before or after it, so one triple-click selects exactly the value. Commands, paths, flags and numbers are English.
-- **Hebrew only as app data.** A value is Hebrew only when it is literal data the app or database holds (a name, a label, an on-screen message). Write it exactly as the app has it, alone on its own line. Never put Hebrew and English words on one line: a terminal scrambles the order.
+- **App-language text only as app data.** A value is in the app's own language (not English) only when it is literal data the app or database holds (a name, a label, an on-screen message). Write it exactly as the app has it, alone on its own line. Never put that text and English words on one line: a terminal scrambles the order of right-to-left text.
 
 Places in click order: a page that creates data another page needs comes first. Numbers run on across places. Checks outside the app go in a last place named by its window. One `=` rule line separates places.
 
@@ -152,7 +152,7 @@ PLACE: the Claude window of Worker slot 2
 - Rewrite each Done-when item in plain words: never copy the plan's wording verbatim
 - One check per card, completable in under a minute
 - Do is a list of steps a), b), c)…, one action each. A step names the spot on the page and what to click (the URL is in the PAGE block). A typed value follows a step that ends "paste:", alone on the next line. A terminal check puts the command alone on its line under Do and names the window in PLACE: never "run the script" or a description of a command
-- Expect is required: quote on-screen text exactly, and put Hebrew text alone on its own line
+- Expect is required: quote on-screen text exactly, and put text in the app's own language alone on its own line
 - Fail appears only when failure is more than "Expect did not happen": a wrong result, a message that must not appear, a side effect
 - A check that uses data another card creates says "(needs [n] done first)" after its title
 - Cover the **happy path** and any **edge / failure rule** the job introduced (its own card)

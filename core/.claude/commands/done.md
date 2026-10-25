@@ -48,7 +48,7 @@ Matched todos (still [ ]):
 Reply: ok: <numbers>  |  failed: <numbers>  |  done  |  not yet  |  verify  |  edit list
 ```
 
-Card rules: `docs/agent/job-validation.md` → **Format** and **Card rules** (plain terminal text, grouped by place in click order, numbers run on; every value to type alone on its own line, in English unless it is literal Hebrew app data). Never omit HOW TO VALIDATE (use a one-line no-user-visible-effect note if needed). No `/ship`, PR or merge until the Human answered.
+Card rules: `docs/agent/job-validation.md` → **Format** and **Card rules** (plain terminal text, grouped by place in click order, numbers run on; every value to type alone on its own line, in English unless it is literal app-language data). Never omit HOW TO VALIDATE (use a one-line no-user-visible-effect note if needed). No `/ship`, PR or merge until the Human answered.
 
 4. On **`done`** (or equivalent validation phrase):
    - Mark matching items `[x]` via `node scripts/todo-query.mjs mark --line N[,N…]`
