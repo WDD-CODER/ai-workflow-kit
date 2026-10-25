@@ -3,7 +3,7 @@
     "version": "1.5.0"
   },
   "source": "local:.",
-  "commit": "5553def7a319d90e4272d524ee3aec2906b38a48",
+  "commit": "f9a073a740f53435d7bf6efd1788a78ee9d6ca04",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -105,7 +105,7 @@
       "source": "core/.claude/commands/docs-refresh.md"
     },
     ".claude/commands/done.md": {
-      "sha256": "a6a3202d5e397129ceb50eea86bf0cd66e1238c0470670eae940a2aa7db650e1",
+      "sha256": "cfca86b2f94660adf16954d2e4eedb3c864ccdd12277d1ce77557a06e6540348",
       "kind": "managed",
       "source": "core/.claude/commands/done.md"
     },
@@ -160,7 +160,7 @@
       "source": "core/.claude/commands/security.md"
     },
     ".claude/commands/ship.md": {
-      "sha256": "8331d84807ae5ffa65b55ca925d7d8ca386082ffe447755a894f3a8f577b5745",
+      "sha256": "42ba2b3bc010375dbb70d73c7f5a88fd3bd227661d5fd06322e308c91ff900e1",
       "kind": "managed",
       "source": "core/.claude/commands/ship.md"
     },
@@ -175,7 +175,7 @@
       "source": "core/.claude/commands/sweep-stale-todos.md"
     },
     ".claude/commands/take-plan.md": {
-      "sha256": "d4ed79d85aaed8d282c234876c7837d5d8719a280525781176913f5f69c94a9a",
+      "sha256": "7db1a2dca908d3f85a9cc483b7f3d63c9b46eb7c9a6288b79376c4b92f5f93f2",
       "kind": "managed",
       "source": "core/.claude/commands/take-plan.md"
     },
@@ -315,7 +315,7 @@
       "source": "core/docs/agent/brain-capture.md"
     },
     "docs/agent/job-validation.md": {
-      "sha256": "b8bd3e41cd334bc2e8d8221d5ac5d783f3080eceeafd230c584ca11bb42a0ad7",
+      "sha256": "25cd28d760f59c63886c45a953f99657b46939d783cf18223ce1b37ceef331d2",
       "kind": "managed",
       "source": "core/docs/agent/job-validation.md"
     },

@@ -74,16 +74,16 @@ Plan 022 merged (its Format section is the text this plan edits). Re-read the Fo
 
 ## Atomic Sub-tasks
 
-- [ ] B1: Let the Human answer cards a few at a time instead of all at the end — new reply words `ok: <numbers>` and `failed: <numbers> <what you saw>` accepted in any number of messages, `done` closes every card still unanswered — core/docs/agent/job-validation.md
-- [ ] B2: Make the agent start fixing a reported failure at once, while the Human checks the other pages — after `failed:` fix it, run the agent's own `[auto]`/`[ui]` checks, re-show only that card marked "re-check"; also re-show any already-ok card on the same page the fix touched — core/docs/agent/job-validation.md
-- [ ] B3: Keep the record of answered cards as they arrive so ship shows the right VALIDATED BY HUMAN list — each `ok:` reply is a validation word for exactly those cards, never for the rest — core/docs/agent/job-validation.md, core/.claude/commands/ship.md
-- [ ] B4: Print one line that opens every page of the hand-off — after servers answer, "Open all pages" line of PowerShell `Start-Process "<url>"` commands joined by `;` (macOS `open`, Linux `xdg-open` stated once), URLs in click order — core/docs/agent/job-validation.md
-- [ ] B5: Make the agent prepare the data a card needs and link to it — seed the record in the slot or dev database (never shared or production data), put its real id in the URL, and write Before only when the agent cannot prepare it — core/docs/agent/job-validation.md
-- [ ] B6: Add the new reply words and the opener line to the close-out and ship blocks — header "Reply any time, page by page", the `/done` block and its step 5, ship fallback block — core/.claude/commands/done.md, core/.claude/commands/ship.md, core/.claude/commands/take-plan.md
-- [ ] B7: Give Cursor the same two rules, since it has no hook — layers/cursor/.cursor/commands/done.md, layers/cursor/.cursor/commands/ship.md
-- [ ] B8: Mention page-by-page replies in the always-loaded rules — one clause in the Job validation hard rule — templates/AGENTS.md
-- [ ] B9: Re-render this repo's installed copies and prove nothing drifted — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .`, `npm run build` — rendered copies
-- [ ] B10: Record the change for the next release — CHANGELOG entry under Unreleased — CHANGELOG.md
+- [x] B1: Let the Human answer cards a few at a time instead of all at the end — new reply words `ok: <numbers>` and `failed: <numbers> <what you saw>` accepted in any number of messages, `done` closes every card still unanswered — core/docs/agent/job-validation.md
+- [x] B2: Make the agent start fixing a reported failure at once, while the Human checks the other pages — after `failed:` fix it, run the agent's own `[auto]`/`[ui]` checks, re-show only that card marked "re-check"; also re-show any already-ok card on the same page the fix touched — core/docs/agent/job-validation.md
+- [x] B3: Keep the record of answered cards as they arrive so ship shows the right VALIDATED BY HUMAN list — each `ok:` reply is a validation word for exactly those cards, never for the rest — core/docs/agent/job-validation.md, core/.claude/commands/ship.md
+- [x] B4: Print one line that opens every page of the hand-off — after servers answer, "Open all pages" line of PowerShell `Start-Process "<url>"` commands joined by `;` (macOS `open`, Linux `xdg-open` stated once), URLs in click order — core/docs/agent/job-validation.md
+- [x] B5: Make the agent prepare the data a card needs and link to it — seed the record in the slot or dev database (never shared or production data), put its real id in the URL, and write Before only when the agent cannot prepare it — core/docs/agent/job-validation.md
+- [x] B6: Add the new reply words and the opener line to the close-out and ship blocks — header "Reply any time, page by page", the `/done` block and its step 5, ship fallback block — core/.claude/commands/done.md, core/.claude/commands/ship.md, core/.claude/commands/take-plan.md
+- [x] B7: Give Cursor the same two rules, since it has no hook — layers/cursor/.cursor/commands/done.md, layers/cursor/.cursor/commands/ship.md
+- [x] B8: Mention page-by-page replies in the always-loaded rules — one clause in the Job validation hard rule — templates/AGENTS.md
+- [x] B9: Re-render this repo's installed copies and prove nothing drifted — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .`, `npm run build` — rendered copies
+- [x] B10: Record the change for the next release — CHANGELOG entry under Unreleased — CHANGELOG.md
 
 ## Technical Considerations
 - Dependencies: plan 022's card layout; plan 009's servers-first rule (the opener line is printed only after every URL answers).
@@ -106,3 +106,9 @@ Plan 022 merged (its Format section is the text this plan edits). Re-read the Fo
 - Q: Should `ok:` replies also count when sent in the middle of the agent's fix? A: open — proposed: yes, they are queued and recorded when the agent finishes its current step.
 
 ## Execution Notes
+2026-10-25 — B1–B10 done on `feat/023-validation-faster-hand-off`, branched from `feat/022-validation-cards-plain-text` (plan 022 is not merged yet; merge 022 first, then this one).
+- Done-when evidence: `grep -c "ok: <numbers>"` in job-validation.md → 7, and one or more matches in each of done.md, ship.md, take-plan.md; `Start-Process` is in the Format block, the example, the close-out block and the "Open every page in one line" rule; `node tools/drift-check.mjs --target .` → `KIT_DRIFT: ok — 0 undeclared differences`; `npm run build` → `PACK_CHECK: ok`; `npm test` → `WORKFLOW_LINK_CHECK: ok`.
+- Waits on Dandan: the `[human]` item (a real hand-off with two or more pages), the PR merges, the release tag and `kit-sync` into FoodVibe.
+- Also taken from idea 7 (cheaper failure replies): free text after `failed: <numbers>` is read as what the Human saw. Reproducing the failure by script stays in plan 024 (C5).
+- The opener line was not run on Windows PowerShell here (this environment is Linux); `Start-Process "<url>"; Start-Process "<url>"` is standard PowerShell.
+- Not run: `/plan`'s full Architect + PM review (save-plan script checks only).

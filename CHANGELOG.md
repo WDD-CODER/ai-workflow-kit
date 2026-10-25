@@ -17,6 +17,11 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
   creates. A project does nothing; rendered files that change (`kit-update`): `docs/agent/job-validation.md`,
   `.claude/commands/ship.md`, `.claude/commands/done.md`, `.claude/commands/take-plan.md`, `.cursor/commands/done.md`,
   `.cursor/commands/ship.md`, `AGENTS.md`.
+- The validation hand-off is faster: the Human may answer page by page (`ok: <numbers>`,
+  `failed: <numbers> <what you saw>`), and the agent starts fixing a failed card at once and re-shows it as
+  `(re-check: fixed)`. The cards header carries one pasteable line that opens every page (`Start-Process` in PowerShell).
+  The agent prepares the data a card needs in the slot's dev database and puts the real id in the URL. A project does
+  nothing; the rendered files that change are the same as in the card-layout entry above.
 
 ## [1.5.0] - 2026-10-22
 

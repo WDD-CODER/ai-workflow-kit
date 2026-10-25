@@ -18,7 +18,9 @@ Do not Read .claude/todo.md in full.
 
 ```text
 HOW TO VALIDATE - {N} checks on {P} places
-Reply with one line: done | not yet | failed: <numbers> | verify
+Reply any time, page by page: ok: <numbers> | failed: <numbers> <what you saw> | done | not yet | verify
+Open all pages (paste in PowerShell):
+Start-Process "{url 1}"; Start-Process "{url 2}"
 ==========================================================
 
 PAGE: {Page name}
@@ -43,7 +45,7 @@ PLACE: {exact window}
 JOB DONE — awaiting your validation
 Matched todos (still [ ]):
   - …
-Reply: done  |  not yet  |  failed: <numbers>  |  verify  |  edit list
+Reply: ok: <numbers>  |  failed: <numbers>  |  done  |  not yet  |  verify  |  edit list
 ```
 
 Card rules: `docs/agent/job-validation.md` → **Format** and **Card rules** (plain terminal text, grouped by place in click order, numbers run on; every value to type alone on its own line, in English unless it is literal app-language data). Never omit HOW TO VALIDATE (use a one-line no-user-visible-effect note if needed). No `/ship`, PR or merge until the Human answered.
@@ -53,7 +55,7 @@ Card rules: `docs/agent/job-validation.md` → **Format** and **Card rules** (pl
    - Run `node scripts/todo-archive.mjs` to move any fully-`[x]` plan sections into `.claude/todo-archive/NNN.md` volumes (max 300 lines)
    - If committing in this turn → stage todo/plan files with that commit
    - Else → leave marks on disk and report: `Todo: marked [x] (uncommitted — include in next commit)`
-5. On **`not yet`** → leave `[ ]`; ask what remains. On **`failed: <numbers>`** → leave `[ ]`; fix those checks, re-check, re-show only their cards; wait again.
+5. On **`not yet`** → leave `[ ]`; ask what remains. On **`failed: <numbers>`** → leave `[ ]`; start fixing those checks at once (do not wait for the other pages), re-check, re-show only their cards as `(re-check: fixed)`; wait again. On **`ok: <numbers>`** → record exactly those cards as validated and keep waiting for the rest (`job-validation.md` → "Faster hand-off"). Print the "Open all pages" line only after the servers answer, and seed the data the cards need yourself.
 6. On **`edit list`** → revise matches; re-show block; wait again.
 7. On **`verify`** → walk checklist items per job-validation optional agent-verify; re-show JOB DONE; wait.
 

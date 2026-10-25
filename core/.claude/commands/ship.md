@@ -110,7 +110,9 @@ VALIDATED BY HUMAN                      # the usual case: the close-out cards we
   — or, only when no close-out happened before /ship (servers started first; Y alone does not validate these) —
 
 HOW TO VALIDATE - {N} checks on {P} places
-Reply with one line: done | not yet | failed: <numbers>
+Reply any time, page by page: ok: <numbers> | failed: <numbers> <what you saw> | done | not yet
+Open all pages (paste in PowerShell):
+Start-Process "{url 1}"; Start-Process "{url 2}"
   PAGE: {Page name}
   URL:  {full URL}
   [1] {plain title}
