@@ -63,67 +63,98 @@ Before the cards, every page URL in them must answer. The agent starts the serve
 
 Slot servers stop again at the merge.
 
-### Format — grouped by page, one card per check
+### Format — plain terminal text, grouped by place, one card per check
 
-Pages in click order: a page that creates data another page needs comes first. Numbers run on across groups. Checks outside the app go in a last group named by its window.
+Cards are printed in a terminal (Claude Code) or in Cursor chat, so they are plain text: no colors, emoji, tables, circled digits or box drawing. Structure comes from indentation, rule lines and labels.
+
+Two rules for everything the Human types:
+
+- **Copy-ready.** Anything the Human must type, paste or run sits alone on its own line, with no label, bullet or word before or after it, so one triple-click selects exactly the value. Commands, paths, flags and numbers are English.
+- **Hebrew only as app data.** A value is Hebrew only when it is literal data the app or database holds (a name, a label, an on-screen message). Write it exactly as the app has it, alone on its own line. Never put Hebrew and English words on one line: a terminal scrambles the order.
+
+Places in click order: a page that creates data another page needs comes first. Numbers run on across places. Checks outside the app go in a last place named by its window. One `=` rule line separates places.
 
 ```text
-HOW TO VALIDATE — {N} checks on {P} pages · reply: done | not yet | failed: <numbers> | verify
+HOW TO VALIDATE - {N} checks on {P} places
+Reply with one line: done | not yet | failed: <numbers> | verify
+==========================================================
 
-▸ {Page name} — {full URL, a real id for :id routes}   (checks ①–②)
-① {plain title of what is being checked}
-   WHY     {one sentence: what changed and what this check proves}
-   ({term} = {short gloss})          ← only when a term of art can't be avoided
-   WHERE   {spot on the page and what to click — the URL is in the page line}
-   SETUP   {only when needed: data or state the check needs first, and how to get it}
-   DO      {one plain action}  — or —  paste:  {exact text}
-   SEE ✓   {what success looks like; quote on-screen text exactly}
-   FAIL ✗  {what failure looks like}
-② …
+PAGE: {Page name}
+URL:  {full URL, a real id for :id routes}
 
-▸ Outside the app — {exact window, e.g. "the Claude window of Worker slot 2"}   (check ③)
-③ …
+[1] {plain title: what is checked}
+    Before: {only when the check needs data or state that may not exist}
+    Do:
+      a) {one plain action: the spot on the page and what to click}
+      b) {action that needs a typed value}, paste:
+         {exact value, alone on its line}
+    Expect: {what success looks like; quote on-screen text exactly}
+    Fail:   {only when failure is more than "Expect did not happen"}
+
+[2] {plain title}                        (needs [1] done first)
+    Do:
+      a) ...
+    Expect: ...
+
+==========================================================
+
+PLACE: {exact window, e.g. "the Claude window of Worker slot 2"}
+
+[3] {plain title}
+    Do:
+      {command, alone on its line}
+    Expect: ...
 ```
 
 Example (one app page, one terminal check):
 
 ```text
-HOW TO VALIDATE — 2 checks on 2 pages · reply: done | not yet | failed: <numbers> | verify
+HOW TO VALIDATE - 2 checks on 2 places
+Reply with one line: done | not yet | failed: <numbers> | verify
+==========================================================
 
-▸ Saved records — http://localhost:4200/records   (check ①)
-① A new record shows up without a reload
-   WHY     saving now refreshes the list, so a new record appears at once
-   WHERE   the "New record" button at the top right
-   DO      fill in any name, click "Save"
-   SEE ✓   the name is the first row of the list
-   FAIL ✗  the list stays the same until you reload the page
+PAGE: Saved records
+URL:  http://localhost:4200/records
 
-▸ Outside the app — the Claude window of Worker slot 2   (check ②)
-② A finished branch isn't reused
-   WHY     take-plan now notices a branch that was already merged, so a slot never continues on stale work
-   (squash merge = GitHub folds the branch into one commit on main)
-   SETUP   plan 42's branch must already be merged on GitHub (it is)
-   DO      paste:  take plan 42
-   SEE ✓   a line ending "…was merged - starting fresh"
-   FAIL ✗  it asks you to reset the branch by hand, or the push is rejected
+[1] A new record shows up without a reload
+    Do:
+      a) At the top right, click "New record"
+      b) In the name field, paste:
+         Test record 1
+      c) Click "Save"
+    Expect: "Test record 1" is the first row of the list
+    Fail:   the list stays the same until you reload the page
+
+==========================================================
+
+PLACE: the Claude window of Worker slot 2
+
+[2] A finished branch is not reused    (squash merge = GitHub folds the branch into one commit on main)
+    Before: plan 42's branch is already merged on GitHub (it is)
+    Do:
+      Paste:
+         take plan 42
+    Expect: a line ending
+         was merged - starting fresh
+    Fail:   it asks you to reset the branch by hand, or the push is rejected
 ```
 
 ### Card rules
 
 - Written for someone who is not an engineer: any person can follow it without asking
-- The header line says how many checks on how many pages, and the reply words; each page line carries the full URL — the Human never scrolls back or asks for a port
-- WHY is one sentence in the user's words: what changed and what this check proves — never the commit subject or the plan's Done-when text
-- SETUP appears only when the check needs data or state that may not exist (e.g. "have at least 3 saved records"); say how to get it in one line, or that the agent already seeded it
-- Rewrite each Done-when item in plain words — never copy the plan's wording verbatim
+- The header says how many checks on how many places and the reply words; every PAGE block carries the full URL, so the Human never scrolls back or asks for a port
+- The title says what is checked and what it proves, in the user's words: never the commit subject or the plan's Done-when text. There is no WHY line. When a term of art can't be avoided, gloss it once in brackets after the title
+- Before appears only when the check needs data or state that may not exist: one line saying how to get it, or that the agent already seeded it
+- Rewrite each Done-when item in plain words: never copy the plan's wording verbatim
 - One check per card, completable in under a minute
-- WHERE names only the spot on the page and what to click (the URL is in the page line); for a terminal check, the page line names the window
-- DO is one action. When the only way to check is to type something, give the exact text after `paste:` and name the window — never "run the script" or a description of a command
-- SEE ✓ and FAIL ✗ are both required; quote on-screen text exactly when there is any
-- Keep a term of art when it's the real name of the thing, and gloss it once in brackets
+- Do is a list of steps a), b), c)…, one action each. A step names the spot on the page and what to click (the URL is in the PAGE block). A typed value follows a step that ends "paste:", alone on the next line. A terminal check puts the command alone on its line under Do and names the window in PLACE: never "run the script" or a description of a command
+- Expect is required: quote on-screen text exactly, and put Hebrew text alone on its own line
+- Fail appears only when failure is more than "Expect did not happen": a wrong result, a message that must not appear, a side effect
+- A check that uses data another card creates says "(needs [n] done first)" after its title
 - Cover the **happy path** and any **edge / failure rule** the job introduced (its own card)
 - Bug fixes: the card triggers the previously broken scenario
 - Never ask the Human to open DevTools, read source files, or work out a command themselves
-- Non-visible changes (config, refactor, backend) with nothing to click: one line instead of cards — what changed and why no check is needed
+- Non-visible changes (config, refactor, backend) with nothing to click: one line instead of cards: what changed and why no check is needed
 
 ### Brief-sourced criteria
 
@@ -222,9 +253,9 @@ One commit. No second push just for checkboxes.
 
 ```text
 VALIDATED BY HUMAN
-  - ✓ ① {card title} — "{reply word}" (this chat, {time or turn})
-  - ✓ ② {card title} — "{reply word}"
-  - ⚠ ③ {card title} — not answered yet → its card is repeated below
+  - ✓ [1] {card title} — "{reply word}" (this chat, {time or turn})
+  - ✓ [2] {card title} — "{reply word}"
+  - ⚠ [3] {card title} — not answered yet → its card is repeated below
 ```
 
 Only cards the Human did not answer are repeated under a HOW TO VALIDATE heading beneath it. A `[human]` item is validated only by a validation word (`done` / `verified` / `approved` …) given after its card was shown — never by **Y** alone. A reply such as `done Y` both validates the cards and approves the commit.
@@ -259,20 +290,30 @@ For the last two cases:
 ### Required close-out block
 
 ```text
-HOW TO VALIDATE — {N} checks on {P} pages · reply: done | not yet | failed: <numbers> | verify
+HOW TO VALIDATE - {N} checks on {P} places
+Reply with one line: done | not yet | failed: <numbers> | verify
+==========================================================
 
-▸ {Page name} — {full URL}   (checks ①–②)
-① {plain title}
-   WHY     {what changed and what this check proves}
-   WHERE   {spot on the page and what to click}
-   SETUP   {only when needed}
-   DO      {action}  — or —  paste:  {exact text}
-   SEE ✓   {success}
-   FAIL ✗  {failure}
-② …
+PAGE: {Page name}
+URL:  {full URL}
 
-▸ Outside the app — {exact window}   (check ③)
-③ …
+[1] {plain title}
+    Before: {only when needed}
+    Do:
+      a) {action}
+      b) {action}, paste:
+         {exact value, alone on its line}
+    Expect: {success}
+    Fail:   {only when needed}
+
+[2] {plain title}                        (needs [1] done first)
+    ...
+
+==========================================================
+
+PLACE: {exact window}
+
+[3] ...
 
 JOB DONE — awaiting your validation
 Matched todos (still [ ]):

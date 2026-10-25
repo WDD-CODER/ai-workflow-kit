@@ -56,7 +56,8 @@ Triggers: "execute plan NNN", "take plan NNN" (only meaningful inside a wt-N slo
    - Run every `[auto]` Done-when check and print `VERIFIED BY AGENT` (raw command + output).
    - All `[auto]` → no cards, no servers; go on to `/ship`.
    - Any `[human]` item → start the servers (`node scripts/slot-serve.mjs`) and open every page URL the cards
-     will name; fix a failed start before going on. Then show the HOW TO VALIDATE cards grouped by page and the
+     will name; fix a failed start before going on. Then show the HOW TO VALIDATE cards (plain terminal text, grouped by place; every value to
+     type alone on its own line, in English unless it is literal Hebrew app data) and the
      JOB DONE block, and **wait** for `done` / `verified` / `not yet` / `failed: <numbers>`. No `/ship`, PR or
      merge before that reply.
    - Several plans in one session: each plan gets its own close-out (or one combined set of cards before the

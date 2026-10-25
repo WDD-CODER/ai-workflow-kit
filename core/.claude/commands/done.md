@@ -17,20 +17,28 @@ Do not Read .claude/todo.md in full.
 3. Read the plan's Done-when tags (`job-validation.md` Path B). A `[ui]` item counts as agent-checked when its own e2e test passes (the project's e2e command, `commands.e2e` — servers up first) — evidence `✓ [ui] {item} — {test} → pass; screenshot {path}`; a failing or unscriptable one falls back to `[human]` and gets a card (`job-validation.md` Tier 1b). **All `[auto]`/`[ui]`:** run each check, print the `VERIFIED BY AGENT` block (raw command + output), mark with `node scripts/todo-query.mjs mark --line N[,N…] --auto-verified` (plan file only inside a `{{slots.nameFormat}}` slot), run step 4's archive, and **do not wait**. **Any `[human]`/untagged item:** first run "Servers first" (`job-validation.md`: start the servers — `node scripts/slot-serve.mjs` in a slot — and make every page URL in the cards answer; no app check → no servers), then print `VERIFIED BY AGENT` on top (if any `[auto]`), then the close-out block (HOW TO VALIDATE with a card for only the `[human]` items, then JOB DONE) and **wait** (unless the Human’s invoking message already contains a validation phrase: `done` / `mark done` / `mark it` / `verified` / `approved` / `LGTM for this job`):
 
 ```text
-HOW TO VALIDATE — {N} checks on {P} pages · reply: done | not yet | failed: <numbers> | verify
+HOW TO VALIDATE - {N} checks on {P} places
+Reply with one line: done | not yet | failed: <numbers> | verify
+==========================================================
 
-▸ {Page name} — {full URL}   (checks ①–②)
-① {plain title}
-   WHY     {what changed and what this check proves}
-   WHERE   {spot on the page and what to click}
-   SETUP   {only when needed}
-   DO      {action}  — or —  paste:  {exact text}
-   SEE ✓   {success}
-   FAIL ✗  {failure}
-② …
+PAGE: {Page name}
+URL:  {full URL}
 
-▸ Outside the app — {exact window}   (check ③)
-③ …
+[1] {plain title}
+    Before: {only when needed}
+    Do:
+      a) {action}, paste:
+         {exact value, alone on its line}
+    Expect: {success}
+    Fail:   {only when needed}
+
+[2] …
+
+==========================================================
+
+PLACE: {exact window}
+
+[3] …
 
 JOB DONE — awaiting your validation
 Matched todos (still [ ]):
@@ -38,7 +46,7 @@ Matched todos (still [ ]):
 Reply: done  |  not yet  |  failed: <numbers>  |  verify  |  edit list
 ```
 
-Card rules: `docs/agent/job-validation.md` → **Format** and **Card rules** (grouped by page in click order, numbers run on). Never omit HOW TO VALIDATE (use a one-line no-user-visible-effect note if needed). No `/ship`, PR or merge until the Human answered.
+Card rules: `docs/agent/job-validation.md` → **Format** and **Card rules** (plain terminal text, grouped by place in click order, numbers run on; every value to type alone on its own line, in English unless it is literal Hebrew app data). Never omit HOW TO VALIDATE (use a one-line no-user-visible-effect note if needed). No `/ship`, PR or merge until the Human answered.
 
 4. On **`done`** (or equivalent validation phrase):
    - Mark matching items `[x]` via `node scripts/todo-query.mjs mark --line N[,N…]`

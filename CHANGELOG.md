@@ -9,6 +9,15 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Changed
+
+- Validation cards (plan 022) are plain terminal text: `PAGE:`/`URL:` lines, `[1]` numbers and the labels Before, Do,
+  Expect, Fail; no WHY line, colors, emoji or circled digits. Every value the Human types or pastes sits alone on its own
+  line, in English; Hebrew only as literal app data. A card says "(needs [n] done first)" when it uses data another card
+  creates. A project does nothing; rendered files that change (`kit-update`): `docs/agent/job-validation.md`,
+  `.claude/commands/ship.md`, `.claude/commands/done.md`, `.claude/commands/take-plan.md`, `.cursor/commands/done.md`,
+  `.cursor/commands/ship.md`, `AGENTS.md`.
+
 ## [1.5.0] - 2026-10-22
 
 The orchestrator run's follow-ups: the gaps its checkers left open, each closed with a test.
