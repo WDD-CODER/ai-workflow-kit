@@ -49,5 +49,5 @@ bash scripts/prune-merged-worktrees.sh --confirm
 - Never skip the dry-run step, even when `--confirm` is passed.
 - Never delete a file with git commits in the last 14 days — the prune scripts
   check mtime, so verify before executing if in doubt.
-- `docs/session-state.md` is never touched — it is the canonical rolling file.
+- A project's own `docs/session-state*.md` (left from older kit versions) is never touched.
 - The current branch's session directories are always protected.

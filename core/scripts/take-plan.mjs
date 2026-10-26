@@ -344,7 +344,7 @@ writeFileSync(worktreePlanPath, `${match}\n`)
 const planStartPath = join(repoRoot, '.claude', '.slot-plan-start')
 mkdirSync(join(repoRoot, '.claude'), { recursive: true })
 if (previousPlan !== match || !existsSync(planStartPath)) writeFileSync(planStartPath, `${new Date().toISOString()}\n`)
-// The session-state pointer belongs to the previous plan's branch; the next session start writes a fresh one.
+// legacy-session-state: older installs left a pointer file; remove it so it never names another plan's branch.
 const statePointer = join(repoRoot, '.claude', '.session-state-path')
 if (existsSync(statePointer)) unlinkSync(statePointer)
 

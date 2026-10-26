@@ -1,13 +1,7 @@
 #!/usr/bin/env bash
 # session-startup.sh — SessionStart hook
-# Automatically loads the previous session's state into context,
-# so the AI picks up exactly where it left off.
-#
-# Branch-canonical save target:
-#   - SAVE_PATH = docs/session-state-${BRANCH}.md (no PPID — safe to commit on /ship)
-#   - .claude/.session-state-path is local-only (gitignored) so SessionStart never dirties git
-#   - Override both with SESSION_STATE_PATH for rare parallel-window cases
-#   - Falls back to docs/session-state.md if no branch file exists
+# Tells the session its role (Planner / Worker plan / idle slot) and frees merged slots. Where work stands is read
+# from the plan (its checkboxes and Execution Notes) and git, not from a saved state file.
 #
 # Hook type: SessionStart (matcher: "startup")
 # Timeout: 10s
@@ -54,58 +48,11 @@ if [[ -n "${CLAUDE_CODE_SUBAGENT_MODEL_FORCE:-}" && "${CLAUDE_CODE_SUBAGENT_MODE
   DESCRIBE="$DESCRIBE MODEL_ROUTING: CLAUDE_CODE_SUBAGENT_MODEL_FORCE=$CLAUDE_CODE_SUBAGENT_MODEL_FORCE makes Claude Code ignore the kit's agent models. Tell the Human once."
 fi
 
-# The hook output is built in node: JSON.stringify keeps quotes, backslashes and newlines from the
-# session-state file valid. additionalContext sits directly under hookSpecificOutput.
+# The hook output is built in node: JSON.stringify keeps quotes, backslashes and newlines valid.
+# additionalContext sits directly under hookSpecificOutput.
 emit() {
   KIT_CTX="$1" node -e 'process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: process.env.KIT_CTX } }) + "\n")'
 }
-NL=$'\n'
 
-if [[ "$DESCRIBE" == IDLE\ SLOT:* ]]; then
-  emit "$DESCRIBE"
-  exit 0
-fi
-# --- end slot role ---
-
-# Resolved once, the same way for session-startup.sh, handoff-check.sh and
-# write-session-state.mjs — see scripts/session-state-path.mjs.
-RESOLVED=$(node "$SCRIPT_DIR/session-state-path.mjs" 2>/dev/null)
-
-if [ "$RESOLVED" = "NONE" ]; then
-  emit "IDLE SLOT: ask the Human which plan to execute."
-  exit 0
-fi
-
-SAVE_PATH="$RESOLVED"
-SESSION_STATE="$RESOLVED"
-
-# Local pointer only — gitignored
-mkdir -p .claude
-echo "$SAVE_PATH" > .claude/.session-state-path
-
-BRANCH=$(git branch --show-current 2>/dev/null)
-BRANCH="${BRANCH:-main}"
-
-if [ -f "$SESSION_STATE" ]; then
-  # Do not Read .claude/todo.md in full. Only Session Summary / Next Steps / Commit
-  # are injected here, capped at 1500 chars — full session-state stays on disk.
-  CONTENT=$(awk '
-    /^## Session Summary/ { flag=1 }
-    /^## Next Steps/ { flag=1 }
-    /^## Commit/ { flag=1 }
-    /^## / && $0 !~ /^## Session Summary/ && $0 !~ /^## Next Steps/ && $0 !~ /^## Commit/ { flag=0 }
-    flag { print }
-  ' "$SESSION_STATE")
-
-  if [ -z "$CONTENT" ]; then
-    CONTENT=$(head -c 1500 "$SESSION_STATE")
-  else
-    CONTENT=$(printf '%s' "$CONTENT" | head -c 1500)
-  fi
-
-  emit "$DESCRIBE${NL}${NL}Previous session state loaded from: $SESSION_STATE${NL}$CONTENT${NL}${NL}Full file: $SESSION_STATE — read only if needed.${NL}${NL}---${NL}SESSION SAVE TARGET: $SAVE_PATH${NL}When ending this session, write session-state to the path above (not docs/session-state.md directly). The pointer file .claude/.session-state-path is local-only (gitignored)."
-else
-  emit "$DESCRIBE${NL}${NL}No previous session state found for branch: ${BRANCH}.${NL}${NL}---${NL}SESSION SAVE TARGET: $SAVE_PATH${NL}When ending this session, write session-state to the path above."
-fi
-
+emit "$DESCRIBE"
 exit 0

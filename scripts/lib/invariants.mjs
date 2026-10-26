@@ -130,9 +130,9 @@ export function diffArchWarnings({ changedFiles, registry, planText }) {
   return lines
 }
 
-const DECISION_FILE_RE = /^docs\/session-state[^/]*\.md$|^plans\/[^/]+\.plan\.md$/
+const DECISION_FILE_RE = /^plans\/[^/]+\.plan\.md$/
 
-/** "Human decision" lines added to session-state / plan files with no INV-n and no ADR reference. */
+/** "Human decision" lines added to plan files with no INV-n and no ADR reference. */
 export function decisionWithoutAdr(addedLines) {
   return addedLines
     .filter(({ file, text }) => DECISION_FILE_RE.test(file) && /Human decision/i.test(text) && !/INV-\d/.test(text) && !/decisions\/\d{4}/.test(text))

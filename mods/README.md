@@ -5,7 +5,7 @@ Three Claude Code mods (capped at three: new features go into one of them) for t
 | Mod | What you get | Commands |
 | --- | --- | --- |
 | **fleet** | One registry of every live session across `wt-N` slots, with resume lines; a slot lock that stops a branch switch under another live session; port janitor; a status line with cache countdown, context %, 5h/7d limits with the time each window resets (and a notice in every session when the 5-hour window refreshes), ≈cost and git state; a handoff-and-restart button; a **Pull main** button (main: fast-forward; slot: merge `origin/main`, aborted on conflict); **quick replies** — a `[ ⏎ ]` button inline after each reply the answer marks on purpose (`text` ⏎; fleet adds a short rule to the system prompt), which fills the prompt box, unsent; nothing is guessed from wording; phone push (optional) | `/fleet` `/ports` `/health` `/handoff` |
-| **guards** | The shell guards in-process (no bash/python/node per edit): main-branch rule, plan Read-Write Scope, kit-owned files, new-plan similarity; hard deny on `git push --no-verify`; role + session-state injected at start; an **Approve** button for the `approved: <path>` protocol | `/approve <path>` `/role` |
+| **guards** | The shell guards in-process (no bash/python/node per edit): main-branch rule, plan Read-Write Scope, kit-owned files, new-plan similarity; hard deny on `git push --no-verify`; role line injected at start; an **Approve** button for the `approved: <path>` protocol | `/approve <path>` `/role` |
 | **ship-pilot** | The branch's PR, checks, mergeability and "behind main" as a band; `merge / later / open-pr-only` as buttons that send the literal reply to `/ship`'s gate; a plan progress bar from Atomic Sub-tasks; tick a sub-task from the phone | `/pr` `/merge` `/progress` `/check A3` |
 
 Everything a mod decides is also available as **command text**, so Remote Control from the phone works; the bands, buttons and status line draw only in the terminal and the Desktop app on the PC.
@@ -68,7 +68,7 @@ Resume:
 
 **While working** — the status line under the prompt reads like `cache 42m · ctx 61% · 5h 72% ↻14:30 (2h10m) · wk 64% · ≈$3.10 · feat/041-x · 2 dirty · 1 unpushed`. On the PC a band appears when the cache is about to lapse, context passes 70 % or a limit passes 80 %, with `Keep warm · Compact · Handoff & restart · Keep going`. From the phone: `/health` gives the same facts and a one-line advice.
 
-**Handoff** — `/handoff` (or the button) writes `docs/session-state-<branch>.md` with `## Session Summary / ## Open Signals / ## Next Steps` and the HEAD hash, clears the conversation and resumes from that file as your first prompt. Use it when `/health` says context is high or the cache went cold.
+**Handoff** — `/handoff` (or the button) writes `.claude/sessions/handoff-<branch>.md` (untracked) with `## Session Summary / ## Open Signals / ## Next Steps` and the HEAD hash, clears the conversation and resumes from that file as your first prompt. Use it when `/health` says context is high or the cache went cold.
 
 **Scope** — when the Worker needs a file outside the plan's scope you see the familiar `SCOPE_GUARD … wait for "approved: <path>"` message. Reply `approved: src/x.ts` as before, **or** `/approve src/x.ts`, **or** press *Approve* in the band. All three append the path to the plan's ```` ```scope ```` block.
 

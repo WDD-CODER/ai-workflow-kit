@@ -26,7 +26,7 @@ After the self-review, a separate reviewer agent traced attack paths against the
 | Medium | The *Handoff & restart* button called the command through `$.command.run`, which the human-only check refuses. | The button runs the handoff routine directly (a press is the person's act); the slash command keeps its origin check. |
 | Medium | `$.store` is per-plugin, so the cross-mod notify inbox could never deliver. | Removed. ship-pilot has its own `pushUrl` option. |
 | Medium | A future-dated registry row would be "live" forever and lock a slot. | Rows dated in the future (> 60 s) or a day old are pruned; `/fleet forget <id>` drops one by hand. |
-| Medium | The handoff was re-submitted as the person's own words and injected as plain text next session. | The resume is framed as the plugin's message (no `asUser`); guards wraps the state excerpt as quoted data in `<session-state>` tags; the previous state file is kept as `.claude/handoff-previous.md`. |
+| Medium | The handoff was re-submitted as the person's own words and injected as plain text next session. | The resume is framed as the plugin's message (no `asUser`); the previous handoff is kept as `.claude/sessions/handoff-previous.md`. |
 | Low | *Approve* button on a glob the model chose; stale blockers on the merge button; `failOpen` covering the branch guard; multi-line `/approve`. | Button refuses globs (type `/approve` instead); the merge button re-polls before sending; branch, kit-owned and GitHub guards fail closed regardless of `failOpen`; `/approve` takes one repo-relative line. |
 
 Still true, verified by the reviewer: argv-only process calls, no `$.env`, `https://`-gated push, fork only on `/handoff` and *Keep warm*, deny-only `tool.check`/`tool.call`, origin checks on the human-only commands, the limited file writes.
@@ -46,7 +46,7 @@ Still true, verified by the reviewer: argv-only process calls, no `$.env`, `http
 | Concern | Finding |
 | --- | --- |
 | Host processes | `git branch/status/rev-list/worktree/rev-parse`; `df -k`; `ss`/`netstat` (via `sh -c` **only** on Linux, with a fixed string and no interpolation); `powershell … Get-PSDrive`; `node scripts/slot-stop.mjs` only when `autoStopPorts` is on, in a slot, and no `/remote` link is live. |
-| Files written | `.claude/.session-lock` (same shape as the shell workflow); `docs/session-state-<branch>.md` or `.claude/handoff-<branch>.md` on `/handoff`. Never outside the session's checkout. |
+| Files written | `.claude/.session-lock` (same shape as the shell workflow); `.claude/sessions/handoff-<branch>.md` on `/handoff`. Never outside the session's checkout. |
 | Permission effect | `tool.check` on Bash: **deny only** (`git checkout/switch/reset` while another live session holds the folder). It never returns `allow`, so it cannot lift a rule or the classifier. Fails **closed** (`.catch` → deny) when the registry cannot be read. |
 | Network | One optional `POST` to `pushUrl`, only when it starts with `https://`, body = the notification text (e.g. "PR #<n>: all 9 checks green"). Nothing else leaves the machine. Phone pushes never carry file contents or prompts. |
 | Model spend | `/handoff` = one fork (cache-shared); *Keep warm* = one fork of `ok`. Both person-initiated. |
@@ -62,7 +62,7 @@ Still true, verified by the reviewer: argv-only process calls, no `$.env`, `http
 | Permission effect | `tool.call` on Edit/Write/MultiEdit/NotebookEdit: **deny only**. `tool.call` on Bash: **deny only** (`git push … --no-verify`). It never answers `allow` and never calls `tool.check`, so it cannot widen anything the user's rules or the classifier would stop. |
 | Failure mode | Scope/branch guard: fails **open** by default (`failOpen: true`), with a toast, exactly as `scope-guard.sh` does today ("/ship scope gate will verify"); set `failOpen: false` to fail closed. The `--no-verify` guard fails **closed**: its `.catch` re-tests the regex and denies. |
 | Prompt injection | A path cannot approve itself: approval needs a human-origin command or a press, the scope is pinned per session, and an edit that would change the scope block is denied. The deny text echoes the path back to the model as plain text. |
-| Context injection | `prompt.compose` adds a `session`-scoped section built from the role and ≤ `stateInjectChars` of `docs/session-state-<branch>.md`. That file is already repo content the model reads today; the mod does not add any new source of text. |
+| Context injection | `prompt.compose` adds a `session`-scoped section built from the role only (Planner, Worker with its plan, idle slot). No file text is injected. |
 | Residual risk | The glob matcher is a 40-line port, not picomatch. It supports `**`, `*`, `?`, `{a,b}` and dot files, which covers every scope block in `plans/` today. An exotic pattern (`!(…)`, `[abc]`) would not match and would **deny**, never allow. `/ship`'s `scope-check.mjs --diff` (real picomatch) remains the backstop. |
 
 ## ship-pilot

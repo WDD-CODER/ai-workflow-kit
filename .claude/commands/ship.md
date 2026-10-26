@@ -173,10 +173,9 @@ Approve **Y** (or `--yes`) = commit/push consent. It validates `[human]` items o
    **Learning step (no command from the Human):** run `node scripts/decision-log.mjs learn --reply "<the Human's replies this session>"`. `LEARNING: nothing to record` → one line, no model call, go on. `LEARNING: record` → follow `docs/agent/decision-review.md`: log every `✗` decision and every `failed:` card to `docs/brain/decision-log.md`, add a rule to `docs/brain/agent-rules.md` when the same kind of mistake repeats (`no rule` in the reply skips it), and send each generic lesson to the kit (`scripts/kit-feedback.mjs`). The two `docs/brain` files join the commit in step 3.
 3. **`git add` only listed paths** (todo/plan/brain included) — one commit with job + todos (+ brain), never job-then-todos-later.
 4. **`git commit`** (Conventional Commit; Cursor trailer `Co-authored-by: Cursor <cursoragent@cursor.com>` when applicable).
-5. **Session-state fold (before push)** — see Phase 5: write `docs/session-state-${BRANCH}.md`, `git add`, **`git commit --amend --no-edit`** (ours, not yet pushed). Never leave it dirty after ship.
-6. Rename branch if approved.
-7. Push only if asked ("push"/"ship and push"): `git push -u origin HEAD`. FAST/ULTRA-TRIVIAL: push is implied by the single Y.
-8. **Commit-vs-PR judgment** (before any `gh pr create`) — see below. Never open a PR silently.
+5. Rename branch if approved.
+6. Push only if asked ("push"/"ship and push"): `git push -u origin HEAD`. FAST/ULTRA-TRIVIAL: push is implied by the single Y.
+7. **Commit-vs-PR judgment** (before any `gh pr create`) — see below. Never open a PR silently.
 
 Recovery, and push-rejected/merge-fails → `docs/agent/ship-recovery.md`. Never commit to `main`. Never force-push. Never amend after push.
 
@@ -206,14 +205,13 @@ Never merge without the Human's literal word `merge` — in this ship's `/ship` 
 
 ---
 
-## Phase 5 — Session-state (On approval step 5, fold into ship commit before push)
+## Phase 5 — Open items (no file to write)
 
-1. Save target: `.claude/.session-state-path` (gitignored pointer); fallback `docs/session-state-${BRANCH}.md` then `docs/session-state.md`.
-2. `node scripts/write-session-state.mjs --summary "<2–4 bullets>" --next "<…>" [--pr <url>]` — resolves the branch-canonical path, appends (≤1 file changed vs `origin/main...HEAD`) or full-rewrites (>1).
-3. `git add` that file only, then `git commit --amend --no-edit` (not yet pushed — never amend once pushed).
-4. Continue On approval (rename → push → PR judgment).
+There is no session-state file. What shipped is the commit and the PR; what is still open is written where the next
+session already looks, in the commit from step 3 and never in a second one:
 
-Don't change `scripts/session-startup.sh`'s resume path. `.claude/.session-state-path` stays untracked.
+- a loose end of this plan → a line in the plan's `## Execution Notes` (the plan file is already staged);
+- no plan, or a loose end for the Human → a line in the PR body and in the wrap-up below.
 
 ---
 
@@ -240,7 +238,7 @@ Merge: offered | merged {sha} | deferred | N/A (checkpoint)
 Brain review: {summary} | N/A (checkpoint, not run)
 Learning: nothing to record | {n} logged, rule {added|none}, kit feedback {PR url|none}
 Todo: {n marked} | no matching open items — skipped
-Session state: {path} (append | full rewrite)
+Open items: {where they were written} | none
 ```
 
 Milestone/checkpoint with an incomplete brief → also include: `Milestone commit — brief not yet complete, no PR proposed`

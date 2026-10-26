@@ -58,7 +58,6 @@ const slot = (): World => {
     [`${cwd}/.worktree-plan`, 'plans/341-toggle-chips.plan.md\n'],
     [`${cwd}/plans/341-toggle-chips.plan.md`, PLAN],
     [`${cwd}/docs/workflow-kit/kit-owned.json`, JSON.stringify({ files: ['.claude/commands/ship.md', 'scripts/scope-guard.sh'] })],
-    [`${cwd}/docs/session-state-feat-341-toggle-chips.md`, '# state\n\n## Session Summary\n- did A1\n\n## Next Steps\n- A2\n\n## Other\nignored'],
     // The project's hotspots come from its kit.config.json (the hotspots option is empty by default).
     [`${cwd}/kit.config.json`, JSON.stringify({ paths: { hotspots: ['src/styles.scss'] }, project: { i18nFile: 'public/i18n/' } })],
   ])
@@ -89,8 +88,6 @@ test('worker: in-scope edit passes, out-of-scope edit is denied with the approve
   // Always-allowed paths need no scope entry.
   const hot = await $.tool.call(edit('src/styles.scss'))
   expect(hot.deny).toBeUndefined()
-  const state = await $.tool.call(edit('docs/session-state-feat-341-toggle-chips.md'))
-  expect(state.deny).toBeUndefined()
 })
 
 test('/approve appends the path to the scope block and the edit then passes', async ($, on) => {
@@ -162,7 +159,7 @@ test('a new plan file with a similar existing plan is held until approved', asyn
   expect(fresh.deny).toBeUndefined()
 })
 
-test('prompt.compose adds the role and the session-state excerpt as a session section', async ($, on) => {
+test('prompt.compose adds the role as a session section', async ($, on) => {
   const w = slot()
   mock.clock(on)
   world(on, w)
@@ -171,8 +168,7 @@ test('prompt.compose adds the role and the session-state excerpt as a session se
   const mine = sections.find(s => s.id === 'guards:role')
   expect(mine?.scope).toBe('session')
   expect(mine?.text).toMatch(/WORKER: slot with active plan plans\/341-toggle-chips.plan.md/)
-  expect(mine?.text).toMatch(/did A1/)
-  expect(mine?.text).not.toMatch(/ignored/)
+  expect(mine?.text).not.toMatch(/SESSION SAVE TARGET/)
 })
 
 test('a plan edit cannot widen the scope, and .worktree-plan is not editable', async ($, on) => {

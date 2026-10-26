@@ -10,7 +10,7 @@ flowchart TB
   CHAT["Chat / agent session"]
   subgraph now["Now / in flight"]
     TODO[".claude/todo.md"]
-    STATE["docs/session-state.md"]
+    PLANS["plans/ - checkboxes and Execution Notes"]
   end
   subgraph brain["Second brain - docs/brain/"]
     BRIEF["projectbrief.md"]
@@ -23,7 +23,7 @@ flowchart TB
     AGENTS["AGENTS.md"]
     AGENTDOCS["docs/agent/*.md"]
   end
-  CHAT -->|"load-bearing facts"| STATE
+  CHAT -->|"load-bearing facts"| PLANS
   CHAT -->|"propose at push/PR"| brain
   brain -->|"read on unfamiliar work"| CHAT
   AGENTS -->|"conventions"| CHAT
@@ -61,6 +61,6 @@ docs/brain/
 
 | Save | Don't save |
 | --- | --- |
-| A choice with alternatives and a reason (ADR) | Today's status (use the session-state / todo) |
+| A choice with alternatives and a reason (ADR) | Today's status (use the plan / todo) |
 | A trap that cost time, with the fix (gotcha) | Anything the code or git history already says |
 | A proven solution used more than once (pattern) | One-off debugging narrative |

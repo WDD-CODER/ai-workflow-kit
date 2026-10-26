@@ -1,15 +1,9 @@
 {
   "name": "guards",
   "version": "0.2.0",
-  "description": "In-process port of the Planner-Worker shell guards: main-branch guard, plan Read-Write Scope guard with an Approve button (/approve <path>), kit-owned files, new-plan similarity, a hard deny on git push --no-verify, and session-state injection at start.",
+  "description": "In-process port of the Planner-Worker shell guards: main-branch guard, plan Read-Write Scope guard with an Approve button (/approve <path>), kit-owned files, new-plan similarity, a hard deny on git push --no-verify, and the role line injected at start.",
   "types": "./types/index.d.ts",
   "userConfig": {
-    "stateInjectChars": {
-      "type": "number",
-      "title": "Session-state chars injected",
-      "description": "How much of docs/session-state-<branch>.md to add to the system prompt (0 = none).",
-      "default": 1500
-    },
     "failOpen": {
       "type": "boolean",
       "title": "Scope guard fails open",

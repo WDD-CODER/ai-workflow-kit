@@ -71,7 +71,7 @@ before(() => {
   writeFileSync(join(main, 'plans', '001-alpha.plan.md'), plan('001', 'alpha', ['src/**']))
   writeFileSync(join(main, 'src', 'a.js'), 'export const a = 1\n')
   writeFileSync(join(main, 'NOTES.md'), '# scratch\n')
-  writeFileSync(join(main, '.gitignore'), ['scripts/node_modules/', '.worktree-*', '.claude/sessions/', '.claude/.session-state-path', ''].join('\n'))
+  writeFileSync(join(main, '.gitignore'), ['scripts/node_modules/', '.worktree-*', '.claude/sessions/', ''].join('\n'))
   gitIn(main, 'add', '-A')
   gitIn(main, 'commit', '-q', '-m', 'scratch')
   linkModules(main)
@@ -149,8 +149,10 @@ test('(3) a write on main outside plans/*.plan.md and .claude/todo.md is refused
   assert.equal(todoOk.decision, 'allow', todoOk.out)
 })
 
-test('(4) a runtime file (.claude/sessions/**, .claude/.session-state-path) on main is allowed', () => {
-  for (const f of [join(main, '.claude', 'sessions', 'x', 'y.md'), join(main, '.claude', '.session-state-path')]) {
+test('(4) a runtime file (.claude/sessions/**) on main is allowed; a session-state file is an ordinary doc and is refused', () => {
+  const state = write(main, 'branch-guard.sh', join(main, 'docs', 'session-state-x.md'))
+  assert.equal(state.decision, 'deny', state.out)
+  for (const f of [join(main, '.claude', 'sessions', 'x', 'y.md')]) {
     const r = write(main, 'branch-guard.sh', f)
     assert.equal(r.decision, 'allow', r.out)
     assert.equal(r.status, 0)
@@ -306,7 +308,7 @@ test('branch guard fails closed on a guarded folder: empty or unparseable input,
     assert.equal(ok.decision, 'allow', `${JSON.stringify(input)}: ${ok.out}`)
   }
   // Plans, the todo list and runtime files stay writable on main.
-  for (const f of [join(main, 'plans', '004-delta.plan.md'), join(main, '.claude', 'todo.md'), join(main, '.claude', 'sessions', 'a.md'), join(main, '.claude', '.session-state-path'), join(main, '.claude', '.plan-write-ack')]) {
+  for (const f of [join(main, 'plans', '004-delta.plan.md'), join(main, '.claude', 'todo.md'), join(main, '.claude', 'sessions', 'a.md'), join(main, '.claude', '.plan-write-ack')]) {
     const r = write(main, 'branch-guard.sh', f)
     assert.equal(r.decision, 'allow', `${f}: ${r.out}`)
   }

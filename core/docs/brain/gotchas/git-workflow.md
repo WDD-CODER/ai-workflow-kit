@@ -24,13 +24,13 @@
 
 ---
 
-## Tracked session-state pointer dirties every ship/merge
+## A rewritten state file dirties every ship (so the kit has none)
 
-**What hurt:** `.claude/.session-state-path` was tracked in git but rewritten on every SessionStart (`session-startup.sh`) to a PPID-keyed path. `/ship` also wrote session-state *after* commit/push. Result: perpetual dirty trees and `gh pr merge --delete-branch` failing on local checkout.
+**What hurt:** a state file rewritten at every session start and every `/ship` left perpetual dirty trees and made `gh pr merge --delete-branch` fail on the local checkout. A copy kept for "where were we" also went stale within days and named finished work as next steps.
 
-**Why the obvious fix is wrong:** Committing the updated pointer “to clean the tree” just schedules the next SessionStart to dirty it again. Leaving Phase 5 until after push guarantees an uncommitted handoff file.
+**Why the obvious fix is wrong:** Committing the rewrite “to clean the tree” only schedules the next rewrite. Writing it after the push guarantees an uncommitted file.
 
-**What to do instead:** Keep `.claude/.session-state-path` gitignored (local pointer only). Save to stable `docs/session-state-${BRANCH}.md` (no PPID). On `/ship`, write that file after commit, amend before push. See `.claude/commands/ship.md` Phase 5.
+**What to do instead:** Keep no session-state file. Done work is in git and the PR; open work is the plan's checkboxes and `## Execution Notes`; a loose end for the Human goes in the PR body. A project's own old `docs/session-state*.md` may simply be deleted.
 
 ---
 

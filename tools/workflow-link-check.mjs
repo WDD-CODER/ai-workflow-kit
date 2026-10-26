@@ -36,10 +36,10 @@ const SCAN_FILES = ['AGENTS.md', 'AGENTS.workflow.md', 'CLAUDE.md', 'README_WORK
 // with one, is not checked. Optional files (paths.planChecks, the tech-debt baseline) come from kit.config.json.
 const RUNTIME = [
   '.claude/todo.md', '.claude/todo-archive/', '.claude/sessions/', '.claude/techdebt-reports/', '.claude/reports/',
-  '.claude/settings.local.json', '.claude/worktrees/', '.claude/.session-state-path', '.claude/.last-npm-install-hash',
+  '.claude/settings.local.json', '.claude/worktrees/', '.claude/.last-npm-install-hash',
   '.claude/.last-npm-install-hash-scripts', '.claude/session-manifests/', '.claude/plans/', '.claude/scheduled_tasks.lock',
   '.claude/scheduled_tasks.json', '.claude/logs/', '.claude/.session-lock', 'scripts/package-lock.json', 'scripts/node_modules/',
-  'docs/session-state', '.claude/.plan-write-ack', '.claude/dev-server.log', '.github/pull_request_template.md',
+  '.claude/.plan-write-ack', '.claude/dev-server.log', '.github/pull_request_template.md',
 ]
 const EXAMPLE = /[<>*{}$…]|NNN|YYYY|\.\.\./
 

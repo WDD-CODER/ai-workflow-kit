@@ -6,7 +6,7 @@
 
 **Why the obvious fix is wrong:** Trusting "the summary will capture it" isn't safe — summarization prioritizes recent/salient content, not necessarily the one decision that turns out to matter later.
 
-**What to do instead:** Persist load-bearing state to disk as it's decided (`docs/session-state.md`, `.claude/todo.md`, plan files under `plans/`) rather than leaving it only in conversation. This is also why `docs/brain/` exists as its own durable layer — see [[0002-file-based-memory-over-tool-memory]].
+**What to do instead:** Persist load-bearing state to disk as it's decided (`.claude/todo.md`, plan files under `plans/` and their Execution Notes) rather than leaving it only in conversation. This is also why `docs/brain/` exists as its own durable layer — see [[0002-file-based-memory-over-tool-memory]].
 
 ---
 

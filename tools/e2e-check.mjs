@@ -42,7 +42,7 @@
  * project that keeps its own .gitignore claims a plan (runtime files in .git/info/exclude); pre-push accepts a
  * closed plan in a range folder and refuses code; a project without
  * husky (core.hooksPath=.husky only) runs the hooks: the first commit passes, a staged fake key is refused;
- * SessionStart prints valid JSON on each branch (idle slot, worker without and with a session-state file);
+ * SessionStart prints valid JSON on each branch (idle slot, worker, Planner);
  * plan order (plan 011): tools/test/plan-order.test.mjs against the installed scripts, plan-order adds an open
  * dependency to the order, take-plan refuses a plan whose Depends-on: plan is not merged (NOT_READY) and takes one
  * whose dependency is closed; role agents (plan 013): tools/test/agent-contracts.test.mjs against the installed agents;
@@ -300,11 +300,8 @@ function main() {
   check('build gate and plan ledger pass', build.status === 0 && ledger.status === 0, tail(`${build.stdout}${ledger.out}`))
   git(slot, 'add', 'scripts/hello.mjs', 'package.json', planRel)
   const wc = git(slot, 'commit', '-q', '-m', 'feat(001): hello script')
-  const ss = node(slot, 'scripts/write-session-state.mjs', '--summary', 'plan 001 done', '--next', 'none')
-  git(slot, 'add', 'docs')
-  git(slot, 'commit', '-q', '--amend', '--no-edit')
   const wp = git(slot, 'push', '-q', '-u', 'origin', 'HEAD')
-  check('Worker commits (hooks run), writes session state and pushes the branch', wc.status === 0 && ss.status === 0 && wp.status === 0, tail(wc.out + ss.out + wp.out))
+  check('Worker commits (hooks run) and pushes the branch', wc.status === 0 && wp.status === 0, tail(wc.out + wp.out))
 
   // 5. Server: merge the PR, then run the todo-sync Action's scripts.
   sh('git', ['clone', '-q', '-b', 'main', origin, server], root)
@@ -445,21 +442,19 @@ function main() {
 }
 
 // The installed SessionStart script runs next to stubbed helpers, so each branch can be forced; each output must be
-// valid JSON with additionalContext (a string) under hookSpecificOutput, also with quotes and newlines in the state file.
+// valid JSON with additionalContext (a string) under hookSpecificOutput, also with quotes and newlines in the role line.
 function sessionStartCases(script) {
   const ssDir = join(root, 'session-start')
   mkdirSync(join(ssDir, 'scripts', 'lib'), { recursive: true })
   writeFileSync(join(ssDir, 'scripts', 'session-startup.sh'), readFileSync(script, 'utf8'))
   writeFileSync(join(ssDir, 'scripts', 'lib', 'slot.mjs'), 'console.log(process.env.STUB_DESCRIBE)\n')
-  writeFileSync(join(ssDir, 'scripts', 'session-state-path.mjs'), 'console.log(process.env.STUB_RESOLVED)\n')
   writeFileSync(join(ssDir, 'scripts', 'free-merged-slots.mjs'), '')
   writeFileSync(join(ssDir, 'scripts', 'orphan-sweep.mjs'), '')
   const nasty = 'quote " backslash \\ backtick ` dollar $HOME\nsecond line'
-  writeFileSync(join(ssDir, 'state.md'), `# State\n\n## Session Summary\n${nasty}\n\n## Next Steps\n- go\n`)
   const branches = [
-    ['idle slot', { STUB_DESCRIBE: 'IDLE SLOT: wt-1 is idle', STUB_RESOLVED: 'NONE' }, 'IDLE SLOT: wt-1'],
-    ['worker without state', { STUB_DESCRIBE: 'WORKER: plan=001', STUB_RESOLVED: 'missing.md' }, 'No previous session state'],
-    ['worker with a state file', { STUB_DESCRIBE: 'WORKER: plan=001', STUB_RESOLVED: 'state.md' }, nasty],
+    ['idle slot', { STUB_DESCRIBE: 'IDLE SLOT: wt-1 is idle' }, 'IDLE SLOT: wt-1'],
+    ['worker', { STUB_DESCRIBE: 'WORKER: plan=001' }, 'WORKER: plan=001'],
+    ['a role line with quotes and newlines', { STUB_DESCRIBE: nasty }, nasty],
   ]
   for (const [name, stub, expect] of branches) {
     const r = spawnSync('bash', [join(ssDir, 'scripts', 'session-startup.sh')], { cwd: ssDir, env: { ...env, ...stub }, encoding: 'utf8' })
@@ -731,11 +726,8 @@ function projectMain(here) {
   }
   git(slot, 'add', 'scripts/e2e/hello.mjs', planRel)
   const wc = git(slot, 'commit', '-q', '-m', `feat(${num}): e2e hello script`)
-  const ss = node(slot, 'scripts/write-session-state.mjs', '--summary', 'e2e plan done', '--next', 'none')
-  git(slot, 'add', 'docs')
-  git(slot, 'commit', '-q', '--amend', '--no-edit')
   const wp = git(slot, 'push', '-q', '-u', 'origin', 'HEAD')
-  check('Worker commits (hooks run), writes session state and pushes its branch', wc.status === 0 && ss.status === 0 && wp.status === 0, tail(wc.out + ss.out + wp.out))
+  check('Worker commits (hooks run) and pushes its branch', wc.status === 0 && wp.status === 0, tail(wc.out + wp.out))
 
   // 6. "GitHub": merge, then the todo-sync workflow's scripts.
   git(root, 'clone', '-q', '-b', main, origin, server)

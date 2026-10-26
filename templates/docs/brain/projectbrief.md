@@ -23,4 +23,4 @@
 
 - Hard rules and skill triggers: `AGENTS.md`
 - Path-scoped conventions: `docs/agent/*.md`
-- Current work / in-flight state: `docs/session-state.md`, `.claude/todo.md` — **not** this brain.
+- Current work / in-flight state: the plan's Execution Notes, `.claude/todo.md` — **not** this brain.

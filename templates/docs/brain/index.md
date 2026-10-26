@@ -1,6 +1,6 @@
 # docs/brain — index
 
-Distilled project knowledge: history and reasoning, not current state. **Current work status lives in `docs/session-state.md` and `.claude/todo.md` — not here.**
+Distilled project knowledge: history and reasoning, not current state. **Current work status lives in the plan's Execution Notes and `.claude/todo.md` — not here.**
 
 > **Visual tour:** [how-it-works.md](./how-it-works.md) — layers, folder map and the capture loop.
 
