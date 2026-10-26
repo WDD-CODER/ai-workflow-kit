@@ -1,9 +1,9 @@
 {
   "kit": {
-    "version": "1.7.0"
+    "version": "1.7.1"
   },
   "source": "local:.",
-  "commit": "a0ef3c086b50685dcc27cf3e832d818ffa590911",
+  "commit": "af63261d2667630d497f13dfdf424344d87a7b83",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -255,7 +255,7 @@
       "source": "core/.claude/skills/worktree-setup/SKILL.md"
     },
     ".claude/workflows/orchestrate.js": {
-      "sha256": "a05b8ae570d476e25d34a44b9d2fcb98ce4add23bbf313934ba058efe681f86e",
+      "sha256": "261bd7c139becf78de553e2fb6d970a0f6bfe925e29da18b1494caa499e1305c",
       "kind": "managed",
       "source": "core/.claude/workflows/orchestrate.js"
     },
