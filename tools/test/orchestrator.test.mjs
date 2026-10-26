@@ -322,7 +322,7 @@ test('checkProblem: kit scripts that push or change state are refused, project c
   const src = /const DENY = [\s\S]*?\n}\n(?=\/\/ The plan branch shape)/.exec(wfSource)?.[0]
   assert.ok(src, 'the checkProblem block is found in orchestrate.js')
   const checkProblem = new Function(`${src}\nreturn checkProblem`)()
-  for (const c of ['node scripts/kit-feedback.mjs --title x', 'node scripts/orch-state.mjs set', 'node scripts/decision-log.mjs add', 'node scripts/take-plan.mjs 1', 'node scripts/slot-serve.mjs', 'node tools/sync.mjs --apply']) {
+  for (const c of ['node scripts/kit-feedback.mjs --title x', 'node scripts/orch-state.mjs set', 'node scripts/decision-log.mjs add', 'node scripts/take-plan.mjs 1', 'node scripts/slot-serve.mjs', 'node tools/sync.mjs --apply', 'node scripts/Kit-Feedback.mjs --title x']) {
     assert.match(checkProblem(c, null) ?? '', /not a check/, c)
   }
   for (const c of ['node scripts/scope-check.mjs --arch', 'node tools/leak-check.mjs', 'node scripts/my-project-check.mjs', 'node --test tests/a.test.mjs', 'npm run build']) {

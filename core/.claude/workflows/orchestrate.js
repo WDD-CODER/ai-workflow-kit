@@ -46,7 +46,7 @@ function checkProblem(cmd, scripts) {
   const w = c.split(/ +/)
   const safe = (ws) => ws.every((x) => SAFE_ARG.test(x) && !x.includes('..'))
   if (w[0] === 'node' && /^(tools|scripts)\/[A-Za-z0-9_./-]+\.m?js$/.test(w[1] ?? '') && safe(w.slice(1))) {
-    const name = w[1].split('/').pop().replace(/\.m?js$/, '')
+    const name = w[1].split('/').pop().toLowerCase().replace(/\.m?js$/, '') // case-folded: Windows/macOS files match any case
     return NOT_A_CHECK.has(name) ? `${c}: ${name} changes state or pushes, it is not a check` : null
   }
   if (w[0] === 'node' && w[1] === '--test' && safe(w.slice(2)) && w.slice(2).every((x) => !x.startsWith('-') || /^--test-[a-z-]+(=[\w.,-]+)?$/.test(x))) return null
