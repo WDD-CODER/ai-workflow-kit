@@ -51,7 +51,8 @@ runs no command.
    goes to the kit: `node scripts/kit-feedback.mjs --title "<title>" --text "<the lesson, general terms>"`. It opens a
    pull request on the kit repository (`.kit/install.json` `source`) with one file under `feedback/inbox/`, and
    **refuses** (exit 2, nothing pushed) text that names the project or its repository, a path under `paths.srcRoot` /
-   `paths.serverRoot`, or holds a code fence. Rewrite the lesson without them, or keep it project-local. The kit's
+   `paths.serverRoot`, or holds a code fence. Rewrite the lesson without them, or keep it project-local. `--text-file`
+   reads only a scratch file under the OS temp folder or `.claude/sessions/` (never a dotfile or a `..` path). The kit's
    Planner turns inbox entries into plans and deletes them when done.
 5. **Eval cases.** A graded decision can become a checker eval case (`docs/agent/agent-evals.md`, label
    `human-verdict <date>:`). Such a case holds project code, so it stays in the project's own case set;

@@ -77,3 +77,29 @@ test('privacyProblem and repoOf in isolation', () => {
   assert.equal(repoOf('local:.'), null)
   assert.equal(repoOf('github:owner'), null)
 })
+
+test('--text-file reads only a scratch file: a dotfile, a ".." path and a file elsewhere are refused', () => {
+  const dir = project()
+  const scratch = mkdtempSync(join(tmpdir(), 'kitfb-'))
+  try {
+    writeFileSync(join(scratch, 'lesson.md'), 'A general lesson about confirmations on leaving a screen.')
+    writeFileSync(join(scratch, '.env'), 'A general lesson hidden in a dotfile.')
+    const refused = [
+      ['a dotfile', join(scratch, '.env')],
+      ['a ".." path', `${scratch}/../${scratch.split(/[\\/]/).pop()}/lesson.md`],
+      ['a file outside the temp folder', join(kit, 'CHANGELOG.md')],
+    ]
+    for (const [name, file] of refused) {
+      const r = send(dir, ['--title', 'A lesson', '--text-file', file, '--dry-run'])
+      assert.equal(r.status, 2, `${name}: exit ${r.status} ${r.stdout}${r.stderr}`)
+      assert.match(r.stderr, /--text-file refused/, name)
+      assert.equal(r.stdout, '', `${name}: printed an entry`)
+    }
+    const ok = send(dir, ['--title', 'A lesson', '--text-file', join(scratch, 'lesson.md'), '--dry-run'])
+    assert.equal(ok.status, 0, `${ok.stdout}${ok.stderr}`)
+    assert.match(ok.stdout, /general lesson about confirmations/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+    rmSync(scratch, { recursive: true, force: true })
+  }
+})

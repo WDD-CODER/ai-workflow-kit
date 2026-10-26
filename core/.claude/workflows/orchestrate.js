@@ -32,6 +32,12 @@ const DENY = /\brm\s+-[a-z]*[rf]|reset\s+--hard|push\s+(?:[^\n]*\s)?(?:--force|-
 // <script>` with a script package.json has (plan-info's npmScripts; null before plan-info = shape only), `node tools/…`
 // or `node scripts/…` and `node --test <files>`, with safe arguments. Anything else is dropped with the reason.
 const SAFE_ARG = /^[A-Za-z0-9_./=:,@+-]+$/
+// The kit's own scripts that push, open a pull request, write run/plan/slot state or install files are never a check,
+// whatever folder they sit in. A project's own scripts/ and tools/ hold its checks, so this is a deny set, not a list.
+const NOT_A_CHECK = new Set([
+  'kit-feedback', 'orch-state', 'decision-log', 'take-plan', 'slot-serve', 'slot-stop', 'write-session-state', 'todo-query',
+  'todo-archive', 'plan-close', 'free-merged-slots', 'orphan-sweep', 'local-excludes', 'brain-capture-comment', 'sync', 'install', 'kit-sync',
+])
 function checkProblem(cmd, scripts) {
   const c = String(cmd ?? '').trim()
   if (DENY.test(c)) return `${c}: on the deny list`
@@ -39,7 +45,10 @@ function checkProblem(cmd, scripts) {
   if (npm) return scripts && !scripts.includes(npm[1]) ? `${c}: no script ${npm[1]} in package.json` : null
   const w = c.split(/ +/)
   const safe = (ws) => ws.every((x) => SAFE_ARG.test(x) && !x.includes('..'))
-  if (w[0] === 'node' && /^(tools|scripts)\/[A-Za-z0-9_./-]+\.m?js$/.test(w[1] ?? '') && safe(w.slice(1))) return null
+  if (w[0] === 'node' && /^(tools|scripts)\/[A-Za-z0-9_./-]+\.m?js$/.test(w[1] ?? '') && safe(w.slice(1))) {
+    const name = w[1].split('/').pop().replace(/\.m?js$/, '')
+    return NOT_A_CHECK.has(name) ? `${c}: ${name} changes state or pushes, it is not a check` : null
+  }
   if (w[0] === 'node' && w[1] === '--test' && safe(w.slice(2)) && w.slice(2).every((x) => !x.startsWith('-') || /^--test-[a-z-]+(=[\w.,-]+)?$/.test(x))) return null
   return `${c}: not an allowed check (npm run <package.json script>, node tools/… or scripts/…, node --test <files>)`
 }

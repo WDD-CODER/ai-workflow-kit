@@ -82,16 +82,16 @@ by symbol (do not re-run the whole reality check from scratch) and print one lin
 ## Functional Requirements
 
 ### Must Have (P0)
-- [ ] A1: Refuse plan check commands that run one of the kit's own scripts with side effects — one `NOT_A_CHECK` set of script names (kit-feedback, orch-state, orch-preflight, decision-log, take-plan, slot-serve, slot-stop, write-session-state, todo-query, todo-archive, plan-close, free-merged-slots, orphan-sweep, prune scripts, local-excludes, sync, install, kit-sync) matched on the file name wherever it sits — reason names the script — core/.claude/workflows/orchestrate.js
-- [ ] A2: Make `kit-feedback` read a `--text-file` only from the OS temp folder or `.claude/sessions/`, never a dotfile and never through `..` — refuse with exit 2 and a one-line reason before anything is read — core/scripts/kit-feedback.mjs
-- [ ] A3: Prove both guards with tests that fail without the change — accepted and refused cases for the allowlist and the file path — tools/test/orchestrator.test.mjs, tools/test/kit-feedback.test.mjs
+- [x] A1: Refuse plan check commands that run one of the kit's own scripts with side effects — one `NOT_A_CHECK` set of script names (kit-feedback, orch-state, orch-preflight, decision-log, take-plan, slot-serve, slot-stop, write-session-state, todo-query, todo-archive, plan-close, free-merged-slots, orphan-sweep, prune scripts, local-excludes, sync, install, kit-sync) matched on the file name wherever it sits — reason names the script — core/.claude/workflows/orchestrate.js
+- [x] A2: Make `kit-feedback` read a `--text-file` only from the OS temp folder or `.claude/sessions/`, never a dotfile and never through `..` — refuse with exit 2 and a one-line reason before anything is read — core/scripts/kit-feedback.mjs
+- [x] A3: Prove both guards with tests that fail without the change — accepted and refused cases for the allowlist and the file path — tools/test/orchestrator.test.mjs, tools/test/kit-feedback.test.mjs
 
 ### Should Have (P1)
-- [ ] B1: Tell the Worker and the Human in the docs what a check command may and may not be, and where `kit-feedback` reads from — one short paragraph each — core/docs/agent/orchestrator.md, core/docs/agent/decision-review.md
-- [ ] B2: Re-render the installed copies and add the changelog line — `node tools/sync.mjs --target . --apply`, CHANGELOG.md `[Unreleased]` — .claude/workflows/orchestrate.js, scripts/kit-feedback.mjs, docs/agent/, CHANGELOG.md
+- [x] B1: Tell the Worker and the Human in the docs what a check command may and may not be, and where `kit-feedback` reads from — one short paragraph each — core/docs/agent/orchestrator.md, core/docs/agent/decision-review.md
+- [x] B2: Re-render the installed copies and add the changelog line — `node tools/sync.mjs --target . --apply`, CHANGELOG.md `[Unreleased]` — .claude/workflows/orchestrate.js, scripts/kit-feedback.mjs, docs/agent/, CHANGELOG.md
 
 ### Nice to Have (P2)
-- [ ] C1: Look for any second place that vets plan commands with the same pattern and reuse the one set there — grep `checkProblem` and `SAFE_ARG` in `core/` — core/.claude/workflows/orchestrate.js, core/.claude/agents/orch-readiness.md
+- [x] C1: Look for any second place that vets plan commands with the same pattern and reuse the one set there — grep `checkProblem` and `SAFE_ARG` in `core/` — core/.claude/workflows/orchestrate.js, core/.claude/agents/orch-readiness.md
 
 ## UI/UX Notes
 - None. Refusal reasons are one plain line each, in the form the orchestrator already uses (`<command>: …`).
@@ -101,12 +101,12 @@ by symbol (do not re-run the whole reality check from scratch) and print one lin
 
 ## Atomic Sub-tasks
 
-- [ ] A1: Refuse plan check commands that run one of the kit's own scripts with side effects — one set of script names matched on the file name — core/.claude/workflows/orchestrate.js
-- [ ] A2: Make kit-feedback read a text file only from the OS temp folder or the sessions folder, never a dotfile or a path through two dots — core/scripts/kit-feedback.mjs
-- [ ] A3: Prove both guards with tests that fail without the change — accepted and refused cases — tools/test/orchestrator.test.mjs, tools/test/kit-feedback.test.mjs
-- [ ] B1: Tell the Worker and the Human what a check command may be and where kit-feedback reads from — core/docs/agent/orchestrator.md, core/docs/agent/decision-review.md
-- [ ] B2: Re-render the installed copies and add the changelog line so drift-check stays green — CHANGELOG.md and the synced copies
-- [ ] C1: Check for a second place that vets plan commands and reuse the one set there — core/
+- [x] A1: Refuse plan check commands that run one of the kit's own scripts with side effects — one set of script names matched on the file name — core/.claude/workflows/orchestrate.js
+- [x] A2: Make kit-feedback read a text file only from the OS temp folder or the sessions folder, never a dotfile or a path through two dots — core/scripts/kit-feedback.mjs
+- [x] A3: Prove both guards with tests that fail without the change — accepted and refused cases — tools/test/orchestrator.test.mjs, tools/test/kit-feedback.test.mjs
+- [x] B1: Tell the Worker and the Human what a check command may be and where kit-feedback reads from — core/docs/agent/orchestrator.md, core/docs/agent/decision-review.md
+- [x] B2: Re-render the installed copies and add the changelog line so drift-check stays green — CHANGELOG.md and the synced copies
+- [x] C1: Check for a second place that vets plan commands and reuse the one set there — core/
 
 ## Execution Notes
 

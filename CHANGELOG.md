@@ -9,6 +9,10 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Security
+- The orchestrator no longer runs a kit script that pushes or changes state (`kit-feedback`, `orch-state`, `decision-log`, `take-plan`, `slot-serve`, `sync`, …) as a plan's check command; a project's own check scripts still run.
+- `kit-feedback --text-file` reads only a scratch file under the OS temp folder or `.claude/sessions/`, never a dotfile or a `..` path.
+
 ## [1.7.0] - 2026-10-26
 
 ### Added
