@@ -8,12 +8,14 @@
  * `feedback/<date>-<slug>` as `feedback/inbox/<date>-<slug>.md`, and a pull request is opened with `gh`; nothing goes to
  * the kit's main branch. The text is refused (exit 2, nothing pushed) when it names this project or its repository,
  * holds a path under paths.srcRoot / paths.serverRoot, or contains a code fence — a lesson that travels to every
- * project must not carry one project's code or name. --dry-run prints the entry and the gh calls and pushes nothing.
+ * project must not carry one project's code or name. --text-file reads only a scratch file (under the OS temp folder
+ * or .claude/sessions/, never a dotfile or a ".." path), so no secret file can reach the entry. --dry-run prints the entry and the gh calls and pushes nothing.
  *
  * Needs `gh` signed in. Node built-ins only. Exit 0 = sent (or dry run), 2 = refused or bad input, 1 = gh failed.
  */
 import { readFileSync } from 'node:fs'
-import { join, resolve, basename } from 'node:path'
+import { tmpdir } from 'node:os'
+import { join, resolve, basename, relative, isAbsolute } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
@@ -44,6 +46,20 @@ export function privacyProblem(text, cfg, rootName) {
   return null
 }
 
+/** Why --text-file may not be read (the first reason), or null: only a scratch file, never a dotfile or a `..` path. */
+export function textFileProblem(file, root, tmp = tmpdir()) {
+  const raw = String(file ?? '')
+  if (raw.split(/[\\/]+/).includes('..')) return 'a path with ".." is not read'
+  const abs = resolve(raw)
+  if (basename(abs).startsWith('.')) return 'a dotfile is not read'
+  const inside = (dir) => {
+    const rel = relative(resolve(dir), abs)
+    return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel)
+  }
+  if (!inside(tmp) && !inside(join(root, '.claude', 'sessions'))) return 'only a file under the temp folder or .claude/sessions/ is read'
+  return null
+}
+
 /** `github:owner/repo` -> `owner/repo`, or null. */
 export function repoOf(source) {
   const m = /^github:([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)$/.exec(String(source ?? ''))
@@ -65,7 +81,11 @@ function main(argv) {
   const root = resolve(flags.root ?? process.cwd())
   const title = String(flags.title ?? '').trim()
   let text = flags.text
-  if (text === undefined && flags['text-file']) text = readFileSync(resolve(flags['text-file']), 'utf8')
+  if (text === undefined && flags['text-file']) {
+    const bad = textFileProblem(flags['text-file'], root)
+    if (bad) refuse(`--text-file refused — ${bad}. Write the lesson to a scratch file first.`)
+    text = readFileSync(resolve(flags['text-file']), 'utf8')
+  }
   if (!title || !text || !String(text).trim()) refuse('--title and --text (or --text-file) are required')
   const cfg = readJson(join(root, '.kit', 'config.json')) ?? readJson(join(root, 'kit.config.json')) ?? {}
   const why = privacyProblem(`${title}\n${text}`, cfg, basename(root))
