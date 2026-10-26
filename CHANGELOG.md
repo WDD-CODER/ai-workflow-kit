@@ -9,6 +9,33 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Added
+
+- Decision review and learning loop. Builders no longer invent behaviour a plan does not describe: such a choice gets
+  the simplest option and a `behaviour:` decision (a defect noticed but not fixed is a `seen:` decision with
+  `file:line`). The run report and the `/ship` close-out number the decisions `D1…Dn`; the Human replies once with
+  `decisions: ok` or `D<n> ✗ <what I'd choose>`. When something is graded wrong the learning step runs by itself:
+  `scripts/decision-log.mjs` logs it to `docs/brain/decision-log.md`, a mistake that repeats becomes a rule in
+  `docs/brain/agent-rules.md` (capped at 30 lines and 2,400 characters; builders read only this file), and
+  `scripts/kit-feedback.mjs` (`/kit-feedback`) sends a general lesson to the kit as a pull request under
+  `feedback/inbox/` — refusing project names, project paths and code. Nothing graded wrong costs no model call.
+  Procedure: `docs/agent/decision-review.md`. New seeds (written once): `docs/brain/decision-log.md`,
+  `docs/brain/agent-rules.md`; `docs/brain/index.md` and `AGENTS.md` mention them for new installs.
+- `orch-readiness` asks product questions for a plan that changes interactive behaviour and does not say what happens
+  on edit, leave, cancel or error.
+- `orchestrator.pilotSize` (integer 0–10, default 3, 0 = off): a run with more plans than that builds the first plans,
+  stops with the report and the decisions, and starts the rest on the Human's `continue`.
+- The orchestrator runs the project's full build and test once on the run branch after the last merge; a failure is a
+  finding in the report and the branch is not handed over as clean.
+- Eval cases may be labelled `human-verdict <date>:`; such cases stay in the project's own cases.
+
+### Changed
+
+- A checking agent gets at most 5 items: the UI validator's cards run in batches of 5, each a fresh agent.
+- A project does nothing; rendered files that change (`kit-update`): the orchestrator workflow, command and docs,
+  `.claude/agents/orch-builder.md`, `orch-readiness.md`, `orch-report.md`, `.claude/commands/ship.md`, `take-plan.md`,
+  `docs/agent/*.md`; new: `.claude/commands/kit-feedback.md`, `scripts/decision-log.mjs`, `scripts/kit-feedback.mjs`.
+
 ## [1.6.0] - 2026-10-26
 
 ### Changed

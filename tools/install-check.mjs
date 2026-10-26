@@ -904,23 +904,33 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   const r = run('install.mjs', ['--target', od])
   if (r.status !== 0) fail(`install for the orchestrator files: exit ${r.status}, ${(r.stdout + r.stderr).trim().split('\n').pop()}`)
   else {
-    for (const f of ['.claude/workflows/orchestrate.js', '.claude/commands/orchestrate.md', 'docs/agent/orchestrator.md', 'scripts/orch-state.mjs', 'scripts/orch-preflight.mjs', 'scripts/lib/orch-run.mjs']) {
+    for (const f of ['.claude/workflows/orchestrate.js', '.claude/commands/orchestrate.md', 'docs/agent/orchestrator.md', 'scripts/orch-state.mjs', 'scripts/orch-preflight.mjs', 'scripts/lib/orch-run.mjs',
+      'scripts/decision-log.mjs', 'scripts/kit-feedback.mjs', '.claude/commands/kit-feedback.md', 'docs/agent/decision-review.md', 'docs/brain/decision-log.md', 'docs/brain/agent-rules.md']) {
       if (!existsSync(join(od, f))) fail(`orchestrator: install did not copy ${f}`)
     }
     const wf = read(od, '.claude/workflows/orchestrate.js')
-    if (!wf.includes('const MAX_FIX_ROUNDS = 2') || !wf.includes('const RUN_PREFIX = "orch/"')) fail('orchestrator: orchestrate.js does not render maxFixRounds 2 / runBranchPrefix "orch/"')
+    if (!wf.includes('const MAX_FIX_ROUNDS = 2') || !wf.includes('const RUN_PREFIX = "orch/"') || !wf.includes('const PILOT_SIZE = 3')) fail('orchestrator: orchestrate.js does not render maxFixRounds 2 / runBranchPrefix "orch/" / pilotSize 3')
+    // The learning loop's files: the rules seed fits its own cap, and the rendered files name the rule they teach.
+    const rc = spawnSync(process.execPath, [join(od, 'scripts', 'decision-log.mjs'), 'rules', '--check', '--dir', od], { encoding: 'utf8' })
+    if (rc.status !== 0) fail(`decision-log: the rules seed does not pass its own cap: ${(rc.stdout + rc.stderr).trim().split('\n').pop()}`)
+    for (const f of ['.claude/agents/orch-builder.md', '.claude/commands/take-plan.md']) {
+      const t = read(od, f)
+      if (!t.includes('behaviour:')) fail(`decision review: ${f} does not state the no-invented-behaviour rule (behaviour:)`)
+      if (!t.includes('docs/brain/agent-rules.md') || !/never[^.]*decision-log\.md/.test(t)) fail(`decision review: ${f} must read agent-rules.md and never decision-log.md`)
+    }
     if (/\{\{[\w.|]+\}\}/.test(wf)) fail(`orchestrator: orchestrate.js keeps a placeholder: ${/\{\{[\w.|]+\}\}/.exec(wf)[0]}`)
     if (!read(od, 'scripts/orch-state.mjs').includes('const MIN_FREE_GB = 5')) fail('orchestrator: orch-state.mjs does not render minFreeDiskGb 5')
     const doc = read(od, 'docs/agent/orchestrator.md')
-    if (!doc.includes('| `runBranchPrefix` | `orch/` |') || !doc.includes('| `maxFixRounds` | `2` |') || !doc.includes('| `minFreeDiskGb` | `5` |')) fail('orchestrator: orchestrator.md does not name the default settings')
+    if (!doc.includes('| `runBranchPrefix` | `orch/` |') || !doc.includes('| `maxFixRounds` | `2` |') || !doc.includes('| `minFreeDiskGb` | `5` |') || !doc.includes('| `pilotSize` | `3` |')) fail('orchestrator: orchestrator.md does not name the default settings')
     if (!/^\.claude\/orchestrator-runs\/$/m.test(read(od, '.gitignore'))) fail('orchestrator: the rendered .gitignore does not ignore .claude/orchestrator-runs/')
   }
   rmSync(od, { recursive: true, force: true })
 
   const op = tmp('orch-project')
-  writeFileSync(join(op, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, orchestrator: { runBranchPrefix: 'runs/', maxFixRounds: 3, minFreeDiskGb: 10 } }))
+  writeFileSync(join(op, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, orchestrator: { runBranchPrefix: 'runs/', maxFixRounds: 3, minFreeDiskGb: 10, pilotSize: 0 } }))
   const p = run('install.mjs', ['--target', op])
   if (p.status !== 0) fail(`install with project orchestrator values: exit ${p.status}`)
+  else if (!read(op, '.claude/workflows/orchestrate.js').includes('const PILOT_SIZE = 0')) fail('orchestrator: pilotSize 0 does not render')
   else if (!read(op, '.claude/workflows/orchestrate.js').includes('const MAX_FIX_ROUNDS = 3') || !read(op, '.claude/workflows/orchestrate.js').includes('const RUN_PREFIX = "runs/"') || !read(op, 'scripts/orch-state.mjs').includes('const MIN_FREE_GB = 10')) fail('orchestrator: project values do not render')
   rmSync(op, { recursive: true, force: true })
 
@@ -930,6 +940,9 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     [{ maxFixRounds: 0 }, 'orchestrator.maxFixRounds is 0 — it must be a whole number from 1 to 5'],
     [{ maxFixRounds: '2' }, 'orchestrator.maxFixRounds is "2" — it must be a whole number from 1 to 5'],
     [{ minFreeDiskGb: -1 }, 'orchestrator.minFreeDiskGb is -1 — it must be a number of GB from 0 to 1000'],
+    [{ pilotSize: 11 }, 'orchestrator.pilotSize is 11 — it must be a whole number from 0 to 10'],
+    [{ pilotSize: 1.5 }, 'orchestrator.pilotSize is 1.5 — it must be a whole number from 0 to 10'],
+    [{ pilotSize: '3' }, 'orchestrator.pilotSize is "3" — it must be a whole number from 0 to 10'],
   ]
   for (const [orch, msg] of bad) {
     const ob = tmp('orch-bad')

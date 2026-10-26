@@ -95,6 +95,10 @@ export function orchestratorProblems(vals) {
   if (disk !== undefined && !(typeof disk === 'number' && Number.isFinite(disk) && disk >= 0 && disk <= 1000)) {
     out.push(`orchestrator.minFreeDiskGb is ${JSON.stringify(disk)} — it must be a number of GB from 0 to 1000`)
   }
+  const pilot = vals['orchestrator.pilotSize']
+  if (pilot !== undefined && !(Number.isInteger(pilot) && pilot >= 0 && pilot <= 10)) {
+    out.push(`orchestrator.pilotSize is ${JSON.stringify(pilot)} — it must be a whole number from 0 to 10 (0 = no pilot)`)
+  }
   return out
 }
 

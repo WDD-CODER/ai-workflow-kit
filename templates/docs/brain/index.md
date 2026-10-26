@@ -12,6 +12,7 @@ Distilled project knowledge: history and reasoning, not current state. **Current
 4. `patterns/` — proven solutions, one file each
 5. `gotchas.md` — index into `gotchas/` (what hurt before, and what to do instead), split by domain
 6. `glossary.md` — domain vocabulary
+7. `agent-rules.md` — short rules builders read, learned from decisions graded wrong (the log behind them: `decision-log.md`)
 
 ## When to read what
 
@@ -21,6 +22,7 @@ Distilled project knowledge: history and reasoning, not current state. **Current
 | About to make an architectural choice | `invariants.md`, then `decisions/` — check for an existing rule/ADR before deciding again |
 | Something behaves surprisingly / a trap cost time | `gotchas.md` first |
 | Unfamiliar domain term | `glossary.md` |
+| Starting to build a plan, or deciding a behaviour the plan leaves open | `agent-rules.md` (never `decision-log.md`) |
 | Need rules/conventions (not history) | `AGENTS.md` and `docs/agent/*.md` — not this folder |
 
 ## Maintenance

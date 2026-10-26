@@ -18,6 +18,9 @@ export const meta = {
 const MODELS = { build: "sonnet", judgment: "inherit" }
 const MAX_FIX_ROUNDS = 2
 const RUN_PREFIX = "orch/"
+const PILOT_SIZE = 3
+// A checking agent gets at most this many items (docs/agent/agent-roles.md rule 10): the UI validator's cards go in batches.
+const UI_BATCH = 5
 const PROJECT_CHECKS = ["build", "lint", "test"].filter((s) => typeof s === 'string' && s !== '').map((s) => `npm run ${s}`)
 const FAILING = ['blocker', 'major']
 const KEEP_THRESHOLD = 80
@@ -157,6 +160,25 @@ async function setPlan(nnn, fields, results = []) {
 const note = (text, nnn) => state(['note', '--run', RUN, ...(nnn ? ['--plan', nnn] : []), '--text', text], `note ${nnn ?? ''}`)
 
 let mergeFolder = null
+
+// Decisions agents took on their own (every role result's `decisions` list, `behaviour:` and `seen:` entries among them).
+// They are numbered D1…Dn at the end of the run, grouped by plan, and the Human grades them in one reply
+// (docs/agent/decision-review.md).
+const DECISIONS = []
+function take(nnn, ...results) {
+  for (const r of results) {
+    for (const d of Array.isArray(r?.decisions) ? r.decisions : []) {
+      const text = String(d).replace(/\s+/g, ' ').trim()
+      if (text && !DECISIONS.some((x) => x.plan === nnn && x.text === text)) DECISIONS.push({ plan: nnn, text })
+    }
+  }
+}
+function numberedDecisions(first) {
+  const rank = (d) => (/^behaviour:/i.test(d.text) ? 0 : 1)
+  const out = []
+  for (const plan of [...new Set(DECISIONS.map((d) => d.plan))].sort()) out.push(...DECISIONS.filter((d) => d.plan === plan).sort((a, b) => rank(a) - rank(b)))
+  return out.map((d, i) => ({ id: `D${first + i}`, plan: d.plan, text: d.text }))
+}
 
 // Merges are serialised: one merge into the run branch at a time.
 let mergeChain = Promise.resolve()
@@ -329,19 +351,28 @@ async function ui(ctx) {
   const pre = await runner('orch-preflight.mjs', preArgs, `ui env ${ctx.nnn}`)
   if (!pre.ok) return { results, blocked: true, why: `UI environment blocked before the browser step: ${(pre.problems ?? [pre.error]).join('; ')}` }
   const known = [...failed.map((c) => `${c.card}: its script failed — ${c.tail}`), ...(ctx.knownFindings ?? [])]
-  const r = await agent(`UI cards of plan ${ctx.nnn} of run ${RUN}. Follow .claude/agents/orch-ui.md, and give each card the page URL it was checked on in \`page\`.\n\n${task({
-    PLAN: ctx.info.path, FOLDER: ctx.wt.path, SCREENSHOTS: `.claude/sessions/orch-${RUN}/screens-${ctx.nnn}`,
-    CARDS: cards.length ? forBrowser.map((c) => ({ card: c.card, page: c.page, scriptFailed: failed.includes(c) })) : undefined,
-    PRE_CHECKED: passed.length ? passed.map((c) => c.card) : undefined,
-    KNOWN_FINDINGS: known.length ? known : undefined,
-  })}`, { agentType: 'orch-ui', schema: SCHEMA.ui, label: `ui ${ctx.nnn}`, phase: 'Build' })
-  if (!r) return { results, fail: true, why: 'the UI agent returned nothing', findings: [] }
-  results.push(r)
+  // At most UI_BATCH cards per agent (agent-roles.md rule 10): each batch is a fresh agent, one after the other (they
+  // share one browser).
+  const batches = cards.length ? Array.from({ length: Math.ceil(forBrowser.length / UI_BATCH) }, (_, i) => forBrowser.slice(i * UI_BATCH, (i + 1) * UI_BATCH)) : [null]
+  const shown = []
+  for (let i = 0; i < batches.length; i++) {
+    const part = batches[i]
+    const r = await agent(`UI cards of plan ${ctx.nnn} of run ${RUN}. Follow .claude/agents/orch-ui.md, and give each card the page URL it was checked on in \`page\`.\n\n${task({
+      PLAN: ctx.info.path, FOLDER: ctx.wt.path, SCREENSHOTS: `.claude/sessions/orch-${RUN}/screens-${ctx.nnn}`,
+      CARDS: part ? part.map((c) => ({ card: c.card, page: c.page, scriptFailed: failed.includes(c) })) : undefined,
+      PRE_CHECKED: passed.length ? passed.map((c) => c.card) : undefined,
+      KNOWN_FINDINGS: known.length ? known : undefined,
+      BATCH: batches.length > 1 ? `${i + 1} of ${batches.length}` : undefined,
+    })}`, { agentType: 'orch-ui', schema: SCHEMA.ui, label: batches.length > 1 ? `ui ${ctx.nnn} ${i + 1}/${batches.length}` : `ui ${ctx.nnn}`, phase: 'Build' })
+    if (!r) return { results, fail: true, why: 'the UI agent returned nothing', findings: [] }
+    results.push(r)
+    shown.push(...r.cards)
+  }
   // Each card result (page, status, screenshot paths) goes into status.json: the run report's grid by page.
-  for (const c of r.cards) await record({ card: c.card, page: c.page || forBrowser.find((x) => x.card === c.card)?.page }, c.status, 'browser', c.screenshots)
-  const drift = r.cards.filter((c) => c.status === 'plan-drift')
+  for (const c of shown) await record({ card: c.card, page: c.page || forBrowser.find((x) => x.card === c.card)?.page }, c.status, 'browser', c.screenshots)
+  const drift = shown.filter((c) => c.status === 'plan-drift')
   if (drift.length) await note(`plan drift (not a bug, no fix round): ${drift.map((c) => c.card).join('; ')}`, ctx.nnn)
-  const bad = r.cards.filter((c) => c.status === 'fail')
+  const bad = shown.filter((c) => c.status === 'fail')
   if (bad.length) return { results, fail: true, why: `ui: ${bad.map((c) => `${c.card} fail`).join('; ')}`, findings: bad.map((c, i) => ({ id: `ui-${i + 1}`, file: c.card, line: 1, rule: 'ui fail', reasoning: c.screenshots.join(', '), severity: 'major' })) }
   return { results }
 }
@@ -400,6 +431,7 @@ async function runPlan(nnn) {
   for (;;) {
     await setPlan(nnn, { state: ctx.round ? 'fixing' : 'building', round: ctx.round, tier: ctx.tier })
     const b = await builder(ctx, mode, findings)
+    take(nnn, b)
     let failure = null
     let results = [b]
     if (!b) failure = { why: 'the builder returned nothing', escalate: true }
@@ -412,16 +444,19 @@ async function runPlan(nnn) {
       results = []
       const g = await gate(ctx)
       results.push(g.r)
+      take(nnn, g.r)
       if (g.env || g.fail) failure = g
       else {
         await setPlan(nnn, { state: 'checking', round: ctx.round }, results)
         results = []
         const c = await checkers(ctx)
         results.push(...(c.results ?? []))
+        take(nnn, ...(c.results ?? []))
         if (c.env || c.fail) failure = c
         else {
           const u = await ui(ctx)
           results.push(...(u.results ?? []))
+          take(nnn, ...(u.results ?? []))
           if (u.blocked) {
             // A blocked UI environment stops before the browser agent and costs no fix round: the plan is parked with
             // the reason, for the Human to fix the environment and relaunch.
@@ -434,6 +469,7 @@ async function runPlan(nnn) {
             results = []
             const m = await merge(ctx)
             if (m.r) results.push(m.r)
+            take(nnn, m.r)
             if (m.merged) {
               await setPlan(nnn, { state: 'merged', round: ctx.round, tier: ctx.tier, sha: m.sha, reason: m.stopRun }, results)
               return { nnn, state: 'merged', sha: m.sha, round: ctx.round, stopRun: m.stopRun }
@@ -486,10 +522,26 @@ async function run() {
   }
   if (order.skipped?.length) log(`already merged into ${RUN_BRANCH} (from git): ${order.skipped.join(', ')}`)
   phase('Build')
+  // The pilot (orchestrator.pilotSize): a run with more plans than the pilot size builds the first plans in wave order,
+  // then stops with the report and the numbered decisions; the Human's `continue` relaunches with args.pilot false.
+  let waves = order.waves
+  const waiting = []
+  if (PILOT_SIZE > 0 && A.pilot !== false && order.waves.flat().length > PILOT_SIZE) {
+    let left = PILOT_SIZE
+    waves = []
+    for (const wave of order.waves) {
+      const now = wave.slice(0, left)
+      left -= now.length
+      if (now.length) waves.push(now)
+      waiting.push(...wave.slice(now.length))
+    }
+    log(`pilot: ${PILOT_SIZE} of ${PILOT_SIZE + waiting.length} plans first, ${waiting.length} wait for the Human's continue`)
+  }
+  const pilotWaiting = [...waiting]
   const outcomes = []
   let stopReason = null
-  for (let w = 0; w < order.waves.length; w++) {
-    const wave = order.waves[w]
+  for (let w = 0; w < waves.length; w++) {
+    const wave = waves[w]
     log(`wave ${w + 1}: ${wave.join(', ')}`)
     // Plans in one lock group (overlapping scope) run one after the other; the rest of the wave runs in parallel.
     const groups = (order.waveLocks?.[w] ?? []).map((g) => g.plans.filter((p) => wave.includes(p)))
@@ -506,20 +558,51 @@ async function run() {
     const parked = flat.filter((o) => o.state !== 'merged')
     if (stop || parked.length) {
       stopReason = stop ? stop.stopRun : `wave ${w + 1} parked ${parked.map((p) => p.nnn).join(', ')} — later waves not started`
-      const later = order.waves.slice(w + 1).flat()
+      const later = [...waves.slice(w + 1).flat(), ...waiting]
       for (const nnn of later) {
         await setPlan(nnn, { state: 'skipped', reason: `not started: ${stopReason}` })
         outcomes.push({ nnn, state: 'skipped' })
       }
       await state(['stop', '--run', RUN, '--reason', stopReason])
+      waiting.length = 0
       break
     }
   }
+  if (waiting.length) {
+    stopReason = `pilot of ${PILOT_SIZE} plans done — ${waiting.length} plan(s) wait for the Human's continue: ${waiting.join(', ')}`
+    for (const nnn of waiting) {
+      await setPlan(nnn, { state: 'skipped', reason: 'pilot: waits for the Human\'s continue' })
+      outcomes.push({ nnn, state: 'skipped' })
+    }
+    await state(['stop', '--run', RUN, '--reason', stopReason])
+  }
+  // The final integration gate: the project's full build and test once on the run branch after the last merge, so a
+  // merge that breaks a test outside every plan is a finding, not a clean hand-over.
+  let finalGate = null
+  const anyMerged = outcomes.some((o) => o.state === 'merged') || (order.skipped?.length ?? 0) > 0
+  if (anyMerged && mergeFolder && PROJECT_CHECKS.length) {
+    const g = await gate({ nnn: 'final', wt: { path: mergeFolder }, checks: PROJECT_CHECKS })
+    if (g.fail || g.env) {
+      const why = g.fail ? `final gate failed: ${g.check} — ${String(g.tail ?? '').split('\n').slice(-5).join(' / ')}` : `final gate could not run: ${g.why}`
+      finalGate = { ok: false, command: g.check, tail: g.tail, why }
+      await note(why.slice(0, 380))
+      if (!stopReason) {
+        stopReason = why.slice(0, 380)
+        await state(['stop', '--run', RUN, '--reason', stopReason])
+      }
+    } else finalGate = { ok: true }
+  }
+  // The decisions, numbered D1…Dn: noted per plan (they appear in the report's "Decisions taken") and returned to the
+  // command, which prints them with the reply format.
+  const decisions = numberedDecisions(Number.isInteger(A.firstDecision) && A.firstDecision > 0 ? A.firstDecision : 1)
+  for (const d of decisions) await note(`${d.id} ${d.text}`.slice(0, 380), d.plan)
   phase('Report')
   const fin = await state(['finish', '--run', RUN], 'report')
   return {
     mode: 'run', run: RUN, ok: !!fin.ok, branch: RUN_BRANCH, stopReason,
     merged: fin.merged ?? [], parked: fin.parked ?? [], report: fin.report, local: fin.local, outcomes,
+    pilot: pilotWaiting.length ? { size: PILOT_SIZE, waiting: pilotWaiting } : null,
+    finalGate, decisions,
   }
 }
 

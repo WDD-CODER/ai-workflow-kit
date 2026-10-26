@@ -36,10 +36,21 @@ every prompt from the plans and the state script.
    (`ui: true` only when the project validates UI cards with `orch-ui`). Do not answer, resume or message any agent
    while it runs.
 
+   **Pilot** (`orchestrator.pilotSize` = 3; 0 = off): with more plans than that, the first
+   `pilotSize` plans in wave order run, then the run stops (`pilot` in the result lists the plans that wait) and step 4
+   prints the report and the decisions. On the Human's `continue`, start the workflow again with the same `run`, all
+   the plans, `"pilot": false` and `"firstDecision": <the last D number + 1>`: it skips what is merged and builds the
+   rest, with the graded decisions and any new rule in `docs/brain/agent-rules.md` already in place.
+
 4. **Finish.** From the workflow result and `.claude/orchestrator-runs/<run>/status.json` (never from memory), print:
    - merged plans and parked plans with their reason, and why the run stopped when it did;
+   - the final gate: `finalGate.ok` false → say so first (`final gate failed: <command>` and its output tail) and do
+     **not** hand the run branch over as clean; no pull-request lines until the Human has seen it;
    - the report path on the run branch (`docs/orchestrator/runs/<run>/report.md`) and the local copy
      `.claude\orchestrator-runs\<run>.md`;
+   - the **decisions** the workflow returned, numbered `D1…Dn`, grouped by plan, `behaviour:` first, one line each
+     (`D3 · plan <NNN> · behaviour: …`), then the reply format: `decisions: ok` or `D<n> ✗ <what I'd choose>` (several on
+     one line, comma-separated). With no decisions print `decisions: none` and skip the next two bullets;
    - the Human's next step as PowerShell lines, one command per line:
 
      ```powershell
@@ -48,6 +59,12 @@ every prompt from the plans and the state script.
      ```
 
    The Human reviews and merges the run branch; the run never merges into `main`.
+
+5. **Learning step, after the Human's decisions reply** (no command from the Human). Write the workflow's `decisions`
+   to a scratch file `.claude/sessions/decisions-<run>.json` (`[{ "id": "D1", "plan": "451", "text": "…" }]`), then
+   follow `docs/agent/decision-review.md`: `node scripts/decision-log.mjs learn --reply "<the reply>"` — `LEARNING:
+   nothing to record` ends the step with no model call; otherwise log the `✗` items, propose a rule when the same kind
+   repeats, send generic lessons to the kit. A pilot run then waits for `continue`.
 
 ## Never
 

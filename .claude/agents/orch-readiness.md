@@ -21,7 +21,12 @@ your job is to find, before it starts, what would stop a builder. Follow the sha
 2. Environment the builder needs and may not have: a database, a dev server, a browser, network, a secret, another
    repository or a release → `envNeeds`.
 3. The commands the plan's `[auto]` items and checks will run → `commands`. Flag any that is on the deny list.
-4. `state`: `ready` (nothing open), `questions` (the builder would have to guess), `blocked` (cannot run here at all).
+4. **Product questions.** A plan that adds or changes interactive behaviour (a form, an editable screen, a dialog, a
+   button, navigation) must say what happens **on edit, on leave, on cancel and on error** — a "what happens when"
+   line or section. For each of those the plan leaves out, add a `questions` entry (`<plan>: what should happen on
+   <leave|cancel|error|edit> …? Default if unanswered: the simplest behaviour, nothing extra`). Skip plans that
+   change only styling or only the backend.
+5. `state`: `ready` (nothing open), `questions` (the builder would have to guess), `blocked` (cannot run here at all).
    A plan item that can only be done in another project is not a blocker: list it under `questions` as a Human item.
 
 ## Output (the only thing you return)

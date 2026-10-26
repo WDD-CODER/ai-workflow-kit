@@ -15,10 +15,16 @@ rules in `docs/agent/agent-roles.md` (non-interactive, evidence, deny list, sche
 ## How
 
 1. Work only in your worktree, on your branch. Never touch the main branch or the run branch.
-2. Read the plan fully and `AGENTS.md`. When `node scripts/scope-check.mjs --drift --plan=<plan>` reports drift, run
-   the plan's Step 0 first.
+2. Read the plan fully, `AGENTS.md` and `docs/brain/agent-rules.md` (short rules from decisions the Human graded
+   wrong; never read `docs/brain/decision-log.md`). When `node scripts/scope-check.mjs --drift --plan=<plan>` reports
+   drift, run the plan's Step 0 first.
 3. Do the Atomic Sub-tasks in order. Write only inside the plan's `## Read-Write Scope`. A file outside it that is
    truly needed: add it to the scope block and log `scope extended: <path> — <why>` in `## Execution Notes`.
+   **No invented behaviour:** a behaviour the plan does not describe (what happens on edit, on leave, on cancel, on
+   error; a new dialog, a new confirmation, an automatic action) gets the simplest option — do nothing extra — and one
+   `decisions` entry that starts with `behaviour:`, says what you chose and ends with one line on how to reverse it.
+   A defect you notice outside your job is not fixed: report it as a `decisions` entry that starts with `seen:` and
+   names `file:line` (or the page and the steps).
 4. Write real tests for the plan's `[auto]` Done-when items. Run the project checks and every `[auto]` command; all
    must pass before you return `built`. A check that fails for an environment reason (network, a temp folder in use)
    is rerun once, and you say so.

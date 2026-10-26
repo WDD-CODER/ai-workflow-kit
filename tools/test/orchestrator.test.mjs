@@ -9,6 +9,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import { tmpdir } from 'os'
 import { pathToFileURL, fileURLToPath } from 'url'
 import { orchestratorProblems, commandProblems } from '../lib/kit.mjs'
+import { SILENT_PLAN, COVERED_PLAN, PARTLY_PLAN, STYLE_PLAN, BACKEND_PLAN, behaviourGaps } from '../fixtures/orchestrator/readiness.mjs'
 
 const kit = resolve(fileURLToPath(new URL('../..', import.meta.url)))
 const root = process.env.ORCH_ROOT ? resolve(process.env.ORCH_ROOT) : kit
@@ -81,8 +82,151 @@ test('the report: one validation list grouped by page with the UI evidence, numb
   assert.deepEqual(lib.validationList([{ nnn: '003', humanItems: [] }]), ['- nothing to validate', ''])
 })
 
+test('readiness: a plan with interactive behaviour and no "what happens when" gets a question per gap', () => {
+  // The rule as the agent file states it ...
+  const agent = readFileSync(join(root, '.claude', 'agents', 'orch-readiness.md'), 'utf8')
+  assert.match(agent, /Product questions/)
+  assert.match(agent, /on edit, on leave, on cancel and on error/)
+  assert.match(agent, /Skip plans that\s+change only styling or only the backend/)
+  // ... and the fixtures it is checked on.
+  assert.deepEqual(behaviourGaps(SILENT_PLAN), ['edit', 'leave', 'cancel', 'error'], 'silent plan: a question for each case')
+  assert.deepEqual(behaviourGaps(PARTLY_PLAN), ['leave', 'error'], 'partly covered plan: only the missing cases')
+  assert.deepEqual(behaviourGaps(COVERED_PLAN), [], 'covered plan: no question')
+  assert.deepEqual(behaviourGaps(STYLE_PLAN), [], 'styling-only plan is skipped')
+  assert.deepEqual(behaviourGaps(BACKEND_PLAN), [], 'backend-only plan is skipped')
+})
+
+test('the builder and take-plan state the no-invented-behaviour rule and read agent-rules.md, never decision-log.md', () => {
+  for (const f of ['.claude/agents/orch-builder.md', '.claude/commands/take-plan.md']) {
+    const t = readFileSync(join(root, f), 'utf8')
+    assert.match(t, /behaviour:/, `${f}: behaviour:`)
+    assert.match(t, /docs\/brain\/agent-rules\.md/, `${f}: agent-rules.md`)
+    assert.match(t, /never[^.]*decision-log\.md/, `${f}: never decision-log.md`)
+  }
+  assert.match(readFileSync(join(root, '.claude', 'agents', 'orch-report.md'), 'utf8'), /D1…Dn/)
+})
+
+// ---- the workflow itself, with stub agents: pilot, UI batches, the final gate and the numbered decisions -------------
+// orchestrate.js (installed, rendered) runs here with a fake `agent`: the runner answers the state and preflight
+// commands from canned ORCH_JSON, the role agents answer with fixed results. No git, no files.
+const wfSource = readFileSync(join(root, '.claude', 'workflows', 'orchestrate.js'), 'utf8')
+const PILOT = Number(/const PILOT_SIZE = (\d+)/.exec(wfSource)?.[1] ?? 0)
+
+async function runFlow(args, hooks = {}) {
+  const calls = []
+  const commands = []
+  const plansIn = args.plans.map(String)
+  const words = (cmd) => [...cmd.matchAll(/"([^"]*)"|(\S+)/g)].map((m) => m[1] ?? m[2])
+  const task = (prompt) => Object.fromEntries(String(prompt).split('\n').map((l) => /^([A-Z_]+): (.*)$/.exec(l)).filter(Boolean).map((m) => [m[1], m[2]]))
+  const out = (o) => ({ exitCode: 0, output: `ORCH_JSON ${JSON.stringify(o)}` })
+  const state = (w) => {
+    const cmd = w[2]
+    const f = Object.fromEntries(w.slice(3).map((x) => /^--([\w-]+)=(.*)$/.exec(x)).filter(Boolean).map((m) => [m[1], m[2]]))
+    if (cmd === 'init') return { ok: true, mergeFolder: '/merge' }
+    if (cmd === 'order') {
+      const todo = plansIn.filter((p) => !(hooks.merged ?? []).includes(p))
+      return { ok: true, waves: hooks.waves ?? [todo], waveLocks: [], skipped: hooks.merged ?? [], plans: Object.fromEntries(plansIn.map((p) => [p, { path: `plans/${p}-x.plan.md` }])) }
+    }
+    if (cmd === 'plan-info') return { ok: true, path: `plans/${f.plan}-x.plan.md`, branch: `feat/${f.plan}-x`, startTier: 'build', invariants: [], npmScripts: [], uiItems: [] }
+    if (cmd === 'worktree') return { ok: true, path: `/wt/${f.plan}` }
+    if (cmd === 'finish') return { ok: true, merged: [], parked: [], report: 'r', local: 'l' }
+    if (cmd === 'diff') return { ok: true, files: [], sensitive: false }
+    return { ok: true }
+  }
+  async function agent(prompt, opts = {}) {
+    const t = task(prompt)
+    const type = opts.agentType
+    calls.push({ type, label: opts.label, task: t })
+    if (type === 'kit-runner') {
+      const w = words(t.COMMAND)
+      commands.push(t.COMMAND)
+      return out(w[1] === 'scripts/orch-state.mjs' ? state(w) : { ok: true })
+    }
+    const base = { role: type, model: 'stub', effort: 'low' }
+    const nnn = /plan (\d+)/.exec(prompt)?.[1]
+    if (type === 'orch-builder') {
+      const b = hooks.builder?.(nnn) ?? {}
+      return { ...base, status: 'built', branch: t.BRANCH, headSha: 'abc1234', summary: 's', evidence: ['e'], ...b }
+    }
+    if (type === 'orch-gate') {
+      const cmds = JSON.parse(t.COMMANDS)
+      const failing = hooks.gateFails?.(t.FOLDER, cmds)
+      return { ...base, results: cmds.map((c, i) => (failing && i === 0 ? { command: c, status: 'fail', tail: 'FAIL v2-types.spec: 2 required fields' } : { command: c, status: 'pass' })) }
+    }
+    if (['orch-check-plan', 'orch-check-bugs', 'orch-check-rules', 'orch-security'].includes(type)) return { ...base, problems: [] }
+    if (type === 'orch-merge') return { ...base, merged: true, sha: 'def5678' }
+    if (type === 'orch-ui') return { ...base, cards: JSON.parse(t.CARDS ?? '[]').map((c) => ({ card: c.card, page: c.page, status: 'pass', screenshots: [] })) }
+    throw new Error(`stub: no agent for ${type} (${opts.label})`)
+  }
+  const parallel = (thunks) => Promise.all(thunks.map((th) => Promise.resolve().then(th)))
+  const AsyncFunction = (async () => {}).constructor
+  const fn = new AsyncFunction('agent', 'parallel', 'pipeline', 'phase', 'log', 'args', 'budget', 'workflow', 'require', 'process', wfSource.replace(/^export const meta\s*=/m, 'const meta ='))
+  const result = await fn(agent, parallel, undefined, () => {}, () => {}, { mode: 'run', run: 'r1', root: '/main', startedAt: 'T0', ...args }, {}, undefined, undefined, undefined)
+  return { result, calls, commands }
+}
+const cardsOf = (n) => Array.from({ length: n }, (_, i) => ({ card: `Card ${i + 1} shows text ${i + 1}`, page: 'https://app.example/p' }))
+
+test('UI cards go to the browser agent in batches of 5: 12 cards -> 3 fresh agents, never more than 5 each', async () => {
+  const { calls } = await runFlow({ plans: ['101'], ui: true }, { builder: () => ({ uiCards: cardsOf(12) }) })
+  const ui = calls.filter((c) => c.type === 'orch-ui')
+  assert.equal(ui.length, 3)
+  assert.deepEqual(ui.map((c) => JSON.parse(c.task.CARDS).length), [5, 5, 2])
+  assert.deepEqual(ui.map((c) => c.task.BATCH), ['1 of 3', '2 of 3', '3 of 3'])
+  const all = ui.flatMap((c) => JSON.parse(c.task.CARDS).map((x) => x.card))
+  assert.equal(new Set(all).size, 12, 'every card is checked exactly once')
+  const five = await runFlow({ plans: ['101'], ui: true }, { builder: () => ({ uiCards: cardsOf(5) }) })
+  assert.equal(five.calls.filter((c) => c.type === 'orch-ui').length, 1, '5 cards stay one agent')
+})
+
+test('decisions: numbered D1…Dn across the run, grouped by plan with behaviour: first, noted for the report', async () => {
+  const decisions = { 101: ['seen: src/a.js:12 — NaN at 100 %', 'behaviour: no dialog on leave — reverse: add one'], 102: ['behaviour: saved on blur — reverse: remove the handler'] }
+  const { result, commands } = await runFlow({ plans: ['101', '102'], pilot: false }, { builder: (nnn) => ({ decisions: decisions[nnn] }) })
+  assert.deepEqual(result.decisions, [
+    { id: 'D1', plan: '101', text: 'behaviour: no dialog on leave — reverse: add one' },
+    { id: 'D2', plan: '101', text: 'seen: src/a.js:12 — NaN at 100 %' },
+    { id: 'D3', plan: '102', text: 'behaviour: saved on blur — reverse: remove the handler' },
+  ])
+  const notes = commands.filter((c) => /orch-state\.mjs note/.test(c) && /--text="?D\d/.test(c))
+  assert.equal(notes.length, 3, 'each decision is a run note, so it prints under "Decisions taken"')
+  const second = await runFlow({ plans: ['103'], pilot: false, firstDecision: 4 }, { builder: () => ({ decisions: ['behaviour: x — reverse: y'] }) })
+  assert.equal(second.result.decisions[0].id, 'D4', 'a continue run numbers on from the first launch')
+})
+
+test('final gate: the project checks run once on the run branch after the last merge; a failure is a finding and the run is not clean', async () => {
+  const clean = await runFlow({ plans: ['101'], pilot: false })
+  assert.deepEqual(clean.result.finalGate, { ok: true })
+  assert.equal(clean.calls.filter((c) => c.type === 'orch-gate' && c.task.FOLDER === '/merge').length, 1)
+  // A merge that breaks a test outside every plan: the plans' own gates pass, the run-branch gate fails.
+  const broken = await runFlow({ plans: ['101'], pilot: false }, { gateFails: (folder) => folder === '/merge' })
+  assert.equal(broken.result.finalGate.ok, false)
+  assert.match(broken.result.finalGate.why, /^final gate failed: npm run \w+ — .*v2-types\.spec/)
+  assert.match(broken.result.stopReason, /^final gate failed/)
+  assert.ok(broken.commands.some((c) => /orch-state\.mjs stop/.test(c) && /final gate failed/.test(c)), 'the run is stopped with the reason (the report header shows it)')
+  assert.ok(broken.commands.some((c) => /orch-state\.mjs note/.test(c) && /final gate failed/.test(c)))
+})
+
+test('pilot: more plans than pilotSize -> the first plans run, the run stops with the rest waiting; continue builds the rest', { skip: PILOT === 0 && 'pilotSize is 0 in this project' }, async () => {
+  const plans = Array.from({ length: PILOT + 2 }, (_, i) => String(101 + i))
+  const first = await runFlow({ plans })
+  const built = first.calls.filter((c) => c.type === 'orch-builder').map((c) => /feat\/(\d+)-/.exec(c.task.BRANCH)[1])
+  assert.deepEqual(built, plans.slice(0, PILOT))
+  assert.deepEqual(first.result.pilot, { size: PILOT, waiting: plans.slice(PILOT) })
+  assert.match(first.result.stopReason, new RegExp(`^pilot of ${PILOT} plans done`))
+  assert.ok(first.commands.some((c) => /orch-state\.mjs stop/.test(c) && /pilot of/.test(c)))
+  // continue: pilot false, the merged plans come back as already merged from git
+  const rest = await runFlow({ plans, pilot: false }, { merged: plans.slice(0, PILOT) })
+  assert.deepEqual(rest.calls.filter((c) => c.type === 'orch-builder').map((c) => /feat\/(\d+)-/.exec(c.task.BRANCH)[1]), plans.slice(PILOT))
+  assert.equal(rest.result.pilot, null)
+  // not more plans than the pilot size: no pilot
+  const few = await runFlow({ plans: plans.slice(0, PILOT) })
+  assert.equal(few.result.pilot, null)
+  assert.equal(few.calls.filter((c) => c.type === 'orch-builder').length, PILOT)
+})
+
 test('orchestrator.* config: defaults pass, bad values name the key', () => {
-  const ok = { 'orchestrator.runBranchPrefix': 'orch/', 'orchestrator.maxFixRounds': 2, 'orchestrator.minFreeDiskGb': 5, 'git.mainBranch': 'main' }
+  const ok = { 'orchestrator.runBranchPrefix': 'orch/', 'orchestrator.maxFixRounds': 2, 'orchestrator.minFreeDiskGb': 5, 'orchestrator.pilotSize': 3, 'git.mainBranch': 'main' }
+  for (const v of [0, 1, 10]) assert.deepEqual(orchestratorProblems({ ...ok, 'orchestrator.pilotSize': v }), [])
+  for (const v of [-1, 11, 1.5, '3', null]) assert.match(orchestratorProblems({ ...ok, 'orchestrator.pilotSize': v })[0], /^orchestrator\.pilotSize is .* — it must be a whole number from 0 to 10/)
   assert.deepEqual(orchestratorProblems(ok), [])
   assert.deepEqual(orchestratorProblems({ ...ok, 'orchestrator.runBranchPrefix': 'runs/batch/' }), [])
   const bad = (k, v) => orchestratorProblems({ ...ok, [k]: v })

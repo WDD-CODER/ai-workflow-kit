@@ -395,6 +395,16 @@ Do not leave new stages only in chat or only in a session brief.
 
 ---
 
+## Decisions the Human grades
+
+Validation checks the plan's Done-when items. The choices an agent made that the plan did not settle — a `behaviour:`
+decision, a `seen:` defect — are graded separately, in one reply, as `D1…Dn` (the `/ship` tree for a Worker plan, the
+run report for `/orchestrate`): `decisions: ok` or `D<n> ✗ <what I'd choose>`. A `failed:` card reply is graded the same
+way. Grading never blocks a commit; every `✗` and `failed:` feeds the learning step
+(`docs/agent/decision-review.md`).
+
+---
+
 ## Todo archive volumes
 
 When matching todos are marked `[x]` and a plan section is **fully** done:

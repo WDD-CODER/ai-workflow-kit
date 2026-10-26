@@ -23,6 +23,13 @@ names. `/review-it` uses the same finders and verifier. Model tiers and escalati
    `node -e "require('fs').rmSync('<file>')"` inside your own worktree or the OS temp folder only.
 8. **Long output goes to a file.** Redirect it and read the tail; never start a process that keeps running after
    your step.
+9. **Seen but not fixed.** A defect you notice outside your job is never free text: add a `decisions` entry that starts
+   with `seen:` and names `file:line` (or the page and the steps to see it). The run report lists it with the other
+   decisions, so the Human grades it in the same reply (`docs/agent/decision-review.md`). A choice the plan did not
+   settle (behaviour, wording, a new dialog) is logged the same way, starting with `behaviour:`.
+10. **At most 5 items per agent.** An agent that checks a list of items (the UI validator's cards, the verifier's
+    candidates) gets at most 5 of them; a longer list goes to further fresh agents, one batch each. Accuracy drops on a
+    long list — the orchestrator splits the UI cards into batches of 5.
 
 ### Deny list
 

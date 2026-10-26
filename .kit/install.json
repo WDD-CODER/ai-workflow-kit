@@ -3,7 +3,7 @@
     "version": "1.6.0"
   },
   "source": "local:.",
-  "commit": "1545835d1352a4f624b6e0f86427af9e05300e27",
+  "commit": "3ccffebbb2b9b35c4404e5a9b8b424ba67bcafb0",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -25,7 +25,7 @@
       "source": "core/.claude/agents/kit-runner.md"
     },
     ".claude/agents/orch-builder.md": {
-      "sha256": "a44454036278b86049fb56f0311f1c22275e28fe0016f8aa63e97a166d077c9a",
+      "sha256": "e648b456ab85783cd99afec78c07081ec35ada6aacc4dde2ec6860761d069438",
       "kind": "managed",
       "source": "core/.claude/agents/orch-builder.md"
     },
@@ -55,12 +55,12 @@
       "source": "core/.claude/agents/orch-merge.md"
     },
     ".claude/agents/orch-readiness.md": {
-      "sha256": "616210cf0c3e0dc604becc02fa130804b6a32aa2d937a38017a0dde71a44209f",
+      "sha256": "1ba1f5819e847b64d161c2e7ef13c9f0c3e45383287749423baa6010099f7c6b",
       "kind": "managed",
       "source": "core/.claude/agents/orch-readiness.md"
     },
     ".claude/agents/orch-report.md": {
-      "sha256": "206d6904353d5749330372475389d1f853c432a9381e965b032beec78f8b60cd",
+      "sha256": "4ada656b9e3d9bc9ab86accbba7be229559ddaf5f77978e27f5a2dc8fe63112f",
       "kind": "managed",
       "source": "core/.claude/agents/orch-report.md"
     },
@@ -129,8 +129,13 @@
       "kind": "managed",
       "source": "core/.claude/commands/fix.md"
     },
+    ".claude/commands/kit-feedback.md": {
+      "sha256": "e3caa30bbca281dea3d63af307959769062d37d8d0b909c298100fd7476105b9",
+      "kind": "managed",
+      "source": "core/.claude/commands/kit-feedback.md"
+    },
     ".claude/commands/orchestrate.md": {
-      "sha256": "ddfc10c83c847e98a071688849b8853c60ceb468d9c95b107357a84b8e07cbd2",
+      "sha256": "a2e0227206497eb3058d0693e32b0ca8dfd59cb3161acbb6091cc86c7514cdbd",
       "kind": "managed",
       "source": "core/.claude/commands/orchestrate.md"
     },
@@ -160,7 +165,7 @@
       "source": "core/.claude/commands/security.md"
     },
     ".claude/commands/ship.md": {
-      "sha256": "42ba2b3bc010375dbb70d73c7f5a88fd3bd227661d5fd06322e308c91ff900e1",
+      "sha256": "6a67aa13830a6642b2ed3e87fc1e3e8aa06a087702e4dd6890301fa14f267456",
       "kind": "managed",
       "source": "core/.claude/commands/ship.md"
     },
@@ -175,7 +180,7 @@
       "source": "core/.claude/commands/sweep-stale-todos.md"
     },
     ".claude/commands/take-plan.md": {
-      "sha256": "7db1a2dca908d3f85a9cc483b7f3d63c9b46eb7c9a6288b79376c4b92f5f93f2",
+      "sha256": "6fefc14211540ea0e2af2b70bc9bcb36a119a3c6d2c9aecc6e99f028ed87d376",
       "kind": "managed",
       "source": "core/.claude/commands/take-plan.md"
     },
@@ -250,7 +255,7 @@
       "source": "core/.claude/skills/worktree-setup/SKILL.md"
     },
     ".claude/workflows/orchestrate.js": {
-      "sha256": "f6dc16234f1920f4474d424b59f4e30850c044218a336baa445901cc62979a40",
+      "sha256": "0348ded47954768125bbb1ab057fd225625efe6e4f0875e68fe9326d2eb4359e",
       "kind": "managed",
       "source": "core/.claude/workflows/orchestrate.js"
     },
@@ -300,12 +305,12 @@
       "source": "core/README_WORKFLOW.md"
     },
     "docs/agent/agent-evals.md": {
-      "sha256": "a28e75eb59381df3bc3eb6d36c51719b1fea2ce30c4d8982b2a13c91d5771097",
+      "sha256": "0ed2999b53d2c07e08b1e707e6c15b4f14e7885aa4dce4cf01f6db3582d2cb9d",
       "kind": "managed",
       "source": "core/docs/agent/agent-evals.md"
     },
     "docs/agent/agent-roles.md": {
-      "sha256": "040a289f51394568083361c2c23bac54792d97b3c21e78992093852733eea14c",
+      "sha256": "e9a87278d51073de7bfdf39cbcc88a2f975764fb04c9f1e91e6b592266afaa19",
       "kind": "managed",
       "source": "core/docs/agent/agent-roles.md"
     },
@@ -314,8 +319,13 @@
       "kind": "managed",
       "source": "core/docs/agent/brain-capture.md"
     },
+    "docs/agent/decision-review.md": {
+      "sha256": "89c8f90b71667af61534709fe1f2d7568113d18f3ff3e48594aa69003c22de06",
+      "kind": "managed",
+      "source": "core/docs/agent/decision-review.md"
+    },
     "docs/agent/job-validation.md": {
-      "sha256": "25cd28d760f59c63886c45a953f99657b46939d783cf18223ce1b37ceef331d2",
+      "sha256": "30a28304291ea4148d1a499cfff4e5ba085c50801487f72e0e875dff11c02bab",
       "kind": "managed",
       "source": "core/docs/agent/job-validation.md"
     },
@@ -325,7 +335,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "7a1ddd538461fc17b7fd4f2fa1f3cdd0bf353d99047ade666e8c1420c9c94e76",
+      "sha256": "880c7df8137e539c9b7f1f44049c4b6b7f4a697c7ab98b3d364deb4ab006395f",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -355,9 +365,19 @@
       "source": "core/docs/agent/standards-security.md"
     },
     "docs/agent/workflow-map.md": {
-      "sha256": "7834a0eb9a96d29c112d9deea838fd0d5a540bbec0da6353374756346eb99fa3",
+      "sha256": "7e3466affe3c75adf240eb46cc0fe455289e0824a6451c344f998826ae32ca37",
       "kind": "managed",
       "source": "core/docs/agent/workflow-map.md"
+    },
+    "docs/brain/agent-rules.md": {
+      "sha256": "8c6dd9fe074e69ca38354147c64136481081d5789438c623672a351ab48e533e",
+      "kind": "seed",
+      "source": "templates/docs/brain/agent-rules.md"
+    },
+    "docs/brain/decision-log.md": {
+      "sha256": "f899bf422310edfdb1d53ef505c84f410e8888e23baf9156a659af3c763a528a",
+      "kind": "seed",
+      "source": "templates/docs/brain/decision-log.md"
     },
     "docs/brain/decisions/0001-lean-native-workflow.md": {
       "sha256": "695a92713a6a5d6ea54eb11cefedc360233e29887d577f9b1cd8ea0394d24294",
@@ -494,6 +514,11 @@
       "kind": "managed",
       "source": "core/scripts/branch-guard.sh"
     },
+    "scripts/decision-log.mjs": {
+      "sha256": "4de734255230f36f5d237b16993dbf3ed0082b5b8505f2ad6e69b1103ebde307",
+      "kind": "managed",
+      "source": "core/scripts/decision-log.mjs"
+    },
     "scripts/free-merged-slots.mjs": {
       "sha256": "a71c1f3a22f010a050e9d1a94bce09f46c6e386f276c012a7a3d97cbe997f9b4",
       "kind": "managed",
@@ -508,6 +533,11 @@
       "sha256": "4dd138eab38991b576f9b115b85df64a87dfeac712cf0d6724ca4142e22e700c",
       "kind": "managed",
       "source": "core/scripts/handoff-check.sh"
+    },
+    "scripts/kit-feedback.mjs": {
+      "sha256": "670be7815f8b26a8dea1e4402d38535b086efcdc384a1bf89ed5a8633bffb569",
+      "kind": "managed",
+      "source": "core/scripts/kit-feedback.mjs"
     },
     "scripts/kit-manifest-check.mjs": {
       "sha256": "5d47c9ffa7e856734565a42ed572c167764d6faa0796ea3485a99032bcd4a8ac",

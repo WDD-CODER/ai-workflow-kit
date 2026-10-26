@@ -75,7 +75,7 @@ function setup() {
   writeFileSync(join(proj, 'kit.config.json'), `${JSON.stringify({
     project: { name: 'orch-app', repoName: 'orch-app' }, stack: { packs: [] },
     commands: { build: 'build', lint: 'lint', test: 'test' }, hooks: { shellPath: 'bash' },
-    models: { judgment: 'opus' }, orchestrator: { maxFixRounds: 2, minFreeDiskGb: 0 },
+    models: { judgment: 'opus' }, orchestrator: { maxFixRounds: 2, minFreeDiskGb: 0, pilotSize: 0 },
   }, null, 2)}\n`)
   const inst = sh(process.execPath, [join(kit, 'tools', 'install.mjs'), '--target', proj, '--source', kit], proj)
   if (!check('install the kit into a scratch project', inst.status === 0 && /KIT_INSTALL: ok/.test(inst.out), tail(inst.out))) return false

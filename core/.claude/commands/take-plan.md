@@ -46,6 +46,15 @@ Triggers: "execute plan NNN", "take plan NNN" (only meaningful inside a {{slots.
      → start executing, no go needed. **STOP for a go** only on a `conflict` (a symbol, line or
      file the plan names was removed, renamed or rewritten).
 
+   Before the first sub-task read `docs/brain/agent-rules.md` (short rules from decisions the Human graded wrong;
+   never `docs/brain/decision-log.md`).
+
+   **No invented behaviour.** A behaviour the plan does not describe — what happens on edit, on leave, on cancel, on
+   error; a new dialog, a new confirmation, an automatic action — gets the simplest option (nothing extra). Log each
+   one in the plan's `## Execution Notes` as `- decision: behaviour: <what you chose> — reverse: <one line>`, and a
+   defect you noticed but are not fixing as `- decision: seen: <file:line or page + steps> — <what is wrong>`.
+   `/ship` shows these as `D1…Dn` for the Human to grade (`docs/agent/decision-review.md`).
+
 4. **Open with the plan brief, before any work.** Right after reading the plan, print a
    **PLAN BRIEF** to the Human — 2–3 plain lines, no more: what the plan changes and why it matters.
    Not the plan's title restated, not a milestone list, no jargon. Then start executing. No validation
