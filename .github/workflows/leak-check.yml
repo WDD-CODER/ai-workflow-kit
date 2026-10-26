@@ -1,8 +1,16 @@
 name: leak-check
 
 on:
+  # A branch is checked once, by its pull request; `main` and release tags are checked after the merge.
   push:
+    branches: [main]
+    tags: ['v*']
   pull_request:
+
+# A newer commit on the same branch/PR cancels the run it makes stale (never on `main` or a tag).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   leak-check:
@@ -53,7 +61,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # Windows is the slow leg (~4 min vs ~1 min): a pull request runs Ubuntu only, `main` and tags run both.
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest","windows-latest"]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
