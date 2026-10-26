@@ -152,6 +152,8 @@ Matching open todos: list *before* Y (still `[ ]`). On **Y**, mark `[x]` and sta
 
 A proposed brain entry: print its **full draft body** fenced below the tree (tree line carries only path + title).
 
+**Decisions to grade (Worker plan only):** when the plan's `## Execution Notes` hold `- decision:` lines and the Human has not graded them in this session, print them under the tree as `D1…Dn` — `behaviour:` first, then `seen:`, one line each (`D2 · behaviour: … — reverse: …`) — and end with the reply format: `decisions: ok` or `D<n> ✗ <what I'd choose>` (several on one line, comma-separated). The grade may ride on the `Y` reply (`Y, D2 ✗ no dialog`). No decisions, or already graded → print nothing.
+
 ### Brain-entry capture (no new gate)
 
 **FAST/ULTRA-TRIVIAL:** skip the mining procedure by default (a tiny diff rarely yields a durable entry). Exception: diff touches `docs/brain/**`, or Human says "check brain"/"brain capture". Omit the block rather than running the full procedure to conclude nothing's there.
@@ -168,6 +170,7 @@ Approve **Y** (or `--yes`) = commit/push consent. It validates `[human]` items o
 
 1. **Todo sync (when items match):** mechanics ({{slots.nameFormat}} slot vs outside, exact commands, never-invent rule) → `docs/agent/job-validation.md` Path A step 2.
 2. **Write brain drafts** (if proposed, not dropped) — verbatim to `docs/brain/**`.
+   **Learning step (no command from the Human):** run `node scripts/decision-log.mjs learn --reply "<the Human's replies this session>"`. `LEARNING: nothing to record` → one line, no model call, go on. `LEARNING: record` → follow `docs/agent/decision-review.md`: log every `✗` decision and every `failed:` card to `docs/brain/decision-log.md`, add a rule to `docs/brain/agent-rules.md` when the same kind of mistake repeats (`no rule` in the reply skips it), and send each generic lesson to the kit (`scripts/kit-feedback.mjs`). The two `docs/brain` files join the commit in step 3.
 3. **`git add` only listed paths** (todo/plan/brain included) — one commit with job + todos (+ brain), never job-then-todos-later.
 4. **`git commit`** (Conventional Commit; Cursor trailer `Co-authored-by: Cursor <cursoragent@cursor.com>` when applicable).
 5. **Session-state fold (before push)** — see Phase 5: write `docs/session-state-${BRANCH}.md`, `git add`, **`git commit --amend --no-edit`** (ours, not yet pushed). Never leave it dirty after ship.
@@ -235,6 +238,7 @@ PR path: PR proposed (Done-when met | user override/confirmed) | Checkpoint (bri
 PR: {url or N/A}
 Merge: offered | merged {sha} | deferred | N/A (checkpoint)
 Brain review: {summary} | N/A (checkpoint, not run)
+Learning: nothing to record | {n} logged, rule {added|none}, kit feedback {PR url|none}
 Todo: {n marked} | no matching open items — skipped
 Session state: {path} (append | full rewrite)
 ```

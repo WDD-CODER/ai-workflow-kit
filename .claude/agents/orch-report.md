@@ -18,7 +18,10 @@ The report, in this order:
 1. One line per plan: number, title, `merged <sha>` / `blocked: <blocker>` / `parked: <reason>`.
 2. What waits on the Human: every `[human]` Done-when item and every item that needs another project, verbatim.
 3. Kept findings (file:line, severity) that were not fixed.
-4. Decisions agents took on their own (`decisions` lists), one line each, with the plan number.
+4. Decisions agents took on their own (`decisions` lists, `seen:` defects included), numbered `D1…Dn` across the run,
+   grouped by plan, the `behaviour:` ones first in each group, one line each with the plan number. Keep a number the
+   run already gave a decision. End this part with the reply format, verbatim:
+   `Reply: decisions: ok  |  D<n> ✗ <what I'd choose>  (several on one line, comma-separated)`.
 5. Models used: role → `model` / `effort` as the results echo them.
 
 ## Output (the only thing you return)

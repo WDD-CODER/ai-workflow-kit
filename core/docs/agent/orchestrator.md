@@ -24,6 +24,7 @@ branch himself.
 | `runBranchPrefix` | `{{orchestrator.runBranchPrefix}}` | Prefix of the run branch every plan of a run merges into |
 | `maxFixRounds` | `{{orchestrator.maxFixRounds}}` | How many times problems go back to a builder before the plan is parked |
 | `minFreeDiskGb` | `{{orchestrator.minFreeDiskGb}}` | Free disk the environment check asks for, before the run and before a retry |
+| `pilotSize` | `{{orchestrator.pilotSize}}` | A run with more plans than this builds the first `pilotSize` plans in wave order, stops with the report and the numbered decisions, and starts the rest on the Human's `continue`; 0 = off |
 
 ## The run
 
@@ -49,6 +50,14 @@ branch himself.
      `Merge <plan branch> into {{orchestrator.runBranchPrefix}}<run> (plan NNN)` and the push. A conflict or a failing check aborts the
      merge (`git merge --abort`) and goes back to the builder as a problem.
 4. **Wave gate.** A wave with a parked plan is the last one: later waves are not started (`skipped`).
+   **Pilot.** With `pilotSize` set and more plans than it, only the first `pilotSize` plans (wave order) run; the rest
+   are `skipped` with the reason "pilot", the run stops, and the report and the numbered decisions go to the Human.
+   `continue` relaunches the same run with `pilot: false`: merged plans are skipped from git, the rest are built with
+   the graded decisions and any new rule in `docs/brain/agent-rules.md` in place (`docs/agent/decision-review.md`).
+   **Final gate.** After the last wave, one `orch-gate` runs the project's build, lint and test commands on the run
+   branch (the merge folder) once. A failure is a finding in the report (`Stopped: final gate failed: <command> — <output
+   tail>`, and the command's output) and the run branch is not handed over as clean; a merge can break a test no
+   plan's own checks cover.
 5. **Report.** `orch-state.mjs finish` writes `docs/orchestrator/runs/<run>/report.md` and a copy of `status.json` to
    the run branch, and copies the report to `.claude/orchestrator-runs/<run>.md` in the main folder (gitignored), so
    it opens without a branch switch.
@@ -69,7 +78,8 @@ A plan's `[ui]` Done-when items (`docs/agent/job-validation.md` Tier 1b) are che
    `ORCH_QA_USER` / `ORCH_QA_PASSWORD` in the environment and is never printed). A page server that does not
    answer, a login that fails or a backend the page's origin cannot reach **stops before the browser agent**: the plan
    is parked with the reason in `status.json`, and no fix round is spent.
-3. **Browser.** `orch-ui` gets only the failed and unscriptable cards (`CARDS`), the "pre-checked — skip" list
+3. **Browser.** `orch-ui` gets at most 5 cards per agent (`docs/agent/agent-roles.md` rule 10: 12 cards run as 3 fresh
+   agents, one after the other), only the failed and unscriptable ones (`CARDS`), the "pre-checked — skip" list
    (`PRE_CHECKED`) and the known findings (`KNOWN_FINDINGS`: the failed scripts' output, earlier rounds' UI
    findings). Verdicts: `pass`, `fail` (a `major` finding back to the builder) or `plan-drift` — the plan says X,
    the app has Y: no severity, no fix round, its own section of the report.
@@ -119,7 +129,9 @@ With the UI step off, a failed script is a finding for the builder, and a card n
 
 ## The report
 
-Merged, parked and why; the decisions agents took; the models each agent ran on; what only the Human can do — one
+Merged, parked and why; the decisions agents took, numbered `D1…Dn` and grouped by plan with the `behaviour:` ones
+first (every `seen:` defect an agent noticed is among them), and the reply format `decisions: ok` | `D<n> ✗ <what I'd
+choose>` for the Human to grade (`docs/agent/decision-review.md`); the models each agent ran on; what only the Human can do — one
 validation list, numbers running on: a **screenshot grid per page** (one row per `[ui]` card of a merged plan: title,
 verdict with who checked it — script or browser — and the round, and a thumbnail link to each screenshot; kept in
 `status.json` as `uiCards`), then **plan drift** in its own section (no severity, not a bug: update the card or the

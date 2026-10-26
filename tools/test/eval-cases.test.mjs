@@ -1,6 +1,7 @@
 // The kit's agent-eval case set (docs/agent-evals/cases, plan 021): every case parses in the harness shape, and no
 // label comes from a model's opinion alone — each expected.json note starts with "fixed by <sha>" (a commit that is in
-// git log), "clean:" or "planted:". Run: node --test tools/test/eval-cases.test.mjs
+// git log), "clean:", "planted:" or "human-verdict <YYYY-MM-DD>:" (a decision the Human graded wrong; such a case holds
+// project code and stays in the project's own cases). Run: node --test tools/test/eval-cases.test.mjs
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs'
@@ -14,7 +15,7 @@ import stubPerfect from '../fixtures/agent-evals/stub-perfect.mjs'
 const kit = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const casesRoot = join(kit, 'docs', 'agent-evals', 'cases')
 const ROLES = ['orch-check-bugs', 'orch-check-plan', 'orch-check-rules', 'orch-verify']
-const NOTE_RE = /^(fixed by ([0-9a-f]{7,40})\b|clean:|planted:)/
+const NOTE_RE = /^(fixed by ([0-9a-f]{7,40})\b|clean:|planted:|human-verdict \d{4}-\d{2}-\d{2}:)/
 
 const allCases = () => ROLES.flatMap((role) => findCases(casesRoot, role).map((c) => ({ role, ...c })))
 
@@ -43,12 +44,17 @@ test('every case has an input folder and an expected.json in the harness shape',
   }
 })
 
-test('every label names a code-backed source: fixed by <sha in git log>, clean: or planted:', () => {
+test('the label sources: human-verdict <date>: is the fourth, with a real date; opinions are not', () => {
+  for (const ok of ['fixed by abc1234 the guard', 'clean: nothing wrong', 'planted: off by one', 'human-verdict 2026-10-25: a dialog nobody asked for']) assert.ok(NOTE_RE.test(ok), ok)
+  for (const bad of ['human-verdict: no date', 'human-verdict 25-10-2026: wrong date order', 'looks wrong to me', 'verdict 2026-10-25:']) assert.ok(!NOTE_RE.test(bad), bad)
+})
+
+test('every label names a code-backed source: fixed by <sha in git log>, clean:, planted: or human-verdict <date>:', () => {
   const shallow = spawnSync('git', ['rev-parse', '--is-shallow-repository'], { cwd: kit, encoding: 'utf8' }).stdout.trim() === 'true'
   for (const c of allCases()) {
     const note = String(c.expected.note ?? '')
     const m = NOTE_RE.exec(note)
-    assert.ok(m, `${c.role}/${c.name}: note must start with "fixed by <sha>", "clean:" or "planted:" — got ${JSON.stringify(note.slice(0, 40))}`)
+    assert.ok(m, `${c.role}/${c.name}: note must start with "fixed by <sha>", "clean:", "planted:" or "human-verdict <date>:" — got ${JSON.stringify(note.slice(0, 40))}`)
     if (m[2] && !shallow) {
       const r = spawnSync('git', ['rev-parse', '--verify', '--quiet', `${m[2]}^{commit}`], { cwd: kit, encoding: 'utf8' })
       assert.equal(r.status, 0, `${c.role}/${c.name}: commit ${m[2]} is not in git log`)
