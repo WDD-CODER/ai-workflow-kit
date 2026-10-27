@@ -34,7 +34,7 @@ export const RUNTIME_IGNORES = [
   '.claude/settings.local.json',
   '.claude/worktrees/',
   '.claude/.plan-write-ack',
-  '.claude/.session-state-path',
+  '.claude/.session-state-path', // legacy-session-state: older installs still have this pointer file
   '.claude/.ship-baseline',
   '.claude/.session-lock',
   '.claude/.last-npm-install-hash',

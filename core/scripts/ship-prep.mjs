@@ -2,7 +2,6 @@
  * Ship prep — lane classification + baseline check for /ship, shared by
  * Claude Code and Cursor. Source of truth for the thresholds in
  * .claude/commands/ship.md Phase 0 (classify) and Phase 3 (--check-baseline).
- * See plans/324-ship-prep-and-write-session-state-scripts.plan.md.
  *
  * Usage:
  *   node scripts/ship-prep.mjs [--mode auto|regular] [--json]
@@ -39,7 +38,7 @@ function sensitiveTests() {
 }
 const SENSITIVE_TESTS = sensitiveTests()
 const isSensitive = (f) => SENSITIVE_TESTS.some((re) => re.test(f))
-const ULTRA_TRIVIAL_RE = /docs\/session-state-.*\.md|\.claude\/todo\.md|CHANGELOG\.md|docs\/.*\.md/
+const ULTRA_TRIVIAL_RE = /\.claude\/todo\.md|CHANGELOG\.md|docs\/.*\.md/
 const SECRET_PATH_RE = /(^|\/)\.env|\.pem$|\.key$|secret/i
 // Planner admin-bypass shape — a diff entirely inside this is
 // always ULTRA-TRIVIAL, evaluated before the sensitive paths so a plan named

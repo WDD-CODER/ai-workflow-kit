@@ -31,7 +31,7 @@ Cite only entries that changed a choice. Most sessions will have none, and that 
 - [ ] Is the trap or exception named explicitly — the audit rule, the "looks done but isn't" case — not just the API name?
 - [ ] Does it say when **not** to apply it?
 - [ ] Is it more than a restatement of the commit subject / visible diff?
-- [ ] Is it the right layer? Coding rules → `AGENTS.md` / `docs/agent/`; status → session-state / todo; changelog → `sessions/`; plan criteria → `plans/`.
+- [ ] Is it the right layer? Coding rules → `AGENTS.md` / `docs/agent/`; status → the plan's Execution Notes / todo; changelog → `sessions/`; plan criteria → `plans/`.
 
 **A one-liner-only proposal is invalid.** If there isn't enough judgment to fill the required shape, there is nothing durable — propose `none durable` instead of a slogan.
 

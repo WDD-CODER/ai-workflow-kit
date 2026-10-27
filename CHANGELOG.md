@@ -9,6 +9,10 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Removed
+- **The session-state file.** `/ship` no longer writes `docs/session-state-<branch>.md`, session start no longer reads it, and the Stop and PreCompact hooks no longer check or remind about it. Where work stands is in git, the PR and the plan (checkboxes and `## Execution Notes`); a loose end for the Human goes in the PR body. Scripts `write-session-state.mjs` and `session-state-path.mjs` are gone, the branch/scope guards no longer exempt the file, and the `guards` mod no longer injects it (its `stateInjectChars` option is removed); the fleet mod's `/handoff` writes an untracked `.claude/sessions/handoff-<branch>.md`.
+  **Projects:** run `kit-sync -Prune` to delete the two scripts. A project's own `docs/session-state*.md` is never touched by sync; delete it when you like.
+
 ## [1.7.1] - 2026-10-26
 
 ### Security

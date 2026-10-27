@@ -20,7 +20,7 @@ Run it before `/clear` when a plan finishes (Worker) or after a Planner session.
    b. take-plan: if the slot's previous branch was squash-merged, did it say "was merged in PR #N ... starting fresh" with no hand reset?
    c. take-plan: did the "servers:" line show both be and fe (started / kept), and did both answer?
    d. Were leftover servers stopped automatically? Did you kill anything by hand?
-   e. Session state: did notes land in `docs/session-state-<this branch>.md` (not another plan's file)?
+   e. Open items: did the loose ends land in the plan's Execution Notes or the PR body (not in a stray file)?
    f. Scope: did any scope check say "out" for a file that belongs to this plan? Did the slot record (`node scripts/lib/slot.mjs --list`) match the branch?
    g. Drift check: did it run (`REALITY: clean` / drift), or fail on a missing Snapshot?
    h. Merge (only if the Human said the word "merge"): stayed in the same slot folder? Ran `git fetch` and `free-merged-slots` after? No `--delete-branch`?

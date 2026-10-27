@@ -35,7 +35,7 @@ const SAFE_ARG = /^[A-Za-z0-9_./=:,@+-]+$/
 // The kit's own scripts that push, open a pull request, write run/plan/slot state or install files are never a check,
 // whatever folder they sit in. A project's own scripts/ and tools/ hold its checks, so this is a deny set, not a list.
 const NOT_A_CHECK = new Set([
-  'kit-feedback', 'orch-state', 'decision-log', 'take-plan', 'slot-serve', 'slot-stop', 'write-session-state', 'todo-query',
+  'kit-feedback', 'orch-state', 'decision-log', 'take-plan', 'slot-serve', 'slot-stop', 'todo-query',
   'todo-archive', 'plan-close', 'free-merged-slots', 'orphan-sweep', 'local-excludes', 'brain-capture-comment', 'sync', 'install', 'kit-sync',
 ])
 function checkProblem(cmd, scripts) {

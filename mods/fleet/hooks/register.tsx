@@ -328,8 +328,7 @@ const ensurePorts = async ($: EngineInterface, cwd: string) => {
 
 const handoffPath = async ($: EngineInterface, cwd: string, branch: string) => {
   const safe = branch.replace(/[^\w.-]+/g, '-')
-  if (await $.fs.exists(`${cwd}/docs`)) return `${cwd}/docs/session-state-${safe}.md`
-  return `${cwd}/.claude/handoff-${safe}.md`
+  return `${cwd}/.claude/sessions/handoff-${safe}.md`
 }
 
 const writeHandoff = async ($: EngineInterface) => {
@@ -345,9 +344,9 @@ const writeHandoff = async ($: EngineInterface) => {
   if (!reply.isAnswered) return null
   const path = await handoffPath($, cwd, branch)
   const stamp = new Date(await $.clock.now()).toISOString()
-  const text = `# Session state — ${branch}\n\nUpdated: ${stamp}\nHEAD: ${head || 'unknown'}\n\n${reply.text.trim()}\n`
+  const text = `# Handoff — ${branch}\n\nUpdated: ${stamp}\nHEAD: ${head || 'unknown'}\n\n${reply.text.trim()}\n`
   const previous = await readText($, path)
-  if (previous && (await $.fs.exists(`${cwd}/.claude`))) await $.fs.write(`${cwd}/.claude/handoff-previous.md`, previous + '\n')
+  if (previous && (await $.fs.exists(`${cwd}/.claude`))) await $.fs.write(`${cwd}/.claude/sessions/handoff-previous.md`, previous + '\n')
   await $.fs.write(path, text)
   return { path, text }
 }
@@ -575,7 +574,7 @@ export const register: Register = (on, rawOptions) => {
     await $.command.register({ name: 'fleet-health', description: 'Cache, context, limits and git state; handoff options.', immediate: true }).catch(refused('fleet-health'))
     await $.command.register({ name: 'health', description: 'Cache, context, limits and git state; handoff options.', immediate: true }).catch(refused('health'))
     await $.command.register({ name: 'pull-main', description: 'Bring this checkout up to date with main (main: fast-forward; a branch: merge origin/main).', immediate: true }).catch(refused('pull-main'))
-    await $.command.register({ name: 'handoff', description: 'Write the session-state handoff, clear, and resume from it.' }).catch(refused('handoff'))
+    await $.command.register({ name: 'handoff', description: 'Write a handoff note, clear, and resume from it.' }).catch(refused('handoff'))
 
     const started = await next(e)
     const now = await $.clock.now()

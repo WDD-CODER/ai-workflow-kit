@@ -32,7 +32,7 @@ For each branch in `.worktree-cleanup`: `git push origin --delete <branch>`. "re
 
 ## 3. Session intelligence
 
-- Read the newest `.claude/sessions/*/session-handoff.md` and the newest `docs/session-state-*.md` (by date suffix) — these are the "where were we" files.
+- Read the newest `.claude/sessions/*/session-handoff.md`, if any, and the open plan's `## Execution Notes` — these are the "where were we" notes.
 - `gh pr list --state open` → surface pending reviews and failing checks.
 - Compare `.claude/todo.md` open items (`node scripts/todo-query.mjs open`) with the current branch; flag anything that looks finished but unmarked.
 

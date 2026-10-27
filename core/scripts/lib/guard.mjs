@@ -39,7 +39,7 @@ import { OPEN_PLAN_RE, findOpenPlan } from './plan-paths.mjs'
 
 const MAIN_BRANCHES = ['{{git.mainBranch}}', 'master']
 // Gitignored runtime files the workflow writes on {{git.mainBranch}}: never a branch decision.
-const RUNTIME_ON_MAIN = [/^\.claude\/sessions\//, /^\.claude\/\.session-state-path$/, /^\.claude\/\.plan-write-ack$/]
+const RUNTIME_ON_MAIN = [/^\.claude\/sessions\//, /^\.claude\/\.plan-write-ack$/]
 const DEV_SINKS = new Set(['/dev/null', '/dev/stdout', '/dev/stderr', '/dev/tty', 'nul', 'NUL'])
 const WIN = process.platform === 'win32'
 

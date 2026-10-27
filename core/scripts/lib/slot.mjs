@@ -1,6 +1,6 @@
 /**
  * Slot facts — single source of truth for the 3 permanent worktree slots
- * ({{slots.nameFormat}} (1..{{slots.count}})) in the Planner-Worker workflow. Shared by session-state-path.mjs,
+ * ({{slots.nameFormat}} (1..{{slots.count}})) in the Planner-Worker workflow. Shared by
  * scope-check.mjs, scope-guard.sh (via scope-check.mjs), ship-prep.mjs,
  * take-plan.mjs and session-startup.sh (via --describe).
  * See plans/326-planner-worker-workflow.plan.md.

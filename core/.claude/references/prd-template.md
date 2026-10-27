@@ -24,7 +24,7 @@ Snapshot: [origin/{{git.mainBranch}} SHA the plan was verified against — leave
 ## Read-Write Scope
 
 Always allowed regardless of the list below: this plan file itself, its own
-`docs/session-state-<branch>.md`, `.claude/sessions/**`, `.worktree-*`, and the append-only
+`.claude/sessions/**`, `.worktree-*`, and the append-only
 hotspots (`{{paths.hotspots}}` — add to them, never rewrite or remove an existing entry without escalating).
 
 ```scope

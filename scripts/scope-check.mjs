@@ -110,10 +110,6 @@ function normalize(p) {
   return String(p).replace(/\\/g, '/')
 }
 
-function sanitizeBranch(branch) {
-  return branch.replace(/[^a-zA-Z0-9]/g, '-')
-}
-
 function readPlanFile(planPath) {
   const abs = isAbsolute(planPath) ? planPath : join(repoRoot, planPath)
   if (!existsSync(abs)) fail(`plan not found: ${planPath}`)
@@ -138,10 +134,8 @@ function buildMatcher(planPath) {
   const scopeGlobs = extractScopeGlobs(planText)
   if (!scopeGlobs) fail(`${planPath} has no readable scope under "## Read-Write Scope" (need a \`\`\`scope block or a **Scope:** list of \`globs\`)`)
 
-  const branch = sanitizeBranch(git(['branch', '--show-current']))
   const alwaysAllowed = [
     planPath,
-    `docs/session-state-${branch}.md`,
     '.claude/sessions/**',
     '.worktree-*',
     'docs/brain/**', // the merge gate's brain capture appends here
@@ -287,10 +281,10 @@ function cmdArchPlan(args) {
   process.exit(ok ? 0 : 1)
 }
 
-// Added lines (with line numbers) in session-state and plan files since the merge base with <base>.
+// Added lines (with line numbers) in plan files since the merge base with <base>.
 function addedDecisionLines(base) {
   const mergeBase = git(['merge-base', base, 'HEAD']) || base
-  const specs = [':(glob)docs/session-state*.md', ...OPEN_PLAN_DIRS.map(d => `:(glob)${d}/*.plan.md`)]
+  const specs = [...OPEN_PLAN_DIRS.map(d => `:(glob)${d}/*.plan.md`)]
   const added = parseAddedLines(git(['diff', '-U0', '--no-color', mergeBase, '--', ...specs]))
   const untracked = git(['ls-files', '--others', '--exclude-standard', '--', ...specs]).split('\n').filter(Boolean)
   for (const f of untracked) {

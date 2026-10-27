@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 # pre-compact-reminder.sh — PreCompact hook
-# Fires when context is about to be compressed. Reminds the AI to save
-# critical state before earlier conversation details are lost.
+# Fires when context is about to be compressed. Reminds the AI to put open work where it survives.
 #
 # Hook type: PreCompact (matcher: "")
 # Timeout: 5s
 
 cat <<'EOF'
 {
-  "systemMessage": "Context is about to be compressed. Before proceeding, confirm:\n1. Have important decisions and progress been written to session-state.md?\n2. Are there any unpushed commits that need to be recorded?\n3. Are next steps documented?\n\nAfter compression, early conversation details will be lost. session-state.md is the memory bridge across compressions."
+  "systemMessage": "Context is about to be compressed. Before proceeding, confirm:\n1. Are the decisions and progress of this job in the plan (its checkboxes and Execution Notes) or committed?\n2. Are there any unpushed commits?\n3. Are the open signals and next steps written out in chat so /compact can keep them?\n\nAfter compression, early conversation details will be lost."
 }
 EOF
 

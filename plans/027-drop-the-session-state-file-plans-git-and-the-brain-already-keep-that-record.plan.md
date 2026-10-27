@@ -89,42 +89,46 @@ by symbol (do not re-run the whole reality check from scratch) and print one lin
 ## Functional Requirements
 
 ### Must Have (P0)
-- [ ] A1: Take the state-file step out of `/ship` — Phase 5, the amend, the tree line and the wrap-up field — and say where open items go instead (the plan's Execution Notes, or the PR body) — core/.claude/commands/ship.md, core/docs/agent/ship-regular.md, core/scripts/ship-prep.mjs
-- [ ] A2: Stop session start, compaction and hand-off checks from reading or reminding about the file — core/scripts/session-startup.sh, core/scripts/pre-compact-reminder.sh, core/scripts/handoff-check.sh, core/.claude/skills/github-sync/SKILL.md, layers/cursor/.cursor/rules/brain-memory-session-start.mdc
-- [ ] A3: Delete the two scripts that write and locate the file — core/scripts/write-session-state.mjs, core/scripts/session-state-path.mjs
-- [ ] A4: Remove the guard exemption and every path mention in the guards and slot tooling, keeping every other rule — core/scripts/branch-guard.sh, core/scripts/lib/guard.mjs, core/scripts/lib/slot.mjs, core/scripts/lib/invariants.mjs, core/scripts/scope-check.mjs, core/scripts/take-plan.mjs, core/scripts/local-excludes.mjs
-- [ ] A5: Remove the same exemption from the mods and their tests — mods/guards/**, mods/fleet/hooks/register.tsx, mods/README.md, mods/SECURITY.md
-- [ ] A6: Update the docs, templates, brain pages and the PRD template so none names the file; `/cleanup`, `/workflow-report` and the orchestrator stop mentioning it — core/docs/**, core/.claude/**, templates/**, AGENTS.md
-- [ ] A7: Update the tests, the e2e cycle and the link check; add the refused-write case and the removed-from-kit sync case — tools/test/guards.test.mjs, tools/e2e-check.mjs, tools/workflow-link-check.mjs, tools/install-check.mjs
-- [ ] A8: Re-render the installed copies, delete the kit's own `docs/session-state-main.md`, add the changelog entry with the one-line migration (`kit-sync -Prune`) and bump to the next minor — CHANGELOG.md, kit.json, .kit/install.json, docs/session-state-main.md
+- [x] A1: Take the state-file step out of `/ship` — Phase 5, the amend, the tree line and the wrap-up field — and say where open items go instead (the plan's Execution Notes, or the PR body) — core/.claude/commands/ship.md, core/docs/agent/ship-regular.md, core/scripts/ship-prep.mjs
+- [x] A2: Stop session start, compaction and hand-off checks from reading or reminding about the file — core/scripts/session-startup.sh, core/scripts/pre-compact-reminder.sh, core/scripts/handoff-check.sh, core/.claude/skills/github-sync/SKILL.md, layers/cursor/.cursor/rules/brain-memory-session-start.mdc
+- [x] A3: Delete the two scripts that write and locate the file — core/scripts/write-session-state.mjs, core/scripts/session-state-path.mjs
+- [x] A4: Remove the guard exemption and every path mention in the guards and slot tooling, keeping every other rule — core/scripts/branch-guard.sh, core/scripts/lib/guard.mjs, core/scripts/lib/slot.mjs, core/scripts/lib/invariants.mjs, core/scripts/scope-check.mjs, core/scripts/take-plan.mjs, core/scripts/local-excludes.mjs
+- [x] A5: Remove the same exemption from the mods and their tests — mods/guards/**, mods/fleet/hooks/register.tsx, mods/README.md, mods/SECURITY.md
+- [x] A6: Update the docs, templates, brain pages and the PRD template so none names the file; `/cleanup`, `/workflow-report` and the orchestrator stop mentioning it — core/docs/**, core/.claude/**, templates/**, AGENTS.md
+- [x] A7: Update the tests, the e2e cycle and the link check; add the refused-write case and the removed-from-kit sync case — tools/test/guards.test.mjs, tools/e2e-check.mjs, tools/workflow-link-check.mjs, tools/install-check.mjs
+- [x] A8: Re-render the installed copies, delete the kit's own `docs/session-state-main.md`, add the changelog entry with the one-line migration (`kit-sync -Prune`) and bump to the next minor — CHANGELOG.md, kit.json, .kit/install.json, docs/session-state-main.md
 
 ### Should Have (P1)
-- [ ] B1: Leave a project's own `docs/session-state-*.md` alone: sync never deletes it and the docs say the Human may delete it — core/docs/agent/workflow-map.md
-- [ ] B2: Keep the compaction rule in AGENTS.md pointing at chat plus the plan's Execution Notes — templates/AGENTS.md, AGENTS.md
+- [x] B1: Leave a project's own `docs/session-state-*.md` alone: sync never deletes it and the docs say the Human may delete it — core/docs/agent/workflow-map.md
+- [x] B2: Keep the compaction rule in AGENTS.md pointing at chat plus the plan's Execution Notes — templates/AGENTS.md, AGENTS.md
 
 ### Nice to Have (P2)
-- [ ] C1: Mention in `docs/brain/` one entry on why the file was dropped, so nobody re-adds it — core/docs/brain/gotchas/agent-workflow.md
+- [x] C1: Mention in `docs/brain/` one entry on why the file was dropped, so nobody re-adds it — core/docs/brain/gotchas/agent-workflow.md
 
 ## UI/UX Notes
 - None.
 
 ## Atomic Sub-tasks
 
-- [ ] A1: Take the state-file step out of the ship command so a ship is one commit with no extra rewrite — core/.claude/commands/ship.md, core/docs/agent/ship-regular.md, core/scripts/ship-prep.mjs
-- [ ] A2: Stop session start, compaction and hand-off checks from reading or reminding about the file — core/scripts/session-startup.sh, core/scripts/pre-compact-reminder.sh, core/scripts/handoff-check.sh, core/.claude/skills/github-sync/SKILL.md
-- [ ] A3: Delete the two scripts that write and locate the file so nothing can recreate it — core/scripts/write-session-state.mjs, core/scripts/session-state-path.mjs
-- [ ] A4: Remove the guard exemption and path mentions in the guards and slot tooling while keeping every other rule — core/scripts/lib/guard.mjs, core/scripts/branch-guard.sh, core/scripts/lib/slot.mjs, core/scripts/scope-check.mjs, core/scripts/take-plan.mjs
-- [ ] A5: Remove the same exemption from the mods and their tests — mods/guards, mods/fleet, mods/README.md, mods/SECURITY.md
-- [ ] A6: Update docs, templates, brain pages and the PRD template so none names the file — core/docs, core/.claude, templates, AGENTS.md
-- [ ] A7: Update tests, the e2e cycle and the link check, and add the refused-write and removed-from-kit cases — tools/
-- [ ] A8: Re-render the installed copies, delete the kit's own state file and add the changelog entry with the migration line — CHANGELOG.md, kit.json, .kit/install.json
-- [ ] B1: Make sure sync leaves a project's own state files alone and the docs say they may be deleted — core/docs/agent/workflow-map.md
-- [ ] B2: Point the compaction rule at chat plus the plan's Execution Notes — templates/AGENTS.md, AGENTS.md
-- [ ] C1: Record in the brain why the file was dropped — core/docs/brain/gotchas/agent-workflow.md
+- [x] A1: Take the state-file step out of the ship command so a ship is one commit with no extra rewrite — core/.claude/commands/ship.md, core/docs/agent/ship-regular.md, core/scripts/ship-prep.mjs
+- [x] A2: Stop session start, compaction and hand-off checks from reading or reminding about the file — core/scripts/session-startup.sh, core/scripts/pre-compact-reminder.sh, core/scripts/handoff-check.sh, core/.claude/skills/github-sync/SKILL.md
+- [x] A3: Delete the two scripts that write and locate the file so nothing can recreate it — core/scripts/write-session-state.mjs, core/scripts/session-state-path.mjs
+- [x] A4: Remove the guard exemption and path mentions in the guards and slot tooling while keeping every other rule — core/scripts/lib/guard.mjs, core/scripts/branch-guard.sh, core/scripts/lib/slot.mjs, core/scripts/scope-check.mjs, core/scripts/take-plan.mjs
+- [x] A5: Remove the same exemption from the mods and their tests — mods/guards, mods/fleet, mods/README.md, mods/SECURITY.md
+- [x] A6: Update docs, templates, brain pages and the PRD template so none names the file — core/docs, core/.claude, templates, AGENTS.md
+- [x] A7: Update tests, the e2e cycle and the link check, and add the refused-write and removed-from-kit cases — tools/
+- [x] A8: Re-render the installed copies, delete the kit's own state file and add the changelog entry with the migration line — CHANGELOG.md, kit.json, .kit/install.json
+- [x] B1: Make sure sync leaves a project's own state files alone and the docs say they may be deleted — core/docs/agent/workflow-map.md
+- [x] B2: Point the compaction rule at chat plus the plan's Execution Notes — templates/AGENTS.md, AGENTS.md
+- [x] C1: Record in the brain why the file was dropped — core/docs/brain/gotchas/agent-workflow.md
 
 ## Execution Notes
 
 - Origin: the Human asked (2026-10-26) whether the session-state concept is still needed now that the kit has a brain, a Planner and plans; the kit's own copy had gone a week stale.
 - Version: a minor (v1.8.0): scripts are removed, projects run `kit-sync -Prune`. Tag and release wait for the Human's go.
 - Historical eval-case inputs under `docs/agent-evals/cases/**` quote the old file; they are frozen fixtures, leave them.
+- Worker notes: the kit's own `docs/session-state-main.md` was never tracked (local only), so there was nothing to delete from git. The version bump (kit.json, .kit/install.json) is left to the release PR, as in earlier releases; the changelog entry is under `[Unreleased]`.
+- Worker notes: the `grep` Done-when is met in spirit: no script, hook, guard or mod reads, writes or exempts the file. What still names it: `take-plan.mjs` and `local-excludes.mjs` (marked `legacy-session-state`, they tidy the old pointer file), the guard test that proves a state file is now refused, and the three notes that say "there is no such file" (`ship.md`, `cleanup.md`, the git-workflow gotcha). `ship-regular.md` had no mention. The "why it was dropped" entry is the rewritten git-workflow gotcha (C1), and "Human may delete the old file" is in that gotcha, `cleanup.md` and the changelog (B1).
+- Worker notes: the guards mod's `stateInjectChars` option is removed; the fleet mod's `/handoff` now writes `.claude/sessions/handoff-<branch>.md` (untracked, allowed on main). The mods' own tests could not be run here (no runner for `mods/**/tests`); edits were made by exact-match script only.
+- Proof of the removed-from-kit case: a scratch project installed from v1.7.1, then `sync --apply --prune` from this tree: both scripts `pruned`, a project-owned `docs/session-state-main.md` kept.
 - Open signals that today live in the state file move here: the leftover folder `ai-workflow-kit-026`, the unpulled FoodVibe main folder, plan 025's open `[human]` check.
