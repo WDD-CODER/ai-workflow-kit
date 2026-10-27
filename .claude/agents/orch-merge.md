@@ -17,7 +17,8 @@ orchestrator's merge prompt; this file and that prompt never differ.
 2. `git merge --no-ff --no-commit origin/<plan branch>` — the merge is staged, not committed yet.
 3. A conflict: `git merge --abort`, return `merged: false` with the conflicting files as `reason`. Never resolve a
    conflict yourself.
-4. Run each CHECKS command (its output to a temp file outside the worktree). One fails: `git merge --abort`, return
+4. Run each CHECKS command (its output to a temp file outside the worktree), each under `timeout <TIMEOUT_MIN * 60>`
+   (exit code 124 = the command ran longer than TIMEOUT_MIN minutes). One fails: `git merge --abort`, return
    `merged: false` with the command and its exit code as `reason`.
 5. All pass: `git commit -m "<SUBJECT>"` — exactly `Merge <plan branch> into <run branch> (plan NNN)`, the run order
    is read from it — then push the run branch (a plain push; a rejected push → fetch, redo steps 1–5 once, then stop).

@@ -459,6 +459,14 @@ async function main() {
     const drift = (dr.split('### Plan drift')[1] ?? '').split('\n### ')[0].split('\n## ')[0]
     check('delta: the report grid shows the passing card with its screenshot under its page', grid.includes('| 401: Save shows Saved | pass — script, round 0 | [![Save shows Saved](screens/401-1.png)](screens/401-1.png) |') && grid.includes('| 401: The colour looks right | pass — browser, round 0 |'), grid.slice(0, 400))
     check('delta: plan drift has its own section, no severity, not in the grid', drift.includes('401: Error shows Error') && !/\b(?:blocker|major|minor|nit)\b/.test(drift) && !grid.includes('Error shows Error'), drift.slice(0, 300))
+    // Plan 028: an idle permanent slot (detached, no marker, provisioned once like a real slot) is the builder's folder,
+    // installs nothing and is given back when the plan ends; with no idle slot the run builds in its own folder.
+    const slotDir = join(root, 'orch-app-wt-1')
+    git(proj, 'worktree', 'add', '--detach', slotDir, 'main')
+    // A real project ignores node_modules in its .gitignore; the scratch one has none, so a slot would look dirty.
+    writeFileSync(join(proj, '.git', 'info', 'exclude'), `${readFileSync(join(proj, '.git', 'info', 'exclude'), 'utf8')}\nnode_modules\n`)
+    const slotInstall = spawnSync('npm install --no-audit --no-fund --no-package-lock', { cwd: join(slotDir, 'scripts'), env, encoding: 'utf8', shell: true })
+    check('slots: the scratch slot is provisioned (npm install inside scripts/)', slotInstall.status === 0, tail(`${slotInstall.stdout}${slotInstall.stderr}`))
     for (const [run, nnn, args, why] of [
       ['ui-down', '402', {}, /ui server: dev server http:\/\/127\.0\.0\.1:\d+ does not answer/],
       ['ui-login', '403', { uiLogin: `${UI.base}/login-bad` }, /ui login: login http:\S+\/login-bad answered 401/],
@@ -469,6 +477,13 @@ async function main() {
       const p = sx.plans[nnn]
       check(`${run}: ${nnn} stops before the browser agent with the reason in status.json, no fix round`, p?.state === 'parked' && p.round === 0 && /^UI environment blocked before the browser step: /.test(p.reason ?? '') && why.test(p.reason) && !!r?.parked?.includes(nnn) && builderCalls(nnn).length === 1 && calls.filter((c) => c.type === 'orch-ui' && c.nnn === nnn).length === 0, JSON.stringify(p))
     }
+    const branchNow = git(slotDir, 'branch', '--show-current').stdout.trim()
+    check('slots: plan 402 built in the idle slot (no own folder), no builder installed packages, and the slot was given back',
+      !existsSync(join(root, 'orch-app-orch-ui-down-402')) && runnerCommands.some((c) => c.includes('orch-state.mjs worktree --run=ui-down --plan=402')) &&
+      runnerCommands.some((c) => c.includes('orch-state.mjs release --run=ui-down --plan=402')) && !existsSync(join(slotDir, '.worktree-plan')) &&
+      branchNow === '' && existsSync(join(slotDir, 'scripts', 'node_modules', 'picomatch')),
+      `own folder ${existsSync(join(root, 'orch-app-orch-ui-down-402'))}, marker ${existsSync(join(slotDir, '.worktree-plan'))}, branch "${branchNow}"`)
+    git(proj, 'worktree', 'remove', '--force', slotDir)
   } finally {
     server.child.kill()
   }

@@ -62,10 +62,13 @@ jobs:
         with:
           fetch-depth: 0
 # KIT:end
+# KIT:if project.packageManager=pnpm
+      - uses: pnpm/action-setup@v4
+# KIT:end
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
+          cache: {{project.packageManager}}
       - name: Install
         run: {{ci.install}}
 # KIT:if ci.lintScope=changed
@@ -115,7 +118,7 @@ jobs:
           npx --no-install eslint --no-error-on-unmatched-pattern "${FILES[@]}"
 # KIT:else
       - name: ESLint
-        run: npm run {{commands.lint}}
+        run: {{project.packageManager}} run {{commands.lint}}
 # KIT:end
       # The workflow scripts' own dependencies live in scripts/package.json (kit-managed); install them
       # inside scripts/ (not with --prefix) before anything runs those scripts.
@@ -124,7 +127,11 @@ jobs:
         working-directory: scripts
         run: npm ci --no-audit --no-fund
       - name: Workflow script tests
+# KIT:if project.packageManager=pnpm
+        run: pnpm run --if-present test:scripts
+# KIT:else
         run: npm run test:scripts --if-present
+# KIT:end
 
   build:
     needs: changes
@@ -132,15 +139,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+# KIT:if project.packageManager=pnpm
+      - uses: pnpm/action-setup@v4
+# KIT:end
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
+          cache: {{project.packageManager}}
       # <!-- PACK:stack — build cache step (framework cache dir) comes from the stack pack -->
       - name: Install
         run: {{ci.install}}
       - name: Build
-        run: npm run {{commands.build}}
+        run: {{project.packageManager}} run {{commands.build}}
 # KIT:if ci.testMode!=skip
 
   test:
@@ -149,18 +159,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+# KIT:if project.packageManager=pnpm
+      - uses: pnpm/action-setup@v4
+# KIT:end
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
+          cache: {{project.packageManager}}
       # <!-- PACK:stack — build cache step (framework cache dir) comes from the stack pack -->
       - name: Install
         run: {{ci.install}}
       - name: Unit tests
 # KIT:if ci.testMode=if-present
-        run: npm run --if-present {{commands.test}}
+        run: {{project.packageManager}} run --if-present {{commands.test}}
 # KIT:else
-        run: npm run {{commands.test}}
+        run: {{project.packageManager}} run {{commands.test}}
 # KIT:end
 # KIT:end
 # KIT:if paths.serverRoot
@@ -175,15 +188,22 @@ jobs:
         working-directory: {{paths.serverRoot}}
     steps:
       - uses: actions/checkout@v4
+# KIT:if project.packageManager=pnpm
+      - uses: pnpm/action-setup@v4
+# KIT:end
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
+          cache: {{project.packageManager}}
+# KIT:if project.packageManager=pnpm
+          cache-dependency-path: {{paths.serverRoot}}pnpm-lock.yaml
+# KIT:else
           cache-dependency-path: {{paths.serverRoot}}package-lock.json
+# KIT:end
       - name: Install
         run: {{ci.install}}
       - name: Server tests
-        run: npm test
+        run: {{project.packageManager}} test
 # KIT:end
 
   gitleaks:

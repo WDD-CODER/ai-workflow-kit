@@ -286,3 +286,13 @@ only the Bash tool's command text triggers it.
 **Why the obvious fix is wrong:** Killing whatever holds the port (`taskkill /PID <port owner> /T`) kills only `node index.js`. The watcher prints "Failed running 'index.js'. Waiting for file changes before restarting..." and lives on. A second start while the port is taken ends the same way: the new app dies on `EADDRINUSE`, its watcher stays. Cleaning up by port can never find these, because they hold no port.
 
 **What to do instead:** Stop a dev server from the root of its chain (`killChain` / `stopSlotServers` in `scripts/lib/slot-procs.mjs` walk up from the port owner through npm/cmd/cross-env, then `taskkill /T` the root), never start one while its port is held (`startServer`), and find chains by folder (a chain member's command line contains the checkout path), not only by port. `scripts/orphan-sweep.mjs` at session start removes what a crashed session left. Match the folder with a trailing separator, or the main folder also matches every slot folder named after it.
+
+---
+
+## A watch-mode test script never exits, so an orchestrator gate that runs it hangs
+
+**What hurt:** On 2026-10-27 an orchestrator run gated on `npm run test`, which in that project was its framework's test command in watch mode. It printed its totals and then waited for file changes. One gate sat 32 minutes; the hang also triggered fix rounds and an escalation that fixed nothing. About 70 minutes of a 2-hour run went to it, while the project's CI had always run the same tests once, with the watch flag off.
+
+**Why the obvious fix is wrong:** Retrying or asking a builder to "fix" the failing check changes nothing: the check is not failing, it is waiting. A longer timeout only waits longer.
+
+**What to do instead:** Give the project a test script that runs once and exits (the one CI uses, e.g. named `test:ci`) and set `commands.testCi` to it: the gate runs it instead of `commands.test`. `orch-preflight.mjs` warns when the gate's script looks like a watch mode (`orchestrator.watchTestPattern` names the project's own framework's command), and every gate command is stopped after `orchestrator.gateTimeoutMin` minutes and reported as a fail with a "timed out" tail.

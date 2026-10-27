@@ -18,10 +18,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+# KIT:if project.packageManager=pnpm
+      - uses: pnpm/action-setup@v4
+# KIT:end
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
+          cache: {{project.packageManager}}
       - name: Install root
         run: {{ci.install}}
 # KIT:if paths.serverRoot

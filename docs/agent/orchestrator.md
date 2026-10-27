@@ -38,8 +38,18 @@ branch himself.
    relaunch), pushes it, and adds the merge folder `<repo>-orch-merge-<run>` beside the main folder.
 3. **Per plan, wave by wave** (plans of one wave in parallel; plans that share scope — a lock group — one after the
    other):
-   - builder (`orch-builder`, in its own folder `<repo>-orch-<run>-<NNN>` on `feat/NNN-<slug>`, scope-guarded);
-   - gate (`orch-gate`): the project checks plus the plan's own check commands from readiness — only `npm run
+   - builder (`orch-builder`, scope-guarded, on `feat/NNN-<slug>`): in an idle permanent slot when there is one
+     (`wt-N` detached, no `.worktree-plan`, clean; `orchestrator.useSlots`), else in its own folder
+     `<repo>-orch-<run>-<NNN>`. A slot is marked with `.worktree-plan` while the plan builds and given back
+     (`orch-state.mjs release`: detached again, marker removed) when the plan is merged or parked; a slot with uncommitted
+     or unpushed work stays claimed and the run says why. A slot already has its packages, so a builder in a slot installs
+     nothing; a folder of its own installs once before the builder starts (with pnpm, quickly: one shared store).
+     Packages are never linked in from the main folder: on Windows git follows a junction when it removes a worktree
+     and would delete the main folder's packages. At most `orchestrator.concurrency` builders run at once (default 2);
+   - gate (`orch-gate`): the project checks (`commands.build`, `commands.lint`, and `commands.testCi` when set, else
+     `commands.test`; run with `npm run`; each stopped after `orchestrator.gateTimeoutMin`
+     minutes and reported as a fail, never a hang — a watch-mode test script is the usual cause, and preflight warns about
+     it) plus the plan's own check commands from readiness — only `npm run
      <script in package.json>`, `node tools/…`, `node scripts/…` or `node --test <files>` (any other is dropped with
      a run note). A kit script that pushes, opens a pull request or writes run, plan or slot state (`kit-feedback`,
      `orch-state`, `decision-log`, `take-plan`, `slot-serve`, `sync`, …) is never a check, whatever its folder; the

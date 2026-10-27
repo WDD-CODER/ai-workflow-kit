@@ -493,13 +493,21 @@ const lockHash = (lockPath) => createHash('sha256').update(readFileSync(lockPath
  * packages that were never installed or were removed).
  */
 export function installNeed(dir, hashPath) {
-  const lockPath = join(dir, 'package-lock.json')
+  const pm = packageManagerOf(dir)
+  const lockPath = join(dir, lockNameOf(pm))
   if (!existsSync(lockPath)) return null
   const oldHash = existsSync(hashPath) ? readFileSync(hashPath, 'utf8').trim() : null
   if (lockHash(lockPath) !== oldHash) return 'changed'
+  // pnpm writes node_modules/.modules.yaml on every install: without it nothing was installed.
+  if (pm === 'pnpm') return existsSync(join(dir, 'node_modules', '.modules.yaml')) ? null : 'missing'
   if (lockHasDeps(lockPath) && !packagesInstalled(dir, lockPath)) return 'missing'
   return null
 }
+
+// project.packageManager (npm or pnpm) for the project's own folders; the kit-managed scripts/ package is always npm.
+const PROJECT_PM = '{{project.packageManager}}' === 'pnpm' ? 'pnpm' : 'npm'
+const packageManagerOf = (dir) => (basename(dir) === 'scripts' ? 'npm' : PROJECT_PM)
+const lockNameOf = (pm) => (pm === 'pnpm' ? 'pnpm-lock.yaml' : 'package-lock.json')
 
 /**
  * Whether <dir>/node_modules holds the lockfile's packages: npm 7+ writes node_modules/.package-lock.json; npm 6 does
@@ -550,15 +558,16 @@ export function npmInstallIfChanged(dir, hashFileName, root = repoRoot) {
   const need = installNeed(dir, hashPath)
   if (!need) return false
 
+  const pm = packageManagerOf(dir)
   try {
     // Windows: npm.cmd needs a shell, and a shell must get one command string, not an args array (DEP0190).
-    if (isWin) execSync('npm install', { cwd: dir, stdio: 'ignore' })
-    else execFileSync('npm', ['install'], { cwd: dir, stdio: 'ignore' })
+    if (isWin) execSync(`${pm} install`, { cwd: dir, stdio: 'ignore' })
+    else execFileSync(pm, ['install'], { cwd: dir, stdio: 'ignore' })
   } catch (e) {
-    throw new Error(`${String(e.message).split('\n')[0]} - run \`npm install\` in ${dir} by hand`)
+    throw new Error(`${String(e.message).split('\n')[0]} - run \`${pm} install\` in ${dir} by hand`)
   }
   mkdirSync(dirname(hashPath), { recursive: true })
-  writeFileSync(hashPath, lockHash(join(dir, 'package-lock.json')))
+  writeFileSync(hashPath, lockHash(join(dir, lockNameOf(pm))))
   return need
 }
 

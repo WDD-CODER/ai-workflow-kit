@@ -7,7 +7,9 @@
  *   node scripts/orch-state.mjs order      --run <name> --plans <NNN,NNN>  waves from plan-order (merged plans left out)
  *   node scripts/orch-state.mjs done       --run <name>                     plans merged into the run branch (from git)
  *   node scripts/orch-state.mjs plan-info  --run <name> --plan <NNN>        path, branch, start tier, [human] and [ui] items
- *   node scripts/orch-state.mjs worktree   --run <name> --plan <NNN>        the builder's folder on its plan branch
+ *   node scripts/orch-state.mjs worktree   --run <name> --plan <NNN>        the builder's folder on its plan branch: an idle
+ *                                          wt-N slot first (orchestrator.useSlots), else its own folder; packages installed
+ *   node scripts/orch-state.mjs release    --run <name> --plan <NNN>        gives the plan's slot back (detached, marker removed)
  *   node scripts/orch-state.mjs diff       --run <name> --plan <NNN>        changed files vs the run branch, sensitive?
  *   node scripts/orch-state.mjs set        --run <name> --plan <NNN> [--state s] [--round n] [--tier t] [--sha x]
  *                                          [--role r --model m --effort e | --roles r=m/e,r2=m2/e2] [--reason "<text>"]
@@ -36,6 +38,8 @@ import { fileURLToPath } from 'url'
 import { findOpenPlan } from './lib/plan-paths.mjs'
 import { planNumber, planTitle, mergeSubjectRe } from './lib/plan-deps.mjs'
 import { uiItems } from './lib/done-when.mjs'
+import { listSlots } from './lib/slot.mjs'
+import { ensureDeps, idleSlot, claimSlot, releaseSlot } from './lib/orch-folders.mjs'
 import { runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem } from './lib/orch-run.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -43,6 +47,9 @@ const MAIN = 'main'
 const PREFIX = 'orch/'
 const MIN_FREE_GB = 5
 const REPO = 'ai-workflow-kit'
+const PM = 'npm' === 'pnpm' ? 'pnpm' : 'npm'
+const USE_SLOTS = true !== false
+const SERVER_ROOT = ''
 // Sensitive paths (the security reviewer runs on them): the same reading as ship-prep — a regex string replaces the
 // built-in list, a list of globs is added to it.
 const DEFAULT_SENSITIVE_RE = /auth|crypto|guard|interceptor|security|permission|payment|migration|secret|\.env|\.github\/workflows/i
@@ -382,15 +389,46 @@ const commands = {
     if (!nnn) fail('--plan takes a plan number')
     const branch = branchOf(planPath(nnn), nnn)
     const base = `origin/${runBranch(run)}`
-    const wt = builderFolder(run, nnn)
+    const own = builderFolder(run, nnn)
     fetchOrigin()
     if (!refExists(base)) fail(`${base} not found — run init first`)
     const lines = []
-    if (!existsSync(wt)) {
-      const exists = refExists(`refs/heads/${branch}`)
-      const w = exists ? git(root, 'worktree', 'add', '--quiet', wt, branch) : git(root, 'worktree', 'add', '--quiet', '-b', branch, wt, base)
-      if (w.status !== 0) fail(`git worktree add ${wt}: ${w.err}`)
-      lines.push(`${exists ? 'reused branch' : 'created'} ${branch} in ${wt}`)
+    const planFile = planPath(nnn)
+    const exists = refExists(`refs/heads/${branch}`)
+    // A folder this plan already has wins (a relaunch): its own folder, or the slot it claimed earlier. Else an idle
+    // permanent slot (detached, no marker, clean — a slot a person is using is never taken), else a new folder.
+    const slots = USE_SLOTS ? listSlots() : []
+    let slot = slots.find((s) => s.plan === planFile && s.branch === branch) ?? null
+    let wt = slot ? slot.path : own
+    if (!slot && !existsSync(own)) {
+      const free = idleSlot(slots)
+      if (free) {
+        const c = claimSlot({ slot: free, branch, base, planPath: planFile, branchExists: exists })
+        if (!c.ok) fail(c.error)
+        slot = free
+        wt = free.path
+        lines.push(`claimed slot wt-${free.slot} (${wt}) for plan ${nnn}: ${branch}`)
+      } else {
+        const w = exists ? git(root, 'worktree', 'add', '--quiet', own, branch) : git(root, 'worktree', 'add', '--quiet', '-b', branch, own, base)
+        if (w.status !== 0) fail(`git worktree add ${own}: ${w.err}`)
+        lines.push(`${exists ? 'reused branch' : 'created'} ${branch} in ${own}${USE_SLOTS ? ' (no idle slot)' : ''}`)
+      }
+    }
+    // An idle slot already has its packages; a folder of its own installs once, before the builder starts (the scope
+    // guard refuses every edit without scripts/node_modules).
+    let deps
+    try {
+      deps = ensureDeps({ mainRoot: root, dst: wt, serverRoot: SERVER_ROOT, pm: PM })
+    } catch (e) {
+      fail(`installing the packages in ${wt}: ${e.message}`, { envFailure: true })
+    }
+    lines.push(...deps.lines)
+    if (!deps.ok) fail(`${wt} has no scripts/node_modules (picomatch): the scope guard would refuse every edit — ${deps.lines.join('; ') || 'no package.json in scripts/?'}`, { envFailure: true })
+    const st = readStatus(run)
+    if (st?.plans?.[nnn]) {
+      if (slot) st.plans[nnn].slot = wt.replace(/\\/g, '/')
+      else delete st.plans[nnn].slot
+      writeStatus(run, st)
     }
     const head = git(wt, 'rev-parse', '--abbrev-ref', 'HEAD').out
     if (head !== branch) fail(`${wt} is on ${head || '(no branch)'}, not ${branch}`)
@@ -402,7 +440,30 @@ const commands = {
         fail(`merging ${base} into ${branch} conflicts: ${m.out.split('\n').filter((l) => /CONFLICT/.test(l)).join(' | ') || m.err}`)
       }
     }
-    emit({ ok: true, path: wt.replace(/\\/g, '/'), branch, base, head: git(wt, 'rev-parse', 'HEAD').out, dirty }, lines)
+    // Commits the branch already has beyond the run branch: a relaunch or a stopped run continues from them.
+    const ahead = Number(git(wt, 'rev-list', '--count', `${base}..HEAD`).out) || 0
+    emit({ ok: true, path: wt.replace(/\\/g, '/'), branch, base, head: git(wt, 'rev-parse', 'HEAD').out, dirty, ...(slot ? { slot: slot.slot } : {}), ...(ahead ? { resumed: ahead } : {}) }, lines)
+  },
+
+  // Gives the plan's slot back once the plan is merged or parked. Never discards: a slot with uncommitted files or
+  // unpushed commits stays claimed, and the line says why. A plan that built in its own folder has nothing to release.
+  release() {
+    const run = runName()
+    const nnn = planNumber(args.plan ?? '')
+    if (!nnn) fail('--plan takes a plan number')
+    const branch = branchOf(planPath(nnn), nnn)
+    const planFile = planPath(nnn)
+    const slot = listSlots().find((s) => s.plan === planFile) ?? null
+    if (!slot) emit({ ok: true, released: false, why: 'built in its own folder' }, [`plan ${nnn}: no slot to release`])
+    fetchOrigin()
+    const target = `origin/${runBranch(run)}`
+    const r = releaseSlot({ path: slot.path, branch, target: refExists(target) ? target : `origin/${MAIN}` })
+    const st = readStatus(run)
+    if (r.released && st?.plans?.[nnn]) {
+      delete st.plans[nnn].slot
+      writeStatus(run, st)
+    }
+    emit({ ok: true, ...r, slot: slot.slot }, [r.released ? `plan ${nnn}: slot wt-${slot.slot} released` : `plan ${nnn}: slot wt-${slot.slot} kept — ${r.why}`])
   },
 
   diff() {

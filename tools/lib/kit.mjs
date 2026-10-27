@@ -30,10 +30,10 @@ import { fileURLToPath } from 'url'
 export const KIT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 export const NOT_SET = '(not set)'
 // Empty is the right rendering for these (they are prefixes / optional fragments, not words in a sentence).
-const BLANK_OK = new Set(['paths.srcRoot', 'paths.serverRoot', 'paths.slotEnvFile', 'kit.mcpArgs', 'commands.slotPrepare', 'commands.dev', 'slots.feMatcher', 'slots.feEnvFile'])
+const BLANK_OK = new Set(['paths.srcRoot', 'paths.serverRoot', 'paths.slotEnvFile', 'kit.mcpArgs', 'commands.slotPrepare', 'commands.dev', 'commands.testCi', 'orchestrator.watchTestPattern', 'slots.feMatcher', 'slots.feEnvFile'])
 export const REQUIRED = ['project.name', 'commands.build', 'commands.lint', 'commands.test', 'hooks.shellPath']
 // commands.* hold npm script names; the core files run them as `npm run <name>`. lintStaged is a full command.
-const SCRIPT_NAME_KEYS = ['build', 'buildProd', 'dev', 'devLocal', 'test', 'lint', 'e2e', 'codegen', 'cli', 'slotPrepare'].map((k) => `commands.${k}`)
+const SCRIPT_NAME_KEYS = ['build', 'buildProd', 'dev', 'devLocal', 'test', 'testCi', 'lint', 'e2e', 'codegen', 'cli', 'slotPrepare'].map((k) => `commands.${k}`)
 
 /**
  * commands.* values that are full commands instead of npm script names ("npm run build" renders as
@@ -54,6 +54,10 @@ export function commandProblems(vals) {
   for (const [key, allowed] of Object.entries(ENUMS)) {
     const v = vals[key]
     if (!isEmpty(v) && !allowed.includes(v)) out.push(`${key} is "${v}" — allowed: ${allowed.map((a) => `"${a}"`).join(', ')}`)
+  }
+  // A pnpm project has no package-lock.json: CI's default install (npm ci) would fail on its first step.
+  if (vals['project.packageManager'] === 'pnpm' && /^\s*npm(\s|$)/.test(String(vals['ci.install'] ?? ''))) {
+    out.push(`project.packageManager is "pnpm" but ci.install is "${vals['ci.install']}" — set ci.install to "pnpm install --frozen-lockfile"`)
   }
   // models.*: a tier renders into agent / skill frontmatter `model:`; an unknown value would fail only at run time.
   for (const key of MODEL_KEYS) {
@@ -99,6 +103,30 @@ export function orchestratorProblems(vals) {
   if (pilot !== undefined && !(Number.isInteger(pilot) && pilot >= 0 && pilot <= 10)) {
     out.push(`orchestrator.pilotSize is ${JSON.stringify(pilot)} — it must be a whole number from 0 to 10 (0 = no pilot)`)
   }
+  const gate = vals['orchestrator.gateTimeoutMin']
+  if (gate !== undefined && !(Number.isInteger(gate) && gate >= 1 && gate <= 120)) {
+    out.push(`orchestrator.gateTimeoutMin is ${JSON.stringify(gate)} — it must be a whole number of minutes from 1 to 120`)
+  }
+  const conc = vals['orchestrator.concurrency']
+  if (conc !== undefined && !(Number.isInteger(conc) && conc >= 1 && conc <= 3)) {
+    out.push(`orchestrator.concurrency is ${JSON.stringify(conc)} — it must be a whole number from 1 to 3`)
+  }
+  const watch = vals['orchestrator.watchTestPattern']
+  if (watch !== undefined) {
+    let bad = typeof watch !== 'string'
+    if (!bad) {
+      try {
+        new RegExp(watch)
+      } catch {
+        bad = true
+      }
+    }
+    if (bad) out.push(`orchestrator.watchTestPattern is ${JSON.stringify(watch)} — it must be a regular expression (a string; empty = none)`)
+  }
+  const useSlots = vals['orchestrator.useSlots']
+  if (useSlots !== undefined && typeof useSlots !== 'boolean') {
+    out.push(`orchestrator.useSlots is ${JSON.stringify(useSlots)} — it must be true or false`)
+  }
   return out
 }
 
@@ -116,6 +144,7 @@ const ENUMS = {
   'ci.appAuditMode': ['enforce', 'report'],
   'ci.testMode': ['run', 'if-present', 'skip'],
   'project.uiDirection': ['rtl', 'ltr'],
+  'project.packageManager': ['npm', 'pnpm'],
 }
 
 /**
