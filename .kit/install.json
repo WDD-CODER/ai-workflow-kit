@@ -3,7 +3,7 @@
     "version": "1.9.0"
   },
   "source": "local:.",
-  "commit": "7e5197d10f0df3acb2c08db87e8e40c47656b048",
+  "commit": "75ec852d302175f9dc241491056c6ff684afdb8a",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -340,7 +340,7 @@
       "source": "core/docs/agent/orchestrator.md"
     },
     "docs/agent/pr-check-fix-loop.md": {
-      "sha256": "c93bda610604f2d434a97f1f454e801312b563474e5a1c1ec420d547abfb015b",
+      "sha256": "96fa9983d9521be22ada6925876e9a1ed9e6a87a4218376bc2d4f75e7add9916",
       "kind": "managed",
       "source": "core/docs/agent/pr-check-fix-loop.md"
     },

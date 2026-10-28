@@ -41,7 +41,11 @@ jobs:
           # GitHub runs bash with -e: without set +e the first finding would end the step before the summary.
           set +e
           for dir in . {{paths.serverRoot}}; do
+# KIT:if project.packageManager=pnpm
+            out="$(cd "$dir" && pnpm audit --prod 2>&1)"
+# KIT:else
             out="$(cd "$dir" && npm audit --omit=dev 2>&1)"
+# KIT:end
             code=$?
             if [[ $code -ne 0 ]]; then
               echo "::warning title=npm audit (${dir})::production advisories found (report only, ci.appAuditMode=report); see the job summary"
@@ -61,11 +65,21 @@ jobs:
       # workaround. --audit-level=critical stays until a framework major-version upgrade
       # (tracked in .claude/todo.md) clears the current framework-package high findings;
       # restore --audit-level=high on production deps after that migration lands.
+      # The audit renders by project.packageManager: pnpm audit --prod reads pnpm-lock.yaml (npm audit fails
+      # without a package-lock.json). The step names stay "npm audit" so pr-check-fix-loop.md finds them.
       - name: npm audit (root)
+# KIT:if project.packageManager=pnpm
+        run: pnpm audit --prod --audit-level critical
+# KIT:else
         run: npm audit --omit=dev --audit-level=critical
+# KIT:end
 # KIT:if paths.serverRoot
       - name: npm audit (server)
+# KIT:if project.packageManager=pnpm
+        run: pnpm audit --prod --audit-level critical
+# KIT:else
         run: npm audit --omit=dev --audit-level=critical
+# KIT:end
         working-directory: {{paths.serverRoot}}
 # KIT:end
 # KIT:end

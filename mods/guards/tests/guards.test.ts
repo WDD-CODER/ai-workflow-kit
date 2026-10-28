@@ -124,6 +124,18 @@ test('planner on main: plans and todo pass, code is denied, kit-owned is denied'
   expect(String((await $.tool.call(edit('.claude/commands/ship.md'))).deny)).toMatch(/Planner folder stays on main/)
 })
 
+test('planner: a branch switch after session start counts on the next edit, and so does switching back', async ($, on) => {
+  const w = planner()
+  mock.clock(on)
+  world(on, w)
+  await $.session.start(start(w.cwd))
+  expect(String((await $.tool.call(edit('src/app/x.ts'))).deny)).toMatch(/Planner folder stays on main/)
+  w.branch = 'chore/pnpm-audit'
+  expect((await $.tool.call(edit('src/app/x.ts'))).deny).toBeUndefined()
+  w.branch = 'main'
+  expect(String((await $.tool.call(edit('src/app/x.ts'))).deny)).toMatch(/Planner folder stays on main/)
+})
+
 test('kit-owned file is denied off main outside a worker slot, allowed when a plan scope lists it', async ($, on) => {
   const w = planner()
   w.branch = 'chore/kit-patch'
