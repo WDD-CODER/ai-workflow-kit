@@ -9,6 +9,8 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-10-28
+
 ### Added
 - **A test command for the orchestrator gate that exits.** `commands.testCi` (an npm script name, optional) is run by the gate instead of `commands.test`. The preflight prints a `WARN gate` line when the test script is a watch mode (`vitest` without `run`, `jest --watch`, or a match of the new `orchestrator.watchTestPattern`, a regular expression a project writes for its own framework, e.g. `ng\s+test(?!.*--watch=false)`), and every gate and merge-check command is stopped after `orchestrator.gateTimeoutMin` minutes (default 15) and reported as a fail. **Projects with a watch-mode `test` script:** add a script that exits (e.g. `test:ci` running `ng test --watch=false --browsers=ChromeHeadless`) and set `commands.testCi` to it.
 - **Orchestrator builders use idle slots.** A plan builds in an idle `wt-N` slot (detached, clean, no `.worktree-plan`) when there is one, so it installs nothing (a slot already has its packages); else in its own folder, which installs once before the builder starts. `orch-state.mjs release` gives the slot back after the plan merges or parks (never one with uncommitted or unpushed work). Packages are not linked in from the main folder: on Windows `git worktree remove --force` follows a `node_modules` junction and deletes the target. `orchestrator.useSlots` (default true) turns the slot use off, `orchestrator.concurrency` (1-3, default 2) caps parallel builders, and a relaunched plan tells its builder to continue from the commits already on its branch.
@@ -922,7 +924,8 @@ Phases 4 to 6A, never tagged. Projects installed from a local kit folder.
 Phases 1 and 2, before this repository existed: the workflow was extracted from its source project into a
 stack-neutral `core/` with `{{placeholder}}` config keys and a leak check.
 
-[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.8.0...HEAD
+[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.9.0
 [1.8.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.8.0
 [1.7.1]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.7.1
 [1.7.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.7.0
