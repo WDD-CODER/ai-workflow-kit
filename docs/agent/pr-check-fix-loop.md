@@ -70,11 +70,12 @@ Failing unit specs in the `test` job (step **Unit tests**).
 
 ### `[audit]`
 
-`npm audit` findings in the `security` job (steps **npm audit (root)** / **npm audit (server)**).
+`npm audit` findings in the `security` job (steps **npm audit (root)** / **npm audit (server)**). The steps keep that
+name in every project; a `project.packageManager: pnpm` project runs `pnpm audit --prod` in them.
 
-- Run non-breaking fix only:
-  - root: `npm audit fix`
-  - server: `npm audit fix` with `working-directory` / `cd server` as appropriate
+- Run non-breaking fix only (npm: `npm audit fix`; pnpm: `pnpm audit --fix`, then `pnpm install`):
+  - root
+  - server: with `working-directory` / `cd server` as appropriate
 - If the finding requires `npm audit fix --force` or a major upgrade → **do not fix**. Surface the advisory to the user with the advisory link and stop auto-handling that finding.
 
 ### `[security-scan]`

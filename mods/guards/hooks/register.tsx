@@ -257,6 +257,9 @@ async function freshContext($: EngineInterface): Promise<Ctx> {
   if (!ctx) ctx = await loadContext($)
   else if (ctx.planPath && (await mtime($, `${ctx.root}/${ctx.planPath}`)) !== ctx.planMtime) ctx = await loadContext($)
   else if (!ctx.planPath && (await $.fs.exists(`${ctx.root}/.worktree-plan`))) ctx = await loadContext($)
+  // A branch switch in the folder (git switch -c chore/… in the Planner folder, which the main-branch deny itself asks
+  // for) must count on the next edit: one git call per hook, the rest of the context stays cached.
+  else if (((await git($, ['branch', '--show-current'], ctx.root)) || '') !== ctx.branch) ctx = await loadContext($)
   return ctx
 }
 

@@ -934,6 +934,19 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   else if (!read(op, '.claude/workflows/orchestrate.js').includes('const MAX_FIX_ROUNDS = 3') || !read(op, '.claude/workflows/orchestrate.js').includes('const RUN_PREFIX = "runs/"') || !read(op, 'scripts/orch-state.mjs').includes('const MIN_FREE_GB = 10')) fail('orchestrator: project values do not render')
   rmSync(op, { recursive: true, force: true })
 
+  // A pnpm project audits with pnpm (npm audit fails without a package-lock.json); the kit-managed scripts/ audit stays npm.
+  const pp = tmp('pnpm-project')
+  writeFileSync(join(pp, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, project: { name: 'pnpm-app', packageManager: 'pnpm' }, ci: { install: 'pnpm install --frozen-lockfile' } }))
+  const pi = run('install.mjs', ['--target', pp])
+  if (pi.status !== 0) fail(`install with project.packageManager pnpm: exit ${pi.status}`)
+  else {
+    const sec = read(pp, '.github/workflows/security.yml').replace(/\r\n/g, '\n')
+    if (!sec.includes('      - name: npm audit (root)\n        run: pnpm audit --prod --audit-level critical') || sec.includes('npm audit --omit=dev --audit-level=critical')) fail('security.yml: a pnpm project must audit with pnpm audit --prod, not npm audit')
+    if (!sec.includes('out="$(npm audit --omit=dev 2>&1)"') || !sec.includes("if: hashFiles('scripts/package-lock.json') != ''")) fail('security.yml: the kit-managed scripts/ audit stays npm in a pnpm project')
+    if (!sec.includes('      - uses: pnpm/action-setup@v4') || !sec.includes('        run: pnpm install --frozen-lockfile')) fail('security.yml: a pnpm project must set up pnpm and install with ci.install')
+  }
+  rmSync(pp, { recursive: true, force: true })
+
   const bad = [
     [{ runBranchPrefix: 'Orch' }, 'orchestrator.runBranchPrefix is "Orch" — it must be lower-case letters, digits, dots, dashes and slashes ending with "/"'],
     [{ runBranchPrefix: 'main/' }, 'orchestrator.runBranchPrefix is "main/"'],

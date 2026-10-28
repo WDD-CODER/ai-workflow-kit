@@ -9,6 +9,18 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Changed
+
+- `security.yml` renders the production audit by `project.packageManager`: a pnpm project runs
+  `pnpm audit --prod --audit-level critical` (it reads `pnpm-lock.yaml`; `npm audit` fails without a
+  `package-lock.json`) in the root and server steps and in `ci.appAuditMode: report`; npm projects render as before.
+  The kit-managed `scripts/` audit stays npm. `install-check` renders a pnpm project and asserts it.
+
+### Fixed
+
+- `mods/guards` 0.2.1: the guard re-reads the branch on every edit, so `git switch -c chore/…` in the Planner
+  folder counts at once instead of every edit being denied as "on main" until the session restarts.
+
 ## [1.9.0] - 2026-10-28
 
 ### Added
