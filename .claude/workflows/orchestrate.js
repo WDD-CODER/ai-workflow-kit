@@ -21,7 +21,14 @@ const RUN_PREFIX = "orch/"
 const PILOT_SIZE = 3
 // A checking agent gets at most this many items (docs/agent/agent-roles.md rule 10): the UI validator's cards go in batches.
 const UI_BATCH = 5
-const PROJECT_CHECKS = ["build", "lint", "test"].filter((s) => typeof s === 'string' && s !== '').map((s) => `npm run ${s}`)
+const PM = "npm" === 'pnpm' ? 'pnpm' : 'npm'
+// How many builders run at once, and how long one gate command may run (minutes) before the gate stops it.
+const CONCURRENCY = 2
+const GATE_TIMEOUT_MIN = 15
+// The gate runs commands.testCi when the project set it (a test command that exits), else commands.test: a watch-mode
+// test script prints its totals and never returns.
+const TEST_SCRIPT = "" || "test"
+const PROJECT_CHECKS = ["build", "lint", TEST_SCRIPT].filter((s) => typeof s === 'string' && s !== '').map((s) => `${PM} run ${s}`)
 const FAILING = ['blocker', 'major']
 const KEEP_THRESHOLD = 80
 const FINDERS = ['orch-check-plan', 'orch-check-bugs', 'orch-check-rules']
@@ -41,7 +48,7 @@ const NOT_A_CHECK = new Set([
 function checkProblem(cmd, scripts) {
   const c = String(cmd ?? '').trim()
   if (DENY.test(c)) return `${c}: on the deny list`
-  const npm = /^npm run ([A-Za-z0-9:_-]+)$/.exec(c)
+  const npm = /^(?:npm|pnpm) run ([A-Za-z0-9:_-]+)$/.exec(c)
   if (npm) return scripts && !scripts.includes(npm[1]) ? `${c}: no script ${npm[1]} in package.json` : null
   const w = c.split(/ +/)
   const safe = (ws) => ws.every((x) => SAFE_ARG.test(x) && !x.includes('..'))
@@ -50,7 +57,7 @@ function checkProblem(cmd, scripts) {
     return NOT_A_CHECK.has(name) ? `${c}: ${name} changes state or pushes, it is not a check` : null
   }
   if (w[0] === 'node' && w[1] === '--test' && safe(w.slice(2)) && w.slice(2).every((x) => !x.startsWith('-') || /^--test-[a-z-]+(=[\w.,-]+)?$/.test(x))) return null
-  return `${c}: not an allowed check (npm run <package.json script>, node tools/… or scripts/…, node --test <files>)`
+  return `${c}: not an allowed check (${PM} run <package.json script>, node tools/… or scripts/…, node --test <files>)`
 }
 // The plan branch shape (lib/orch-run.mjs PLAN_BRANCH_RE): it reaches git commands the agents run.
 const PLAN_BRANCH_RE = /^feat\/\d+-[a-z0-9-]+$/
@@ -231,6 +238,8 @@ async function builder(ctx, mode, findings) {
     mode === 'fix' ? 'Fix exactly the FINDINGS, rerun the checks, commit and push your branch.' : '',
     mode === 'handoff' ? 'You are a fresh builder: read the HANDOFF file, the plan and git diff against the run branch; rerun the failing check first.' : '',
     mode === 'env-retry' ? 'The environment check passed after an environment failure: continue the plan where it stopped.' : '',
+    // A relaunch (or a stopped run) finds the plan branch with commits from the earlier attempt: continue from them.
+    mode === 'first' && ctx.wt.resumed ? `The branch already has ${ctx.wt.resumed} commit(s) from an earlier attempt, and the packages are installed: read git log and git diff against the run branch, tick the plan's sub-tasks they finish, and continue from there. Do not start over and do not redo setup.` : '',
   ].filter(Boolean).join('\n\n')
   const opts = { schema: SCHEMA.builder, label: `builder ${ctx.nnn} ${ctx.tier} ${mode}`, phase: 'Build' }
   if (!judgment) return agent(prompt, { ...opts, agentType: 'orch-builder' })
@@ -243,7 +252,7 @@ async function builder(ctx, mode, findings) {
 async function gate(ctx) {
   const r = await agent([
     `Gate for plan ${ctx.nnn} of run ${RUN}. Follow .claude/agents/orch-gate.md.`,
-    task({ FOLDER: ctx.wt.path, COMMANDS: ctx.checks }),
+    task({ FOLDER: ctx.wt.path, COMMANDS: ctx.checks, TIMEOUT_MIN: GATE_TIMEOUT_MIN }),
   ].join('\n\n'), { agentType: 'orch-gate', schema: SCHEMA.gate, label: `gate ${ctx.nnn}`, phase: 'Build', effort: 'low' })
   if (!r) return { r, env: true, why: 'the gate agent returned nothing' }
   // Exactly one result per command in ctx.checks, matched by the command string: a check with no result, with two, or a
@@ -328,7 +337,7 @@ async function ui(ctx) {
   if (scripted.length) {
     const g = await agent([
       `UI gate for plan ${ctx.nnn} of run ${RUN}: run each [ui] card's own e2e test. Follow .claude/agents/orch-gate.md.`,
-      task({ FOLDER: ctx.wt.path, COMMANDS: scripted.map((c) => c.test) }),
+      task({ FOLDER: ctx.wt.path, COMMANDS: scripted.map((c) => c.test), TIMEOUT_MIN: GATE_TIMEOUT_MIN }),
     ].join('\n\n'), { agentType: 'orch-gate', schema: SCHEMA.gate, label: `ui-gate ${ctx.nnn}`, phase: 'Build', effort: 'low' })
     if (!g) return { env: true, why: 'the UI gate agent returned nothing' }
     results.push(g)
@@ -392,8 +401,8 @@ async function merge(ctx) {
     const subject = `Merge ${ctx.info.branch} into ${RUN_BRANCH} (plan ${ctx.nnn})`
     const r = await agent([
       `Merge plan ${ctx.nnn} into run branch ${RUN_BRANCH}. Follow .claude/agents/orch-merge.md, with the checks below run before the push:`,
-      task({ RUN_BRANCH, PLAN_BRANCH: ctx.info.branch, PLAN_NUMBER: ctx.nnn, MERGE_FOLDER: ctx.mergeFolder, SUBJECT: subject, CHECKS: ctx.checks }),
-      `Steps: git fetch origin; git merge --ff-only origin/${RUN_BRANCH}; git merge --no-ff --no-commit origin/${ctx.info.branch}; run each CHECKS command (output to a temp file); all pass → git commit -m "${subject}" and push ${RUN_BRANCH}; a conflict or a failing check → git merge --abort and return merged: false with the reason. Never touch the main branch.`,
+      task({ RUN_BRANCH, PLAN_BRANCH: ctx.info.branch, PLAN_NUMBER: ctx.nnn, MERGE_FOLDER: ctx.mergeFolder, SUBJECT: subject, CHECKS: ctx.checks, TIMEOUT_MIN: GATE_TIMEOUT_MIN }),
+      `Steps: git fetch origin; git merge --ff-only origin/${RUN_BRANCH}; git merge --no-ff --no-commit origin/${ctx.info.branch}; run each CHECKS command (output to a temp file) under timeout TIMEOUT_MIN*60 seconds; all pass → git commit -m "${subject}" and push ${RUN_BRANCH}; a conflict or a failing check → git merge --abort and return merged: false with the reason. Never touch the main branch.`,
     ].join('\n\n'), { agentType: 'orch-merge', schema: SCHEMA.merge, label: `merge ${ctx.nnn}`, phase: 'Build' })
     if (!r) return { env: true, why: 'the merge agent returned nothing' }
     if (!r.merged) return { r, env: !!r.envFailure, fail: !r.envFailure, why: `merge: ${r.reason ?? 'not merged'}`,
@@ -556,10 +565,25 @@ async function run() {
     const groups = (order.waveLocks?.[w] ?? []).map((g) => g.plans.filter((p) => wave.includes(p)))
     const grouped = new Set(groups.flat())
     const units = [...groups, ...wave.filter((p) => !grouped.has(p)).map((p) => [p])]
-    const done = await parallel(units.map((unit) => async () => {
-      const out = []
-      for (const nnn of unit) out.push(await runPlan(nnn))
-      return out
+    // At most CONCURRENCY units at once (orchestrator.concurrency): more builders on one machine made specs time out.
+    // A unit that throws leaves its slot in `done` empty, which the line below turns into parked plans.
+    const done = new Array(units.length).fill(undefined)
+    const queue = units.map((unit, i) => [unit, i])
+    await parallel(Array.from({ length: Math.min(Math.max(CONCURRENCY, 1), units.length) }, () => async () => {
+      while (queue.length) {
+        const [unit, i] = queue.shift()
+        try {
+          const out = []
+          for (const nnn of unit) {
+            out.push(await runPlan(nnn))
+            // A plan that built in an idle wt-N slot gives it back, merged or parked (a slot with uncommitted or unpushed work stays).
+            await state(['release', '--run', RUN, '--plan', nnn], `release ${nnn}`)
+          }
+          done[i] = out
+        } catch (e) {
+          log(`plan unit ${unit.join(', ')} stopped with an error: ${e?.message ?? e}`)
+        }
+      }
     }))
     const flat = done.flatMap((d, i) => d ?? units[i].map((nnn) => ({ nnn, state: 'parked', reason: 'the plan pipeline stopped with an error' })))
     outcomes.push(...flat)

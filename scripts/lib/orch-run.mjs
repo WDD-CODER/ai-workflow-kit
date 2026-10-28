@@ -78,6 +78,24 @@ export function humanItems(planText) {
   return out
 }
 
+/**
+ * Why a package.json test script would never exit, or null: `vitest` without `run` / --run / --watch=false, `jest`
+ * with --watch or --watchAll, or a match of `pattern` (orchestrator.watchTestPattern, a regular expression a project
+ * writes for its own framework's watch-mode command). The gate waits on the command, so a watch mode hangs it (a
+ * project then sets commands.testCi to a script that exits).
+ */
+export function watchModeProblem(script, pattern = '') {
+  const s = String(script ?? '')
+  if (pattern) {
+    try {
+      if (new RegExp(pattern).test(s)) return 'it matches orchestrator.watchTestPattern'
+    } catch { /* an invalid pattern is refused by install and sync */ }
+  }
+  if (/\bvitest\b/.test(s) && !/\bvitest\s+run\b|--run\b|--watch(?:=|\s+)false\b/.test(s)) return 'vitest without "run"'
+  if (/\bjest\b/.test(s) && /--watch(?:All)?\b(?!=false)/.test(s)) return 'jest with --watch'
+  return null
+}
+
 /** Free space in GB (one decimal) from a statfs result. */
 export const freeGb = (st) => Math.floor((Number(st.bavail) * Number(st.bsize)) / 1e8) / 10
 

@@ -8,6 +8,7 @@
  *   disk         free disk >= orchestrator.minFreeDiskGb (ORCH_FREE_GB replaces the measured value, for tests)
  *   database     a TCP connection to DB_PORT / --db-port (SKIP when neither is set)
  *   packages     scripts/node_modules has the workflow scripts' packages; a project with a frontend has node_modules
+ *   gate         WARN when the gate's test script (commands.testCi, else commands.test) is a watch mode that never exits
  *   dev server   commands.dev set → the dev server answers on the base port (kit config slots.fePorts), else
  *                scripts/slot-serve.mjs starts it; a failed start is a FAIL (an environment failure before any builder)
  *   git identity user.name and user.email are set
@@ -33,13 +34,18 @@ import { spawnSync } from 'child_process'
 import { resolve, dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import net from 'net'
-import { freeGb, runNameProblem, serverProblem, loginProblem, crossOriginProblem } from './lib/orch-run.mjs'
+import { freeGb, runNameProblem, serverProblem, loginProblem, crossOriginProblem, watchModeProblem } from './lib/orch-run.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = resolve(__dirname, '..')
 const MAIN = 'main'
 const MIN_FREE_GB = 5
 const DEV = ''
+const PM = 'npm' === 'pnpm' ? 'pnpm' : 'npm'
+// The script the gate runs: commands.testCi when the project set it, else commands.test.
+const TEST_SCRIPT = '' || 'test'
+// A project's own regular expression for its framework's watch-mode test command (orchestrator.watchTestPattern).
+const WATCH_PATTERN = ""
 const LIVE_MS = 2 * 60 * 60 * 1000
 const SERVE_TIMEOUT_MS = 4 * 60 * 1000
 
@@ -54,6 +60,8 @@ const results = []
 const ok = (name) => results.push({ name, status: 'OK' })
 const skip = (name, why) => results.push({ name, status: 'SKIP', why })
 const bad = (name, why) => results.push({ name, status: 'FAIL', why })
+// A WARN is printed and never stops the run.
+const warn = (name, why) => results.push({ name, status: 'WARN', why })
 const git = (...a) => {
   const r = spawnSync('git', a, { cwd: root, encoding: 'utf8' })
   return { status: r.status ?? 1, out: (r.stdout ?? '').trim() }
@@ -88,9 +96,22 @@ function database() {
 }
 
 function packages() {
-  if (!existsSync(join(root, 'scripts', 'node_modules', 'picomatch'))) return bad('packages', 'scripts/node_modules is missing the workflow scripts\' packages — run npm install inside scripts/')
+  if (!existsSync(join(root, 'scripts', 'node_modules', 'picomatch'))) return bad('packages', `scripts/node_modules is missing the workflow scripts' packages — run ${PM} install inside scripts/`)
   if (DEV && existsSync(join(root, 'package.json')) && !existsSync(join(root, 'node_modules'))) return bad('packages', 'the project has no node_modules — run the project install first')
   ok('packages')
+}
+
+// The gate waits for the test command to exit: a watch-mode script prints its totals and hangs (a run lost an hour to it).
+function gate() {
+  if (!TEST_SCRIPT) return skip('gate', 'no test script is set')
+  let script
+  try {
+    script = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).scripts?.[TEST_SCRIPT]
+  } catch { /* no package.json */ }
+  if (script === undefined) return skip('gate', `no "${TEST_SCRIPT}" script in package.json`)
+  const why = watchModeProblem(script, WATCH_PATTERN)
+  if (why) return warn('gate', `"${TEST_SCRIPT}" runs "${script}" (${why}), which never exits: the gate stops it after the timeout and fails. Set commands.testCi in the kit config to a script that runs the tests once and exits`)
+  ok('gate')
 }
 
 // The main folder's dev server port: kit config slots.fePorts (the base port; main = base), as preflight.mjs reads it.
@@ -225,6 +246,7 @@ else {
   disk()
   await database()
   packages()
+  gate()
 }
 if (!envOnly && !uiOnly) {
   await devServer()

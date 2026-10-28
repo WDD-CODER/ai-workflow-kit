@@ -9,6 +9,11 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Added
+- **A test command for the orchestrator gate that exits.** `commands.testCi` (an npm script name, optional) is run by the gate instead of `commands.test`. The preflight prints a `WARN gate` line when the test script is a watch mode (`vitest` without `run`, `jest --watch`, or a match of the new `orchestrator.watchTestPattern`, a regular expression a project writes for its own framework, e.g. `ng\s+test(?!.*--watch=false)`), and every gate and merge-check command is stopped after `orchestrator.gateTimeoutMin` minutes (default 15) and reported as a fail. **Projects with a watch-mode `test` script:** add a script that exits (e.g. `test:ci` running `ng test --watch=false --browsers=ChromeHeadless`) and set `commands.testCi` to it.
+- **Orchestrator builders use idle slots.** A plan builds in an idle `wt-N` slot (detached, clean, no `.worktree-plan`) when there is one, so it installs nothing (a slot already has its packages); else in its own folder, which installs once before the builder starts. `orch-state.mjs release` gives the slot back after the plan merges or parks (never one with uncommitted or unpushed work). Packages are not linked in from the main folder: on Windows `git worktree remove --force` follows a `node_modules` junction and deletes the target. `orchestrator.useSlots` (default true) turns the slot use off, `orchestrator.concurrency` (1-3, default 2) caps parallel builders, and a relaunched plan tells its builder to continue from the commits already on its branch.
+- **pnpm.** `project.packageManager` (`npm` default, or `pnpm`) picks the install and run commands in CI, the slot setup and install check, and the orchestrator; with pnpm set, `ci.install` must be a pnpm command (install and sync refuse the npm default). The kit-managed `scripts/` package stays on npm. The security workflow's `npm audit` step is unchanged.
+
 ## [1.8.0] - 2026-10-27
 
 ### Removed
