@@ -33,6 +33,7 @@ second model; a loop is cut by a hard limit; and the Human can ask any time "is 
 - [auto] `node --test tools/test/*.test.mjs` passes with new cases: `orchestrator.fallbackModel` accepts `inherit`, `haiku`-free model names and full `claude-` ids, and install and sync refuse a Haiku value; `orchestrator.staleMin` and `orchestrator.maxNotesPerPlan` reject anything but a whole number in their range.
 - [auto] `node tools/orchestrator-e2e.mjs` passes on a scratch project: a merge folder created by `init` has `node_modules` in the root and in `scripts/`, and a stub agent that returns `null` once is retried once with the fallback model (the run note `model fallback` names both models) and not a third time.
 - [auto] `node --test tools/test/*.test.mjs` passes with new cases: a gate that returns 1 of 8 results reruns the 7 missing commands and starts no builder round; a run whose plans are all parked still returns a report path; `checkProblem` drops `node scripts/kit-owned.mjs --write` and keeps `node scripts/kit-owned.mjs`.
+- [auto] `node --test tools/test/*.test.mjs` passes with new cases: `stop` on a run whose plan holds a clean slot prints `plan <NNN>: slot wt-<n> released` and the slot is detached with no `.worktree-plan`; a slot with an uncommitted file is kept and the line says why.
 - [auto] `node tools/install-check.mjs`, `node tools/e2e-check.mjs`, `node tools/workflow-link-check.mjs`, `node tools/drift-check.mjs --target .` and `node tools/leak-check.mjs` pass.
 - [human] Run `/orchestrate` on one small FoodVibe plan after syncing: the merge step finishes without a parked plan, and `node scripts/orch-state.mjs watch --run <run>` in a second terminal prints `RUNNING` while it works.
 
@@ -104,6 +105,7 @@ line or file this plan names was removed, renamed or rewritten).
 - A6: a report every time — the workflow always runs `finish` (the report, the decisions list) when it ends, also when every plan is parked or the last plan parked at an environment failure; today run-504 ended "paused" with no report.
 - A7: no invented start time — `core/.claude/commands/orchestrate.md` step 3 stops passing `startedAt`; `orch-state.mjs init` already falls back to its own clock (`args.started || nowIso()`), and the workflow takes the start from `init`'s answer.
 - A8: no check that writes files — `checkProblem` in `core/.claude/workflows/orchestrate.js` also drops a plan check command that carries a `--write`, `--apply`, `--fix` or `--update` argument (run-504 passed `kit-owned.mjs --write` as a gate command); a run note says why.
+- A9: slots given back when a run stops — `core/scripts/orch-state.mjs stop` and `finish` release every slot the run still holds (`status.plans[n].slot`, through the existing `releaseSlot`: a slot with uncommitted files or unpushed commits is kept and the line says why), so a run that ends on an environment failure leaves no `wt-N` with a stale `.worktree-plan` (run-412-497 left wt-1 claiming plan 485 until the next `take-plan`); `release` itself is unchanged.
 
 ### Should Have (P1)
 - B1: the command text — `core/.claude/commands/orchestrate.md` step 3 tells the Human the watch line to run in a second terminal (`node scripts/orch-state.mjs watch --run <run>`), and step 4 prints a `STUCK` line first, before the merged and parked lists, when the run ended on a limit.
@@ -127,6 +129,7 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 - [ ] A6: Always write the report and decisions list when a run ends, also when plans are parked — core/.claude/workflows/orchestrate.js
 - [ ] A7: Stop passing a made-up start time; let `init` use the real clock — core/.claude/commands/orchestrate.md, core/.claude/workflows/orchestrate.js
 - [ ] A8: Refuse a plan check command that writes files (`--write`, `--apply`, `--fix`, `--update`) — core/.claude/workflows/orchestrate.js
+- [ ] A9: Give every slot back when a run stops or finishes, so no slot keeps a stale plan claim — `stop` and `finish` call `releaseSlot` for each `plans[n].slot` still set; kept slots say why — core/scripts/orch-state.mjs, tools/test/orchestrator-folders.test.mjs
 - [ ] B1: Tell the Human about `watch` and print `STUCK` first in the final report — core/.claude/commands/orchestrate.md
 - [ ] B2: Add and validate the four new `orchestrator.*` keys — kit.config.json, tools/lib/kit.mjs
 - [ ] C1: Document the keys, the fallback and the limits, and record the two traps in the brain — core/docs/agent/orchestrator.md, core/docs/agent/model-routing.md, core/docs/brain/gotchas/agent-workflow.md, CHANGELOG.md
@@ -165,3 +168,4 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 - Evidence from the run (reported by the orchestrator session): merge folder `foodVibe1.0-orch-merge-run-504` had no `node_modules`; `npm run build` failed `'ng' is not recognized`; retried once, parked at 13:18; about 30 note agents after that.
 - Evidence in this repo (Planner, 2026-10-28): `core/scripts/orch-state.mjs` `init()` calls `git worktree add` for the merge folder and nothing else; `ensureDeps` is called only from `worktree()`; `note` = `state([...])` = `runner(...)` = one `kit-runner` agent.
 - The Workflow API returns `null` from `agent()` after a terminal API error (retries included) and also when the Human skips an agent; A2 treats both as "retry once", which is harmless for a skip.
+- A9 added by the Planner on 2026-10-28 from the FoodVibe plan-505 workflow report: wt-1 still carried `.worktree-plan` = plan 485 from run 412-497, which stopped on the merge-folder failure before any `release`. `release()` (`orch-state.mjs:450`) runs only on merge or park today.
