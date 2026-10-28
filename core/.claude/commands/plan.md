@@ -66,6 +66,10 @@ mid-brief inside a slot goes through save-plan only. Check against the real code
 - The plan is the smallest version that delivers the full value — no forced alternatives, no gold-plating.
 - **Every step names its files and is concrete enough for a Worker to run without asking**: no "TBD",
   "handle errors appropriately", "same as the other screen".
+- A plan that changes a string the kit manifest couples — an install command, a lockfile name, the package manager in a
+  kit-rendered file such as `.github/workflows/ci.yml` — lists the kit manifest in its scope (the manifest.json under
+  docs/workflow-kit that `scripts/kit-manifest-check.mjs` reads) and that check in a Done-when, or CI's `rules` job fails
+  on `unrecorded-coupling-strings`.
 - The project's own checks in `{{paths.planChecks}}`, when that file exists.
 
 **Overlap** (every time, also on a brief that is not a plan yet)

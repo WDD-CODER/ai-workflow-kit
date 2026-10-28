@@ -20,7 +20,7 @@ Detached at `origin/main`, never on `main` and never on a branch — an idle slo
 
 ## 2. Provision every slot (new or existing)
 
-1. `npm install` at the slot root, `npm install` inside `scripts/` (the workflow scripts' own dependencies, `scripts/package.json`; kit-managed, always npm), and `npm install` inside the backend folder `` when the project has one (`paths.serverRoot` set). With `project.packageManager` pnpm, every folder shares pnpm's one package store, so a second slot does not download again.
+1. `npm install` at the slot root, `npm install` inside `scripts/` (the workflow scripts' own dependencies, `scripts/package.json`; kit-managed, always npm), and `npm install` inside the backend folder `` when the project has one (`paths.serverRoot` set). With `project.packageManager` pnpm, every folder shares pnpm's one package store, so a second slot does not download again. pnpm 10 prints `Ignored build scripts: …` for packages whose install scripts it skipped (esbuild, @parcel/watcher, lmdb, …): list them in `package.json` under `pnpm.onlyBuiltDependencies` and install again, or they never compile.
 2. Write `.worktree-root` = absolute path of the main repo, and `.worktree-port` = `4200+N` (the port map in `AGENTS.md`: slot N = 4200+N).
 3. `node scripts/local-excludes.mjs` — adds the runtime files (`.worktree-*`, logs, install hashes) to the shared `.git/info/exclude`, so a slot never looks dirty even when the project keeps its own `.gitignore`.
 4. With a backend folder only: copy `.env` from the main repo into the slot (`.env` is the only env file; skip silently if missing — it is a secret and may be absent on purpose).

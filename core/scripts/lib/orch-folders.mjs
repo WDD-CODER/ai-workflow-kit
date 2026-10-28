@@ -21,6 +21,12 @@ export function installCommand(pm) {
   return pm === 'pnpm' ? ['pnpm', ['install', '--frozen-lockfile']] : ['npm', ['ci', '--no-audit', '--no-fund']]
 }
 
+/** pnpm 10 skips dependency build scripts unless package.json pnpm.onlyBuiltDependencies lists them: the names it skipped. */
+export function ignoredBuildScripts(out) {
+  const m = /Ignored build scripts:\s*([^\n]+)/.exec(String(out ?? ''))
+  return m ? m[1].split(',').map((s) => s.trim().replace(/\.$/, '')).filter(Boolean) : []
+}
+
 /** The folders (relative to a project root) that hold their own package.json: the root, scripts/ and the backend. */
 export function depFolders(mainRoot, serverRoot = '') {
   const server = String(serverRoot ?? '').replace(/[\\/]+$/, '')
@@ -51,6 +57,8 @@ export function ensureDeps({ mainRoot, dst, serverRoot = '', pm = 'npm' }) {
     const [cmd, a] = hasLock ? installCommand(fpm) : ['npm', ['install', '--no-audit', '--no-fund']]
     const r = run(to, cmd, a)
     lines.push(r.status === 0 ? `installed the ${f === '.' ? 'root' : f} packages (${cmd} ${a[0]})` : `install in ${f} failed: ${(r.err || r.out).split('\n').pop()}`)
+    const skipped = ignoredBuildScripts(`${r.out}\n${r.err}`)
+    if (skipped.length) lines.push(`WARN ${f === '.' ? 'root' : f}: pnpm ignored build scripts (${skipped.join(', ')}) — list them in package.json pnpm.onlyBuiltDependencies, or they never compile`)
   }
   const ok = !existsSync(join(dst, 'scripts', 'package.json')) || existsSync(join(dst, 'scripts', 'node_modules', 'picomatch'))
   return { ok, lines }

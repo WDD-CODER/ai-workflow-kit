@@ -18,6 +18,18 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ### Fixed
 
+- `/ship` lane: on a plan branch (a slot, or a `feat/NNN-…` branch) every dirty file counts, not only the ones the
+  session manifest saw through Edit/Write — shell edits, `git rm` and generated lockfiles were left out and a 22-file
+  package-manager move was classified FAST. `package.json`, lockfiles (`pnpm-lock.yaml` included), `kit.config.json`
+  and `.github/workflows/**` now take the REGULAR lane whatever `security.sensitivePaths` says. `ship-prep.mjs`
+  exports `laneFor` and `BUILD_RE` for the tests and runs nothing when imported.
+- `/ship` step 3: one `git add` call, stop on a non-zero exit before the commit (a relisted staged deletion once left
+  a partial commit).
+- `ensureDeps` (orchestrator builder folders) prints `WARN … pnpm ignored build scripts (…)` with the package names
+  pnpm 10 skipped; `worktree-setup` says to list them in `pnpm.onlyBuiltDependencies`.
+- `/plan` review: a plan that changes a kit-coupled string (install command, lockfile, package manager in `ci.yml`)
+  lists `docs/workflow-kit/manifest.json` and runs `kit-manifest-check.mjs`. `CHANGE-LOOP.md` names the plain
+  `node tools/sync.mjs` call for agents whose shell refuses `.ps1`.
 - `mods/guards` 0.2.1: the guard re-reads the branch on every edit, so `git switch -c chore/…` in the Planner
   folder counts at once instead of every edit being denied as "on main" until the session restarts.
 
