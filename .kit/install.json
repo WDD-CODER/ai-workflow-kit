@@ -3,7 +3,7 @@
     "version": "1.12.0"
   },
   "source": "local:.",
-  "commit": "95a75dbcdfae0d7cf42e998ab29d9d17884f2397",
+  "commit": "c72c117a1396accac264a3000f00d907cff50955",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -165,7 +165,7 @@
       "source": "core/.claude/commands/security.md"
     },
     ".claude/commands/ship.md": {
-      "sha256": "bd47fefce265c368aaf40e752aaaee15e1572eebfe044567f2476718daf09c89",
+      "sha256": "f901b2018d2f7d96b7860dc560b7991e4c0f5c1cda7e657ea97753c03e9f0460",
       "kind": "managed",
       "source": "core/.claude/commands/ship.md"
     },
@@ -345,17 +345,17 @@
       "source": "core/docs/agent/pr-check-fix-loop.md"
     },
     "docs/agent/ship-recovery.md": {
-      "sha256": "9a420f72c1f1ae8d874a6f8f73975f711892549091cb3638d9619ede23c9e161",
+      "sha256": "819c5858034e315cfeb35bea4bbbc11aa0ebe62d717be17186a1a39987672c7c",
       "kind": "managed",
       "source": "core/docs/agent/ship-recovery.md"
     },
     "docs/agent/ship-regular.md": {
-      "sha256": "46606db124ddaf886b39a722735e54e9f39ee04e6bd06bb14ce3a0f32aa7d4a9",
+      "sha256": "79220f7bf799d73117e843952a32f063002f78c9a963083224ff17b08f6aded0",
       "kind": "managed",
       "source": "core/docs/agent/ship-regular.md"
     },
     "docs/agent/standards-git.md": {
-      "sha256": "b4244ecf18f75c46da656ee4dfdeee851eddfaf931c9b3faeda2e12eb3ee04ae",
+      "sha256": "fe08de38d60629c5adef4d243c2a45e45ea2d576d7b944784473d6f43318d2e5",
       "kind": "managed",
       "source": "core/docs/agent/standards-git.md"
     },
@@ -508,6 +508,11 @@
       "sha256": "c6c6fb14343a150b56426acc2d84904062b6ab74dc6f5978ad883ee9fa5dbba5",
       "kind": "managed",
       "source": "core/scripts/brain-review-check.mjs"
+    },
+    "scripts/branch-autodelete-check.mjs": {
+      "sha256": "8985db74f97dc5893a11174eccc4d775d60bf739987a3917dda60b388e337329",
+      "kind": "managed",
+      "source": "core/scripts/branch-autodelete-check.mjs"
     },
     "scripts/branch-guard.sh": {
       "sha256": "a9a4084cbc49234e560baec8e057c11f713729cdc307afaf6dc2b778d4a1995c",

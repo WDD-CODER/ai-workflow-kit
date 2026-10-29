@@ -111,10 +111,10 @@ earlier script); if a list exists, add it to the scope through the Escalation Pr
 
 ## Atomic Sub-tasks
 
-- [ ] A1: Add a kit check that says whether the repo already deletes merged branches, without touching anything — auto / manual / unknown, exit 0, gh api GET + workflow scan, spawnSync with argument arrays only — core/scripts/branch-autodelete-check.mjs
-- [ ] A2: Prove the three answers and that hostile workflow text never reaches a shell — scratch repos, stub gh/git on PATH, call log — tools/test/branch-autodelete-check.test.mjs, tools/fixtures/branch-autodelete/**
-- [ ] A3: Make the slot merge ask the check before deleting the branch and stop reporting an already-gone branch as open — standards-git.md "Merging from a slot", ship-regular.md, ship-recovery.md (rename delete unchanged), ship.md; manual-mode suggestion line; install-check asserts — core/docs/agent/standards-git.md, core/docs/agent/ship-regular.md, core/docs/agent/ship-recovery.md, core/.claude/commands/ship.md, tools/install-check.mjs
-- [ ] A4: Note the change in the changelog and render the kit's own copies — Unreleased Added; sync + drift-check — CHANGELOG.md, scripts/, .claude/, docs/agent/, .kit/install.json
+- [x] A1: Add a kit check that says whether the repo already deletes merged branches, without touching anything — auto / manual / unknown, exit 0, gh api GET + workflow scan, spawnSync with argument arrays only — core/scripts/branch-autodelete-check.mjs
+- [x] A2: Prove the three answers and that hostile workflow text never reaches a shell — scratch repos, stub gh/git on PATH, call log — tools/test/branch-autodelete-check.test.mjs, tools/fixtures/branch-autodelete/**
+- [x] A3: Make the slot merge ask the check before deleting the branch and stop reporting an already-gone branch as open — standards-git.md "Merging from a slot", ship-regular.md, ship-recovery.md (rename delete unchanged), ship.md; manual-mode suggestion line; install-check asserts — core/docs/agent/standards-git.md, core/docs/agent/ship-regular.md, core/docs/agent/ship-recovery.md, core/.claude/commands/ship.md, tools/install-check.mjs
+- [x] A4: Note the change in the changelog and render the kit's own copies — Unreleased Added; sync + drift-check — CHANGELOG.md, scripts/, .claude/, docs/agent/, .kit/install.json
 
 ## Technical Considerations
 
@@ -147,3 +147,12 @@ earlier script); if a list exists, add it to the scope through the Escalation Pr
   folder moved under `tools/fixtures/`, and the template sections it lacked were added. Numbers 035 and 036 are taken
   by PR #62 (`plan/move-skill-improver-and-scout`), which `next-plan-number.mjs` could not see because that branch
   name carries no plan number.
+- Build (2026-10-29, branch `feat/037-delete-merged-branch-only-when-repo-does-not`): Step 0 drift was only plan 038
+  (no scope file in common besides CHANGELOG/install-check); `tools/sync.mjs` rendered the new script with no list to
+  edit. One change from the Success wording: a workflow counts as `auto` only when it also runs on `pull_request` /
+  `pull_request_target`. Reason: every kit project ships `todo-sync.yml`, which deletes its own bot branch on `push`
+  (`git push origin --delete`, `--delete-branch`); the plain pattern match would have read every kit project as
+  `auto` and skipped the delete wrongly. A test case covers it. The `gh`/`git` stubs are the node binary linked into a
+  scratch PATH folder with `tools/fixtures/branch-autodelete/stub.cjs` preloaded (works on Windows, where a shell-script
+  stub cannot be spawned without a shell). Evidence: 5/5 tests pass; install-check, drift-check, leak-check,
+  workflow-link-check and `npm run build` pass; on this repo the check prints `AUTODELETE: manual` (setting is `false`).

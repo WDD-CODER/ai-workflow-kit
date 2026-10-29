@@ -94,11 +94,14 @@ Dirty-tree merge fallback (same as `/ship`): if `gh pr merge --merge --delete-br
 
 ```bash
 node scripts/slot-stop.mjs
+node scripts/branch-autodelete-check.mjs
 gh pr merge {n} --merge
-git push origin --delete <branch>
+git push origin --delete <branch>   # only on AUTODELETE: manual or unknown
 git fetch origin --prune
 node scripts/free-merged-slots.mjs
 ```
+
+`branch-autodelete-check.mjs` says whether the repo already deletes a merged branch. `AUTODELETE: auto` (the repo setting `delete_branch_on_merge`, or a workflow on `pull_request` that deletes branches) → skip `git push origin --delete`: GitHub removes the branch. `AUTODELETE: manual` or `AUTODELETE: unknown` → delete it as above. `git fetch origin --prune` and `free-merged-slots.mjs` run in every case. On `manual`, add one line to the merge summary: "GitHub can delete merged branches itself: `GITHUB_TOKEN= gh api -X PATCH repos/<owner>/<repo> -f delete_branch_on_merge=true`" — a suggestion only; never change the setting yourself. A `git push origin --delete` rejected because the branch is already gone (`remote ref does not exist`) means it was deleted: not a loose end, never reported as open.
 
 The first line stops the slot's dev servers (servers are off unless a session needs them). The fetch matters: `gh` merges on GitHub, so without it `origin/{{git.mainBranch}}` is one commit behind. The last line frees the slot: it stops any server still running there, detaches to `origin/{{git.mainBranch}}` (idle) and clears `.worktree-plan`, so a later "pull {{git.mainBranch}}" cannot fast-forward the merged branch. Stay in the slot folder. Do not `cd` to the main folder and do not check out `{{git.mainBranch}}`. Next job: the Human runs `/clear`, then `take plan NNN` in the same slot — `take-plan.mjs` fetches, releases the merged branch, and claims the new plan without starting servers (`node scripts/slot-serve.mjs` starts them when a step needs the app).
 

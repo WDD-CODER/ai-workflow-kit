@@ -35,3 +35,5 @@ If `gh pr merge --merge --delete-branch` (or, in a slot, `gh pr merge --merge`) 
 gh pr merge {pr_number} --merge --auto
 ```
 Do not stash/commit unrelated dirty files to unblock merge.
+
+After a slot merge, delete the merged remote branch only when `node scripts/branch-autodelete-check.mjs` does not print `AUTODELETE: auto`, and an already-gone branch is not a loose end (`standards-git.md` → "Merging from a slot"). The rename delete above is unchanged.
