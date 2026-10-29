@@ -91,10 +91,10 @@ the scope block; retry.
 
 ## Atomic Sub-tasks
 
-- [ ] A1: Count the plan files on every local and remote branch when choosing the next plan number, so a plan on an unnumbered branch is never handed out twice — ls-tree per ref from the existing for-each-ref list, planRe, header comment — core/scripts/next-plan-number.mjs
-- [ ] A2: Prove it with a scratch repo where a remote-only unnumbered branch holds two plans — 042 with the branch, 013 without, done/ plans count, --no-fetch — tools/test/next-plan-number.test.mjs
-- [ ] A3: Say it in the save-plan skill and the changelog — Phase 1 Number sentence, install-check assert, Unreleased Fixed — core/.claude/skills/save-plan/SKILL.md, tools/install-check.mjs, CHANGELOG.md
-- [ ] A4: Render the kit's own copies and check drift — scripts/, .claude/, .kit/install.json
+- [x] A1: Count the plan files on every local and remote branch when choosing the next plan number, so a plan on an unnumbered branch is never handed out twice — ls-tree per ref from the existing for-each-ref list, planRe, header comment — core/scripts/next-plan-number.mjs
+- [x] A2: Prove it with a scratch repo where a remote-only unnumbered branch holds two plans — 042 with the branch, 013 without, done/ plans count, --no-fetch — tools/test/next-plan-number.test.mjs
+- [x] A3: Say it in the save-plan skill and the changelog — Phase 1 Number sentence, install-check assert, Unreleased Fixed — core/.claude/skills/save-plan/SKILL.md, tools/install-check.mjs, CHANGELOG.md
+- [x] A4: Render the kit's own copies and check drift — scripts/, .claude/, .kit/install.json
 
 ## Technical Considerations
 

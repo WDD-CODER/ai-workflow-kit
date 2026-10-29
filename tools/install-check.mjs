@@ -149,6 +149,8 @@ function plannerDocProblems(dir) {
   need(prd, '\n## Atomic Sub-tasks\n', 'no ## Atomic Sub-tasks section')
   never(prd, /Q&A format per the `brief-detection` skill/, 'dead Q&A reference')
   need('.claude/skills/save-plan/SKILL.md', 'Its `## Atomic Sub-tasks` are the milestones', 'save-plan: one plan shape')
+  // Plan 038: the number comes from the plan files on every branch, not only from numbered branch names.
+  need('.claude/skills/save-plan/SKILL.md', 'every plan file on any local or remote branch', 'save-plan: Phase 1 Number must say plan files on every branch count')
   // The workflow map and the Cursor rule describe the same trigger and routes as the skill.
   const wm = 'docs/agent/workflow-map.md'
   never(wm, /3\+ structured H2|routes to `\/feat` \(option b\)|--routes--> \/feat/, 'workflow map: old brief-detection trigger or option b → /feat')
