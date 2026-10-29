@@ -36,6 +36,12 @@ const slotOf = (main, n) => {
   return { slot: n, path, branch: null, detached: true, plan: null }
 }
 
+test('pnpm 10 "Ignored build scripts" is read into a WARN list; npm output and a clean pnpm install give none', () => {
+  assert.deepEqual(folders.ignoredBuildScripts('Progress: resolved 1200\n╭ Warning ╮\n│ Ignored build scripts: @parcel/watcher, esbuild, lmdb, msgpackr-extract.\n│ Run "pnpm approve-builds"'), ['@parcel/watcher', 'esbuild', 'lmdb', 'msgpackr-extract'])
+  assert.deepEqual(folders.ignoredBuildScripts('added 1200 packages in 40s'), [])
+  assert.deepEqual(folders.ignoredBuildScripts(''), [])
+})
+
 test('watch mode: vitest and jest without a way out, and a project pattern, are named; exiting scripts are not', () => {
   assert.match(runLib.watchModeProblem('vitest'), /vitest/)
   assert.match(runLib.watchModeProblem('jest --watch'), /jest/)

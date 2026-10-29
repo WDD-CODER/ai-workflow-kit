@@ -171,7 +171,7 @@ Approve **Y** (or `--yes`) = commit/push consent. It validates `[human]` items o
 1. **Todo sync (when items match):** mechanics (wt-N slot vs outside, exact commands, never-invent rule) → `docs/agent/job-validation.md` Path A step 2.
 2. **Write brain drafts** (if proposed, not dropped) — verbatim to `docs/brain/**`.
    **Learning step (no command from the Human):** run `node scripts/decision-log.mjs learn --reply "<the Human's replies this session>"`. `LEARNING: nothing to record` → one line, no model call, go on. `LEARNING: record` → follow `docs/agent/decision-review.md`: log every `✗` decision and every `failed:` card to `docs/brain/decision-log.md`, add a rule to `docs/brain/agent-rules.md` when the same kind of mistake repeats (`no rule` in the reply skips it), and send each generic lesson to the kit (`scripts/kit-feedback.mjs`). The two `docs/brain` files join the commit in step 3.
-3. **`git add` only listed paths** (todo/plan/brain included) — one commit with job + todos (+ brain), never job-then-todos-later.
+3. **`git add` only listed paths** (todo/plan/brain included) — one commit with job + todos (+ brain), never job-then-todos-later. One `git add -- <paths>` call, and **stop on a non-zero exit** before any commit: a path that no longer exists (a deletion `git rm` already staged, a typo) aborts the whole add, and a commit that follows anyway holds only what was staged before. Never relist a path `git rm` staged.
 4. **`git commit`** (Conventional Commit; Cursor trailer `Co-authored-by: Cursor <cursoragent@cursor.com>` when applicable).
 5. Rename branch if approved.
 6. Push only if asked ("push"/"ship and push"): `git push -u origin HEAD`. FAST/ULTRA-TRIVIAL: push is implied by the single Y.

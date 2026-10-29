@@ -3,7 +3,7 @@
     "version": "1.9.0"
   },
   "source": "local:.",
-  "commit": "75ec852d302175f9dc241491056c6ff684afdb8a",
+  "commit": "76097c38ca539e046f4cbc480e3e57474c65689e",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -140,7 +140,7 @@
       "source": "core/.claude/commands/orchestrate.md"
     },
     ".claude/commands/plan.md": {
-      "sha256": "c3e49f88c6cf22f3e4f22521fd903e579c0b9d29792800d42fcd9dd8aed2647c",
+      "sha256": "080d58ea8591dd99aa6e6a1c59552362ba44e02486e9598e8e6dee57135c90b4",
       "kind": "managed",
       "source": "core/.claude/commands/plan.md"
     },
@@ -165,7 +165,7 @@
       "source": "core/.claude/commands/security.md"
     },
     ".claude/commands/ship.md": {
-      "sha256": "ed180d1807cf023be00d2e2e1836685282853ff2640f15294fda124b40e4b5fe",
+      "sha256": "bd47fefce265c368aaf40e752aaaee15e1572eebfe044567f2476718daf09c89",
       "kind": "managed",
       "source": "core/.claude/commands/ship.md"
     },
@@ -250,7 +250,7 @@
       "source": "core/.claude/skills/techdebt/SKILL.md"
     },
     ".claude/skills/worktree-setup/SKILL.md": {
-      "sha256": "bc9ff7e032a28516c190d1f7caecbe5b71c7d19d42de05800b8b5ec00537ef8e",
+      "sha256": "7a69258ced6d8bb85d11489fb0b6946a204ff2e9eba96942d28c5443f635d1fc",
       "kind": "managed",
       "source": "core/.claude/skills/worktree-setup/SKILL.md"
     },
@@ -565,7 +565,7 @@
       "source": "core/scripts/lib/invariants.mjs"
     },
     "scripts/lib/orch-folders.mjs": {
-      "sha256": "d6bd56016c87949569902e1a14976dafe6293aad62591b51f86d4c4dd2fe084b",
+      "sha256": "1bd98902139d77e4dd2c43630b41f78179b0d67a7c84ed2442ec71bb81ffab7b",
       "kind": "managed",
       "source": "core/scripts/lib/orch-folders.mjs"
     },
@@ -725,7 +725,7 @@
       "source": "core/scripts/session-startup.sh"
     },
     "scripts/ship-prep.mjs": {
-      "sha256": "df1084b681c8f5c7d199648360447743e103e16208e68378c2eb504054904f15",
+      "sha256": "6ec65463cbe7e51738e48defdb8ffef92b63c51318e69c029e0108fa8facd2ad",
       "kind": "managed",
       "source": "core/scripts/ship-prep.mjs"
     },

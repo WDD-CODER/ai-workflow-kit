@@ -38,6 +38,10 @@ function sensitiveTests() {
 }
 const SENSITIVE_TESTS = sensitiveTests()
 const isSensitive = (f) => SENSITIVE_TESTS.some((re) => re.test(f))
+// Build and CI files take the REGULAR lane whatever security.sensitivePaths says: a project regex replaces the default
+// list above, and one that left these out once sent a 22-file package-manager move down the FAST lane.
+export const BUILD_RE = /(^|\/)(package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|kit\.config\.json)$|^\.github\/workflows\//
+const isBuildFile = (f) => BUILD_RE.test(f)
 const ULTRA_TRIVIAL_RE = /\.claude\/todo\.md|CHANGELOG\.md|docs\/.*\.md/
 const SECRET_PATH_RE = /(^|\/)\.env|\.pem$|\.key$|secret/i
 // Planner admin-bypass shape — a diff entirely inside this is
@@ -208,6 +212,24 @@ function untrackedLineCount(relPath) {
   }
 }
 
+/**
+ * The lane for a set of changed files. Plan/todo files only → ULTRA-TRIVIAL; a sensitive, build or CI file → REGULAR;
+ * one small doc-shaped file → ULTRA-TRIVIAL; up to 3 files / 40 lines → FAST; else REGULAR. Exported for the tests.
+ */
+export function laneFor({ mode = 'auto', files, totalLines, sensitiveMatches = files.filter(isSensitive), buildMatches = files.filter(isBuildFile) }) {
+  const fileCount = files.length
+  if (mode === 'regular') return { lane: 'REGULAR', laneReason: 'forced via --mode regular' }
+  if (fileCount > 0 && files.every(isPlanOnly)) return { lane: 'ULTRA-TRIVIAL', laneReason: `${fileCount} file(s), plan/todo only` }
+  if (sensitiveMatches.length) return { lane: 'REGULAR', laneReason: `touches ${sensitiveMatches[0]}` }
+  if (buildMatches.length) return { lane: 'REGULAR', laneReason: `touches ${buildMatches[0]} (build or CI file)` }
+  if (fileCount === 1 && totalLines <= 10 && ULTRA_TRIVIAL_RE.test(files[0])) return { lane: 'ULTRA-TRIVIAL', laneReason: `${fileCount} file, ${totalLines} lines` }
+  if (fileCount <= 3 && totalLines <= 40) return { lane: 'FAST', laneReason: `${fileCount} files, ${totalLines} lines, no sensitive paths` }
+  return {
+    lane: 'REGULAR',
+    laneReason: fileCount > 3 || totalLines > 40 ? `${fileCount} files, ${totalLines} lines` : 'does not clearly qualify for a faster lane',
+  }
+}
+
 function classify() {
   const branch = currentBranch()
   const head = currentHead()
@@ -215,7 +237,11 @@ function classify() {
   const allDirty = parseStatusPaths()
   const manifestFiles = getManifestFiles(branch)
   const noManifest = manifestFiles === null
-  const thisChatFiles = noManifest ? allDirty : allDirty.filter(f => manifestFiles.has(f))
+  // On a plan branch every dirty file is the plan's work. The session manifest knows only Edit/Write, so shell edits,
+  // `git rm` and generated lockfiles would be left out of the count; it still filters a shared main folder.
+  const onPlanBranch = isSlot() || Boolean(scopedPlanPath(branch))
+  const thisChatFiles = noManifest || onPlanBranch ? allDirty : allDirty.filter(f => manifestFiles.has(f))
+  const offManifest = onPlanBranch && !noManifest ? allDirty.filter(f => !manifestFiles.has(f)) : []
 
   const unstagedLines = parseNumstat(['diff', '--numstat'])
   const stagedLines = parseNumstat(['diff', '--cached', '--numstat'])
@@ -232,33 +258,10 @@ function classify() {
   const fileCount = thisChatFiles.length
   const totalLines = [...linesByFile.values()].reduce((a, b) => a + b, 0)
   const sensitiveMatches = thisChatFiles.filter(isSensitive)
+  const buildMatches = thisChatFiles.filter(isBuildFile)
   const secretPaths = thisChatFiles.filter(f => SECRET_PATH_RE.test(f))
 
-  const allPlanOnly = fileCount > 0 && thisChatFiles.every(isPlanOnly)
-
-  let lane
-  let laneReason
-  if (mode === 'regular') {
-    lane = 'REGULAR'
-    laneReason = 'forced via --mode regular'
-  } else if (allPlanOnly) {
-    lane = 'ULTRA-TRIVIAL'
-    laneReason = `${fileCount} file(s), plan/todo only`
-  } else if (sensitiveMatches.length) {
-    lane = 'REGULAR'
-    laneReason = `touches ${sensitiveMatches[0]}`
-  } else if (fileCount === 1 && totalLines <= 10 && ULTRA_TRIVIAL_RE.test(thisChatFiles[0])) {
-    lane = 'ULTRA-TRIVIAL'
-    laneReason = `${fileCount} file, ${totalLines} lines`
-  } else if (fileCount <= 3 && totalLines <= 40) {
-    lane = 'FAST'
-    laneReason = `${fileCount} files, ${totalLines} lines, no sensitive paths`
-  } else {
-    lane = 'REGULAR'
-    laneReason = fileCount > 3 || totalLines > 40
-      ? `${fileCount} files, ${totalLines} lines`
-      : 'does not clearly qualify for a faster lane'
-  }
+  const { lane, laneReason } = laneFor({ mode, files: thisChatFiles, totalLines, sensitiveMatches, buildMatches })
 
   const wtCount = worktreeCount()
   const inSlot = isSlot()
@@ -297,7 +300,9 @@ function classify() {
     totalLines,
     thisChatFiles,
     noManifest,
+    offManifest,
     sensitiveMatches,
+    buildMatches,
     secretPaths,
     worktreeCount: wtCount,
     overlaps: manifestOverlap.overlaps || [],
@@ -355,7 +360,11 @@ function checkBaselineReport() {
   }
 }
 
-if (checkBaseline) {
+// Imported by the tests (laneFor, BUILD_RE): nothing below runs unless this file is the script node started.
+const isMain = Boolean(process.argv[1]) && resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+if (!isMain) {
+  // imported, not run
+} else if (checkBaseline) {
   const report = checkBaselineReport()
   if (asJson) {
     console.log(JSON.stringify(report, null, 2))
@@ -387,6 +396,7 @@ if (checkBaseline) {
   } else {
     console.log(`Lane: ${report.lane} (${report.laneReason})`)
     if (report.noManifest) console.log('  no_manifest: true — using full dirty-file list')
+    if (report.offManifest.length) console.log(`  ${report.offManifest.length} dirty file(s) not in the session manifest (shell edits, git rm, generated files) — counted: plan branch`)
     if (report.overlaps.length) {
       console.log(`  overlaps: ${report.overlaps.length}`)
       for (const o of report.overlaps) console.log(`    - ${o.branch}: ${o.files.join(', ')}`)
