@@ -9,6 +9,8 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-10-29
+
 ### Fixed
 - **A bad copy of a state line no longer parks a plan.** The orchestrator reads every `orch-state.mjs` result as a
   `kit-runner` agent's copy of its `ORCH_JSON` line; a run once parked a plan at `worktree` on a line the command had
@@ -1035,7 +1037,8 @@ Phases 4 to 6A, never tagged. Projects installed from a local kit folder.
 Phases 1 and 2, before this repository existed: the workflow was extracted from its source project into a
 stack-neutral `core/` with `{{placeholder}}` config keys and a leak check.
 
-[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.11.0...HEAD
+[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.12.0...HEAD
+[1.12.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.12.0
 [1.11.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.11.0
 [1.10.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.10.0
 [1.9.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.9.0
