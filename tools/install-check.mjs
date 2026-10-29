@@ -920,6 +920,10 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     }
     if (!doc0(od).includes('## A check whose file does not exist') || !read(od, 'scripts/orch-state.mjs').includes("'check-files'")) fail('orchestrator: orchestrator.md / orch-state.mjs do not carry the missing check file rule (check-files)')
     if (!read(od, '.claude/agents/orch-readiness.md').includes('mainCommands')) fail('orchestrator: orch-readiness.md does not name mainCommands ([auto:main] items)')
+    // Plan 033: a bad copy of a state line is retried once; the runner runs only its list.
+    if (!read(od, '.claude/agents/kit-runner.md').includes('Run only the commands in the list')) fail('orchestrator: kit-runner.md does not say "Run only the commands in the list"')
+    if (!doc0(od).includes('retried once')) fail('orchestrator: orchestrator.md does not say a bad copy of a state line is retried once')
+    if (!wf.includes('[capture]') || !wf.includes('after 2 attempts')) fail('orchestrator: orchestrate.js does not mark the state command [capture] / say "after 2 attempts"')
     // The learning loop's files: the rules seed fits its own cap, and the rendered files name the rule they teach.
     const rc = spawnSync(process.execPath, [join(od, 'scripts', 'decision-log.mjs'), 'rules', '--check', '--dir', od], { encoding: 'utf8' })
     if (rc.status !== 0) fail(`decision-log: the rules seed does not pass its own cap: ${(rc.stdout + rc.stderr).trim().split('\n').pop()}`)

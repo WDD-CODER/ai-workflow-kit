@@ -131,6 +131,14 @@ plan's code. The merge step and the final gate never run them.
   model> → <second>`. A second nothing goes to the caller's park or environment path as before. `inherit` turns the
   retry off. The key refuses a Haiku value: a review agent (the checkers, the verifier, security, UI) never falls back
   to Haiku. Only the orchestrator session's own model is out of reach: the Human switches it with `/model`.
+- **A bad copy of a state line.** Every state command (`orch-state.mjs init / worktree / set / …`) reaches the
+  workflow as a `kit-runner` agent's copy of its `ORCH_JSON` line — the workflow has no file access. A copy that does
+  not parse (a run once parked a plan at `worktree` on a line the command had printed well) is retried once at effort
+  `medium`, and a run note says `runner retry: <label> — first attempt: <error>`; the error carries the parser's
+  message, the first non-ASCII character (`non-ASCII U+201C at 11`) and the raw line, JSON-escaped. A second bad copy
+  parks the plan with that error and `after 2 attempts`. `note` and `finish` are never retried (a note would be written
+  twice; `finish` commits the report); every other command is idempotent — `worktree` reuses the folder or slot the
+  plan already holds. A `\r`, backticks around the line and text after the closing brace parse without a retry.
 - **Limits per plan**, counted in the workflow (it has no clock): at most `maxNotesPerPlan` run notes (every note is
   one runner agent call — a run once wrote about 30 closing notes in 4.5 minutes), then one last `notes capped` note;
   the same failure reason twice in a row at the same step (`gate: …`, `checker: …`, `ui: …`, `merge: …`, trimmed to

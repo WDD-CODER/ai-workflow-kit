@@ -155,14 +155,14 @@ the scope block; retry.
 
 ## Atomic Sub-tasks
 
-- [ ] A1: Read the state line tolerantly and say exactly what was received when it still does not parse — readOrchLine(): \r, backticks and trailing text tolerated; error carries the parser message, the raw line (300 chars, JSON-escaped) and a non-ASCII hint; no-line error carries the last lines — core/.claude/workflows/orchestrate.js
-- [ ] A2: Run a state command once more when its copy does not parse, so one bad copy no longer parks a plan — retry at effort medium with label suffix retry, one run note with the first error, second failure says after 2 attempts; note and finish never retried — core/.claude/workflows/orchestrate.js
-- [ ] A3: Keep quotes legible in reasons and notes so the raw line survives the state write — q() maps " and backticks to ' and backslash to /, cap unchanged — core/.claude/workflows/orchestrate.js, tools/test/orchestrator.test.mjs
-- [ ] A4: Tell the runner to run only the commands it is given and to copy the state line untouched — Rules line in kit-runner.md; [capture] and the copy sentence in the runner prompt; RUNNER.output description — core/.claude/agents/kit-runner.md, core/.claude/workflows/orchestrate.js
-- [ ] A5: Prove a second worktree call reuses the plan's folder or slot, so the retry is safe for it — folders test: worktree twice, same path, one folder or slot — tools/test/orchestrator-folders.test.mjs
-- [ ] C1: Explain the retry, the reason text and the runner rule in the docs, one gotcha and the changelog — orchestrator.md bullet, agent-workflow.md gotcha, Unreleased Fixed and Changed — core/docs/agent/orchestrator.md, core/docs/brain/gotchas/agent-workflow.md, CHANGELOG.md
-- [ ] T1: Prove each change with tests that would fail today — runner hook in runFlow, the unit cases, fixture plan 601, e2e run kappa with a garbled first worktree answer, install-check asserts — tools/test/orchestrator.test.mjs, tools/orchestrator-e2e.mjs, tools/fixtures/orchestrator/plans.mjs, tools/install-check.mjs
-- [ ] R1: Render the kit's own copies and check drift — scripts/, .claude/, docs/agent/, docs/brain/, .kit/install.json
+- [x] A1: Read the state line tolerantly and say exactly what was received when it still does not parse — readOrchLine(): \r, backticks and trailing text tolerated; error carries the parser message, the raw line (300 chars, JSON-escaped) and a non-ASCII hint; no-line error carries the last lines — core/.claude/workflows/orchestrate.js
+- [x] A2: Run a state command once more when its copy does not parse, so one bad copy no longer parks a plan — retry at effort medium with label suffix retry, one run note with the first error, second failure says after 2 attempts; note and finish never retried — core/.claude/workflows/orchestrate.js
+- [x] A3: Keep quotes legible in reasons and notes so the raw line survives the state write — q() maps " and backticks to ' and backslash to /, cap unchanged — core/.claude/workflows/orchestrate.js, tools/test/orchestrator.test.mjs
+- [x] A4: Tell the runner to run only the commands it is given and to copy the state line untouched — Rules line in kit-runner.md; [capture] and the copy sentence in the runner prompt; RUNNER.output description — core/.claude/agents/kit-runner.md, core/.claude/workflows/orchestrate.js
+- [x] A5: Prove a second worktree call reuses the plan's folder or slot, so the retry is safe for it — folders test: worktree twice, same path, one folder or slot — tools/test/orchestrator-folders.test.mjs
+- [x] C1: Explain the retry, the reason text and the runner rule in the docs, one gotcha and the changelog — orchestrator.md bullet, agent-workflow.md gotcha, Unreleased Fixed and Changed — core/docs/agent/orchestrator.md, core/docs/brain/gotchas/agent-workflow.md, CHANGELOG.md
+- [x] T1: Prove each change with tests that would fail today — runner hook in runFlow, the unit cases, fixture plan 601, e2e run kappa with a garbled first worktree answer, install-check asserts — tools/test/orchestrator.test.mjs, tools/orchestrator-e2e.mjs, tools/fixtures/orchestrator/plans.mjs, tools/install-check.mjs
+- [x] R1: Render the kit's own copies and check drift — scripts/, .claude/, docs/agent/, docs/brain/, .kit/install.json
 
 ## Technical Considerations
 
@@ -204,3 +204,13 @@ the scope block; retry.
   next time. The same journal shows the runner running `git checkout main && git pull` before its command, and the
   parking runner running `git pull --ff-only origin main` (exit 128).
 - Live check outside this plan's Done-when: the rerun of plan 506 in the same project after the kit is synced.
+- Built 2026-10-29. Two details differ from the draft: the non-ASCII hint comes *before* the raw line (a note or
+  reason is cut at 400 characters and the hint is the short part), and in the workflow's own result the raw line is
+  JSON-quoted with `"` — the `'` form is what the state write (`q()`) stores in `status.json`. The e2e asserts the
+  latter, the unit test the former.
+- The A5 folders test first met a leftover of its own: orch-state names the merge and builder folders after the
+  configured repo, beside the main folder, so a scratch repo straight in the temp folder shared one merge folder with
+  the previous run. The test now puts its repo in a folder of its own.
+- Evidence (2026-10-29): unit tests 176/176 (37 orchestrator, 14 folders), orchestrator e2e 84 cases (run `kappa`
+  included), e2e-check 53 cases, install-check, workflow-link-check, drift-check (0 undeclared), leak-check (0 leaks)
+  and `npm run build` pass.

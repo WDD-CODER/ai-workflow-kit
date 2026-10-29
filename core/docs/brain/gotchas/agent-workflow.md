@@ -326,3 +326,13 @@ only the Bash tool's command text triggers it.
 **Why the obvious fix is wrong:** Copying `.env` into every worktree and the merge folder spreads secrets over folders git removes and hides the real fact: the check is about the live environment (a log, data), not about the tree being merged, so it has no business in a merge or a final gate at all.
 
 **What to do instead:** Tag the item `[auto:main]`. Readiness lists its command under `mainCommands`, the run executes it from the main folder with a second gate right after the plan's worktree gate (project scripts only: `node scripts/…`, `node tools/…`), and neither the merge step nor the final gate runs it. The merge step itself runs only `orchestrator.mergeChecks` (`build` = the build plus the plan's scope check); lint and tests run in the plan's gate and once at the final gate.
+
+---
+
+## A state call can fail on the copy, not the command
+
+**What hurt:** A run parked a plan at its first step, `worktree: unreadable ORCH_JSON from: node scripts/orch-state.mjs worktree …`. The command had exited 0 and printed a well-formed line; the `kit-runner` agent's copy of that line is what the workflow reads (it has no file access), and the copy did not parse. The error named neither the line nor the parser's message, so the cause could only be dug out of the workflow journal by hand — and stayed unconfirmed. The same runner had also run `git checkout main && git pull` in the main folder on its own before the command.
+
+**Why the obvious fix is wrong:** Raising the runner's effort for every state call pays on every call for an event seen once; a file hand-off between `orch-state.mjs` and the workflow is out of reach (the workflow script cannot read files).
+
+**What to do instead:** The workflow retries a state command once when its copy does not parse (effort `medium`, not for `note` and `finish`), writes a run note `runner retry: … — first attempt: <error>`, and a second failure parks the plan with the parser's message, the first non-ASCII character and the raw line JSON-escaped (`docs/agent/orchestrator.md`, "A bad copy of a state line"). `kit-runner.md` says in so many words: run only the commands in the list, copy an asked-for line character for character.
