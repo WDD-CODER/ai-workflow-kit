@@ -3,7 +3,7 @@
     "version": "1.12.0"
   },
   "source": "local:.",
-  "commit": "e6141fffea34debe0cf510d2d4d20aacb77ea57a",
+  "commit": "95a75dbcdfae0d7cf42e998ab29d9d17884f2397",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -230,7 +230,7 @@
       "source": "core/.claude/skills/preflight/SKILL.md"
     },
     ".claude/skills/save-plan/SKILL.md": {
-      "sha256": "d08537ecd2ca1309fd3a5f1bfb97b1aff6d218e3fa3c3cb91d2849f7ed488d34",
+      "sha256": "f432308bd2af5706a122e48f6ec6d2f39e3324a26c06cd0b91bcd2af4f96ed2a",
       "kind": "managed",
       "source": "core/.claude/skills/save-plan/SKILL.md"
     },
@@ -615,7 +615,7 @@
       "source": "core/scripts/local-excludes.mjs"
     },
     "scripts/next-plan-number.mjs": {
-      "sha256": "484dd13af43eb456fd723f821ef3792654d474cbd0f379c2453fd7f7523cfc70",
+      "sha256": "0b18f8c04d9a8d5ab1b9ad32a639856547df37605068be2d548eceb8c01cefed",
       "kind": "managed",
       "source": "core/scripts/next-plan-number.mjs"
     },

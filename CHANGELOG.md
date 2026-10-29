@@ -9,6 +9,12 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Fixed
+- **A plan number counts the plan files on every branch.** `next-plan-number.mjs` read plan files only in the
+  checkout, on `origin/<main>` and in the main worktree, and took the rest from branch names shaped
+  `<type>/NNN-<slug>`, so two plans saved on a `plan/<slug>` branch were invisible and their number was offered
+  again. It now reads `plans/` on every local and remote branch (one `ls-tree` per ref), whatever the branch is called.
+
 ## [1.12.0] - 2026-10-29
 
 ### Fixed
