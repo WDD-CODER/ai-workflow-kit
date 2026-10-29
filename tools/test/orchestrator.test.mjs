@@ -530,7 +530,7 @@ test('merge step: mergeChecks "build" hands orch-merge the build plus the plan\'
 
 test('main-folder checks: [auto:main] commands run in a second gate from the main folder after the worktree gate; never at the merge or the final gate; scripts only', async () => {
   const main = 'node scripts/log-query.mjs --since=15m'
-  const { calls, notes, result } = await runFlow({ plans: ['101'], pilot: false, mainChecks: { 101: [main, 'npm run build', 'node --test tests/a.test.mjs', 'node scripts/kit-owned.mjs --write'] } })
+  const { calls, notes, result } = await runFlow({ plans: ['101'], pilot: false, mainChecks: { 101: [main, 'npm run build', 'node --test tests/a.test.mjs', 'node scripts/kit-owned.mjs --write'] }, mainApproved: true })
   const gates = calls.filter((c) => c.type === 'orch-gate')
   assert.deepEqual(gates.map((c) => [c.label, c.task.FOLDER]), [['gate 101', '/wt/101'], ['gate 101 main', '/main'], ['gate final', '/merge']])
   assert.deepEqual(JSON.parse(gates[1].task.COMMANDS), [main])
@@ -550,7 +550,7 @@ test('main-folder checks: [auto:main] commands run in a second gate from the mai
 
 test('main-folder checks: a failing main check is a real failure named "gate (main folder)", with a builder fix round like any gate failure', async () => {
   const main = 'node scripts/log-query.mjs --since=15m'
-  const { calls, result } = await runFlow({ plans: ['101'], pilot: false, mainChecks: { 101: [main] } }, { gateFails: (folder) => folder === '/main' })
+  const { calls, result } = await runFlow({ plans: ['101'], pilot: false, mainChecks: { 101: [main] }, mainApproved: true }, { gateFails: (folder) => folder === '/main' })
   assert.equal(calls.filter((c) => c.type === 'orch-builder').length, 2, 'one fix round, then the same reason twice parks it')
   assert.equal(calls.filter((c) => c.type === 'orch-merge').length, 0)
   assert.match(result.outcomes[0].reason, /^same reason twice: gate \(main folder\): node scripts\/log-query\.mjs --since=15m/)
@@ -586,20 +586,43 @@ test('readiness: a check whose file is missing (and not created by the plan) is 
   assert.ok(!none.commands.some((c) => /check-files/.test(c)))
 })
 
-test('readiness: askHuman is false only when every plan is ready with no question and no environment need; mainCommands are filtered to project scripts', async () => {
+test('readiness: askHuman is false only when every plan is ready with no question, no environment need and no main-folder command; mainCommands are filtered to project scripts', async () => {
   const main = 'node scripts/log-query.mjs --since=15m'
-  const quiet = await runFlow({ mode: 'readiness', plans: ['101', '102'] }, { readiness: (p) => (p === '101' ? { commands: ['node --test t.mjs', 'git reset --hard HEAD'], mainCommands: [main, 'npm run build'] } : {}) })
+  const quiet = await runFlow({ mode: 'readiness', plans: ['101', '102'] }, { readiness: (p) => (p === '101' ? { commands: ['node --test t.mjs', 'git reset --hard HEAD'] } : {}) })
   assert.equal(quiet.result.askHuman, false)
-  const p101 = quiet.result.plans.find((p) => p.nnn === '101')
+  assert.deepEqual(quiet.result.mainApproval, [])
+  assert.deepEqual(quiet.result.plans.find((p) => p.nnn === '101').denied, ['git reset --hard HEAD'])
+  // Plan 034: a main-folder command runs in the live environment — it is listed for the Human and waits for go.
+  const withMain = await runFlow({ mode: 'readiness', plans: ['101', '102'] }, { readiness: (p) => (p === '101' ? { commands: ['node --test t.mjs', 'git reset --hard HEAD'], mainCommands: [main, 'npm run build'] } : {}) })
+  assert.equal(withMain.result.askHuman, true, 'a main-folder command is something to ask')
+  assert.deepEqual(withMain.result.mainApproval, [`101: ${main}`])
+  const p101 = withMain.result.plans.find((p) => p.nnn === '101')
   assert.deepEqual(p101.mainCommands, [main])
   assert.deepEqual(p101.commands, ['node --test t.mjs'])
   assert.deepEqual(p101.denied, ['git reset --hard HEAD', 'npm run build'])
   assert.match(p101.deniedWhy[1], /only node scripts\/… or node tools\/… run from the main folder/)
-  assert.deepEqual(quiet.result.plans.find((p) => p.nnn === '102').mainCommands, [])
+  assert.deepEqual(withMain.result.plans.find((p) => p.nnn === '102').mainCommands, [])
   for (const [why, hook] of [['a question', { questions: ['what on cancel?'] }], ['an environment need', { envNeeds: ['a database'] }], ['a blocked plan', { state: 'blocked' }]]) {
     const r = await runFlow({ mode: 'readiness', plans: ['101'] }, { readiness: () => hook })
     assert.equal(r.result.askHuman, true, why)
   }
+})
+
+// Plan 034: the run refuses main-folder checks the Human did not approve — before init, with no runner call.
+test('run: mainChecks without mainApproved stop the run before init; with it, and without any mainChecks, the run starts as before', async () => {
+  const main = 'node scripts/log-query.mjs --since=15m'
+  const refused = await runFlow({ plans: ['101'], pilot: false, mainChecks: { 101: [main] } })
+  assert.equal(refused.result.ok, false)
+  assert.equal(refused.result.stopped, 'main-approval')
+  assert.deepEqual(refused.result.problems, [`plan 101 runs ${main} from the main folder — readiness lists it and the Human says go; the command then passes "mainApproved": true`])
+  assert.equal(refused.commands.filter((c) => /orch-state\.mjs/.test(c)).length, 0, 'no state command, no init')
+  const approved = await runFlow({ plans: ['101'], pilot: false, mainChecks: { 101: [main] }, mainApproved: true })
+  assert.equal(approved.result.outcomes[0].state, 'merged')
+  assert.ok(approved.calls.some((c) => c.type === 'orch-gate' && c.label === 'gate 101 main'))
+  const plain = await runFlow({ plans: ['101'], pilot: false })
+  assert.equal(plain.result.outcomes[0].state, 'merged')
+  const empty = await runFlow({ plans: ['101'], pilot: false, mainChecks: { 101: [] } })
+  assert.equal(empty.result.outcomes[0].state, 'merged', 'an empty list needs no approval')
 })
 
 // Plan 033: a runner's copy of a state line that does not parse is asked for once more (effort medium, a run note with

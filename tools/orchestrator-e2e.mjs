@@ -268,8 +268,9 @@ async function agent(prompt, opts = {}) {
   }
   if (type === 'orch-ui') return { ...base('orch-ui', opts), cards: [{ card: '1 Saved shows', status: 'pass', page: 'https://app.example/settings', screenshots: [`screens/${nnn}-1.png`] }], pass: true }
   if (type === 'orch-merge') return stubMerge(t, opts)
-  // Plan 032: a main-folder command and one that may not run there (a package.json script).
-  if (type === 'orch-readiness') return { ...base('orch-readiness', opts), plans: [{ plan: t.PLAN, state: 'ready', questions: [], envNeeds: [], commands: ['node --test', 'git reset --hard HEAD'], mainCommands: ['node scripts/log-ok.mjs --since=15m', 'npm run build'] }] }
+  // Plan 032: plan 206 has a main-folder command and one that may not run there (a package.json script); plan 034:
+  // only that plan, so the other runs still have nothing to ask.
+  if (type === 'orch-readiness') return { ...base('orch-readiness', opts), plans: [{ plan: t.PLAN, state: 'ready', questions: [], envNeeds: [], commands: ['node --test', 'git reset --hard HEAD'], mainCommands: /\/206-/.test(t.PLAN ?? '') ? ['node scripts/log-ok.mjs --since=15m', 'npm run build'] : [] }] }
   throw new Error(`stub: no agent for ${type ?? role} (${opts.label})`)
 }
 const parallel = (thunks) => Promise.all(thunks.map((th) => Promise.resolve().then(th).catch((e) => {
@@ -368,10 +369,16 @@ async function main() {
   const ready = await runWorkflow({ mode: 'readiness', run: 'alpha', plans: ['101', '102', '103', '104'], root: proj })
   check('readiness: waves 101 | 102, 103 | 104', JSON.stringify(ready?.waves) === JSON.stringify([['101'], ['102', '103'], ['104']]), JSON.stringify(ready?.waves))
   check('readiness: one readiness agent per plan', calls.filter((c) => c.type === 'orch-readiness').length === 4, String(calls.filter((c) => c.type === 'orch-readiness').length))
-  check('readiness: a deny-listed command is dropped and named', ready?.plans?.every((p) => p.denied.length === 2 && p.denied[0] === 'git reset --hard HEAD' && !p.commands.some((c) => /reset --hard/.test(c))), JSON.stringify(ready?.plans?.[0]))
+  check('readiness: a deny-listed command is dropped and named', ready?.plans?.every((p) => p.denied.length === 1 && p.denied[0] === 'git reset --hard HEAD' && !p.commands.some((c) => /reset --hard/.test(c))), JSON.stringify(ready?.plans?.[0]))
   check('readiness: the preflight result comes back', ready?.preflight?.ok === true, JSON.stringify(ready?.preflight))
-  check('readiness: a main-folder command is kept under mainCommands, a package.json script is not allowed there', ready?.plans?.every((p) => JSON.stringify(p.mainCommands) === JSON.stringify(['node scripts/log-ok.mjs --since=15m']) && p.denied[1] === 'npm run build' && /only node scripts/.test(p.deniedWhy[1])), JSON.stringify(ready?.plans?.[0]))
-  check('readiness: nothing to ask → askHuman false (the command starts the run without go)', ready?.askHuman === false, JSON.stringify(ready?.askHuman))
+  check('readiness: nothing to ask → askHuman false, no main-folder command listed (the command starts the run without go)', ready?.askHuman === false && JSON.stringify(ready?.mainApproval) === '[]', JSON.stringify({ askHuman: ready?.askHuman, mainApproval: ready?.mainApproval }))
+  // Plan 034: a plan with an [auto:main] item — its command is kept under mainCommands (a package.json script is not
+  // allowed there), listed for the Human under mainApproval, and makes askHuman true although nothing else is open.
+  const MAIN_CMD = 'node scripts/log-ok.mjs --since=15m'
+  const readyMain = await runWorkflow({ mode: 'readiness', run: 'iota', plans: ['206'], root: proj })
+  const rm206 = readyMain?.plans?.[0]
+  check('readiness: a main-folder command is kept under mainCommands, a package.json script is not allowed there', JSON.stringify(rm206?.mainCommands) === JSON.stringify([MAIN_CMD]) && rm206?.denied[1] === 'npm run build' && /only node scripts/.test(rm206?.deniedWhy[1] ?? ''), JSON.stringify(rm206))
+  check('readiness: a main-folder command is listed for the Human and makes askHuman true', readyMain?.askHuman === true && JSON.stringify(readyMain?.mainApproval) === JSON.stringify([`206: ${MAIN_CMD}`]), JSON.stringify({ askHuman: readyMain?.askHuman, mainApproval: readyMain?.mainApproval }))
   // A5: a check file that exists nowhere (and that the plan does not create) is dropped with the reason and makes askHuman true.
   const gone = sh(process.execPath, ['scripts/orch-state.mjs', 'check-files', '--plan=101', '--files=scripts/log-ok.mjs,tools/leak-check.mjs'], proj)
   check('check-files: a file that exists passes, one that exists nowhere is named as missing', gone.status === 0 && /"missing":\["tools\/leak-check\.mjs"\]/.test(gone.out), tail(gone.out))
@@ -494,8 +501,10 @@ async function main() {
   // Run iota (plan 032): a plan with an [auto:main] item — its command runs in a second gate from the main folder
   // after the worktree gate, a package.json script is dropped from mainChecks with a note, and neither the merge
   // step nor the final gate runs it.
-  const MAIN_CMD = 'node scripts/log-ok.mjs --since=15m'
-  const io = await runWorkflow({ mode: 'run', run: 'iota', plans: ['206'], root: proj, mainChecks: { '206': [MAIN_CMD, 'npm run build'] } })
+  // Plan 034: without the Human's approval the run does not start — no state file, no init.
+  const ioRefused = await runWorkflow({ mode: 'run', run: 'iota', plans: ['206'], root: proj, mainChecks: { '206': [MAIN_CMD, 'npm run build'] } })
+  check('iota: mainChecks without mainApproved stop the run before init (no status.json)', ioRefused?.ok === false && ioRefused?.stopped === 'main-approval' && ioRefused?.problems?.length === 2 && /^plan 206 runs node scripts\/log-ok\.mjs --since=15m from the main folder/.test(ioRefused?.problems?.[0] ?? '') && !existsSync(join(proj, '.claude', 'orchestrator-runs', 'iota', 'status.json')), JSON.stringify(ioRefused))
+  const io = await runWorkflow({ mode: 'run', run: 'iota', plans: ['206'], root: proj, mainChecks: { '206': [MAIN_CMD, 'npm run build'] }, mainApproved: true })
   const sio = JSON.parse(readFileSync(join(proj, '.claude', 'orchestrator-runs', 'iota', 'status.json'), 'utf8'))
   const ioGates = calls.filter((c) => c.type === 'orch-gate' && c.nnn === '206')
   const norm = (p) => String(p ?? '').replace(/\\/g, '/').replace(/\/+$/, '')

@@ -128,12 +128,12 @@ plans 030 or 033 may have merged first.
 
 ## Atomic Sub-tasks
 
-- [ ] A1: Make readiness treat a main-folder command as something the Human must see, so the run pauses for it — askHuman true when any plan has mainCommands; mainApproval list of NNN: command in the result — core/.claude/workflows/orchestrate.js
-- [ ] A2: Refuse to start a run whose main-folder checks were not approved, so the wait is enforced and not just written — early return stopped: main-approval before init when mainChecks is non-empty and mainApproved is not true — core/.claude/workflows/orchestrate.js
-- [ ] A3: Show the main-folder commands in the readiness list, wait for go, and pass the approval flag to the run — step 2 block and condition, step 3 mainApproved: true after go; install-check asserts — core/.claude/commands/orchestrate.md, tools/install-check.mjs
-- [ ] C1: Explain the pause in the orchestrator doc and the changelog as the answer to the security finding — askHuman condition, main-folder section paragraph, Unreleased Security entry — core/docs/agent/orchestrator.md, CHANGELOG.md
-- [ ] T1: Prove the pause and the refusal with tests that would fail today — readiness askHuman and mainApproval, run refused without the flag and unchanged with it, e2e stub narrowed to plan 206, iota both ways — tools/test/orchestrator.test.mjs, tools/orchestrator-e2e.mjs
-- [ ] R1: Render the kit's own copies and check drift — scripts/, .claude/, docs/agent/, docs/brain/, .kit/install.json
+- [x] A1: Make readiness treat a main-folder command as something the Human must see, so the run pauses for it — askHuman true when any plan has mainCommands; mainApproval list of NNN: command in the result — core/.claude/workflows/orchestrate.js
+- [x] A2: Refuse to start a run whose main-folder checks were not approved, so the wait is enforced and not just written — early return stopped: main-approval before init when mainChecks is non-empty and mainApproved is not true — core/.claude/workflows/orchestrate.js
+- [x] A3: Show the main-folder commands in the readiness list, wait for go, and pass the approval flag to the run — step 2 block and condition, step 3 mainApproved: true after go; install-check asserts — core/.claude/commands/orchestrate.md, tools/install-check.mjs
+- [x] C1: Explain the pause in the orchestrator doc and the changelog as the answer to the security finding — askHuman condition, main-folder section paragraph, Unreleased Security entry — core/docs/agent/orchestrator.md, CHANGELOG.md
+- [x] T1: Prove the pause and the refusal with tests that would fail today — readiness askHuman and mainApproval, run refused without the flag and unchanged with it, e2e stub narrowed to plan 206, iota both ways — tools/test/orchestrator.test.mjs, tools/orchestrator-e2e.mjs
+- [x] R1: Render the kit's own copies and check drift — scripts/, .claude/, docs/agent/, docs/brain/, .kit/install.json
 
 ## Technical Considerations
 
@@ -166,3 +166,7 @@ plans 030 or 033 may have merged first.
 - Origin (2026-10-29): an automated security review flagged, twice (kit and a project's synced copy), that
   `[auto:main]` commands can run from the main folder with no `go` after plan 032's auto-start. The Human chose
   "always pause" over "keep as is" in the Planner session.
+- Built 2026-10-29 on top of plan 033 (same files; the branch was cut from 033's commit and rebased after PR #60
+  merged). Evidence: unit tests 177/177 (38 orchestrator), orchestrator e2e 86 cases (iota refused without
+  `mainApproved`, unchanged with it; alpha still `askHuman: false`), e2e-check 53, install-check, workflow-link-check,
+  drift-check (0 undeclared), leak-check (0 leaks) and `npm run build` pass.

@@ -3,7 +3,7 @@
     "version": "1.11.0"
   },
   "source": "local:.",
-  "commit": "7eb1ab535c5537dcd05c9ee5ac45b658f287d1a1",
+  "commit": "83027b8a8a0d400fa5098ebcb2d8764f3a189502",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -135,7 +135,7 @@
       "source": "core/.claude/commands/kit-feedback.md"
     },
     ".claude/commands/orchestrate.md": {
-      "sha256": "7a56c7b52437091d1c79e0603665f63dfed82850e7e5df81da50ca4db4e064c0",
+      "sha256": "68ca8bdba94e91d06b463e3cdc154e0329bbfa377f599655d5e80d0026a5e02c",
       "kind": "managed",
       "source": "core/.claude/commands/orchestrate.md"
     },
@@ -255,7 +255,7 @@
       "source": "core/.claude/skills/worktree-setup/SKILL.md"
     },
     ".claude/workflows/orchestrate.js": {
-      "sha256": "d054b206ef93285ddb73e0fbfa2409c31d18c5850b7702aead5ae9f9b31fd682",
+      "sha256": "daa25eaf2e9b10602980db9e6f46001361262176a9d8a08fd6aba6d5494d6f50",
       "kind": "managed",
       "source": "core/.claude/workflows/orchestrate.js"
     },
@@ -335,7 +335,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "93b6744715a09e5377db5362ea05cc66e790428572e7017e9c0ae77cf59e570e",
+      "sha256": "a43f8fa65fc83c53b4da3e319a71cd3f2537e9de97a5c177024e4a79ce0d6dfe",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },

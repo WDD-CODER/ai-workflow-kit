@@ -39,8 +39,8 @@ branch himself.
    start stops the run before any builder). The command
    asks the Human every question in **one batch**, writes each answer into that plan's `## Execution Notes` (a plan
    commit on `main`), and leaves out a plan whose question stays unanswered. Then the Human says `go` —
-   unless there was nothing to ask (`askHuman` false: every plan ready, no question, no environment need, preflight
-   ok), when the run starts at once; `/orchestrate … ask` keeps the pause.
+   unless there was nothing to ask (`askHuman` false: every plan ready, no question, no environment need, no main-folder
+   command, preflight ok), when the run starts at once; `/orchestrate … ask` keeps the pause.
 2. **Start.** `orch-state.mjs init` creates `orch/<run>` from `origin/main` (or reuses it on a
    relaunch), adds the merge folder `<repo>-orch-merge-<run>` beside the main folder, gives the branch an empty first
    commit `orch(<run>): run start` (a builder branch cut from it is then never an ancestor of `origin/main`, so a
@@ -122,6 +122,12 @@ belongs in the worktree and is dropped with a run note. A failure is a real fail
 and goes to the builder like any gate failure. The main folder's code is `origin/main`, not the plan
 branch, so a main check proves the side effects of the plan's own checks (a clean log after its tests ran), never the
 plan's code. The merge step and the final gate never run them.
+
+A main check always waits for `go`. It is the one place in a run where a plan-supplied command touches the Human's
+live environment, so readiness lists every one under `mainApproval` (`<NNN>: <command>`), `askHuman` is true, and
+`/orchestrate` shows them in its list and waits — even when nothing else is open. After `go` the command passes
+`"mainApproved": true` to the run; without it the workflow refuses to start (`stopped: main-approval`, before `init`,
+no state file). A run with no `[auto:main]` item is unchanged and still starts on its own.
 
 ## A dead agent, a loop, and "is it stuck?"
 
