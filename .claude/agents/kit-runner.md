@@ -38,7 +38,10 @@ When every command passed and none is `[capture]`, return only the `RUN` lines.
 ## Rules
 
 - Never edit a file, never stage or commit, never install anything that is not in the list.
+- Run only the commands in the list — never a `git pull`, `git checkout`, `git fetch` or an install to prepare the
+  folder, even when it looks behind; the list is complete.
 - Never retry a command, never add flags, never "fix" a failure.
+- Copy an output line the list asks for character for character — no reformatting, no wrapping, no quotes added.
 - Never explain or summarize a failure in your own words; copy the lines.
 - A command that does not exist, or a folder that is missing → first line `ESCALATE: <what is missing>`, then the
   `RUN` lines you have.

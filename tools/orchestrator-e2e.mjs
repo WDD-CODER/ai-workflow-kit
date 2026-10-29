@@ -111,6 +111,8 @@ let phase2 = false
 let gateDrop = false
 // Plan 029: the next call of this agent type returns null (a dead agent) — once.
 let dieOnce = null
+// Plan 033: the stub runner's next copy of a `worktree` ORCH_JSON line for this run gets a smart quote — once.
+let garbleWorktreeOnce = null
 const count = {}
 const bump = (key) => (count[key] = (count[key] ?? 0) + 1)
 
@@ -146,6 +148,10 @@ function stubRunner(t) {
     return { exitCode: 127, output: `stub runner refuses: ${command}` }
   }
   const r = sh(process.execPath, w.slice(1), t.FOLDER)
+  if (garbleWorktreeOnce && w[2] === 'worktree' && w.includes(`--run=${garbleWorktreeOnce}`)) {
+    garbleWorktreeOnce = null
+    return { exitCode: r.status ?? 1, output: r.out.replace(/ORCH_JSON \{"/, 'ORCH_JSON {“') }
+  }
   return { exitCode: r.status ?? 1, output: r.out }
 }
 
@@ -498,6 +504,18 @@ async function main() {
   const ioFinal = calls.filter((c) => c.type === 'orch-gate' && c.label === 'gate final').at(-1)
   check('iota: the merge step and the final gate never run the main-folder command; 206 merged', io?.ok === true && sio.plans['206']?.state === 'merged' && JSON.stringify(ioMerge?.checks) === JSON.stringify(['npm run build']) && !(ioFinal?.commands ?? []).includes(MAIN_CMD), JSON.stringify({ merge: ioMerge?.checks, final: ioFinal?.commands, state: sio.plans['206']?.state }))
   check('iota: a package.json script in mainChecks is dropped with a run note naming the rule', (sio.notes ?? []).some((n) => n.plan === '206' && /^main-folder check dropped, not run: npm run build: only node scripts\/… or node tools\/… run from the main folder/.test(n.text)), JSON.stringify((sio.notes ?? []).filter((n) => /dropped/.test(n.text))))
+
+  // Run kappa (plan 033): the runner's first copy of the `worktree` state line does not parse (a smart quote) — the
+  // workflow asks once more, the real second answer is used, the plan is built and merged in one folder, and a run
+  // note keeps the first error with the raw line (quotes kept as ' through the state write).
+  garbleWorktreeOnce = 'kappa'
+  const k = await runWorkflow({ mode: 'run', run: 'kappa', plans: ['601'], root: proj })
+  const sk = JSON.parse(readFileSync(join(proj, '.claude', 'orchestrator-runs', 'kappa', 'status.json'), 'utf8'))
+  const kWt = runnerCommands.filter((c) => /^node scripts\/orch-state\.mjs worktree --run=kappa --plan=601$/.test(c))
+  const kTrees = git(proj, 'worktree', 'list', '--porcelain').stdout.split('\n').filter((l) => /^worktree .*orch-kappa-601/.test(l))
+  check('kappa: a bad copy of the worktree line is asked for once more and the plan is merged in one folder', k?.ok === true && sk.plans['601']?.state === 'merged' && kWt.length === 2 && kTrees.length === 1 && garbleWorktreeOnce === null, JSON.stringify({ ok: k?.ok, state: sk.plans['601']?.state, worktreeCalls: kWt.length, trees: kTrees }))
+  const kNote = (sk.notes ?? []).find((n) => n.plan === '601' && /^runner retry: worktree 601 — first attempt: unreadable ORCH_JSON from: node scripts\/orch-state\.mjs worktree /.test(n.text))
+  check('kappa: the run note keeps the first error with the raw line and the odd character', !!kNote && kNote.text.includes("raw: 'ORCH_JSON {“ok") && /non-ASCII U\+201C at 11/.test(kNote.text), JSON.stringify((sk.notes ?? []).filter((n) => n.plan === '601').map((n) => n.text)))
 
   // The [ui] tier: a local test server (a child process) for the pages, the login and the backend.
   const server = await startUiServer()

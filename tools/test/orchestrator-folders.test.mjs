@@ -267,3 +267,45 @@ test('deps: a folder with no lock file is left as it is, said in one line', () =
   const r = folders.ensureDeps({ mainRoot: main, dst: own, pm: 'npm' })
   assert.deepEqual(r, { ok: true, lines: ['no package-lock.json in .: nothing installed'] })
 })
+
+// Plan 033: the workflow may run a state command twice (a retried copy). `worktree` for a plan that already has its
+// folder returns that folder: one worktree, one path, nothing claimed twice.
+test('orch-state worktree twice for the same plan returns the same path and makes one folder', () => {
+  // The repo sits in a folder of its own: orch-state puts the merge and builder folders beside the main folder, named
+  // after the configured repo, so two test runs sharing the temp folder would meet in one merge folder.
+  const parent = tmp()
+  const dir = join(parent, 'main')
+  mkdirSync(dir)
+  sh(dir, 'init', '-q', '-b', 'main')
+  sh(dir, 'config', 'user.email', 't@t')
+  sh(dir, 'config', 'user.name', 't')
+  writeFileSync(join(dir, 'a.txt'), 'a\n')
+  const bare = tmp()
+  sh(bare, 'init', '-q', '--bare', '-b', 'main')
+  mkdirSync(join(dir, 'plans'))
+  writeFileSync(join(dir, 'plans', '001-x.plan.md'), '# Plan 001 — X\n\nStatus: active\nDepends-on: none\n\n## Read-Write Scope\n\n```scope\nwork/001.txt\n```\n')
+  sh(dir, 'add', '-A')
+  sh(dir, 'commit', '-q', '-m', 'plan')
+  sh(dir, 'remote', 'add', 'origin', bare)
+  sh(dir, 'push', '-q', '-u', 'origin', 'main')
+  cpSync(join(root, 'scripts'), join(dir, 'scripts'), { recursive: true, dereference: true })
+  writeFileSync(join(dir, '.git', 'info', 'exclude'), 'scripts/\n.claude/\n')
+  const state = (...a) => {
+    const r = spawnSync(process.execPath, [join(dir, 'scripts', 'orch-state.mjs'), ...a], { cwd: dir, encoding: 'utf8' })
+    const line = String(r.stdout).split(/\r?\n/).reverse().find((l) => l.startsWith('ORCH_JSON '))
+    assert.ok(line, `${a.join(' ')}: ${r.stdout}${r.stderr}`)
+    return JSON.parse(line.slice('ORCH_JSON '.length))
+  }
+  const init = state('init', '--run=r')
+  assert.equal(init.ok, true, JSON.stringify(init))
+  const pushed = spawnSync('git', ['rev-parse', '--verify', '--quiet', 'origin/orch/r'], { cwd: dir, encoding: 'utf8' })
+  assert.equal(pushed.status, 0, `init did not leave origin/orch/r behind: ${JSON.stringify(init)} ${pushed.stderr}`)
+  const first = state('worktree', '--run=r', '--plan=001')
+  const second = state('worktree', '--run=r', '--plan=001')
+  assert.equal(first.ok, true, JSON.stringify(first))
+  assert.equal(second.ok, true, JSON.stringify(second))
+  assert.equal(second.path, first.path)
+  assert.equal(second.branch, first.branch)
+  const trees = sh(dir, 'worktree', 'list', '--porcelain').split('\n').filter((l) => /^worktree .*orch-r-001/.test(l))
+  assert.equal(trees.length, 1, trees.join('\n'))
+})

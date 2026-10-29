@@ -118,7 +118,7 @@ const strList = { type: 'array', items: str }
 // decisions: only "behaviour: …" (a choice the plan did not settle, with how to reverse it) and "seen: file:line …" (a
 // defect outside the job); evidence and confirmations are not decisions and are dropped (take()).
 const COMMON = { role: str, model: str, effort: str, decisions: { ...strList, description: 'only "behaviour: … — reverse: …" and "seen: file:line …" entries; evidence and confirmations are not decisions' }, escalate: str }
-const RUNNER = { type: 'object', properties: { exitCode: { type: 'integer' }, output: str }, required: ['exitCode', 'output'] }
+const RUNNER = { type: 'object', properties: { exitCode: { type: 'integer' }, output: { type: 'string', description: 'the command\'s output, with its ORCH_JSON line copied character for character — no reformatting, no wrapping, no quotes added' } }, required: ['exitCode', 'output'] }
 const PROBLEM = {
   type: 'object',
   properties: { id: str, file: str, line: { type: 'integer' }, rule: str, reasoning: str, severity: { type: 'string', enum: ['blocker', 'major', 'minor', 'nit'] } },
@@ -162,10 +162,11 @@ const SCHEMA = {
 // A task block every role agent reads: one KEY: value line each (lists and objects as JSON).
 const task = (fields) => Object.entries(fields).filter(([, v]) => v !== undefined && v !== null)
   .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`).join('\n')
-// Shell quoting for the runner: values are plain words, or double-quoted with $, backtick, backslash and quotes removed.
+// Shell quoting for the runner: values are plain words, or double-quoted with quotes and backticks turned into ', a
+// backslash into / and $ and line breaks into a space — a raw JSON sample in a reason or note keeps its shape.
 const q = (v) => {
   const s = String(v)
-  return /^[\w.,:/=@+-]+$/.test(s) ? s : `"${s.replace(/["`$\\\r\n]/g, ' ').slice(0, 400)}"`
+  return /^[\w.,:/=@+-]+$/.test(s) ? s : `"${s.replace(/["`]/g, "'").replace(/\\/g, '/').replace(/[$\r\n]/g, ' ').slice(0, 400)}"`
 }
 
 // Every agent call goes through here. `opts.plan` (never passed on) keys the per-plan call counter. An agent that
@@ -184,28 +185,61 @@ async function ask(prompt, opts = {}) {
 }
 const callsOf = (nnn) => COUNT.calls[nnn] ?? 0
 
-async function runner(script, argv, label, plan) {
-  const command = ['node', `scripts/${script}`, ...argv.map(q)].join(' ')
-  const r = await ask([
-    'Run exactly this one command from the folder below, once. Do not change it, add flags, retry or explain.',
-    task({ FOLDER: ROOT, COMMAND: command }),
-    'Return exitCode and output: the last output line that starts with ORCH_JSON, copied verbatim (the last 40 lines when there is none).',
-  ].join('\n\n'), { agentType: 'kit-runner', schema: RUNNER, label: label ?? `${script.replace('.mjs', '')} ${argv[0] ?? ''}`, effort: 'low', plan })
-  if (!r) return { ok: false, error: `runner returned nothing for: ${command}`, envFailure: true }
-  const line = String(r.output).split('\n').reverse().find((l) => l.startsWith('ORCH_JSON '))
-  if (!line) return { ok: false, error: `no ORCH_JSON line from: ${command} (exit ${r.exitCode})` }
+// The runner's copy of a command's output: the last line that starts with ORCH_JSON, read with what a copy may add —
+// a \r, backticks around the line, text after the closing brace. When it still does not parse, the error says what
+// the parser saw: its message, the raw line (JSON-escaped, so a \r or a tab shows) and the first non-ASCII character.
+function readOrchLine(output) {
+  const lines = String(output ?? '').split(/\r?\n/).map((l) => l.trim().replace(/^`+|`+$/g, ''))
+  const line = lines.slice().reverse().find((l) => l.startsWith('ORCH_JSON '))
+  if (!line) return { error: 'no ORCH_JSON line', detail: `last lines: ${JSON.stringify(lines.filter(Boolean).slice(-3).join(' | '))}` }
+  const text = line.slice('ORCH_JSON '.length)
+  const open = text.indexOf('{')
+  const close = text.lastIndexOf('}')
   try {
-    return JSON.parse(line.slice('ORCH_JSON '.length))
-  } catch {
-    return { ok: false, error: `unreadable ORCH_JSON from: ${command}` }
+    if (open < 0 || close < open) throw new Error('no { … } in the line')
+    return { json: JSON.parse(text.slice(open, close + 1)) }
+  } catch (e) {
+    // The hint comes before the raw line: a note or reason is cut at 400 characters, and the hint is the short part.
+    const chars = [...line]
+    const odd = chars.findIndex((c) => c.codePointAt(0) > 0x7e)
+    const hint = odd < 0 ? '' : ` — non-ASCII U+${chars[odd].codePointAt(0).toString(16).toUpperCase().padStart(4, '0')} at ${odd}`
+    return { error: 'unreadable ORCH_JSON', detail: `${e.message}${hint} — raw: ${JSON.stringify(line.slice(0, 300))}` }
   }
+}
+
+// One state or preflight command through a kit-runner agent. A copy that does not parse (the command itself may have
+// succeeded — a run once parked a plan on a well-formed line) is asked for once more, at effort medium, and a run
+// note keeps the first error; a second bad copy is returned with "after 2 attempts". `once` turns the retry off for
+// the commands a second run would repeat: `note` (the line would be written twice) and `finish` (it commits the
+// report; a second run would report "nothing to commit"). Every other orch-state command is idempotent — `worktree`
+// reuses the folder or slot the plan already holds.
+async function runner(script, argv, label, plan, { once = false } = {}) {
+  const command = ['node', `scripts/${script}`, ...argv.map(q)].join(' ')
+  const name = label ?? `${script.replace('.mjs', '')} ${argv[0] ?? ''}`
+  const call = (effort, lbl) => ask([
+    'Run exactly this one command from the folder below, once — nothing before it and nothing after it (no git pull, checkout or fetch, no install). Do not change it, add flags, retry or explain.',
+    task({ FOLDER: ROOT, COMMAND: command }),
+    'The command is [capture]: return exitCode and output — its full output, with the line that starts with ORCH_JSON copied character for character (no reformatting, no wrapping, no quotes added).',
+  ].join('\n\n'), { agentType: 'kit-runner', schema: RUNNER, label: lbl, effort, plan })
+  const read = (r, attempts) => {
+    if (!r) return { result: { ok: false, error: `runner returned nothing for: ${command}`, envFailure: true } }
+    const p = readOrchLine(r.output)
+    if (p.json) return { result: p.json }
+    const where = p.error === 'no ORCH_JSON line' ? `${command} (exit ${r.exitCode})` : command
+    return { badCopy: true, result: { ok: false, error: `${p.error} from: ${where}${attempts > 1 ? ' after 2 attempts' : ''} — ${p.detail}` } }
+  }
+  const first = read(await call('low', name), 1)
+  if (!first.badCopy || once) return first.result
+  const second = read(await call('medium', `${name} retry`), 2)
+  if (!second.badCopy) await note(`runner retry: ${name} — first attempt: ${first.result.error}`, plan)
+  return second.result
 }
 // orch-state.mjs <command> --key value …: every flag and its value go as one `--key=value` token (quoted as a whole by
 // q), so no value — an agent's card title, a reason — can ever be read as a flag.
 const state = (argv, label, plan) => {
   const out = [argv[0]]
   for (let i = 1; i < argv.length; i += 2) out.push(`${argv[i]}=${argv[i + 1] ?? ''}`)
-  return runner('orch-state.mjs', out, label, plan)
+  return runner('orch-state.mjs', out, label, plan, { once: argv[0] === 'note' || argv[0] === 'finish' })
 }
 const roleArg = (results) => results.filter(Boolean).filter((r) => r.role && r.model).map((r) => `${r.role}=${r.model}/${r.effort ?? ''}`).join(',')
 const CARD_FIELDS = ['card', 'card-status', 'page', 'shots', 'via']

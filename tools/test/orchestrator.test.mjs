@@ -120,10 +120,12 @@ const MAX_NOTES = Number(/const MAX_NOTES = (\d+)/.exec(wfSource)?.[1] ?? 0)
 
 // hooks: builder(nnn) → extra builder fields; gateFails(folder, cmds) → true: the first command fails (gateTail(n) its
 // tail, n = that folder's gate count); gateDrop(n) → results for the first command only on gate call n; nullOnce(type)
-// → the first call of that agent type returns null (a dead agent); source(src) → the workflow source to run (limits).
+// → the first call of that agent type returns null (a dead agent); source(src) → the workflow source to run (limits);
+// runner(command, attempt, output) → a string that replaces the runner's output for that call (plan 033: a bad copy).
 async function runFlow(args, hooks = {}) {
   const calls = []
   const commands = []
+  const runnerSeen = {}
   const plansIn = args.plans.map(String)
   const words = (cmd) => [...cmd.matchAll(/"([^"]*)"|(\S+)/g)].map((m) => m[1] ?? m[2])
   const task = (prompt) => Object.fromEntries(String(prompt).split('\n').map((l) => /^([A-Z_]+): (.*)$/.exec(l)).filter(Boolean).map((m) => [m[1], m[2]]))
@@ -149,7 +151,7 @@ async function runFlow(args, hooks = {}) {
     const t = task(prompt)
     // A judgment-tier builder on "inherit" has no agentType: the role file is named in the prompt.
     const type = opts.agentType ?? (/orch-builder\.md/.test(prompt) ? 'orch-builder' : undefined)
-    calls.push({ type, label: opts.label, task: t, model: opts.model ?? null, plan: opts.plan })
+    calls.push({ type, label: opts.label, task: t, model: opts.model ?? null, effort: opts.effort ?? null, plan: opts.plan })
     if (hooks.nullOnce && type === hooks.nullOnce && !nulled.has(type)) {
       nulled.add(type)
       return null
@@ -157,7 +159,10 @@ async function runFlow(args, hooks = {}) {
     if (type === 'kit-runner') {
       const w = words(t.COMMAND)
       commands.push(t.COMMAND)
-      return out(w[1] === 'scripts/orch-state.mjs' ? state(w) : { ok: true })
+      const r = out(w[1] === 'scripts/orch-state.mjs' ? state(w) : { ok: true })
+      const n = (runnerSeen[t.COMMAND] = (runnerSeen[t.COMMAND] ?? 0) + 1)
+      const replaced = hooks.runner?.(t.COMMAND, n, r.output)
+      return replaced === undefined ? r : { exitCode: 0, output: replaced }
     }
     const base = { role: type, model: 'stub', effort: 'low' }
     const nnn = /plan (\d+)/.exec(prompt)?.[1]
@@ -594,5 +599,37 @@ test('readiness: askHuman is false only when every plan is ready with no questio
   for (const [why, hook] of [['a question', { questions: ['what on cancel?'] }], ['an environment need', { envNeeds: ['a database'] }], ['a blocked plan', { state: 'blocked' }]]) {
     const r = await runFlow({ mode: 'readiness', plans: ['101'] }, { readiness: () => hook })
     assert.equal(r.result.askHuman, true, why)
+  }
+})
+
+// Plan 033: a runner's copy of a state line that does not parse is asked for once more (effort medium, a run note with
+// the first error); a second bad copy parks the plan with the parser's message and the raw line; note and finish are
+// never run twice; what a copy may add (\r, backticks, trailing text) parses without a retry.
+test('runner: a bad copy of ORCH_JSON is retried once at medium with a note, twice parks with the raw line, note/finish never retry', async () => {
+  const bad = 'ORCH_JSON {“ok":true,"path":"/wt/101"}'
+  // Anchored: a reason or note text quotes the failed command, and such a `set` or `note` is not a worktree call.
+  const isWt = (cmd) => /^node scripts\/orch-state\.mjs worktree /.test(cmd)
+  const once = await runFlow({ plans: ['101'], pilot: false }, { runner: (cmd, n) => (isWt(cmd) && n === 1 ? bad : undefined) })
+  const wt = once.calls.filter((c) => c.type === 'kit-runner' && /^worktree 101/.test(c.label))
+  assert.deepEqual(wt.map((c) => [c.label, c.effort]), [['worktree 101', 'low'], ['worktree 101 retry', 'medium']])
+  assert.equal(once.result.outcomes[0].state, 'merged')
+  assert.ok(once.notes.some((n) => /runner retry: worktree 101 — first attempt: unreadable ORCH_JSON from: node scripts\/orch-state\.mjs worktree /.test(n)), once.notes.join('\n'))
+  const twice = await runFlow({ plans: ['101'], pilot: false }, { runner: (cmd) => (isWt(cmd) ? bad : undefined) })
+  assert.equal(twice.commands.filter(isWt).length, 2, 'one retry, not more')
+  assert.match(twice.result.outcomes[0].reason, /^worktree: unreadable ORCH_JSON from: node scripts\/orch-state\.mjs worktree --run=r1 --plan=101 after 2 attempts — .* — raw: "ORCH_JSON \{“ok\\"/)
+  assert.match(twice.result.outcomes[0].reason, / — non-ASCII U\+201C at 11 — raw: /, 'the hint comes before the raw line (a reason is cut at 400 characters)')
+  const none = await runFlow({ plans: ['101'], pilot: false }, { runner: (cmd) => (isWt(cmd) ? 'RUN 1: node scripts/orch-state.mjs worktree → exit 0\nclaimed slot wt-2\n' : undefined) })
+  assert.equal(none.commands.filter(isWt).length, 2)
+  assert.match(none.result.outcomes[0].reason, /^worktree: no ORCH_JSON line from: node scripts\/orch-state\.mjs worktree --run=r1 --plan=101 \(exit 0\) after 2 attempts — last lines: "RUN 1: node scripts\/orch-state\.mjs worktree → exit 0 \| claimed slot wt-2"$/)
+  // A builder decision makes the run write a note; that note and the final `finish` both come back unreadable.
+  const nf = await runFlow({ plans: ['101'], pilot: false }, { builder: () => ({ decisions: ['behaviour: kept the flag — reverse: drop it'] }), runner: (cmd) => (/^node scripts\/orch-state\.mjs (note|finish) /.test(cmd) ? 'garbage' : undefined) })
+  assert.equal(nf.commands.filter((c) => /^node scripts\/orch-state\.mjs finish /.test(c)).length, 1, 'finish is never run twice')
+  const noteCmds = nf.commands.filter((c) => /^node scripts\/orch-state\.mjs note /.test(c))
+  assert.ok(noteCmds.length > 0)
+  assert.equal(new Set(noteCmds).size, noteCmds.length, 'no note is written twice')
+  for (const [why, wrap] of [['a trailing \\r', (o) => `${o}\r`], ['backticks around the line', (o) => `\`${o}\``], ['text after the closing brace', (o) => `${o} (copied verbatim)`], ['an OUTPUT block before it', (o) => `RUN 1: x → exit 0\nOUTPUT 1: x\nclaimed slot\n${o}\n`]]) {
+    const r = await runFlow({ plans: ['101'], pilot: false }, { runner: (cmd, n, output) => (isWt(cmd) ? wrap(output) : undefined) })
+    assert.equal(r.commands.filter(isWt).length, 1, `${why}: no retry`)
+    assert.equal(r.result.outcomes[0].state, 'merged', why)
   }
 })

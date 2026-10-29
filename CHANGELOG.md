@@ -9,6 +9,21 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Fixed
+- **A bad copy of a state line no longer parks a plan.** The orchestrator reads every `orch-state.mjs` result as a
+  `kit-runner` agent's copy of its `ORCH_JSON` line; a run once parked a plan at `worktree` on a line the command had
+  printed well. A copy that does not parse is now asked for once more (effort `medium`), with a run note `runner
+  retry: … — first attempt: <error>`; `note` and `finish` are never retried. A second bad copy parks the plan with the
+  parser's message, the first non-ASCII character and the raw line (JSON-escaped), instead of the bare `unreadable
+  ORCH_JSON`. A `\r`, backticks around the line and text after the closing brace parse without a retry.
+
+### Changed
+- **Quotes stay legible in run notes and reasons.** The workflow's shell quoting turns `"` and backticks into `'` and
+  a backslash into `/` (instead of a space), so a raw JSON sample in a note or a park reason keeps its shape.
+- **The runner runs only its list.** `kit-runner.md` says it in so many words — no `git pull`, `git checkout`,
+  `git fetch` or install to prepare the folder — and copies an asked-for output line character for character; the
+  orchestrator marks its state command `[capture]` so the runner's own full-output rule applies.
+
 ## [1.11.0] - 2026-10-29
 
 ### Added

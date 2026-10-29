@@ -33,6 +33,9 @@
  *          values that must not be recorded (a title starting with "-", a non-http page, an unsafe screenshot path)
  *          and a card whose test is not an allowed check (dropped with a run note, the card left unchecked)
  *   run "devfail" (plan 020): commands.dev set and the dev server does not start → the preflight stops the run
+ *   run "kappa" (plan 033)
+ *     601  the stub runner's first copy of the `worktree` ORCH_JSON line has a smart quote → the workflow asks once
+ *          more, a run note keeps the first error with the raw line, the plan is built and merged in one folder
  */
 const plan = ({ nnn, title, deps = [], inv = 'INV-none: preserves — a toy plan', ui = [], main = [], notes = '' }) => `# Plan ${nnn} — ${title}
 
@@ -79,6 +82,7 @@ export const PLANS = {
   '404': plan({ nnn: '404', title: 'UI backend cross origin', ui: ['List shows items'] }),
   '405': plan({ nnn: '405', title: 'UI item the builder left out', ui: ['Save shows Saved', 'Profile shows the avatar', 'Save shows Saved in the header'], notes: '- [ui] Not a goal: a note that only mentions the tag\n' }),
   '501': plan({ nnn: '501', title: 'Security follow-up inputs' }),
+  '601': plan({ nnn: '601', title: 'State line copied badly once' }),
 }
 
 export const fileName = (nnn) => {
