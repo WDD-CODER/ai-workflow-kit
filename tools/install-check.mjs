@@ -151,6 +151,8 @@ function plannerDocProblems(dir) {
   need('.claude/skills/save-plan/SKILL.md', 'Its `## Atomic Sub-tasks` are the milestones', 'save-plan: one plan shape')
   // Plan 038: the number comes from the plan files on every branch, not only from numbered branch names.
   need('.claude/skills/save-plan/SKILL.md', 'every plan file on any local or remote branch', 'save-plan: Phase 1 Number must say plan files on every branch count')
+  // Plan 037: a slot merge asks whether the repo already deletes merged branches before deleting one itself.
+  for (const f of ['docs/agent/standards-git.md', 'docs/agent/ship-regular.md', 'docs/agent/ship-recovery.md', '.claude/commands/ship.md']) need(f, 'branch-autodelete-check.mjs', 'slot merge must run the branch auto-delete check before deleting the merged branch')
   // The workflow map and the Cursor rule describe the same trigger and routes as the skill.
   const wm = 'docs/agent/workflow-map.md'
   never(wm, /3\+ structured H2|routes to `\/feat` \(option b\)|--routes--> \/feat/, 'workflow map: old brief-detection trigger or option b → /feat')

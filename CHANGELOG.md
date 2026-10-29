@@ -9,6 +9,11 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Added
+- **A slot merge deletes the branch only when the repo does not.** New `scripts/branch-autodelete-check.mjs` reads
+  GitHub's `delete_branch_on_merge` setting and the pull-request workflows and prints `auto`, `manual` or `unknown`;
+  on `auto` the merge skips `git push origin --delete`, and a branch that is already gone is never reported as open.
+
 ### Fixed
 - **A plan number counts the plan files on every branch.** `next-plan-number.mjs` read plan files only in the
   checkout, on `origin/<main>` and in the main worktree, and took the rest from branch names shaped

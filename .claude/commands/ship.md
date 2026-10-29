@@ -197,6 +197,8 @@ Then **Phase 4.5 — Merge Gate** (mandatory).
 
 `merge` in the `/ship` request: already approved — merge without asking again (any lane), after writing any brain draft unless `no brain` was said.
 
+Merging inside a slot: `docs/agent/standards-git.md` → "Merging from a slot" — delete the merged remote branch only when `node scripts/branch-autodelete-check.mjs` does not print `AUTODELETE: auto`; an already-gone branch is not a loose end.
+
 `fast` passed, or Lane naturally FAST/ULTRA-TRIVIAL: already decided at Phase 4 — merge only if that reply (or the `/ship` request) contained the word `merge`; a plain `Y` / `--yes` leaves the PR open (`Merge: deferred`).
 
 Otherwise (REGULAR, `fast` not passed): Read `docs/agent/ship-regular.md` → "Phase 4.5 — Merge Gate (REGULAR procedure)" and follow it.
