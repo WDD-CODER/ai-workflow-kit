@@ -9,6 +9,8 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-10-29
+
 ### Added
 - **The orchestrator survives a blocked model and says when it is stuck.** A dead agent (one that returned
   nothing — a terminal API error, a blocked model) is retried once on `orchestrator.fallbackModel` (default `opus`;
@@ -983,7 +985,8 @@ Phases 4 to 6A, never tagged. Projects installed from a local kit folder.
 Phases 1 and 2, before this repository existed: the workflow was extracted from its source project into a
 stack-neutral `core/` with `{{placeholder}}` config keys and a leak check.
 
-[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.9.0...HEAD
+[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.10.0...HEAD
+[1.10.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.10.0
 [1.9.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.9.0
 [1.8.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.8.0
 [1.7.1]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.7.1
