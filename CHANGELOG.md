@@ -9,6 +9,8 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-10-29
+
 ### Added
 - **A light merge step.** `orchestrator.mergeChecks` (`build`, the default, or `full`): the merge step runs the
   project build plus the plan's own scope check on the merged tree, not the whole check list — lint and tests
@@ -1010,7 +1012,8 @@ Phases 4 to 6A, never tagged. Projects installed from a local kit folder.
 Phases 1 and 2, before this repository existed: the workflow was extracted from its source project into a
 stack-neutral `core/` with `{{placeholder}}` config keys and a leak check.
 
-[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.10.0...HEAD
+[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.11.0...HEAD
+[1.11.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.11.0
 [1.10.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.10.0
 [1.9.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.9.0
 [1.8.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.8.0
