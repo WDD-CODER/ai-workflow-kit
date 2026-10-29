@@ -316,3 +316,13 @@ only the Bash tool's command text triggers it.
 **Why the obvious fix is wrong:** Writing fewer notes by hand in one place does not stop the next loop; a time-based watchdog cannot live in the workflow script (it has no clock: `Date.now()` throws there).
 
 **What to do instead:** Limits are counters in the workflow (`orchestrator.maxNotesPerPlan`, `maxAgentCallsPerPlan`, and the same failure reason twice in a row parks the plan at once), a dead agent is retried once on `orchestrator.fallbackModel`, and the Human asks `node scripts/orch-state.mjs watch --run <run>` — one line from `status.json` only, `STUCK` with exit 1 — from a second terminal.
+
+---
+
+## A check that needs `.env` or a live database cannot pass in the merge folder
+
+**What hurt:** A plan's `[auto]` item ran a log-query script that reads the backend's log database (it needs the backend's `.env` and the running server). It passed in the builder's worktree, where an `.env` had been copied by hand, then failed in the merge folder — which never gets an `.env` — and the run parked a built and verified plan at the merge step. The Human ran the check from the main folder and merged by hand.
+
+**Why the obvious fix is wrong:** Copying `.env` into every worktree and the merge folder spreads secrets over folders git removes and hides the real fact: the check is about the live environment (a log, data), not about the tree being merged, so it has no business in a merge or a final gate at all.
+
+**What to do instead:** Tag the item `[auto:main]`. Readiness lists its command under `mainCommands`, the run executes it from the main folder with a second gate right after the plan's worktree gate (project scripts only: `node scripts/…`, `node tools/…`), and neither the merge step nor the final gate runs it. The merge step itself runs only `orchestrator.mergeChecks` (`build` = the build plus the plan's scope check); lint and tests run in the plan's gate and once at the final gate.

@@ -65,6 +65,7 @@ core/.claude/agents/orch-readiness.md
 core/.claude/agents/orch-report.md
 core/scripts/lib/done-when.mjs
 core/scripts/lib/orch-run.mjs
+core/scripts/orch-state.mjs
 core/docs/agent/orchestrator.md
 core/docs/agent/agent-roles.md
 core/docs/brain/gotchas/agent-workflow.md
@@ -175,13 +176,14 @@ the scope block; retry.
 
 ## Atomic Sub-tasks
 
-- [ ] A1: Give the merge step its own short check list so a merge costs a build, not the whole suite — orchestrator.mergeChecks (build default | full), ctx.mergeChecks = build + the plan's scope check, orch-merge gets it, merge-retry uses it, config validated — core/.claude/workflows/orchestrate.js, core/.claude/agents/orch-merge.md, kit.config.json, tools/lib/kit.mjs
-- [ ] A2: Let a plan mark a check that runs from the main folder, where the live environment is — [auto:main] accepted by the Done-when lint, readiness returns mainCommands, the command passes mainChecks, a second gate call with FOLDER = root after the worktree gate, scripts only, failure = real failure, never at merge or final gate — core/scripts/lib/done-when.mjs, core/.claude/agents/orch-readiness.md, core/.claude/commands/orchestrate.md, core/.claude/workflows/orchestrate.js
-- [ ] A3: Keep only real decisions so the Human grades choices, not confirmations — take() keeps behaviour:/seen:, counts the rest as decisionsDropped, the command and the report print the count; schema description; gate, ui, builder and agent-roles wording — core/.claude/workflows/orchestrate.js, core/.claude/agents/orch-gate.md, core/.claude/agents/orch-ui.md, core/.claude/agents/orch-builder.md, core/.claude/agents/orch-report.md, core/docs/agent/agent-roles.md, core/.claude/commands/orchestrate.md
-- [ ] A4: Start the run on its own when readiness has nothing to ask — readiness() returns askHuman; step 2 starts the run when false; the word ask forces the pause — core/.claude/workflows/orchestrate.js, core/.claude/commands/orchestrate.md
-- [ ] C1: Explain the four changes in the docs, one gotcha and the changelog — mergeChecks row, main-folder section, decisions and readiness paragraphs, one gotcha, Unreleased entries — core/docs/agent/orchestrator.md, core/docs/brain/gotchas/agent-workflow.md, CHANGELOG.md
-- [ ] T1: Prove each change with tests that would fail today — unit tests (merge CHECKS, main gate call and folder, dropped main command, decisions filter and count, askHuman), e2e (zeta merge CHECKS, run iota, askHuman), install-check (render, docs, refusals), Done-when tag test — tools/test/orchestrator.test.mjs, tools/test/ui-tier.test.mjs, tools/orchestrator-e2e.mjs, tools/fixtures/orchestrator/plans.mjs, tools/install-check.mjs
-- [ ] R1: Render the kit's own copies and check drift — scripts/, .claude/, docs/agent/, docs/brain/, .kit/install.json
+- [x] A1: Give the merge step its own short check list so a merge costs a build, not the whole suite — orchestrator.mergeChecks (build default | full), ctx.mergeChecks = build + the plan's scope check, orch-merge gets it, merge-retry uses it, config validated — core/.claude/workflows/orchestrate.js, core/.claude/agents/orch-merge.md, kit.config.json, tools/lib/kit.mjs
+- [x] A2: Let a plan mark a check that runs from the main folder, where the live environment is — [auto:main] accepted by the Done-when lint, readiness returns mainCommands, the command passes mainChecks, a second gate call with FOLDER = root after the worktree gate, scripts only, failure = real failure, never at merge or final gate — core/scripts/lib/done-when.mjs, core/.claude/agents/orch-readiness.md, core/.claude/commands/orchestrate.md, core/.claude/workflows/orchestrate.js
+- [x] A3: Keep only real decisions so the Human grades choices, not confirmations — take() keeps behaviour:/seen:, counts the rest as decisionsDropped, the command and the report print the count; schema description; gate, ui, builder and agent-roles wording — core/.claude/workflows/orchestrate.js, core/.claude/agents/orch-gate.md, core/.claude/agents/orch-ui.md, core/.claude/agents/orch-builder.md, core/.claude/agents/orch-report.md, core/docs/agent/agent-roles.md, core/.claude/commands/orchestrate.md
+- [x] A4: Start the run on its own when readiness has nothing to ask — readiness() returns askHuman; step 2 starts the run when false; the word ask forces the pause — core/.claude/workflows/orchestrate.js, core/.claude/commands/orchestrate.md
+- [x] A5: Refuse a check whose file does not exist before the run starts, so no builder round is spent on it — readiness asks orch-state check-files; a node script or test file that is neither in the main folder nor named in the plan's own text is dropped with the reason and makes askHuman true — core/scripts/orch-state.mjs, core/.claude/workflows/orchestrate.js, core/.claude/commands/orchestrate.md, tools/test/orchestrator-folders.test.mjs, tools/test/orchestrator.test.mjs, tools/orchestrator-e2e.mjs
+- [x] C1: Explain the four changes in the docs, one gotcha and the changelog — mergeChecks row, main-folder section, decisions and readiness paragraphs, one gotcha, Unreleased entries — core/docs/agent/orchestrator.md, core/docs/brain/gotchas/agent-workflow.md, CHANGELOG.md
+- [x] T1: Prove each change with tests that would fail today — unit tests (merge CHECKS, main gate call and folder, dropped main command, decisions filter and count, askHuman), e2e (zeta merge CHECKS, run iota, askHuman), install-check (render, docs, refusals), Done-when tag test — tools/test/orchestrator.test.mjs, tools/test/ui-tier.test.mjs, tools/orchestrator-e2e.mjs, tools/fixtures/orchestrator/plans.mjs, tools/install-check.mjs
+- [x] R1: Render the kit's own copies and check drift — scripts/, .claude/, docs/agent/, docs/brain/, .kit/install.json
 
 ## Out of Scope
 
@@ -203,6 +205,15 @@ the scope block; retry.
 
 ## Execution Notes
 
+- A5 added by the Human on 2026-10-29 (mid-brief, from a project run of a prior kit version): a plan's check named
+  `node tools/leak-check.mjs`, a file that exists only in the kit repo. Readiness approved it (the allowlist checks
+  the command's shape, not the file), every gate failed on "file not found" and the run spent fix rounds and a
+  stronger builder on a check no builder can fix. A5: `orch-state.mjs check-files --plan <NNN> --files a,b` returns
+  the files that exist neither in the main folder nor in the plan's own text (a plan may create its script); readiness
+  drops those commands with the reason and sets `askHuman` true so the Human sees them.
+
 - Origin: the Human's run of one project plan on kit v1.10.0 (2026-10-29): 26 minutes end to end, merge step 6 min
   over two attempts, 15 decisions (11 confirmations), 6 min readiness + `go`, a log check that needs `.env` parked
   the plan at the merge. Plan 029's Execution Notes list the same four leftovers.
+
+- Evidence (2026-10-29): unit tests 174/174, orchestrator e2e 82 cases, e2e-check 53 cases, install-check, link-check, leak-check (0 leaks), drift-check, Done-when tag lint and `npm run build` all pass. The `[human]` item stays open (merges pre-approved).

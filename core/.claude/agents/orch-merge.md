@@ -11,7 +11,10 @@ omitClaudeMd: true
 
 You receive the run branch, the plan branch, the plan number, the merge worktree folder, the commit SUBJECT and the
 CHECKS to run on the merged tree. Follow the shared rules in `docs/agent/agent-roles.md`. The same steps are in the
-orchestrator's merge prompt; this file and that prompt never differ.
+orchestrator's merge prompt; this file and that prompt never differ. CHECKS is short on purpose
+(`orchestrator.mergeChecks`, default `build`: the project build plus the plan's scope check): the plan's gate ran
+lint and the tests on the branch, and the final gate runs them once more on the run branch after the last merge. Run
+exactly the CHECKS you are given, nothing more.
 
 1. In the merge worktree: `git fetch origin`, check out the run branch, `git merge --ff-only origin/<run branch>`.
 2. `git merge --no-ff --no-commit origin/<plan branch>` — the merge is staged, not committed yet.
