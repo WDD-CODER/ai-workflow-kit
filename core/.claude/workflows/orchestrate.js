@@ -343,10 +343,13 @@ async function readiness() {
     const deniedWhy = [...p.commands.filter((c) => problem(c, false)).map((c) => problem(c, false)), ...main.filter((c) => problem(c, true)).map((c) => problem(c, true))]
     out.push({ nnn, path: order.plans[nnn]?.path, state: p.state, questions: p.questions, envNeeds: p.envNeeds, commands: p.commands.filter((c) => !problem(c, false)), mainCommands: main.filter((c) => !problem(c, true)), denied, deniedWhy, missingFiles: [...missing], model: r.model })
   }
-  // Nothing to ask (every plan ready, no question, no environment need, no check file missing, preflight ok) → the
-  // command starts the run without waiting for `go`; the Human's `ask` word forces the pause.
-  const askHuman = pre?.ok !== true || out.some((p) => p.state !== 'ready' || (p.questions ?? []).length > 0 || (p.envNeeds ?? []).length > 0 || (p.missingFiles ?? []).length > 0)
-  return { mode: 'readiness', run: RUN, ok: true, waves: order.waves, skipped: order.skipped, plans: out, preflight: pre, askHuman }
+  // Nothing to ask (every plan ready, no question, no environment need, no check file missing, no main-folder command,
+  // preflight ok) → the command starts the run without waiting for `go`; the Human's `ask` word forces the pause. A
+  // main-folder command runs in the live environment (the main folder's .env, database, server) and is always shown
+  // to the Human before it runs: `mainApproval` lists them, and the run refuses to start without `mainApproved`.
+  const mainApproval = out.flatMap((p) => (p.mainCommands ?? []).map((c) => `${p.nnn}: ${c}`))
+  const askHuman = pre?.ok !== true || mainApproval.length > 0 || out.some((p) => p.state !== 'ready' || (p.questions ?? []).length > 0 || (p.envNeeds ?? []).length > 0 || (p.missingFiles ?? []).length > 0)
+  return { mode: 'readiness', run: RUN, ok: true, waves: order.waves, skipped: order.skipped, plans: out, preflight: pre, askHuman, mainApproval }
 }
 
 // ---- one plan ---------------------------------------------------------------------------------------------------------
@@ -722,6 +725,11 @@ async function run() {
   phase('Start')
   const pre = await runner('orch-preflight.mjs', ['--run', RUN, '--plans', PLANS.join(',')], 'preflight')
   if (!pre.ok) return { mode: 'run', run: RUN, ok: false, stopped: 'preflight', problems: pre.problems ?? [pre.error] }
+  // A main-folder check runs a plan's command in the live environment. Readiness listed them (mainApproval) and the
+  // command waited for the Human's `go` before passing `mainApproved`; without it the run does not start — nothing is
+  // created, no state file, no init.
+  const mainList = Object.entries(A.mainChecks ?? {}).flatMap(([nnn, cmds]) => (Array.isArray(cmds) ? cmds : []).map((c) => `plan ${nnn} runs ${c} from the main folder — readiness lists it and the Human says go; the command then passes "mainApproved": true`))
+  if (mainList.length && A.mainApproved !== true) return { mode: 'run', run: RUN, ok: false, stopped: 'main-approval', problems: mainList }
   // No start time is passed: init reads its own clock (a value the model wrote was invented) and returns it.
   const init = await state(['init', '--run', RUN], 'start run')
   if (!init.ok) return { mode: 'run', run: RUN, ok: false, stopped: 'init', problems: [init.error] }

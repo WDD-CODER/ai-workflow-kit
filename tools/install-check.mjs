@@ -941,6 +941,9 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     const cmd = read(od, '.claude/commands/orchestrate.md')
     if (!cmd.includes('node scripts/orch-state.mjs watch --run <run>') || cmd.includes('startedAt')) fail('orchestrator: orchestrate.md must name the watch line and pass no startedAt')
     if (!cmd.includes('`askHuman` false') || !cmd.includes('"mainChecks"') || !cmd.includes('`ask`') || !cmd.includes('decisionsDropped')) fail('orchestrator: orchestrate.md must start the run on askHuman false (the `ask` word keeps the pause), pass mainChecks and print decisionsDropped')
+    // Plan 034: a main-folder check always waits for go.
+    if (!cmd.includes('"mainApproved": true') || !cmd.includes('from the main folder') || !cmd.includes('no main-folder command')) fail('orchestrator: orchestrate.md must list the main-folder commands, wait for go and pass mainApproved')
+    if (!doc.includes('stopped: main-approval')) fail('orchestrator: orchestrator.md does not say the run refuses unapproved main checks (stopped: main-approval)')
     if (!/^\.claude\/orchestrator-runs\/$/m.test(read(od, '.gitignore'))) fail('orchestrator: the rendered .gitignore does not ignore .claude/orchestrator-runs/')
   }
   rmSync(od, { recursive: true, force: true })

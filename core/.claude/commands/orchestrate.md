@@ -28,10 +28,14 @@ every prompt from the plans and the state script.
    - Print the waves and every plan's state in one table.
    - A command readiness dropped because its file does not exist in the project (and the plan does not create it) is
      in `denied` with the reason and in `missingFiles`: tell the Human, it needs a plan fix, not a builder.
-   - `askHuman` false (every plan `ready`, no question, no environment need, no missing check file, preflight ok) and the request did not say
-     `ask` → print `nothing to ask — starting the run` and go to step 3 at once. No `go` is waited for: the preflight
-     of step 1 already refused everything a pause would have caught.
-   - Otherwise ask the Human **all** questions and environment needs in **one** numbered list, and wait.
+   - `askHuman` false (every plan `ready`, no question, no environment need, no missing check file, no main-folder command,
+     preflight ok) and the request did not say `ask` → print `nothing to ask — starting the run` and go to step 3 at
+     once. No `go` is waited for: the preflight of step 1 already refused everything a pause would have caught.
+   - Otherwise ask the Human **all** questions and environment needs in **one** numbered list, and wait. When
+     `mainApproval` is not empty, the list ends with a block headed `Runs from the main folder (your live .env,
+     database, server) — go allows it:` with one line per `mainApproval` entry (`<NNN>: <command>`). This block alone —
+     no question, no environment need — still waits for `go`: a main-folder command runs in the live environment, and
+     the run refuses to start without the approval (`stopped: main-approval`).
    - Write each answer into that plan's `## Execution Notes` as `Orchestrator readiness (<date>): <question> → <answer>`,
      commit the plan files on `{{git.mainBranch}}` (`plan(<run>): readiness answers`) and push.
    - A plan whose question has no answer leaves the run; say which.
@@ -40,10 +44,12 @@ every prompt from the plans and the state script.
 3. **Run.** Start the same workflow with `args`
    `{ "mode": "run", "run": "<run>", "plans": [ … the plans still in the run … ],
    "root": "<absolute main folder path>", "checks": { "<NNN>": [ … readiness commands … ] },
-   "mainChecks": { "<NNN>": [ … readiness mainCommands … ] }, "ui": false }`
+   "mainChecks": { "<NNN>": [ … readiness mainCommands … ] }, "mainApproved": true, "ui": false }`
    (`ui: true` only when the project validates UI cards with `orch-ui`; no start time — `init` reads its own clock;
    `mainChecks` are the plans' `[auto:main]` commands, run from the main folder after each plan's gate — leave a plan
-   out of it when it has none). Do not answer, resume or message any agent while it runs.
+   out of it when it has none; `"mainApproved": true` only after the Human's `go` in step 2, and left out when there
+   are no `mainChecks` — the workflow refuses to start a run with `mainChecks` and no approval). Do not answer, resume
+   or message any agent while it runs.
 
    Tell the Human, in one line, how to see whether the run is stuck while it works — in a second terminal:
 

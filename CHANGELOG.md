@@ -17,6 +17,14 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
   parser's message, the first non-ASCII character and the raw line (JSON-escaped), instead of the bare `unreadable
   ORCH_JSON`. A `\r`, backticks around the line and text after the closing brace parse without a retry.
 
+### Security
+- **A run with a main-folder check always waits for `go`.** An `[auto:main]` command runs in the live main folder
+  (`.env`, database, server), and since 1.11.0 a run with nothing to ask started on its own — a review flagged that
+  such a command could run with no `go`. Readiness now lists every main-folder command under `mainApproval` and makes
+  `askHuman` true; `/orchestrate` shows them and waits, then passes `"mainApproved": true`; the workflow refuses to
+  start a run with `mainChecks` and no approval (`stopped: main-approval`, before `init`). A run without `[auto:main]`
+  items still starts on its own.
+
 ### Changed
 - **Quotes stay legible in run notes and reasons.** The workflow's shell quoting turns `"` and backticks into `'` and
   a backslash into `/` (instead of a space), so a raw JSON sample in a note or a park reason keeps its shape.
