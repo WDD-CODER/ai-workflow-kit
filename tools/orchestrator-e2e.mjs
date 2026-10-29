@@ -88,6 +88,9 @@ function setup() {
     const n = spawnSync('npm install --no-audit --no-fund', { cwd: join(proj, 'scripts'), env, encoding: 'utf8', shell: true })
     if (!check('npm install inside scripts/ (no local copy of the packages)', n.status === 0, tail(`${n.stdout}${n.stderr}`))) return false
   }
+  // A real project ignores node_modules in its .gitignore; the scratch one has none, so the merge folder's packages
+  // (init installs them, plan 029) and a provisioned slot would look like uncommitted files.
+  writeFileSync(join(proj, '.git', 'info', 'exclude'), `${readFileSync(join(proj, '.git', 'info', 'exclude'), 'utf8')}\nnode_modules\n`)
   mkdirSync(join(proj, 'plans'), { recursive: true })
   for (const nnn of Object.keys(PLANS)) writeFileSync(join(proj, fileName(nnn)), PLANS[nnn])
   git(proj, 'add', '-A')
@@ -104,6 +107,8 @@ let phase2 = false
 // Run zeta (the security follow-up): the next gate call leaves out its last result; the builder of 501 reports cards
 // with values set must refuse.
 let gateDrop = false
+// Plan 029: the next call of this agent type returns null (a dead agent) — once.
+let dieOnce = null
 const count = {}
 const bump = (key) => (count[key] = (count[key] ?? 0) + 1)
 
@@ -183,13 +188,15 @@ function stubBuilder(t, opts) {
 
 function stubGate(t, opts, nnn) {
   const n = bump(`gate ${nnn}`)
-  const fail = (nnn === '102' && n === 1) || (nnn === '202' && !phase2) || nnn === '301'
+  const fail = (nnn === '102' && n === 1) || (nnn === '202' && !phase2) || nnn === '301' || nnn === '205'
   const cmds = json(t.COMMANDS)
   if (gateDrop) {
     gateDrop = false
     return { ...base('orch-gate', opts), results: cmds.slice(0, -1).map((c) => ({ command: c, status: 'pass' })), pass: true }
   }
-  return { ...base('orch-gate', opts), results: cmds.map((c, i) => (fail && i === 0 ? { command: c, status: 'fail', tail: 'stub: 1 failing test' } : { command: c, status: 'pass' })), pass: !fail }
+  // 202 fails with a new error each round (it must reach maxFixRounds); 205 fails the same way twice (a loop: parked at once).
+  const tail = nnn === '205' ? 'stub: the same failing test' : `stub: ${n} failing test(s)`
+  return { ...base('orch-gate', opts), results: cmds.map((c, i) => (fail && i === 0 ? { command: c, status: 'fail', tail } : { command: c, status: 'pass' })), pass: !fail }
 }
 
 function stubFinder(role, opts, nnn) {
@@ -207,6 +214,8 @@ function stubVerify(t, opts) {
 }
 
 function stubMerge(t, opts) {
+  // Plan 029 (A14): the first merge of 405 fails on the environment (a real run's merge folder had no packages).
+  if (t.PLAN_NUMBER === '405' && bump('merge-env 405') === 1) return { ...base('orch-merge', opts), merged: false, envFailure: true, reason: "stub: 'ng' is not recognized" }
   const mf = t.MERGE_FOLDER
   const steps = [
     ['fetch', '-q', 'origin'],
@@ -230,7 +239,11 @@ async function agent(prompt, opts = {}) {
   const type = opts.agentType ?? null
   const nnn = (/plan (\d{3})/.exec(prompt) ?? [])[1] ?? null
   const role = type ?? (/\.claude\/agents\/(orch-[\w-]+)\.md/.exec(prompt) ?? [])[1]
-  calls.push({ type, role, nnn, model: opts.model ?? null, label: opts.label, mode: t.MODE ?? null, tier: t.TIER ?? null, handoff: t.HANDOFF ?? null, findings: t.FINDINGS ? json(t.FINDINGS) : null, cards: t.CARDS ? json(t.CARDS) : null, pre: t.PRE_CHECKED ? json(t.PRE_CHECKED) : null, known: t.KNOWN_FINDINGS ? json(t.KNOWN_FINDINGS) : null, commands: t.COMMANDS ? json(t.COMMANDS) : null })
+  calls.push({ type, role, nnn, model: opts.model ?? null, label: opts.label, mode: t.MODE ?? null, tier: t.TIER ?? null, handoff: t.HANDOFF ?? null, findings: t.FINDINGS ? json(t.FINDINGS) : null, cards: t.CARDS ? json(t.CARDS) : null, pre: t.PRE_CHECKED ? json(t.PRE_CHECKED) : null, known: t.KNOWN_FINDINGS ? json(t.KNOWN_FINDINGS) : null, commands: t.COMMANDS ? json(t.COMMANDS) : null, plan: opts.plan ?? null })
+  if (dieOnce && type === dieOnce) {
+    dieOnce = null
+    return null
+  }
   if (type === 'kit-runner') return stubRunner(t)
   if (role === 'orch-builder') return stubBuilder(t, opts)
   if (type === 'orch-gate' && /^ui-gate /.test(opts.label ?? '')) {
@@ -350,8 +363,15 @@ async function main() {
   check('readiness: the preflight result comes back', ready?.preflight?.ok === true, JSON.stringify(ready?.preflight))
 
   // Run alpha: the diamond.
-  const a = await runWorkflow({ mode: 'run', run: 'alpha', plans: ['101', '102', '103', '104'], startedAt: '2026-01-01T00:00:00.000Z', root: proj })
+  const a = await runWorkflow({ mode: 'run', run: 'alpha', plans: ['101', '102', '103', '104'], root: proj })
   const sa = subjects('orch/alpha')
+  // Plan 029: the merge folder has its packages (the merge step builds there), the run branch starts with its own empty
+  // commit, and the start time is init's clock.
+  const mfA = join(root, 'orch-app-orch-merge-alpha')
+  check('alpha: init installed the merge folder\'s scripts packages (picomatch) and said so', existsSync(join(mfA, 'scripts', 'node_modules', 'picomatch')) && !existsSync(join(proj, '.git', 'modules')), `picomatch ${existsSync(join(mfA, 'scripts', 'node_modules', 'picomatch'))}`)
+  const firstOnRun = git(proj, 'log', '--reverse', '--first-parent', '--format=%s', 'origin/main..origin/orch/alpha').stdout.split('\n')[0]
+  check('alpha: the run branch starts with its own empty commit "orch(alpha): run start"', firstOnRun === 'orch(alpha): run start', firstOnRun)
+  check('alpha: the preflight was given the run\'s plans', runnerCommands.some((c) => c === 'node scripts/orch-preflight.mjs --run alpha --plans 101,102,103,104'), runnerCommands.filter((c) => /preflight/.test(c)).join(' | '))
   const order = sa.map((s) => (/\(plan (\d+)\)$/.exec(s) ?? [])[1])
   check('alpha: four merges with the anchored subject', sa.length === 4 && sa.every((s, i) => SUBJECT('alpha', order[i]).test(s)), sa.join(' | '))
   check('alpha: merged in wave order (101 first, 104 last)', order[0] === '101' && order[3] === '104' && new Set(order.slice(1, 3)).size === 2 && order.slice(1, 3).every((n) => ['102', '103'].includes(n)), order.join(','))
@@ -359,16 +379,16 @@ async function main() {
   check('alpha: status.json on the run branch lists every plan merged with round, sha and models', !!st && ['101', '102', '103', '104'].every((n) => st.plans[n]?.state === 'merged' && /^[0-9a-f]{40}$/.test(st.plans[n].sha ?? '') && Number.isInteger(st.plans[n].round) && st.plans[n].models?.['orch-builder']?.model && st.plans[n].models?.['orch-merge']?.model && st.plans[n].models?.['orch-gate']?.model), JSON.stringify(st?.plans?.['101']))
   check('alpha: rounds 101=0, 102=1, 103=0, 104=1', !!st && st.plans['101'].round === 0 && st.plans['102'].round === 1 && st.plans['103'].round === 0 && st.plans['104'].round === 1, st ? ['101', '102', '103', '104'].map((n) => st.plans[n].round).join(',') : 'no status')
   check('alpha: 102 fixed by the same build-tier builder in round 1', builderCalls('102').map((c) => `${c.tier}/${c.mode}`).join(',') === 'build/first,build/fix' && builderCalls('102')[1].findings?.length === 1, JSON.stringify(builderCalls('102')))
-  check('alpha: 103 environment failure retried once after the env check, no fix round', builderCalls('103').map((c) => `${c.tier}/${c.mode}`).join(',') === 'build/first,build/env-retry' && runnerCommands.some((c) => c === 'node scripts/orch-preflight.mjs --env-only'), builderCalls('103').map((c) => c.mode).join(','))
+  check('alpha: 103 environment failure retried once after the env check (which names the run), no fix round', builderCalls('103').map((c) => `${c.tier}/${c.mode}`).join(',') === 'build/first,build/env-retry' && runnerCommands.some((c) => c === 'node scripts/orch-preflight.mjs --env-only --run alpha'), builderCalls('103').map((c) => c.mode).join(','))
   check('alpha: 104 pass: true next to a major is a fail, sent back with the finding', builderCalls('104').length === 2 && builderCalls('104')[1].mode === 'fix' && builderCalls('104')[1].findings?.[0]?.severity === 'major' && (st?.notes ?? []).some((n) => /pass: true next to a major/.test(n.text)), JSON.stringify(builderCalls('104')[1]))
   check('alpha: origin/main unchanged', git(origin, 'rev-parse', 'main').stdout.trim() === mainBefore, 'main moved')
-  const mfA = join(root, 'orch-app-orch-merge-alpha')
   check('alpha: the merge folder has no uncommitted files', existsSync(mfA) && git(mfA, 'status', '--porcelain').stdout.trim() === '', git(mfA, 'status', '--porcelain').stdout)
-  check('alpha: the report is on the run branch and copied to the main folder', a?.ok === true && git(proj, 'cat-file', '-e', 'origin/orch/alpha:docs/orchestrator/runs/alpha/report.md').status === 0 && existsSync(join(proj, '.claude', 'orchestrator-runs', 'alpha.md')) && /What only the Human can do/.test(readFileSync(join(proj, '.claude', 'orchestrator-runs', 'alpha.md'), 'utf8')), JSON.stringify(a))
+  check('alpha: the report is on the run branch and copied to the main folder', a?.ok === true && a.reportCommitted === true && git(proj, 'cat-file', '-e', 'origin/orch/alpha:docs/orchestrator/runs/alpha/report.md').status === 0 && existsSync(join(proj, '.claude', 'orchestrator-runs', 'alpha.md')) && /What only the Human can do/.test(readFileSync(join(proj, '.claude', 'orchestrator-runs', 'alpha.md'), 'utf8')), JSON.stringify(a))
+  check('alpha: startedAt is init\'s own clock (an ISO time, no args value)', !!st && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(st.startedAt ?? '') && Date.now() - Date.parse(st.startedAt) < 60 * 60 * 1000 && a?.startedAt === st.startedAt, `${st?.startedAt} / ${a?.startedAt}`)
   check('alpha: the main folder stays clean (status and report copy are gitignored)', git(proj, 'status', '--porcelain').stdout.trim() === '', git(proj, 'status', '--porcelain').stdout)
 
   // Run beta, first launch: fix rounds, escalation, the wave gate.
-  const b1 = await runWorkflow({ mode: 'run', run: 'beta', plans: ['201', '202', '203', '204'], startedAt: '2026-01-02T00:00:00.000Z', root: proj })
+  const b1 = await runWorkflow({ mode: 'run', run: 'beta', plans: ['201', '202', '203', '204'], root: proj })
   const sb = subjects('orch/beta').map((s) => (/\(plan (\d+)\)$/.exec(s) ?? [])[1])
   check('beta 1: 201 and 204 merged, 202 parked, 203 not started', sb.length === 2 && sb.includes('201') && sb.includes('204') && b1?.parked?.includes('202') && builderCalls('203').length === 0, `${sb.join(',')} ${JSON.stringify(b1?.parked)}`)
   const s1 = JSON.parse(readFileSync(join(proj, '.claude', 'orchestrator-runs', 'beta', 'status.json'), 'utf8'))
@@ -381,15 +401,22 @@ async function main() {
   // Run beta, relaunch: the done set comes from git; merged plans are not redone.
   phase2 = true
   const before = { b201: builderCalls('201').length, b204: builderCalls('204').length }
-  const b2 = await runWorkflow({ mode: 'run', run: 'beta', plans: ['201', '202', '203', '204'], startedAt: '2026-01-03T00:00:00.000Z', root: proj })
+  // Plan 029: the rules finder of the relaunch dies once (returns null) → retried once on the fallback model.
+  dieOnce = 'orch-check-rules'
+  const b2 = await runWorkflow({ mode: 'run', run: 'beta', plans: ['201', '202', '203', '204'], root: proj })
   const sb2 = subjects('orch/beta').map((s) => (/\(plan (\d+)\)$/.exec(s) ?? [])[1])
+  const dead = calls.filter((c) => c.type === 'orch-check-rules')
+  const deadPlan = dead.find((c) => c.model === 'opus')?.nnn
+  const deadCalls = dead.filter((c) => c.nnn === deadPlan)
+  const s2notes = statusOnBranch('beta')?.notes ?? []
+  check('beta 2: a dead finder is retried once on the fallback model (opus), with a run note naming both models, and not a third time', !!deadPlan && deadCalls.length === 2 && deadCalls[0].model === null && deadCalls[1].model === 'opus' && s2notes.some((n) => n.plan === deadPlan && n.text === `model fallback: check-rules ${deadPlan} agent default → opus`), JSON.stringify({ deadPlan, models: deadCalls.map((c) => c.model), notes: s2notes.filter((n) => /fallback/.test(n.text)) }))
   check('beta 2: relaunch merges 202 and 203 after 201 and 204', sb2.length === 4 && new Set(sb2.slice(0, 2)).size === 2 && sb2.slice(2).every((n) => ['202', '203'].includes(n)) && new Set(sb2.slice(2)).size === 2, sb2.join(','))
   check('beta 2: no builder ran again for the merged 201 and 204', builderCalls('201').length === before.b201 && builderCalls('204').length === before.b204, JSON.stringify(before))
   const s2 = statusOnBranch('beta')
   check('beta 2: status.json shows all four merged after two attempts', !!s2 && s2.attempts === 2 && ['201', '202', '203', '204'].every((n) => s2.plans[n].state === 'merged') && !s2.plans['202'].reason && s2.plans['202'].earlier?.[0]?.state === 'parked', JSON.stringify(s2 && Object.values(s2.plans).map((p) => `${p.nnn}:${p.state}`)))
   check('beta 2: the run result counts come from git', JSON.stringify((b2?.merged ?? []).slice().sort()) === JSON.stringify(['201', '202', '203', '204']), JSON.stringify(b2?.merged))
   // Run gamma: the UI step on; an ESCALATE then a judgment-tier failure parks at round 1; auth code in a plain path.
-  const g = await runWorkflow({ mode: 'run', run: 'gamma', plans: ['301', '302'], ui: true, startedAt: '2026-01-04T00:00:00.000Z', root: proj })
+  const g = await runWorkflow({ mode: 'run', run: 'gamma', plans: ['301', '302'], ui: true, root: proj })
   const sg = JSON.parse(readFileSync(join(proj, '.claude', 'orchestrator-runs', 'gamma', 'status.json'), 'utf8'))
   const b301 = builderCalls('301').map((c) => `${c.tier}/${c.mode}`).join(',')
   check('gamma: 301 ESCALATE → judgment builder fails → parked at round 1 of 2 (judgment + escalated)', b301 === 'build/first,judgment/handoff' && sg.plans['301']?.state === 'parked' && sg.plans['301'].round === 1 && /fix rounds used: 1 of 2/.test(sg.plans['301'].reason ?? '') && !!g?.parked?.includes('301'), `${b301} ${JSON.stringify(sg.plans['301'])}`)
@@ -403,10 +430,12 @@ async function main() {
   check('beta: origin/main unchanged', git(origin, 'rev-parse', 'main').stdout.trim() === mainBefore, 'main moved')
 
   // Run epsilon (UI step off): a [ui] item the builder reported no card for is still recorded and reaches the Human.
-  const e = await runWorkflow({ mode: 'run', run: 'epsilon', plans: ['405'], startedAt: '2026-01-04T12:00:00.000Z', root: proj })
+  const e = await runWorkflow({ mode: 'run', run: 'epsilon', plans: ['405'], root: proj })
   const se = JSON.parse(readFileSync(join(proj, '.claude', 'orchestrator-runs', 'epsilon', 'status.json'), 'utf8'))
   const eCard = (title) => (se.plans['405']?.uiCards ?? []).find((c) => c.card === title)
   check('epsilon: 405 merged; its reported card passed by script, the left-out [ui] items are recorded unchecked', e?.ok === true && se.plans['405']?.state === 'merged' && eCard('Save shows Saved')?.status === 'pass' && eCard('Save shows Saved').via === 'script' && eCard('Profile shows the avatar')?.status === 'unchecked' && eCard('Profile shows the avatar').via === 'none', JSON.stringify(se.plans['405']?.uiCards))
+  const eMerges = calls.filter((c) => c.type === 'orch-merge' && c.nnn === '405').length
+  check('epsilon: an environment failure at the merge retries the merge only — one builder, one gate, two merges, merged in round 0', se.plans['405']?.state === 'merged' && se.plans['405'].round === 0 && builderCalls('405').length === 1 && calls.filter((c) => c.type === 'orch-gate' && c.nnn === '405' && /^gate /.test(c.label ?? '')).length === 1 && eMerges === 2 && runnerCommands.includes('node scripts/orch-preflight.mjs --env-only --run epsilon') && (se.notes ?? []).some((n) => n.plan === '405' && /^environment failure \(merge: stub: 'ng' is not recognized\); the environment check passed, the merge is retried on its own/.test(n.text)), JSON.stringify({ builders: builderCalls('405').length, merges: eMerges, notes: (se.notes ?? []).filter((n) => /environment/.test(n.text)) }))
   check('epsilon: a run note names the [ui] items the builder left out', (se.notes ?? []).some((n) => n.plan === '405' && /builder reported no card for 2 \[ui\] item\(s\).*Profile shows the avatar/.test(n.text)), JSON.stringify(se.notes))
   check('epsilon: a card title covers only the item it equals — "Save shows Saved" does not cover "Save shows Saved in the header"', eCard('Save shows Saved in the header')?.status === 'unchecked', JSON.stringify(se.plans['405']?.uiCards))
   check('epsilon: a [ui] bullet in the Execution Notes is not a [ui] item', !(se.plans['405']?.uiCards ?? []).some((c) => /Not a goal/.test(c.card)) && !(se.notes ?? []).some((n) => /Not a goal/.test(n.text)), JSON.stringify(se.plans['405']?.uiCards))
@@ -417,14 +446,15 @@ async function main() {
   // [ui] card values that could become flags or reach a shell are not recorded; orch-state takes --key=value only.
   gateDrop = true
   const zBuilders = builderCalls('501').length
-  const z = await runWorkflow({ mode: 'run', run: 'zeta', plans: ['501'], startedAt: '2026-01-04T18:00:00.000Z', root: proj,
-    checks: { '501': ['npm run build', 'npm run nosuch', 'node tools/ok-check.mjs --quick', 'node --test tests/a.test.mjs', 'node -e "1"', 'node tools/x.mjs; rm -rf /', 'echo hi > x', 'git reset --hard HEAD'] } })
+  const z = await runWorkflow({ mode: 'run', run: 'zeta', plans: ['501'], root: proj,
+    checks: { '501': ['npm run build', 'npm run nosuch', 'node tools/ok-check.mjs --quick', 'node --test tests/a.test.mjs', 'node -e "1"', 'node tools/x.mjs; rm -rf /', 'echo hi > x', 'git reset --hard HEAD', 'node scripts/kit-owned.mjs --write'] } })
   const sz = JSON.parse(readFileSync(join(proj, '.claude', 'orchestrator-runs', 'zeta', 'status.json'), 'utf8'))
   const zGates = calls.filter((c) => c.type === 'orch-gate' && c.nnn === '501' && /^gate /.test(c.label ?? '')).slice(-2)
   check('zeta: only allowlisted extra checks reach the gate (npm run <known script>, node tools/…, node --test)', JSON.stringify(zGates[0]?.commands) === JSON.stringify(['npm run build', 'npm run lint', 'npm run test', 'node tools/ok-check.mjs --quick', 'node --test tests/a.test.mjs']), JSON.stringify(zGates[0]?.commands))
   const dropNote = (sz.notes ?? []).filter((n) => n.plan === '501' && /^check command dropped, not run: /.test(n.text)).map((n) => n.text).join(' | ')
-  check('zeta: each dropped check command is named in a run note with its reason', ['npm run nosuch', 'node -e', 'rm -rf', 'echo hi', 'reset --hard'].every((c) => dropNote.includes(c)) && /no script nosuch in package.json/.test(dropNote), dropNote)
-  check('zeta: a gate result left out is a fail (fix round 1), not a pass', z?.ok === true && sz.plans['501']?.state === 'merged' && sz.plans['501'].round === 1 && builderCalls('501').length === zBuilders + 2 && /the gate returned no result for this check/.test(JSON.stringify(builderCalls('501').at(-1)?.findings ?? [])), JSON.stringify({ round: sz.plans['501']?.round, f: builderCalls('501').at(-1)?.findings }))
+  check('zeta: each dropped check command is named in a run note with its reason (a --write script among them)', ['npm run nosuch', 'node -e', 'rm -rf', 'echo hi', 'reset --hard', 'kit-owned.mjs --write: --write writes files'].every((c) => dropNote.includes(c)) && /no script nosuch in package.json/.test(dropNote), dropNote)
+  // Plan 029: a result the gate lost is run again — only that command, once — and costs no fix round.
+  check('zeta: a gate result left out is rerun for the missing command only, no fix round (round 0, one builder)', z?.ok === true && sz.plans['501']?.state === 'merged' && sz.plans['501'].round === 0 && builderCalls('501').length === zBuilders + 1 && zGates.length === 2 && JSON.stringify(zGates[1]?.commands) === JSON.stringify(['node --test tests/a.test.mjs']) && zGates[1].label === 'gate 501 rerun' && (sz.notes ?? []).some((n) => n.plan === '501' && n.text === 'gate rerun for 1 missing result(s): node --test tests/a.test.mjs'), JSON.stringify({ round: sz.plans['501']?.round, gates: zGates.map((c) => [c.label, c.commands]), notes: (sz.notes ?? []).filter((n) => /rerun/.test(n.text)) }))
   const zCards = (sz.plans['501']?.uiCards ?? []).map((c) => c.card)
   const cardNotes = (sz.notes ?? []).filter((n) => /\[ui\] card not recorded/.test(n.text)).map((n) => n.text).join(' | ')
   check('zeta: a card title starting with "-", a non-http page and an unsafe screenshot path are not recorded', !zCards.some((c) => c !== 'Bad test') && /starts with - or is empty/.test(cardNotes) && /not an http\(s\) URL/.test(cardNotes) && /not a safe relative path/.test(cardNotes) && sz.plans['501'].state === 'merged', `${JSON.stringify(zCards)} ${cardNotes}`)
@@ -435,13 +465,21 @@ async function main() {
   const zSets = runnerCommands.filter((c) => c.startsWith('node scripts/orch-state.mjs set ') && c.includes('--run=zeta'))
   check('zeta: every orch-state argument is one --key=value token', zSets.length > 0 && runnerCommands.filter((c) => c.startsWith('node scripts/orch-state.mjs ')).every((c) => words(c).slice(3).every((w) => /^--[a-z-]+=/.test(w))), zSets[0] ?? 'none')
 
+  // Run theta (plan 029): the same gate failure twice in a row is a loop — parked at once with the reason, no further
+  // fix round, two builders only; the report and the STUCK line still come.
+  const th = await runWorkflow({ mode: 'run', run: 'theta', plans: ['205'], root: proj })
+  const sth = JSON.parse(readFileSync(join(proj, '.claude', 'orchestrator-runs', 'theta', 'status.json'), 'utf8'))
+  check('theta: 205 parked as "same reason twice" after one fix round, two builders, the report written and STUCK returned', sth.plans['205']?.state === 'parked' && sth.plans['205'].round === 1 && /^same reason twice: gate: npm run build/.test(sth.plans['205'].reason ?? '') && builderCalls('205').length === 2 && th?.ok === true && existsSync(join(proj, '.claude', 'orchestrator-runs', 'theta.md')) && /^STUCK: /.test(th?.stuck ?? ''), JSON.stringify({ p: sth.plans['205'], builders: builderCalls('205').length, stuck: th?.stuck, ok: th?.ok }))
+  const thWatch = sh(process.execPath, ['scripts/orch-state.mjs', 'watch', '--run=theta'], proj)
+  check('theta: watch on the stopped run prints STOPPED with the reason and exits 0', thWatch.status === 0 && /^STOPPED: wave 1 parked 205/m.test(thWatch.out), tail(thWatch.out))
+
   // The [ui] tier: a local test server (a child process) for the pages, the login and the backend.
   const server = await startUiServer()
   try {
     UI.base = `http://127.0.0.1:${server.port}`
     UI.api = `http://localhost:${server.port}`
     UI.dead = `http://127.0.0.1:${await deadPort()}`
-    const d = await runWorkflow({ mode: 'run', run: 'delta', plans: ['401'], ui: true, uiLogin: `${UI.base}/login-ok`, uiApi: `${UI.api}/api-cors`, startedAt: '2026-01-05T00:00:00.000Z', root: proj })
+    const d = await runWorkflow({ mode: 'run', run: 'delta', plans: ['401'], ui: true, uiLogin: `${UI.base}/login-ok`, uiApi: `${UI.api}/api-cors`, root: proj })
     const sd = JSON.parse(readFileSync(join(proj, '.claude', 'orchestrator-runs', 'delta', 'status.json'), 'utf8'))
     const cardOf = (title) => (sd.plans['401']?.uiCards ?? []).find((c) => c.card === title)
     const passCard = cardOf('Save shows Saved')
@@ -463,8 +501,6 @@ async function main() {
     // installs nothing and is given back when the plan ends; with no idle slot the run builds in its own folder.
     const slotDir = join(root, 'orch-app-wt-1')
     git(proj, 'worktree', 'add', '--detach', slotDir, 'main')
-    // A real project ignores node_modules in its .gitignore; the scratch one has none, so a slot would look dirty.
-    writeFileSync(join(proj, '.git', 'info', 'exclude'), `${readFileSync(join(proj, '.git', 'info', 'exclude'), 'utf8')}\nnode_modules\n`)
     const slotInstall = spawnSync('npm install --no-audit --no-fund --no-package-lock', { cwd: join(slotDir, 'scripts'), env, encoding: 'utf8', shell: true })
     check('slots: the scratch slot is provisioned (npm install inside scripts/)', slotInstall.status === 0, tail(`${slotInstall.stdout}${slotInstall.stderr}`))
     for (const [run, nnn, args, why] of [
@@ -472,7 +508,7 @@ async function main() {
       ['ui-login', '403', { uiLogin: `${UI.base}/login-bad` }, /ui login: login http:\S+\/login-bad answered 401/],
       ['ui-cors', '404', { uiApi: `${UI.api}/api-nocors` }, /ui backend: backend http:\/\/localhost:\d+ is cross-origin unreachable from http:\/\/127\.0\.0\.1:\d+ \(Access-Control-Allow-Origin: missing\)/],
     ]) {
-      const r = await runWorkflow({ mode: 'run', run, plans: [nnn], ui: true, ...args, startedAt: '2026-01-06T00:00:00.000Z', root: proj })
+      const r = await runWorkflow({ mode: 'run', run, plans: [nnn], ui: true, ...args, root: proj })
       const sx = JSON.parse(readFileSync(join(proj, '.claude', 'orchestrator-runs', run, 'status.json'), 'utf8'))
       const p = sx.plans[nnn]
       check(`${run}: ${nnn} stops before the browser agent with the reason in status.json, no fix round`, p?.state === 'parked' && p.round === 0 && /^UI environment blocked before the browser step: /.test(p.reason ?? '') && why.test(p.reason) && !!r?.parked?.includes(nnn) && builderCalls(nnn).length === 1 && calls.filter((c) => c.type === 'orch-ui' && c.nnn === nnn).length === 0, JSON.stringify(p))
@@ -500,7 +536,7 @@ async function main() {
     writeFileSync(serveFile, "console.error('SLOT_SERVE: stub - the dev server did not come up')\nprocess.exit(1)\n")
     git(proj, 'commit', '-q', '-am', 'test: a dev command whose server does not start')
     const buildersBefore = calls.filter((c) => c.role === 'orch-builder').length
-    const df = await runWorkflow({ mode: 'run', run: 'devfail', plans: ['101'], startedAt: '2026-01-07T00:00:00.000Z', root: proj })
+    const df = await runWorkflow({ mode: 'run', run: 'devfail', plans: ['101'], root: proj })
     const devProblem = (df?.problems ?? []).find((p) => /^dev server: /.test(p)) ?? ''
     check('devfail: the run stops at the preflight with the dev server start failure, before any builder', df?.ok === false && df.stopped === 'preflight' && /slot-serve\.mjs did not start it \(exit 1: .*did not come up\)/.test(devProblem) && calls.filter((c) => c.role === 'orch-builder').length === buildersBefore && !existsSync(join(proj, '.claude', 'orchestrator-runs', 'devfail', 'status.json')), JSON.stringify(df))
     writeFileSync(preFile, preSrc)
@@ -522,7 +558,7 @@ for (const line of results) console.log(line)
 const total = results.filter((l) => /^(PASS|FAIL)/.test(l)).length
 if (keep) console.log(`kept: ${root}`)
 else {
-  for (const run of ['alpha', 'beta', 'gamma', 'epsilon', 'zeta', 'delta', 'ui-down', 'ui-login', 'ui-cors']) {
+  for (const run of ['alpha', 'beta', 'gamma', 'epsilon', 'zeta', 'theta', 'delta', 'ui-down', 'ui-login', 'ui-cors']) {
     git(proj, 'worktree', 'remove', '--force', join(root, `orch-app-orch-merge-${run}`))
   }
   try {

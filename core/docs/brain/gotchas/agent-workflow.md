@@ -296,3 +296,23 @@ only the Bash tool's command text triggers it.
 **Why the obvious fix is wrong:** Retrying or asking a builder to "fix" the failing check changes nothing: the check is not failing, it is waiting. A longer timeout only waits longer.
 
 **What to do instead:** Give the project a test script that runs once and exits (the one CI uses, e.g. named `test:ci`) and set `commands.testCi` to it: the gate runs it instead of `commands.test`. `orch-preflight.mjs` warns when the gate's script looks like a watch mode (`orchestrator.watchTestPattern` names the project's own framework's command), and every gate command is stopped after `orchestrator.gateTimeoutMin` minutes and reported as a fail with a "timed out" tail.
+
+---
+
+## A merge folder without packages parks a finished plan
+
+**What hurt:** On 2026-10-28 an orchestrator run built its one plan and passed every check, then the merge step's `npm run build` failed with `'ng' is not recognized` — twice — and the plan was parked. The merge folder is a worktree `init` had just created; a worktree starts with no `node_modules`. The environment check passed because it looks at the main folder, which has its packages.
+
+**Why the obvious fix is wrong:** Retrying the merge, or sending the plan back to a builder, changes nothing in the merge folder. Linking `node_modules` in from the main folder is worse: on Windows `git worktree remove --force` follows the junction and deletes the main folder's packages.
+
+**What to do instead:** `orch-state.mjs init` installs the merge folder's packages with the same `ensureDeps` a builder folder gets (an idle folder with packages installs nothing), and the env-only preflight (`--env-only --run <run>`) checks `scripts/node_modules/picomatch` in the merge folder too. A folder that cannot be provisioned is an environment failure before any builder runs.
+
+---
+
+## Every orchestrator run note is an agent call
+
+**What hurt:** After the park above, the run wrote about 30 closing notes in 4.5 minutes — each `note` is `orch-state.mjs note`, run by a `kit-runner` agent, so a note loop is a long agent loop. The run looked alive (status.json kept updating) while nothing happened, and the Human's session was stuck on a model whose every reply was blocked.
+
+**Why the obvious fix is wrong:** Writing fewer notes by hand in one place does not stop the next loop; a time-based watchdog cannot live in the workflow script (it has no clock: `Date.now()` throws there).
+
+**What to do instead:** Limits are counters in the workflow (`orchestrator.maxNotesPerPlan`, `maxAgentCallsPerPlan`, and the same failure reason twice in a row parks the plan at once), a dead agent is retried once on `orchestrator.fallbackModel`, and the Human asks `node scripts/orch-state.mjs watch --run <run>` — one line from `status.json` only, `STUCK` with exit 1 — from a second terminal.

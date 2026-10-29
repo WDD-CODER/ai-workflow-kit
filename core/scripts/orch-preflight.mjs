@@ -2,12 +2,13 @@
  * Orchestrator preflight — finds the environment problems before a run starts, so no builder spends a fix round on
  * them (docs/agent/orchestrator.md). One line per check: `OK`, `SKIP <why>` or `FAIL <what to do>`.
  *
- *   node scripts/orch-preflight.mjs [--run <name>] [--env-only] [--db-port <n>]
+ *   node scripts/orch-preflight.mjs [--run <name>] [--plans <NNN,NNN>] [--env-only] [--db-port <n>]
  *
  * Checks:
  *   disk         free disk >= orchestrator.minFreeDiskGb (ORCH_FREE_GB replaces the measured value, for tests)
  *   database     a TCP connection to DB_PORT / --db-port (SKIP when neither is set)
- *   packages     scripts/node_modules has the workflow scripts' packages; a project with a frontend has node_modules
+ *   packages     scripts/node_modules has the workflow scripts' packages; a project with a frontend has node_modules;
+ *                with --run, the run's merge folder (when it exists) has its scripts/ packages too
  *   gate         WARN when the gate's test script (commands.testCi, else commands.test) is a watch mode that never exits
  *   dev server   commands.dev set → the dev server answers on the base port (kit config slots.fePorts), else
  *                scripts/slot-serve.mjs starts it; a failed start is a FAIL (an environment failure before any builder)
@@ -15,8 +16,10 @@
  *   remote       origin/<main branch> is known (a fetch has run)
  *   main folder  on the main branch with no uncommitted tracked file (a run never writes it; plans are committed first)
  *   settings     the workflow, the /orchestrate command, the role agents and the state script are installed
- *   run          --run <name>: no run of that name is live (status.json phase running, updated in the last 2 hours)
- * --env-only runs disk, database and packages only (the retry check after an environment failure).
+ *   run          --run <name>: no run of that name is live (status.json phase running, updated in the last 2 hours);
+ *                with --plans, no live run holds one of these plans or a plan whose scope overlaps one of them
+ * --env-only runs disk, database and packages only (the retry check after an environment failure; pass --run too so
+ * the merge folder's packages are checked).
  *
  *   node scripts/orch-preflight.mjs --ui [--pages <url,url>] [--login <url>] [--api <url>]
  *
@@ -29,12 +32,14 @@
  * A FAIL adds `uiBlocked: true`: the orchestrator stops before the browser agent, with no fix round spent.
  * The last line is `ORCH_JSON {"ok":…,"problems":[…]}`. Exit 0 when nothing FAILed, else 1.
  */
-import { existsSync, readFileSync, statfsSync } from 'fs'
+import { existsSync, readFileSync, readdirSync, statfsSync } from 'fs'
 import { spawnSync } from 'child_process'
 import { resolve, dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import net from 'net'
 import { freeGb, runNameProblem, serverProblem, loginProblem, crossOriginProblem, watchModeProblem } from './lib/orch-run.mjs'
+import { findOpenPlan } from './lib/plan-paths.mjs'
+import { extractScopeGlobs } from './lib/plan-scope.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = resolve(__dirname, '..')
@@ -42,6 +47,7 @@ const MAIN = '{{git.mainBranch}}'
 const MIN_FREE_GB = {{orchestrator.minFreeDiskGb|json}}
 const DEV = '{{commands.dev}}'
 const PM = '{{project.packageManager}}' === 'pnpm' ? 'pnpm' : 'npm'
+const REPO = '{{project.repoName}}'
 // The script the gate runs: commands.testCi when the project set it, else commands.test.
 const TEST_SCRIPT = '{{commands.testCi}}' || '{{commands.test}}'
 // A project's own regular expression for its framework's watch-mode test command (orchestrator.watchTestPattern).
@@ -98,6 +104,17 @@ function database() {
 function packages() {
   if (!existsSync(join(root, 'scripts', 'node_modules', 'picomatch'))) return bad('packages', `scripts/node_modules is missing the workflow scripts' packages — run ${PM} install inside scripts/`)
   if (DEV && existsSync(join(root, 'package.json')) && !existsSync(join(root, 'node_modules'))) return bad('packages', 'the project has no node_modules — run the project install first')
+  // The run's merge folder (once init made it) runs the project checks too: it needs the same packages.
+  if (run && !runNameProblem(run)) {
+    const mf = join(dirname(root), `${REPO || root.split(/[\\/]/).pop()}-orch-merge-${run}`)
+    if (existsSync(mf) && existsSync(join(mf, 'scripts', 'package.json')) && !existsSync(join(mf, 'scripts', 'node_modules', 'picomatch'))) {
+      return bad('packages', `the merge folder ${mf} has no scripts/node_modules — run ${PM} install inside its scripts/ (init installs it on the next start)`)
+    }
+    // The merge step runs the project's build there: a project with packages in the main folder needs them in the merge folder.
+    if (existsSync(mf) && existsSync(join(mf, 'package.json')) && existsSync(join(root, 'node_modules')) && !existsSync(join(mf, 'node_modules'))) {
+      return bad('packages', `the merge folder ${mf} has no node_modules — run ${PM} install there (a merge's build fails without it)`)
+    }
+  }
   ok('packages')
 }
 
@@ -170,17 +187,62 @@ function settings() {
   ok('settings')
 }
 
-function live() {
+// A live run: status.json running, updated in the last two hours.
+function liveRuns() {
+  const dir = join(root, '.claude', 'orchestrator-runs')
+  if (!existsSync(dir)) return []
+  const out = []
+  for (const name of readdirSync(dir)) {
+    try {
+      const s = JSON.parse(readFileSync(join(dir, name, 'status.json'), 'utf8'))
+      if (s.phase === 'running' && Date.now() - Date.parse(s.updatedAt ?? 0) < LIVE_MS) out.push({ name, status: s })
+    } catch { /* no status.json, or unreadable: not live */ }
+  }
+  return out
+}
+
+// One run at a time per plan and per file: a second run that names a plan of a live run, or a plan whose Read-Write
+// Scope overlaps one of its plans, is refused (lock groups are computed inside one run only; two runs would build
+// the same file in parallel). --plans lists the new run's plan numbers.
+async function live() {
   if (!run) return
   const why = runNameProblem(run)
   if (why) return bad('run', why)
-  const p = join(root, '.claude', 'orchestrator-runs', run, 'status.json')
-  if (!existsSync(p)) return ok('run')
-  try {
-    const s = JSON.parse(readFileSync(p, 'utf8'))
-    const age = Date.now() - Date.parse(s.updatedAt ?? 0)
-    if (s.phase === 'running' && age < LIVE_MS) return bad('run', `run "${run}" is live (last update ${s.updatedAt}) — wait for it, or pick another name`)
-  } catch { /* unreadable: treated as not live */ }
+  const live = liveRuns()
+  const same = live.find((r) => r.name === run)
+  if (same) return bad('run', `run "${run}" is live (last update ${same.status.updatedAt}) — wait for it, or pick another name`)
+  const mine = String(flag('--plans') ?? '').split(',').map((s) => s.trim()).filter((s) => /^\d{1,4}$/.test(s))
+  const others = live.filter((r) => r.name !== run)
+  if (!mine.length || !others.length) return ok('run')
+  const problems = []
+  for (const r of others) {
+    const theirs = Object.keys(r.status.plans ?? {})
+    const shared = mine.filter((p) => theirs.includes(p))
+    if (shared.length) problems.push(`plan${shared.length > 1 ? 's' : ''} ${shared.join(', ')} already in live run "${r.name}"`)
+    let overlap
+    try {
+      overlap = (await import('./lib/plan-graph.mjs')).globsOverlap
+    } catch {
+      continue // no picomatch: the packages check names it
+    }
+    const scopeOf = (nnn) => {
+      const path = findOpenPlan(root, nnn)
+      if (!path) return []
+      try {
+        return extractScopeGlobs(readFileSync(join(root, path), 'utf8')) ?? []
+      } catch {
+        return []
+      }
+    }
+    const files = git('ls-files').out.split('\n').filter(Boolean)
+    for (const p of mine.filter((x) => !shared.includes(x))) {
+      for (const t of theirs) {
+        const hit = scopeOf(p).flatMap((a) => scopeOf(t).map((b) => overlap(a, b, files))).find(Boolean)
+        if (hit) problems.push(`scope overlap with live run "${r.name}": plan ${p} and its plan ${t} both write ${hit}`)
+      }
+    }
+  }
+  if (problems.length) return bad('run', `${problems.join('; ')} — wait for that run to end (node scripts/orch-state.mjs watch --run <run>), or leave those plans out`)
   ok('run')
 }
 
@@ -254,7 +316,7 @@ if (!envOnly && !uiOnly) {
   remote()
   mainFolder()
   settings()
-  live()
+  await live()
 }
 for (const r of results) console.log(`${r.status.padEnd(4)} ${r.name}${r.why ? `: ${r.why}` : ''}`)
 const problems = results.filter((r) => r.status === 'FAIL').map((r) => `${r.name}: ${r.why}`)

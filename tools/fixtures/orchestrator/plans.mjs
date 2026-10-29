@@ -7,8 +7,10 @@
  *     103  its first builder reports an environment failure (disk); retried once with no fix round
  *     104  its first bug finder says pass: true next to a major problem → treated as a fail, fixed in round 1
  *   run "beta" — fix rounds, escalation, the wave gate and a relaunch
- *     201  names INV-1 in Architecture Impact → its builder starts on the judgment tier
- *     202  its gate fails on every build in the first launch → parked after maxFixRounds; passes on the relaunch
+ *     201  is a deviation from INV-1 in Architecture Impact → its builder starts on the judgment tier
+ *     202  only preserves INV-1 → starts on build; its gate fails on every build in the first launch (a new error each
+ *          round) → parked after maxFixRounds; passes on the relaunch
+ *     205  run "theta" (plan 029): its gate fails the same way twice → parked at once as "same reason twice"
  *     203  depends on 201 → wave 2, not started while wave 1 parked a plan
  *     204  its first builder returns ESCALATE → a fresh judgment-tier builder with the hand-off file
  *   run "gamma" — the UI step on (args.ui), escalation then a judgment failure, auth code in a plain path
@@ -60,10 +62,11 @@ export const PLANS = {
   '102': plan({ nnn: '102', title: 'Diamond left, gate fails once', deps: ['101'] }),
   '103': plan({ nnn: '103', title: 'Diamond right, environment failure', deps: ['101'] }),
   '104': plan({ nnn: '104', title: 'Diamond bottom, pass true with a major', deps: ['102', '103'] }),
-  '201': plan({ nnn: '201', title: 'Starts on judgment', inv: 'INV-1: preserves — touches the toy invariant' }),
-  '202': plan({ nnn: '202', title: 'Keeps failing then passes' }),
+  '201': plan({ nnn: '201', title: 'Starts on judgment', inv: 'INV-1: deviation until the toy follow-up — touches the toy invariant' }),
+  '202': plan({ nnn: '202', title: 'Keeps failing then passes', inv: 'INV-1: preserves — a plan that only preserves starts on build' }),
   '203': plan({ nnn: '203', title: 'Second wave', deps: ['201'] }),
   '204': plan({ nnn: '204', title: 'Escalates' }),
+  '205': plan({ nnn: '205', title: 'Same gate failure twice' }),
   '301': plan({ nnn: '301', title: 'Escalates then fails on judgment' }),
   '302': plan({ nnn: '302', title: 'UI checked and auth code' }),
   '401': plan({ nnn: '401', title: 'UI cards scripted then browser', ui: ['Save shows Saved', 'Error shows Error', 'The colour looks right'] }),
