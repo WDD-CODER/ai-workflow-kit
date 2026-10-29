@@ -29,6 +29,7 @@ branch himself.
 | `staleMin` | `{{orchestrator.staleMin}}` | Minutes without a `status.json` update after which `orch-state.mjs watch` prints `STUCK` |
 | `maxNotesPerPlan` | `{{orchestrator.maxNotesPerPlan}}` | Run notes one plan may write (every note is one runner agent call); the last one says `notes capped` |
 | `maxAgentCallsPerPlan` | `{{orchestrator.maxAgentCallsPerPlan}}` | Agent calls one plan may make before it is parked (`agent-call limit`) |
+| `mergeChecks` | `{{orchestrator.mergeChecks}}` | What the merge step runs on the merged tree: `build` = the project build plus the plan's scope check (lint and tests passed in the plan's gate and run once more at the final gate), `full` = the plan's whole check list on every merge |
 
 ## The run
 
@@ -37,7 +38,9 @@ branch himself.
    `commands.dev` set, the dev server must answer on the base port or start through `scripts/slot-serve.mjs`; a failed
    start stops the run before any builder). The command
    asks the Human every question in **one batch**, writes each answer into that plan's `## Execution Notes` (a plan
-   commit on `{{git.mainBranch}}`), and leaves out a plan whose question stays unanswered. Then the Human says `go`.
+   commit on `{{git.mainBranch}}`), and leaves out a plan whose question stays unanswered. Then the Human says `go` —
+   unless there was nothing to ask (`askHuman` false: every plan ready, no question, no environment need, preflight
+   ok), when the run starts at once; `/orchestrate … ask` keeps the pause.
 2. **Start.** `orch-state.mjs init` creates `{{orchestrator.runBranchPrefix}}<run>` from `origin/{{git.mainBranch}}` (or reuses it on a
    relaunch), adds the merge folder `<repo>-orch-merge-<run>` beside the main folder, gives the branch an empty first
    commit `orch(<run>): run start` (a builder branch cut from it is then never an ancestor of `origin/{{git.mainBranch}}`, so a
@@ -65,12 +68,15 @@ branch himself.
      project's own check scripts are; a script run with `--write`, `--apply`, `--fix` or `--update` is not a check
      either. Exactly one result per command: a result the gate lost (a run got 1 of 8 back) makes the gate run only the
      missing commands again, once, with no builder round; a command still missing after that is an environment failure.
-     A result for a command not asked for, or two for one command, is a fail;
+     A result for a command not asked for, or two for one command, is a fail. When the plan has `[auto:main]` items,
+     a second gate then runs their commands from the main folder (below);
    - finders in parallel (`orch-check-plan`, `orch-check-bugs`, `orch-check-rules`, and `orch-security` only when the
      diff touches a sensitive path or its added lines name auth, permission, password, token or role code), then `orch-verify` on every candidate;
    - the `[ui]` cards (below): each card's own e2e test, run by a gate; the UI validator (`orch-ui`) only for a
      failed or unscriptable card, and only when the run is started with the UI step on (`args.ui`);
-   - merger (`orch-merge`), one at a time: `git merge --no-ff --no-commit`, the checks, then the commit
+   - merger (`orch-merge`), one at a time: `git merge --no-ff --no-commit`, the merge checks (`orchestrator.mergeChecks`
+     = `{{orchestrator.mergeChecks}}`: `build` runs the project build plus the plan's scope check only — lint and
+     tests passed in the gate and run once more at the final gate; `full` runs the plan's whole list), then the commit
      `Merge <plan branch> into {{orchestrator.runBranchPrefix}}<run> (plan NNN)` and the push. A conflict or a failing check aborts the
      merge (`git merge --abort`) and goes back to the builder as a problem.
 4. **Wave gate.** A wave with a parked plan is the last one: later waves are not started (`skipped`).
@@ -96,6 +102,26 @@ disk, database and packages (the main folder's and the merge folder's), and the 
 builder when the failure came before the merge, and as **the merge step only** when the merge failed (the branch is
 already built and verified; a run once rebuilt both its plans from the builder for a merge folder without packages). A
 second environment failure parks the plan with the reason.
+
+## A check whose file does not exist
+
+Readiness asks `orch-state.mjs check-files` about every file a check command names (`node tools/…`, `node scripts/…`,
+the files after `node --test`). A file that is neither in the main folder nor named in the plan's own text (a plan may
+create its script) can never pass, whatever a builder does — a run once spent fix rounds and a stronger builder on a
+check for a kit script a project does not have. Such a command is dropped, named in `denied` with the reason and
+listed in `missingFiles`, and `askHuman` becomes true so the Human sees it before the run.
+
+## Checks that run from the main folder
+
+A Done-when item tagged `[auto:main]` is an `[auto]` check that reads the live environment — the backend's `.env`, a
+database, the log store — which a builder worktree and the merge folder never have (secrets are not copied into
+folders git removes). Readiness puts its command under `mainCommands`, `/orchestrate` passes them as `mainChecks`,
+and right after the plan's worktree gate passed a second `orch-gate` runs them with the main folder as `FOLDER`. Only
+a project script qualifies (`node scripts/…`, `node tools/…`, no write flag): a `… run <script>` or `node --test`
+belongs in the worktree and is dropped with a run note. A failure is a real failure, `gate (main folder): <command>`,
+and goes to the builder like any gate failure. The main folder's code is `origin/{{git.mainBranch}}`, not the plan
+branch, so a main check proves the side effects of the plan's own checks (a clean log after its tests ran), never the
+plan's code. The merge step and the final gate never run them.
 
 ## A dead agent, a loop, and "is it stuck?"
 
@@ -204,8 +230,10 @@ With the UI step off, a failed script is a finding for the builder, and a card n
 ## The report
 
 Merged, parked and why; the decisions agents took, numbered `D1…Dn` and grouped by plan with the `behaviour:` ones
-first (every `seen:` defect an agent noticed is among them), and the reply format `decisions: ok` | `D<n> ✗ <what I'd
-choose>` for the Human to grade (`docs/agent/decision-review.md`); the models each agent ran on; what only the Human can do — one
+first (every `seen:` defect an agent noticed is among them — those two kinds are the only ones kept: a confirmation
+or evidence line an agent put in `decisions` is dropped and counted, `dropped <n> confirmation line(s)`), and the reply
+format `decisions: ok` | `D<n> ✗ <what I'd choose>` for the Human to grade (`docs/agent/decision-review.md`); the
+models each agent ran on; what only the Human can do — one
 validation list, numbers running on: a **screenshot grid per page** (one row per `[ui]` card of a merged plan: title,
 verdict with who checked it — script or browser — and the round, and a thumbnail link to each screenshot; kept in
 `status.json` as `uiCards`), then **plan drift** in its own section (no severity, not a bug: update the card or the

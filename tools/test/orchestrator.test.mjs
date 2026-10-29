@@ -138,6 +138,7 @@ async function runFlow(args, hooks = {}) {
     }
     if (cmd === 'plan-info') return { ok: true, path: `plans/${f.plan}-x.plan.md`, branch: `feat/${f.plan}-x`, startTier: 'build', invariants: [], npmScripts: [], uiItems: [] }
     if (cmd === 'worktree') return { ok: true, path: `/wt/${f.plan}` }
+    if (cmd === 'check-files') return { ok: true, nnn: f.plan, missing: (hooks.missingFiles?.(f.files.split(',')) ?? []) }
     if (cmd === 'finish') return { ok: true, merged: [], parked: [], report: 'r', local: 'l', reportCommitted: true }
     if (cmd === 'diff') return { ok: true, files: [], sensitive: false }
     return { ok: true }
@@ -181,6 +182,10 @@ async function runFlow(args, hooks = {}) {
       return { ...base, merged: true, sha: 'def5678' }
     }
     if (type === 'orch-ui') return { ...base, cards: JSON.parse(t.CARDS ?? '[]').map((c) => ({ card: c.card, page: c.page, status: 'pass', screenshots: [] })) }
+    if (type === 'orch-readiness') {
+      const plan = /plans\/(\d+)-/.exec(t.PLAN ?? '')?.[1]
+      return { ...base, plans: [{ plan: t.PLAN, state: 'ready', questions: [], envNeeds: [], commands: [], ...(hooks.readiness?.(plan) ?? {}) }] }
+    }
     throw new Error(`stub: no agent for ${type} (${opts.label})`)
   }
   const parallel = (thunks) => Promise.all(thunks.map((th) => Promise.resolve().then(th)))
@@ -493,4 +498,101 @@ test('orchestrator.* config: fallbackModel, staleMin, maxNotesPerPlan and maxAge
   for (const v of [0, 101, '12']) assert.match(orchestratorProblems({ 'orchestrator.maxNotesPerPlan': v }).join(), /maxNotesPerPlan is .* from 1 to 100/)
   for (const v of [9, 501, 2.5]) assert.match(orchestratorProblems({ 'orchestrator.maxAgentCallsPerPlan': v }).join(), /maxAgentCallsPerPlan is .* from 10 to 500/)
   assert.ok(commandProblems({ 'orchestrator.fallbackModel': 'haiku', 'models.mechanical': 'haiku', 'models.analysis': 'sonnet', 'models.judgment': 'inherit', 'models.build': 'sonnet', 'models.review': 'sonnet' }).some((m) => m.startsWith('orchestrator.fallbackModel is "haiku"')), 'install and sync read it through commandProblems')
+})
+
+// ---- plan 032: a light merge step, main-folder checks, decisions only, no pause when there is nothing to ask ------
+const BUILD_SCRIPT = /const BUILD_SCRIPT = "([^"]*)"/.exec(wfSource)?.[1] ?? ''
+const PM_RUN = /const PM = (?:'|")?(pnpm|npm)/.exec(wfSource)?.[1] ?? 'npm'
+const BUILD_CHECK = `${PM_RUN} run ${BUILD_SCRIPT}`
+
+test('merge step: mergeChecks "build" hands orch-merge the build plus the plan\'s scope check only; "full" hands it the whole list; the final gate keeps everything', { skip: !BUILD_SCRIPT && 'no commands.build in this project' }, async () => {
+  const scope = 'node scripts/scope-check.mjs --plan=plans/101-x.plan.md'
+  const { calls } = await runFlow({ plans: ['101'], pilot: false, checks: { 101: [scope, 'node --test tests/a.test.mjs'] } })
+  const merge = calls.find((c) => c.type === 'orch-merge')
+  assert.deepEqual(JSON.parse(merge.task.CHECKS), [BUILD_CHECK, scope], 'the merge runs the build and the scope check, not lint or tests')
+  const gate = calls.find((c) => c.type === 'orch-gate' && c.task.FOLDER === '/wt/101')
+  assert.ok(JSON.parse(gate.task.COMMANDS).includes('node --test tests/a.test.mjs'), 'the plan gate still runs the whole list')
+  const final = calls.find((c) => c.type === 'orch-gate' && c.task.FOLDER === '/merge')
+  assert.ok(JSON.parse(final.task.COMMANDS).length >= 2 && JSON.parse(final.task.COMMANDS)[0] === BUILD_CHECK, 'the final gate runs the project checks')
+  // "full": the old behaviour, one config word away.
+  const full = await runFlow({ plans: ['101'], pilot: false, checks: { 101: [scope] } }, { source: (s) => s.replace('const MERGE_CHECKS_MODE = "build"', 'const MERGE_CHECKS_MODE = "full"') })
+  const fm = full.calls.find((c) => c.type === 'orch-merge')
+  assert.deepEqual(JSON.parse(fm.task.CHECKS), JSON.parse(full.calls.find((c) => c.type === 'orch-gate' && c.task.FOLDER === '/wt/101').task.COMMANDS))
+  // The merge-only retry after an environment failure uses the same short list.
+  const retry = await runFlow({ plans: ['101'], pilot: false }, { mergeEnvOnce: true })
+  assert.ok(retry.calls.filter((c) => c.type === 'orch-merge').every((c) => JSON.stringify(JSON.parse(c.task.CHECKS)) === JSON.stringify([BUILD_CHECK])))
+})
+
+test('main-folder checks: [auto:main] commands run in a second gate from the main folder after the worktree gate; never at the merge or the final gate; scripts only', async () => {
+  const main = 'node scripts/log-query.mjs --since=15m'
+  const { calls, notes, result } = await runFlow({ plans: ['101'], pilot: false, mainChecks: { 101: [main, 'npm run build', 'node --test tests/a.test.mjs', 'node scripts/kit-owned.mjs --write'] } })
+  const gates = calls.filter((c) => c.type === 'orch-gate')
+  assert.deepEqual(gates.map((c) => [c.label, c.task.FOLDER]), [['gate 101', '/wt/101'], ['gate 101 main', '/main'], ['gate final', '/merge']])
+  assert.deepEqual(JSON.parse(gates[1].task.COMMANDS), [main])
+  assert.equal(result.agentCalls['101'] >= 3, true, 'the main gate counts against the plan')
+  assert.ok(!JSON.parse(calls.find((c) => c.type === 'orch-merge').task.CHECKS).includes(main), 'not at the merge')
+  assert.ok(!JSON.parse(gates[2].task.COMMANDS).includes(main), 'not at the final gate')
+  const dropped = notes.filter((n) => /main-folder check dropped/.test(n))
+  assert.equal(dropped.length, 3)
+  assert.ok(dropped.some((n) => /npm run build: only node scripts\/… or node tools\/… run from the main folder/.test(n)))
+  assert.ok(dropped.some((n) => /node --test tests\/a\.test\.mjs: only node scripts/.test(n)))
+  assert.ok(dropped.some((n) => /--write writes files/.test(n)))
+  assert.equal(result.outcomes[0].state, 'merged')
+  // No main checks → no second gate.
+  const none = await runFlow({ plans: ['101'], pilot: false })
+  assert.equal(none.calls.filter((c) => c.type === 'orch-gate' && c.task.FOLDER === '/main').length, 0)
+})
+
+test('main-folder checks: a failing main check is a real failure named "gate (main folder)", with a builder fix round like any gate failure', async () => {
+  const main = 'node scripts/log-query.mjs --since=15m'
+  const { calls, result } = await runFlow({ plans: ['101'], pilot: false, mainChecks: { 101: [main] } }, { gateFails: (folder) => folder === '/main' })
+  assert.equal(calls.filter((c) => c.type === 'orch-builder').length, 2, 'one fix round, then the same reason twice parks it')
+  assert.equal(calls.filter((c) => c.type === 'orch-merge').length, 0)
+  assert.match(result.outcomes[0].reason, /^same reason twice: gate \(main folder\): node scripts\/log-query\.mjs --since=15m/)
+  const fix = calls.filter((c) => c.type === 'orch-builder')[1]
+  assert.match(fix.task.FINDINGS, /log-query\.mjs --since=15m/, 'the builder gets the failing main check as a finding')
+})
+
+test('decisions: only behaviour: and seen: entries are kept; confirmations are dropped and counted, with no run note', async () => {
+  const decisions = ['Ran the six commands one by one, all exit 0', 'behaviour: no dialog on leave — reverse: add one', 'Verified by rerun: 4 of 4 passed', 'seen: src/a.js:12 — NaN at 100 %', '  SEEN: src/b.js:3 — dup  ']
+  const { result, notes } = await runFlow({ plans: ['101'], pilot: false }, { builder: () => ({ decisions }) })
+  assert.deepEqual(result.decisions.map((d) => d.text), ['behaviour: no dialog on leave — reverse: add one', 'seen: src/a.js:12 — NaN at 100 %', 'SEEN: src/b.js:3 — dup'])
+  assert.deepEqual(result.decisionsDropped, { 101: 2 })
+  assert.equal(notes.filter((n) => /--text="?D\d/.test(n)).length, 3, 'one note per kept decision, none for a dropped line')
+  assert.ok(!notes.some((n) => /Ran the six commands|Verified by rerun/.test(n)))
+  const clean = await runFlow({ plans: ['101'], pilot: false })
+  assert.deepEqual(clean.result.decisionsDropped, {})
+})
+
+test('readiness: a check whose file is missing (and not created by the plan) is dropped with the reason and makes askHuman true', async () => {
+  const readiness = () => ({ commands: ['node tools/leak-check.mjs', 'node --test tests/a.test.mjs tests/new.test.mjs', 'npm run build'], mainCommands: ['node scripts/log-query.mjs --since=15m'] })
+  const r = await runFlow({ mode: 'readiness', plans: ['101'] }, { readiness, missingFiles: (files) => files.filter((f) => f === 'tools/leak-check.mjs' || f === 'tests/new.test.mjs') })
+  const p = r.result.plans[0]
+  assert.deepEqual(p.commands, ['node --test tests/a.test.mjs tests/new.test.mjs'].slice(1).concat(['npm run build']), 'only npm run build is left')
+  assert.ok(!p.commands.includes('node tools/leak-check.mjs') && !p.commands.some((c) => /new\.test/.test(c)), 'the missing files are not run')
+  assert.deepEqual(p.mainCommands, ['node scripts/log-query.mjs --since=15m'], 'a command whose file exists stays')
+  assert.ok(p.deniedWhy.includes('node tools/leak-check.mjs: tools/leak-check.mjs does not exist in the project and the plan does not create it'))
+  assert.deepEqual(p.missingFiles.sort(), ['tests/new.test.mjs', 'tools/leak-check.mjs'])
+  assert.equal(r.result.askHuman, true)
+  const asked = r.commands.find((c) => /orch-state\.mjs check-files/.test(c))
+  assert.match(asked, /--files=tools\/leak-check\.mjs,tests\/a\.test\.mjs,tests\/new\.test\.mjs,scripts\/log-query\.mjs/)
+  // No file named by any command (npm scripts only) → no check-files call at all.
+  const none = await runFlow({ mode: 'readiness', plans: ['101'] }, { readiness: () => ({ commands: ['npm run build'] }) })
+  assert.ok(!none.commands.some((c) => /check-files/.test(c)))
+})
+
+test('readiness: askHuman is false only when every plan is ready with no question and no environment need; mainCommands are filtered to project scripts', async () => {
+  const main = 'node scripts/log-query.mjs --since=15m'
+  const quiet = await runFlow({ mode: 'readiness', plans: ['101', '102'] }, { readiness: (p) => (p === '101' ? { commands: ['node --test t.mjs', 'git reset --hard HEAD'], mainCommands: [main, 'npm run build'] } : {}) })
+  assert.equal(quiet.result.askHuman, false)
+  const p101 = quiet.result.plans.find((p) => p.nnn === '101')
+  assert.deepEqual(p101.mainCommands, [main])
+  assert.deepEqual(p101.commands, ['node --test t.mjs'])
+  assert.deepEqual(p101.denied, ['git reset --hard HEAD', 'npm run build'])
+  assert.match(p101.deniedWhy[1], /only node scripts\/… or node tools\/… run from the main folder/)
+  assert.deepEqual(quiet.result.plans.find((p) => p.nnn === '102').mainCommands, [])
+  for (const [why, hook] of [['a question', { questions: ['what on cancel?'] }], ['an environment need', { envNeeds: ['a database'] }], ['a blocked plan', { state: 'blocked' }]]) {
+    const r = await runFlow({ mode: 'readiness', plans: ['101'] }, { readiness: () => hook })
+    assert.equal(r.result.askHuman, true, why)
+  }
 })

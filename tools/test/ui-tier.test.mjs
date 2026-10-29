@@ -35,12 +35,25 @@ test('tag lint: [ui (unclosed) and [UI] (wrong case) are rejected, and an untagg
   assert.match(unclosed[0], /tag \[ui is not closed/)
   const upper = tags.doneWhenTagProblems(plan(['- [UI] On /settings, Save shows "Saved"']))
   assert.equal(upper.length, 1)
-  assert.match(upper[0], /tag \[UI\] is not one of \[auto\], \[ui\], \[human\]/)
+  assert.match(upper[0], /tag \[UI\] is not one of \[auto\], \[auto:main\], \[ui\], \[human\]/)
   const none = tags.doneWhenTagProblems(plan(['- Save shows "Saved"']))
   assert.equal(none.length, 1)
   assert.match(none[0], /^line \d+: no tag/)
   // Only the Done-when section counts: the untagged Atomic Sub-task above is not an item.
   assert.deepEqual(tags.doneWhenTagProblems('## Done when\n- [auto] ok\n\n## Atomic Sub-tasks\n- [ ] A1: x\n'), [])
+})
+
+test('tag lint: [auto:main] (a check run from the main folder) passes; [main] and [Auto:main] are rejected', () => {
+  assert.deepEqual(tags.DONE_WHEN_TAGS, ['auto', 'auto:main', 'ui', 'human'])
+  assert.deepEqual(tags.doneWhenTagProblems(plan(['- [auto:main] `node scripts/log-query.mjs --since=15m` prints No entries', '- [auto] `npm run build` exits 0'])), [])
+  const bare = tags.doneWhenTagProblems(plan(['- [main] node scripts/log-query.mjs']))
+  assert.equal(bare.length, 1)
+  assert.match(bare[0], /tag \[main\] is not one of/)
+  const upper = tags.doneWhenTagProblems(plan(['- [Auto:main] node scripts/log-query.mjs']))
+  assert.equal(upper.length, 1)
+  assert.match(upper[0], /tag \[Auto:main\] is not one of/)
+  // Not a [ui] item.
+  assert.deepEqual(tags.uiItems(plan(['- [auto:main] x'])), [])
 })
 
 test('scope-check --tags: DONE_WHEN_TAGS ok / bad with exit codes (the save-plan shape lint command)', () => {

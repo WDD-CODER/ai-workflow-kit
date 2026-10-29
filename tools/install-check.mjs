@@ -912,6 +912,14 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     if (!wf.includes('const MAX_FIX_ROUNDS = 2') || !wf.includes('const RUN_PREFIX = "orch/"') || !wf.includes('const PILOT_SIZE = 3')) fail('orchestrator: orchestrate.js does not render maxFixRounds 2 / runBranchPrefix "orch/" / pilotSize 3')
     if (!wf.includes('const FALLBACK_MODEL = "opus"') || !wf.includes('const MAX_NOTES = 12') || !wf.includes('const MAX_CALLS = 60')) fail('orchestrator: orchestrate.js does not render fallbackModel "opus" / maxNotesPerPlan 12 / maxAgentCallsPerPlan 60')
     if (!read(od, 'scripts/orch-state.mjs').includes('const STALE_MIN = 10')) fail('orchestrator: orch-state.mjs does not render staleMin 10')
+    // Plan 032: the light merge step, main-folder checks, decisions only, no pause when there is nothing to ask.
+    const doc0 = (d) => read(d, 'docs/agent/orchestrator.md')
+    if (!wf.includes('const MERGE_CHECKS_MODE = "build"')) fail('orchestrator: orchestrate.js does not render mergeChecks "build"')
+    for (const [f, bad, why] of [['.claude/agents/orch-gate.md', /say in `decisions`/, 'still asks for a decisions confirmation'], ['.claude/agents/orch-ui.md', /of `decisions`/, 'still asks for a decisions confirmation']]) {
+      if (bad.test(read(od, f))) fail(`decisions: ${f} ${why}`)
+    }
+    if (!doc0(od).includes('## A check whose file does not exist') || !read(od, 'scripts/orch-state.mjs').includes("'check-files'")) fail('orchestrator: orchestrator.md / orch-state.mjs do not carry the missing check file rule (check-files)')
+    if (!read(od, '.claude/agents/orch-readiness.md').includes('mainCommands')) fail('orchestrator: orch-readiness.md does not name mainCommands ([auto:main] items)')
     // The learning loop's files: the rules seed fits its own cap, and the rendered files name the rule they teach.
     const rc = spawnSync(process.execPath, [join(od, 'scripts', 'decision-log.mjs'), 'rules', '--check', '--dir', od], { encoding: 'utf8' })
     if (rc.status !== 0) fail(`decision-log: the rules seed does not pass its own cap: ${(rc.stdout + rc.stderr).trim().split('\n').pop()}`)
@@ -925,8 +933,10 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     const doc = read(od, 'docs/agent/orchestrator.md')
     if (!doc.includes('| `runBranchPrefix` | `orch/` |') || !doc.includes('| `maxFixRounds` | `2` |') || !doc.includes('| `minFreeDiskGb` | `5` |') || !doc.includes('| `pilotSize` | `3` |')) fail('orchestrator: orchestrator.md does not name the default settings')
     if (!doc.includes('| `fallbackModel` | `opus` |') || !doc.includes('| `staleMin` | `10` |') || !doc.includes('| `maxNotesPerPlan` | `12` |') || !doc.includes('| `maxAgentCallsPerPlan` | `60` |')) fail('orchestrator: orchestrator.md does not name the plan 029 defaults (fallbackModel, staleMin, maxNotesPerPlan, maxAgentCallsPerPlan)')
+    if (!doc.includes('| `mergeChecks` | `build` |') || !doc.includes('## Checks that run from the main folder')) fail('orchestrator: orchestrator.md does not name mergeChecks "build" and the main-folder checks section')
     const cmd = read(od, '.claude/commands/orchestrate.md')
     if (!cmd.includes('node scripts/orch-state.mjs watch --run <run>') || cmd.includes('startedAt')) fail('orchestrator: orchestrate.md must name the watch line and pass no startedAt')
+    if (!cmd.includes('`askHuman` false') || !cmd.includes('"mainChecks"') || !cmd.includes('`ask`') || !cmd.includes('decisionsDropped')) fail('orchestrator: orchestrate.md must start the run on askHuman false (the `ask` word keeps the pause), pass mainChecks and print decisionsDropped')
     if (!/^\.claude\/orchestrator-runs\/$/m.test(read(od, '.gitignore'))) fail('orchestrator: the rendered .gitignore does not ignore .claude/orchestrator-runs/')
   }
   rmSync(od, { recursive: true, force: true })
@@ -965,6 +975,7 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     [{ fallbackModel: 'claude-haiku-5-5' }, 'orchestrator.fallbackModel is "claude-haiku-5-5"'],
     [{ staleMin: 0 }, 'orchestrator.staleMin is 0 — it must be a whole number of minutes from 1 to 240'],
     [{ maxNotesPerPlan: 101 }, 'orchestrator.maxNotesPerPlan is 101 — it must be a whole number of notes from 1 to 100'],
+    [{ mergeChecks: 'tests' }, 'orchestrator.mergeChecks is "tests" — it must be "build" (the project build plus the plan\'s scope check) or "full" (the plan\'s whole check list)'],
     [{ maxAgentCallsPerPlan: 5 }, 'orchestrator.maxAgentCallsPerPlan is 5 — it must be a whole number of agent calls from 10 to 500'],
   ]
   for (const [orch, msg] of bad) {

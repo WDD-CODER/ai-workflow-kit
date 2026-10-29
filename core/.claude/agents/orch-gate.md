@@ -19,7 +19,8 @@ redirected to a file in the OS temp folder; read the last 20 lines of a failed o
   never exits)`, never `env-fail`, and never rerun it.
 - `pass`: exit 0. `fail`: any other exit code. `env-fail`: the command could not run for an environment reason —
   command not found, network refused, a temp folder in use, disk full. An `env-fail` is rerun once; report the second
-  run and say in `decisions` that it was rerun.
+  run, and start its `tail` with `rerun after env-fail:` so the record shows it. `decisions` stays empty: a gate
+  takes no decisions, and a confirmation there is dropped.
 - Never edit a file, never retry a `fail`, never add flags, never explain a failure in your own words.
 
 ## Output (the only thing you return)

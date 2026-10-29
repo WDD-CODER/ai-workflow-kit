@@ -9,6 +9,31 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Added
+- **A light merge step.** `orchestrator.mergeChecks` (`build`, the default, or `full`): the merge step runs the
+  project build plus the plan's own scope check on the merged tree, not the whole check list — lint and tests
+  passed in the plan's gate and run once more at the final gate on the run branch. A merge once cost three full test
+  passes per plan, on the serial path where the run's wall time goes. `full` keeps the old behaviour.
+- **Checks that run from the main folder.** A Done-when item tagged `[auto:main]` is an `[auto]` check that reads
+  the live environment (`.env`, a database, a log) a worktree and the merge folder never have. Readiness lists its
+  command under `mainCommands`, `/orchestrate` passes `mainChecks`, and the run executes them from the main folder in
+  a second gate right after the plan's worktree gate (project scripts only: `node scripts/…`, `node tools/…`); a
+  failure is a real failure (`gate (main folder): <command>`) with a builder fix round. Neither the merge step nor the
+  final gate runs them. The Done-when lint accepts the tag.
+- **A check for a file that does not exist is refused at readiness.** `orch-state.mjs check-files` names the check
+  files that are neither in the main folder nor created by the plan; readiness drops those commands with the reason
+  and asks the Human, instead of the run spending fix rounds and a stronger builder on a check no builder can fix.
+- **No pause when there is nothing to ask.** The readiness result carries `askHuman`; when every plan is ready with
+  no question and no environment need and the preflight passed, `/orchestrate` starts the run at once instead of
+  waiting for `go`. The word `ask` in the request keeps the pause.
+
+### Changed
+- **Decisions are `behaviour:` and `seen:` entries only.** The workflow drops every other `decisions` line an agent
+  returns (confirmations, evidence — a run once had 11 of 15) and only counts them (`decisionsDropped`, printed as
+  `dropped <n> confirmation line(s)`): each kept line is a run note (an agent call) and a line the Human grades. The
+  gate, UI and builder role files no longer ask for confirmation entries; `agent-roles.md` rule 9 says where the rest
+  goes.
+
 ## [1.10.0] - 2026-10-29
 
 ### Added

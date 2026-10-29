@@ -67,7 +67,7 @@ file (`docs/agent/model-routing.md` rule 5) before you return and name it in `ev
     "node --test tests/parser.test.mjs -> exit 0, # pass 6, # fail 0",
     "src/parser.mjs:12 — new parseHeader()"
   ],
-  "decisions": ["Kept the old flag as an alias (most conservative option)."],
+  "decisions": ["behaviour: kept the old flag as an alias (the simplest option) — reverse: drop the alias"],
   "uiCards": [
     { "card": "Save shows Saved", "page": "http://localhost:5173/settings", "test": "npx playwright test e2e/ui/001-1.spec.ts", "screenshot": "screens/001-1.png" },
     { "card": "The colours match the brand", "page": "http://localhost:5173/" }

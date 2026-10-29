@@ -26,7 +26,9 @@ names. `/review-it` uses the same finders and verifier. Model tiers and escalati
 9. **Seen but not fixed.** A defect you notice outside your job is never free text: add a `decisions` entry that starts
    with `seen:` and names `file:line` (or the page and the steps to see it). The run report lists it with the other
    decisions, so the Human grades it in the same reply (`docs/agent/decision-review.md`). A choice the plan did not
-   settle (behaviour, wording, a new dialog) is logged the same way, starting with `behaviour:`.
+   settle (behaviour, wording, a new dialog) is logged the same way, starting with `behaviour:`. Those two kinds are
+   the whole of `decisions`: anything else you want to say (evidence, a rerun, "checked X, fine") goes in your
+   result's own fields, never in `decisions` — the orchestrator drops it there and only counts it.
 10. **At most 5 items per agent.** An agent that checks a list of items (the UI validator's cards, the verifier's
     candidates) gets at most 5 of them; a longer list goes to further fresh agents, one batch each. Accuracy drops on a
     long list — the orchestrator splits the UI cards into batches of 5.

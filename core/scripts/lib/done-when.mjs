@@ -23,13 +23,18 @@ export function uiItems(planText) {
   return out
 }
 
-/** The tags a Done-when item may start with (docs/agent/job-validation.md). Lower case, exactly as written. */
-export const DONE_WHEN_TAGS = ['auto', 'ui', 'human']
+/**
+ * The tags a Done-when item may start with (docs/agent/job-validation.md). Lower case, exactly as written.
+ * `[auto:main]` is an `[auto]` item whose command the orchestrator runs from the main folder, not in a worktree or the
+ * merge folder: it reads the live environment (`.env`, a database, a log) those folders never have.
+ */
+export const DONE_WHEN_TAGS = ['auto', 'auto:main', 'ui', 'human']
 
 /**
  * The save-plan shape lint for Done-when tags: every top-level bullet of a `## Goals & Success Criteria`,
- * `## Success Criteria` or `## Done when` section starts with `[auto]`, `[ui]` or `[human]` (after an optional `[ ]` /
- * `[x]` box). Returns one problem line per bad item: no tag, an unclosed tag (`[ui`) or a wrong spelling (`[UI]`).
+ * `## Success Criteria` or `## Done when` section starts with `[auto]`, `[auto:main]`, `[ui]` or `[human]` (after an
+ * optional `[ ]` / `[x]` box). Returns one problem line per bad item: no tag, an unclosed tag (`[ui`) or a wrong
+ * spelling (`[UI]`, `[main]`).
  */
 export function doneWhenTagProblems(planText) {
   const problems = []

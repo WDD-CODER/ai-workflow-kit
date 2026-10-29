@@ -5,7 +5,8 @@ description: Run saved plans unattended into one run branch — readiness questi
 # /orchestrate — run saved plans into one run branch (ai-workflow-kit)
 
 Opt-in. Usage: `/orchestrate 451-457` (a range), `/orchestrate 451,453,457` (a list), optionally followed by a run
-name (`/orchestrate 451-457 batch-1`; default `run-<first>-<last>`). The rules of a run: `docs/agent/orchestrator.md`.
+name (`/orchestrate 451-457 batch-1`; default `run-<first>-<last>`) and the word `ask` (`/orchestrate 451 ask`: wait
+for `go` even when readiness has nothing to ask). The rules of a run: `docs/agent/orchestrator.md`.
 
 Start from a clean turn: do not paste chat, notes or earlier agent output into any agent prompt. The workflow builds
 every prompt from the plans and the state script.
@@ -22,10 +23,15 @@ every prompt from the plans and the state script.
 2. **Readiness (one batch of questions).** Start the `orchestrate` workflow
    (`.claude/workflows/orchestrate.js`) with `args`
    `{ "mode": "readiness", "run": "<run>", "plans": ["451", …], "root": "<absolute main folder path>" }`.
-   It returns the waves, and per plan `state`, `questions`, `envNeeds`, `commands` (deny-listed ones removed and
-   named in `denied`), plus the preflight result.
+   It returns the waves, and per plan `state`, `questions`, `envNeeds`, `commands` and `mainCommands` (deny-listed
+   ones removed and named in `denied`), plus the preflight result and `askHuman`.
    - Print the waves and every plan's state in one table.
-   - Ask the Human **all** questions and environment needs in **one** numbered list, and wait.
+   - A command readiness dropped because its file does not exist in the project (and the plan does not create it) is
+     in `denied` with the reason and in `missingFiles`: tell the Human, it needs a plan fix, not a builder.
+   - `askHuman` false (every plan `ready`, no question, no environment need, no missing check file, preflight ok) and the request did not say
+     `ask` → print `nothing to ask — starting the run` and go to step 3 at once. No `go` is waited for: the preflight
+     of step 1 already refused everything a pause would have caught.
+   - Otherwise ask the Human **all** questions and environment needs in **one** numbered list, and wait.
    - Write each answer into that plan's `## Execution Notes` as `Orchestrator readiness (<date>): <question> → <answer>`,
      commit the plan files on `main` (`plan(<run>): readiness answers`) and push.
    - A plan whose question has no answer leaves the run; say which.
@@ -33,9 +39,11 @@ every prompt from the plans and the state script.
 
 3. **Run.** Start the same workflow with `args`
    `{ "mode": "run", "run": "<run>", "plans": [ … the plans still in the run … ],
-   "root": "<absolute main folder path>", "checks": { "<NNN>": [ … readiness commands … ] }, "ui": false }`
-   (`ui: true` only when the project validates UI cards with `orch-ui`; no start time — `init` reads its own clock).
-   Do not answer, resume or message any agent while it runs.
+   "root": "<absolute main folder path>", "checks": { "<NNN>": [ … readiness commands … ] },
+   "mainChecks": { "<NNN>": [ … readiness mainCommands … ] }, "ui": false }`
+   (`ui: true` only when the project validates UI cards with `orch-ui`; no start time — `init` reads its own clock;
+   `mainChecks` are the plans' `[auto:main]` commands, run from the main folder after each plan's gate — leave a plan
+   out of it when it has none). Do not answer, resume or message any agent while it runs.
 
    Tell the Human, in one line, how to see whether the run is stuck while it works — in a second terminal:
 
@@ -67,7 +75,9 @@ every prompt from the plans and the state script.
      `.claude\orchestrator-runs\<run>.md`;
    - the **decisions** the workflow returned, numbered `D1…Dn`, grouped by plan, `behaviour:` first, one line each
      (`D3 · plan <NNN> · behaviour: …`), then the reply format: `decisions: ok` or `D<n> ✗ <what I'd choose>` (several on
-     one line, comma-separated). With no decisions print `decisions: none` and skip the next two bullets;
+     one line, comma-separated). When the result's `decisionsDropped` counts are not all zero, add one line
+     `dropped <n> confirmation line(s) (not decisions)` with the total — they cost no note and need no grade. With no
+     decisions print `decisions: none` and skip the next two bullets;
    - the Human's next step as PowerShell lines, one command per line:
 
      ```powershell

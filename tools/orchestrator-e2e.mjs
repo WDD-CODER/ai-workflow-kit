@@ -92,6 +92,8 @@ function setup() {
   // (init installs them, plan 029) and a provisioned slot would look like uncommitted files.
   writeFileSync(join(proj, '.git', 'info', 'exclude'), `${readFileSync(join(proj, '.git', 'info', 'exclude'), 'utf8')}\nnode_modules\n`)
   mkdirSync(join(proj, 'plans'), { recursive: true })
+  // Plan 032: the project script the toy plan 206's [auto:main] item names exists (readiness drops a check whose file is missing).
+  writeFileSync(join(proj, 'scripts', 'log-ok.mjs'), 'process.exit(0)\n')
   for (const nnn of Object.keys(PLANS)) writeFileSync(join(proj, fileName(nnn)), PLANS[nnn])
   git(proj, 'add', '-A')
   const c = git(proj, 'commit', '-q', '-m', 'chore: install the kit and the toy plans')
@@ -239,7 +241,7 @@ async function agent(prompt, opts = {}) {
   const type = opts.agentType ?? null
   const nnn = (/plan (\d{3})/.exec(prompt) ?? [])[1] ?? null
   const role = type ?? (/\.claude\/agents\/(orch-[\w-]+)\.md/.exec(prompt) ?? [])[1]
-  calls.push({ type, role, nnn, model: opts.model ?? null, label: opts.label, mode: t.MODE ?? null, tier: t.TIER ?? null, handoff: t.HANDOFF ?? null, findings: t.FINDINGS ? json(t.FINDINGS) : null, cards: t.CARDS ? json(t.CARDS) : null, pre: t.PRE_CHECKED ? json(t.PRE_CHECKED) : null, known: t.KNOWN_FINDINGS ? json(t.KNOWN_FINDINGS) : null, commands: t.COMMANDS ? json(t.COMMANDS) : null, plan: opts.plan ?? null })
+  calls.push({ type, role, nnn, model: opts.model ?? null, label: opts.label, mode: t.MODE ?? null, tier: t.TIER ?? null, handoff: t.HANDOFF ?? null, findings: t.FINDINGS ? json(t.FINDINGS) : null, cards: t.CARDS ? json(t.CARDS) : null, pre: t.PRE_CHECKED ? json(t.PRE_CHECKED) : null, known: t.KNOWN_FINDINGS ? json(t.KNOWN_FINDINGS) : null, commands: t.COMMANDS ? json(t.COMMANDS) : null, checks: t.CHECKS ? json(t.CHECKS) : null, folder: t.FOLDER ?? null, plan: opts.plan ?? null })
   if (dieOnce && type === dieOnce) {
     dieOnce = null
     return null
@@ -260,7 +262,8 @@ async function agent(prompt, opts = {}) {
   }
   if (type === 'orch-ui') return { ...base('orch-ui', opts), cards: [{ card: '1 Saved shows', status: 'pass', page: 'https://app.example/settings', screenshots: [`screens/${nnn}-1.png`] }], pass: true }
   if (type === 'orch-merge') return stubMerge(t, opts)
-  if (type === 'orch-readiness') return { ...base('orch-readiness', opts), plans: [{ plan: t.PLAN, state: 'ready', questions: [], envNeeds: [], commands: ['node --test', 'git reset --hard HEAD'] }] }
+  // Plan 032: a main-folder command and one that may not run there (a package.json script).
+  if (type === 'orch-readiness') return { ...base('orch-readiness', opts), plans: [{ plan: t.PLAN, state: 'ready', questions: [], envNeeds: [], commands: ['node --test', 'git reset --hard HEAD'], mainCommands: ['node scripts/log-ok.mjs --since=15m', 'npm run build'] }] }
   throw new Error(`stub: no agent for ${type ?? role} (${opts.label})`)
 }
 const parallel = (thunks) => Promise.all(thunks.map((th) => Promise.resolve().then(th).catch((e) => {
@@ -359,8 +362,15 @@ async function main() {
   const ready = await runWorkflow({ mode: 'readiness', run: 'alpha', plans: ['101', '102', '103', '104'], root: proj })
   check('readiness: waves 101 | 102, 103 | 104', JSON.stringify(ready?.waves) === JSON.stringify([['101'], ['102', '103'], ['104']]), JSON.stringify(ready?.waves))
   check('readiness: one readiness agent per plan', calls.filter((c) => c.type === 'orch-readiness').length === 4, String(calls.filter((c) => c.type === 'orch-readiness').length))
-  check('readiness: a deny-listed command is dropped and named', ready?.plans?.every((p) => p.denied.length === 1 && !p.commands.some((c) => /reset --hard/.test(c))), JSON.stringify(ready?.plans?.[0]))
+  check('readiness: a deny-listed command is dropped and named', ready?.plans?.every((p) => p.denied.length === 2 && p.denied[0] === 'git reset --hard HEAD' && !p.commands.some((c) => /reset --hard/.test(c))), JSON.stringify(ready?.plans?.[0]))
   check('readiness: the preflight result comes back', ready?.preflight?.ok === true, JSON.stringify(ready?.preflight))
+  check('readiness: a main-folder command is kept under mainCommands, a package.json script is not allowed there', ready?.plans?.every((p) => JSON.stringify(p.mainCommands) === JSON.stringify(['node scripts/log-ok.mjs --since=15m']) && p.denied[1] === 'npm run build' && /only node scripts/.test(p.deniedWhy[1])), JSON.stringify(ready?.plans?.[0]))
+  check('readiness: nothing to ask → askHuman false (the command starts the run without go)', ready?.askHuman === false, JSON.stringify(ready?.askHuman))
+  // A5: a check file that exists nowhere (and that the plan does not create) is dropped with the reason and makes askHuman true.
+  const gone = sh(process.execPath, ['scripts/orch-state.mjs', 'check-files', '--plan=101', '--files=scripts/log-ok.mjs,tools/leak-check.mjs'], proj)
+  check('check-files: a file that exists passes, one that exists nowhere is named as missing', gone.status === 0 && /"missing":\["tools\/leak-check\.mjs"\]/.test(gone.out), tail(gone.out))
+  const unsafe = sh(process.execPath, ['scripts/orch-state.mjs', 'check-files', '--plan=101', '--files=../x.mjs'], proj)
+  check('check-files: an unsafe path is refused', unsafe.status === 1 && /safe relative paths/.test(unsafe.out), tail(unsafe.out))
 
   // Run alpha: the diamond.
   const a = await runWorkflow({ mode: 'run', run: 'alpha', plans: ['101', '102', '103', '104'], root: proj })
@@ -451,6 +461,8 @@ async function main() {
   const sz = JSON.parse(readFileSync(join(proj, '.claude', 'orchestrator-runs', 'zeta', 'status.json'), 'utf8'))
   const zGates = calls.filter((c) => c.type === 'orch-gate' && c.nnn === '501' && /^gate /.test(c.label ?? '')).slice(-2)
   check('zeta: only allowlisted extra checks reach the gate (npm run <known script>, node tools/…, node --test)', JSON.stringify(zGates[0]?.commands) === JSON.stringify(['npm run build', 'npm run lint', 'npm run test', 'node tools/ok-check.mjs --quick', 'node --test tests/a.test.mjs']), JSON.stringify(zGates[0]?.commands))
+  const zMerge = calls.filter((c) => c.type === 'orch-merge' && c.nnn === '501').at(-1)
+  check('zeta: the merge step runs the build only (mergeChecks "build"), not lint, the tests or the plan\'s extra checks', JSON.stringify(zMerge?.checks) === JSON.stringify(['npm run build']), JSON.stringify(zMerge?.checks))
   const dropNote = (sz.notes ?? []).filter((n) => n.plan === '501' && /^check command dropped, not run: /.test(n.text)).map((n) => n.text).join(' | ')
   check('zeta: each dropped check command is named in a run note with its reason (a --write script among them)', ['npm run nosuch', 'node -e', 'rm -rf', 'echo hi', 'reset --hard', 'kit-owned.mjs --write: --write writes files'].every((c) => dropNote.includes(c)) && /no script nosuch in package.json/.test(dropNote), dropNote)
   // Plan 029: a result the gate lost is run again — only that command, once — and costs no fix round.
@@ -472,6 +484,20 @@ async function main() {
   check('theta: 205 parked as "same reason twice" after one fix round, two builders, the report written and STUCK returned', sth.plans['205']?.state === 'parked' && sth.plans['205'].round === 1 && /^same reason twice: gate: npm run build/.test(sth.plans['205'].reason ?? '') && builderCalls('205').length === 2 && th?.ok === true && existsSync(join(proj, '.claude', 'orchestrator-runs', 'theta.md')) && /^STUCK: /.test(th?.stuck ?? ''), JSON.stringify({ p: sth.plans['205'], builders: builderCalls('205').length, stuck: th?.stuck, ok: th?.ok }))
   const thWatch = sh(process.execPath, ['scripts/orch-state.mjs', 'watch', '--run=theta'], proj)
   check('theta: watch on the stopped run prints STOPPED with the reason and exits 0', thWatch.status === 0 && /^STOPPED: wave 1 parked 205/m.test(thWatch.out), tail(thWatch.out))
+
+  // Run iota (plan 032): a plan with an [auto:main] item — its command runs in a second gate from the main folder
+  // after the worktree gate, a package.json script is dropped from mainChecks with a note, and neither the merge
+  // step nor the final gate runs it.
+  const MAIN_CMD = 'node scripts/log-ok.mjs --since=15m'
+  const io = await runWorkflow({ mode: 'run', run: 'iota', plans: ['206'], root: proj, mainChecks: { '206': [MAIN_CMD, 'npm run build'] } })
+  const sio = JSON.parse(readFileSync(join(proj, '.claude', 'orchestrator-runs', 'iota', 'status.json'), 'utf8'))
+  const ioGates = calls.filter((c) => c.type === 'orch-gate' && c.nnn === '206')
+  const norm = (p) => String(p ?? '').replace(/\\/g, '/').replace(/\/+$/, '')
+  check('iota: the main-folder gate runs the [auto:main] command from the main folder, right after the worktree gate', ioGates.length === 2 && ioGates[0].label === 'gate 206' && norm(ioGates[0].folder) !== norm(proj) && ioGates[1].label === 'gate 206 main' && norm(ioGates[1].folder) === norm(proj) && JSON.stringify(ioGates[1].commands) === JSON.stringify([MAIN_CMD]), JSON.stringify(ioGates.map((c) => [c.label, c.folder, c.commands])))
+  const ioMerge = calls.filter((c) => c.type === 'orch-merge' && c.nnn === '206').at(-1)
+  const ioFinal = calls.filter((c) => c.type === 'orch-gate' && c.label === 'gate final').at(-1)
+  check('iota: the merge step and the final gate never run the main-folder command; 206 merged', io?.ok === true && sio.plans['206']?.state === 'merged' && JSON.stringify(ioMerge?.checks) === JSON.stringify(['npm run build']) && !(ioFinal?.commands ?? []).includes(MAIN_CMD), JSON.stringify({ merge: ioMerge?.checks, final: ioFinal?.commands, state: sio.plans['206']?.state }))
+  check('iota: a package.json script in mainChecks is dropped with a run note naming the rule', (sio.notes ?? []).some((n) => n.plan === '206' && /^main-folder check dropped, not run: npm run build: only node scripts\/… or node tools\/… run from the main folder/.test(n.text)), JSON.stringify((sio.notes ?? []).filter((n) => /dropped/.test(n.text))))
 
   // The [ui] tier: a local test server (a child process) for the pages, the login and the backend.
   const server = await startUiServer()
@@ -558,7 +584,7 @@ for (const line of results) console.log(line)
 const total = results.filter((l) => /^(PASS|FAIL)/.test(l)).length
 if (keep) console.log(`kept: ${root}`)
 else {
-  for (const run of ['alpha', 'beta', 'gamma', 'epsilon', 'zeta', 'theta', 'delta', 'ui-down', 'ui-login', 'ui-cors']) {
+  for (const run of ['alpha', 'beta', 'gamma', 'epsilon', 'zeta', 'theta', 'iota', 'delta', 'ui-down', 'ui-login', 'ui-cors']) {
     git(proj, 'worktree', 'remove', '--force', join(root, `orch-app-orch-merge-${run}`))
   }
   try {

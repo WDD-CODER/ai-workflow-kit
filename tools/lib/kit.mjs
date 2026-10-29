@@ -138,6 +138,11 @@ export function orchestratorProblems(vals) {
       out.push(`orchestrator.${key} is ${JSON.stringify(v)} — it must be a whole number of ${what} from ${min} to ${max}`)
     }
   }
+  // What the merge step runs on the merged tree: the build (plus the plan's scope check) or the plan's whole list.
+  const mc = vals['orchestrator.mergeChecks']
+  if (mc !== undefined && !['build', 'full'].includes(mc)) {
+    out.push(`orchestrator.mergeChecks is ${JSON.stringify(mc)} — it must be "build" (the project build plus the plan's scope check) or "full" (the plan's whole check list)`)
+  }
   return out
 }
 

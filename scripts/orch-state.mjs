@@ -6,6 +6,7 @@
  *   node scripts/orch-state.mjs init       --run <name> [--started <iso>]   run branch + merge folder + status.json
  *   node scripts/orch-state.mjs order      --run <name> --plans <NNN,NNN>  waves from plan-order (merged plans left out)
  *   node scripts/orch-state.mjs done       --run <name>                     plans merged into the run branch (from git)
+ *   node scripts/orch-state.mjs check-files --plan <NNN> --files a,b        the check files that do not exist and that the plan does not create
  *   node scripts/orch-state.mjs plan-info  --run <name> --plan <NNN>        path, branch, start tier, [human] and [ui] items
  *   node scripts/orch-state.mjs worktree   --run <name> --plan <NNN>        the builder's folder on its plan branch: an idle
  *                                          wt-N slot first (orchestrator.useSlots), else its own folder; packages installed
@@ -68,7 +69,7 @@ const SENSITIVE_CODE_RE = /auth|permission|password|jwt|session[_-]?id|tokens?\b
 // Every flag takes a value. The workflow passes `--key=value` (one token, so a value can never become a flag); a
 // human may write `--key value`, where a value starting with "-" is refused. An unknown flag (--root among them: the
 // folder is always this script's own project) or a second positional word stops the command.
-const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tier', 'sha', 'role', 'model', 'effort', 'roles', 'reason', 'card', 'card-status', 'page', 'shots', 'via', 'step', 'check', 'tail', 'tried', 'text', 'min', 'stale-min'])
+const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tier', 'sha', 'role', 'model', 'effort', 'roles', 'reason', 'card', 'card-status', 'page', 'shots', 'via', 'step', 'check', 'tail', 'tried', 'text', 'min', 'stale-min', 'files'])
 function parseArgs(argv) {
   const out = { _: [] }
   for (let i = 0; i < argv.length; i++) {
@@ -388,6 +389,18 @@ const commands = {
     const run = runName()
     const done = mergedPlans(run)
     emit({ ok: true, done: done.map((m) => m.nnn), merges: done }, done.map((m) => `MERGED ${m.nnn} ${m.sha.slice(0, 7)} (${m.branch})`))
+  },
+
+  // Readiness asks which of a plan's check files cannot exist when the check runs: a file that is neither in the main
+  // folder nor named in the plan's own text (a plan may create its own script) can never pass, whatever a builder does.
+  'check-files'() {
+    const nnn = planNumber(args.plan ?? '')
+    if (!nnn) fail('--plan takes a plan number')
+    const text = readFileSync(join(root, planPath(nnn)), 'utf8')
+    const files = String(args.files ?? '').split(',').map((f) => f.trim()).filter(Boolean)
+    if (files.some((f) => !/^(?!-)(?!.*\.\.)[A-Za-z0-9_./-]+$/.test(f))) fail('--files takes safe relative paths, comma-separated')
+    const missing = files.filter((f) => !existsSync(join(root, f)) && !text.includes(f))
+    emit({ ok: true, nnn, missing }, [missing.length ? `plan ${nnn}: no such file, and the plan does not create it: ${missing.join(', ')}` : `plan ${nnn}: every check file exists or is created by the plan`])
   },
 
   'plan-info'() {

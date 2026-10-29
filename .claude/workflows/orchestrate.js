@@ -37,6 +37,13 @@ const MAX_NOTES = 12
 const MAX_CALLS = 60
 const COUNT = { notes: {}, calls: {} }
 const PROJECT_CHECKS = ["build", "lint", TEST_SCRIPT].filter((s) => typeof s === 'string' && s !== '').map((s) => `${PM} run ${s}`)
+// The merge step's checks (orchestrator.mergeChecks): "build" = the project build plus the plan's own scope check
+// (seconds), lint and tests having passed in the plan's gate and running once more at the final gate on the run branch;
+// "full" = the plan's whole check list on every merge (a merge once cost three full test passes per plan).
+const MERGE_CHECKS_MODE = "build"
+const BUILD_SCRIPT = "build"
+const BUILD_CHECK = typeof BUILD_SCRIPT === 'string' && BUILD_SCRIPT !== '' ? `${PM} run ${BUILD_SCRIPT}` : null
+const mergeChecksOf = (checks) => (MERGE_CHECKS_MODE === 'full' ? checks : [...new Set([BUILD_CHECK, ...checks.filter((c) => /scope-check\.mjs/.test(c))].filter(Boolean))])
 const FAILING = ['blocker', 'major']
 const KEEP_THRESHOLD = 80
 const FINDERS = ['orch-check-plan', 'orch-check-bugs', 'orch-check-rules']
@@ -70,6 +77,21 @@ function checkProblem(cmd, scripts) {
   if (w[0] === 'node' && w[1] === '--test' && safe(w.slice(2)) && w.slice(2).every((x) => !x.startsWith('-') || /^--test-[a-z-]+(=[\w.,-]+)?$/.test(x))) return null
   return `${c}: not an allowed check (${PM} run <package.json script>, node tools/… or scripts/…, node --test <files>)`
 }
+// The project files a check command names: `node tools/x.mjs …` / `node scripts/x.mjs …` → that file, `node --test a b`
+// → a and b. `npm run <script>` names no file here (package.json scripts are checked against package.json).
+function checkFilesOf(cmd) {
+  const w = String(cmd ?? '').trim().split(/ +/)
+  if (w[0] !== 'node') return []
+  if (w[1] === '--test') return w.slice(2).filter((x) => !x.startsWith('-') && SAFE_ARG.test(x) && !x.includes('..'))
+  return /^(tools|scripts)\/[A-Za-z0-9_./-]+\.m?js$/.test(w[1] ?? '') ? [w[1]] : []
+}
+// A main-folder check (a plan's [auto:main] item: it reads the live environment — .env, a database, a log — that a
+// worktree and the merge folder never have) runs in the Human's main folder, so only a project script is allowed
+// there: no package.json script, no node --test (those run in the plan's worktree).
+function mainCheckProblem(cmd) {
+  const c = String(cmd ?? '').trim()
+  return checkProblem(c, null) ?? (/^node (tools|scripts)\//.test(c) ? null : `${c}: only node scripts/… or node tools/… run from the main folder`)
+}
 // The plan branch shape (lib/orch-run.mjs PLAN_BRANCH_RE): it reaches git commands the agents run.
 const PLAN_BRANCH_RE = /^feat\/\d+-[a-z0-9-]+$/
 // [ui] card values recorded through `set` (lib/orch-run.mjs uiCardProblem): the same rules, checked before the call.
@@ -93,7 +115,9 @@ if (!PLANS.length || !PLANS.every((p) => /^\d{1,4}$/.test(p))) throw new Error('
 // ---- schemas (docs/agent/agent-roles.md) -------------------------------------------------------------------------
 const str = { type: 'string' }
 const strList = { type: 'array', items: str }
-const COMMON = { role: str, model: str, effort: str, decisions: strList, escalate: str }
+// decisions: only "behaviour: …" (a choice the plan did not settle, with how to reverse it) and "seen: file:line …" (a
+// defect outside the job); evidence and confirmations are not decisions and are dropped (take()).
+const COMMON = { role: str, model: str, effort: str, decisions: { ...strList, description: 'only "behaviour: … — reverse: …" and "seen: file:line …" entries; evidence and confirmations are not decisions' }, escalate: str }
 const RUNNER = { type: 'object', properties: { exitCode: { type: 'integer' }, output: str }, required: ['exitCode', 'output'] }
 const PROBLEM = {
   type: 'object',
@@ -103,7 +127,7 @@ const PROBLEM = {
 const SCHEMA = {
   readiness: {
     type: 'object',
-    properties: { ...COMMON, plans: { type: 'array', items: { type: 'object', properties: { plan: str, state: { type: 'string', enum: ['ready', 'questions', 'blocked'] }, questions: strList, envNeeds: strList, commands: strList }, required: ['plan', 'state', 'questions', 'envNeeds', 'commands'] } } },
+    properties: { ...COMMON, plans: { type: 'array', items: { type: 'object', properties: { plan: str, state: { type: 'string', enum: ['ready', 'questions', 'blocked'] }, questions: strList, envNeeds: strList, commands: strList, mainCommands: strList }, required: ['plan', 'state', 'questions', 'envNeeds', 'commands'] } } },
     required: ['role', 'model', 'effort', 'plans'],
   },
   builder: {
@@ -213,15 +237,23 @@ async function note(text, nnn) {
 
 let mergeFolder = null
 
-// Decisions agents took on their own (every role result's `decisions` list, `behaviour:` and `seen:` entries among them).
+// Decisions agents took on their own: the `behaviour:` and `seen:` entries of every role result's `decisions` list.
 // They are numbered D1…Dn at the end of the run, grouped by plan, and the Human grades them in one reply
-// (docs/agent/decision-review.md).
+// (docs/agent/decision-review.md). Anything else an agent put there (a confirmation, evidence — a run once had 11 of
+// 15) is dropped and only counted: each kept line is a run note (an agent call) and a line the Human grades.
 const DECISIONS = []
+const DROPPED = {}
+const DECISION_RE = /^(behaviour|seen):/i
 function take(nnn, ...results) {
   for (const r of results) {
     for (const d of Array.isArray(r?.decisions) ? r.decisions : []) {
       const text = String(d).replace(/\s+/g, ' ').trim()
-      if (text && !DECISIONS.some((x) => x.plan === nnn && x.text === text)) DECISIONS.push({ plan: nnn, text })
+      if (!text) continue
+      if (!DECISION_RE.test(text)) {
+        DROPPED[nnn] = (DROPPED[nnn] ?? 0) + 1
+        continue
+      }
+      if (!DECISIONS.some((x) => x.plan === nnn && x.text === text)) DECISIONS.push({ plan: nnn, text })
     }
   }
 }
@@ -251,14 +283,36 @@ async function readiness() {
     task({ PLAN: order.plans[nnn]?.path ?? nnn, RUN_ORDER: order.waves, RUN_PLANS: plans }),
   ].join('\n\n'), { agentType: 'orch-readiness', schema: SCHEMA.readiness, label: `readiness ${nnn}`, phase: 'Readiness', plan: nnn })))
   const pre = await runner('orch-preflight.mjs', ['--run', RUN, '--plans', PLANS.join(',')], 'preflight')
-  const out = plans.map((nnn, i) => {
+  // A check whose file does not exist (and that the plan does not create) can never pass: a run once spent fix rounds
+  // and a stronger builder on `node tools/<kit script>.mjs` in a project that has no such file. Dropped here, shown to
+  // the Human (askHuman), never run.
+  const missingOf = async (nnn, cmds) => {
+    const files = [...new Set(cmds.flatMap(checkFilesOf))]
+    if (!files.length) return []
+    const r = await state(['check-files', '--plan', nnn, '--files', files.join(',')], `check files ${nnn}`, nnn)
+    return r?.ok ? r.missing ?? [] : []
+  }
+  const out = []
+  for (let i = 0; i < plans.length; i++) {
+    const nnn = plans[i]
     const r = results[i]
     const p = r?.plans?.[0]
-    if (!p) return { nnn, state: 'questions', questions: ['The readiness agent returned no result for this plan — check it by hand.'], envNeeds: [], commands: [] }
-    const denied = p.commands.filter((c) => checkProblem(c, null))
-    return { nnn, path: order.plans[nnn]?.path, state: p.state, questions: p.questions, envNeeds: p.envNeeds, commands: p.commands.filter((c) => !checkProblem(c, null)), denied, deniedWhy: denied.map((c) => checkProblem(c, null)), model: r.model }
-  })
-  return { mode: 'readiness', run: RUN, ok: true, waves: order.waves, skipped: order.skipped, plans: out, preflight: pre }
+    if (!p) {
+      out.push({ nnn, state: 'questions', questions: ['The readiness agent returned no result for this plan — check it by hand.'], envNeeds: [], commands: [], mainCommands: [] })
+      continue
+    }
+    const main = Array.isArray(p.mainCommands) ? p.mainCommands : []
+    const missing = new Set(await missingOf(nnn, [...p.commands, ...main]))
+    const noFile = (c) => (checkFilesOf(c).find((f) => missing.has(f)) ? `${c}: ${checkFilesOf(c).find((f) => missing.has(f))} does not exist in the project and the plan does not create it` : null)
+    const problem = (c, isMain) => (isMain ? mainCheckProblem(c) : checkProblem(c, null)) ?? noFile(c)
+    const denied = [...p.commands.filter((c) => problem(c, false)), ...main.filter((c) => problem(c, true))]
+    const deniedWhy = [...p.commands.filter((c) => problem(c, false)).map((c) => problem(c, false)), ...main.filter((c) => problem(c, true)).map((c) => problem(c, true))]
+    out.push({ nnn, path: order.plans[nnn]?.path, state: p.state, questions: p.questions, envNeeds: p.envNeeds, commands: p.commands.filter((c) => !problem(c, false)), mainCommands: main.filter((c) => !problem(c, true)), denied, deniedWhy, missingFiles: [...missing], model: r.model })
+  }
+  // Nothing to ask (every plan ready, no question, no environment need, no check file missing, preflight ok) → the
+  // command starts the run without waiting for `go`; the Human's `ask` word forces the pause.
+  const askHuman = pre?.ok !== true || out.some((p) => p.state !== 'ready' || (p.questions ?? []).length > 0 || (p.envNeeds ?? []).length > 0 || (p.missingFiles ?? []).length > 0)
+  return { mode: 'readiness', run: RUN, ok: true, waves: order.waves, skipped: order.skipped, plans: out, preflight: pre, askHuman }
 }
 
 // ---- one plan ---------------------------------------------------------------------------------------------------------
@@ -291,8 +345,11 @@ const gateAgent = (ctx, commands, label) => ask([
 ].join('\n\n'), { agentType: 'orch-gate', schema: SCHEMA.gate, label, phase: 'Build', effort: 'low', plan: ctx.nnn !== 'final' ? ctx.nnn : undefined })
 
 async function gate(ctx) {
-  const r = await gateAgent(ctx, ctx.checks, `gate ${ctx.nnn}`)
-  if (!r) return { r, env: true, why: 'the gate agent returned nothing' }
+  // ctx.main: the plan's [auto:main] checks, run from the main folder after the worktree gate passed (never at the
+  // merge or the final gate); their reasons say so, so a fix round and the report name the right place.
+  const kind = ctx.main ? 'gate (main folder)' : 'gate'
+  const r = await gateAgent(ctx, ctx.checks, ctx.main ? `gate ${ctx.nnn} main` : `gate ${ctx.nnn}`)
+  if (!r) return { r, env: true, why: `the ${kind} agent returned nothing` }
   // Exactly one result per command in ctx.checks, matched by the command string: a check with no result, with two, or a
   // result for a command that was not asked for is a fail (a gate cannot pass by leaving a check out).
   let known = r.results.filter((x) => ctx.checks.includes(x.command))
@@ -303,21 +360,21 @@ async function gate(ctx) {
   // after that is an environment failure, not a code failure — no fix round and no builder for it.
   if (missingCmds.length && !unknown.length && !twice.length) {
     await note(`gate rerun for ${missingCmds.length} missing result(s): ${missingCmds.join(', ')}`, ctx.nnn !== 'final' ? ctx.nnn : undefined)
-    const again = await gateAgent(ctx, missingCmds, `gate ${ctx.nnn} rerun`)
+    const again = await gateAgent(ctx, missingCmds, `gate ${ctx.nnn}${ctx.main ? ' main' : ''} rerun`)
     const more = (again?.results ?? []).filter((x) => missingCmds.includes(x.command) && !known.some((k) => k.command === x.command))
     known = [...known, ...more.filter((x, i) => more.findIndex((y) => y.command === x.command) === i)]
     missingCmds = ctx.checks.filter((c) => !known.some((x) => x.command === c))
-    if (missingCmds.length) return { r, env: true, why: `gate returned no result, twice, for: ${missingCmds.join(', ')}` }
+    if (missingCmds.length) return { r, env: true, why: `${kind} returned no result, twice, for: ${missingCmds.join(', ')}` }
   }
   const missing = missingCmds.map((c) => ({ command: c, status: 'fail', tail: 'the gate returned no result for this check' }))
   const env = known.filter((x) => x.status === 'env-fail')
   const failed = [...known.filter((x) => x.status !== 'pass' && x.status !== 'env-fail'), ...missing, ...twice, ...unknown]
-  if (env.length && !missing.length && !unknown.length && !twice.length) return { r, env: true, why: `gate env-fail: ${env.map((x) => x.command).join(', ')}` }
+  if (env.length && !missing.length && !unknown.length && !twice.length) return { r, env: true, why: `${kind} env-fail: ${env.map((x) => x.command).join(', ')}` }
   // pass is computed from the results, never read from the agent
   if (failed.length || !ctx.checks.length) {
     // fingerprint: the reason plus the first failure's last output line — "the same reason twice" compares it, so a
     // gate that fails on the same command with a new error is not a loop.
-    const why = `gate: ${failed.map((x) => x.command).join(', ') || 'no check ran'}`
+    const why = `${kind}: ${failed.map((x) => x.command).join(', ') || 'no check ran'}`
     const last = String(failed[0]?.tail ?? '').trim().split('\n').pop() ?? ''
     return { r, fail: true, why, fingerprint: `${why} :: ${last}`, check: failed[0]?.command, tail: failed[0]?.tail,
       findings: failed.map((x, i) => ({ id: `gate-${i + 1}`, file: x.command, line: 1, rule: 'check fails', reasoning: x.tail ?? '', severity: 'blocker' })) }
@@ -454,7 +511,7 @@ async function merge(ctx) {
     const subject = `Merge ${ctx.info.branch} into ${RUN_BRANCH} (plan ${ctx.nnn})`
     const r = await ask([
       `Merge plan ${ctx.nnn} into run branch ${RUN_BRANCH}. Follow .claude/agents/orch-merge.md, with the checks below run before the push:`,
-      task({ RUN_BRANCH, PLAN_BRANCH: ctx.info.branch, PLAN_NUMBER: ctx.nnn, MERGE_FOLDER: ctx.mergeFolder, SUBJECT: subject, CHECKS: ctx.checks, TIMEOUT_MIN: GATE_TIMEOUT_MIN }),
+      task({ RUN_BRANCH, PLAN_BRANCH: ctx.info.branch, PLAN_NUMBER: ctx.nnn, MERGE_FOLDER: ctx.mergeFolder, SUBJECT: subject, CHECKS: ctx.mergeChecks, TIMEOUT_MIN: GATE_TIMEOUT_MIN }),
       `Steps: git fetch origin; git merge --ff-only origin/${RUN_BRANCH}; git merge --no-ff --no-commit origin/${ctx.info.branch}; run each CHECKS command (output to a temp file) under timeout TIMEOUT_MIN*60 seconds; all pass → git commit -m "${subject}" and push ${RUN_BRANCH}; a conflict or a failing check → git merge --abort and return merged: false with the reason. Never touch the main branch.`,
     ].join('\n\n'), { agentType: 'orch-merge', schema: SCHEMA.merge, label: `merge ${ctx.nnn}`, phase: 'Build', plan: ctx.nnn })
     if (!r) return { env: true, why: 'the merge agent returned nothing' }
@@ -481,8 +538,14 @@ async function runPlan(nnn) {
   const scripts = Array.isArray(info.npmScripts) ? info.npmScripts : []
   const dropped = extra.map((c) => checkProblem(c, scripts)).filter(Boolean)
   const checks = [...new Set([...PROJECT_CHECKS, ...extra.filter((c) => !checkProblem(c, scripts)).map((c) => String(c).trim())])]
-  const ctx = { nnn, info, tier: info.startTier, round: 0, escalated: false, checks, handoff: `.claude/sessions/orch-${RUN}/handoff-${nnn}.md` }
+  // The plan's [auto:main] checks (readiness `mainCommands`, args.mainChecks): project scripts run from the main folder
+  // after the worktree gate passed; never part of the merge or the final gate.
+  const mainExtra = Array.isArray((A.mainChecks ?? {})[nnn]) ? A.mainChecks[nnn] : []
+  const mainDropped = mainExtra.map((c) => mainCheckProblem(c)).filter(Boolean)
+  const mainChecks = [...new Set(mainExtra.filter((c) => !mainCheckProblem(c)).map((c) => String(c).trim()))]
+  const ctx = { nnn, info, tier: info.startTier, round: 0, escalated: false, checks, mergeChecks: mergeChecksOf(checks), mainChecks, handoff: `.claude/sessions/orch-${RUN}/handoff-${nnn}.md` }
   for (const why of dropped) await note(`check command dropped, not run: ${why}`, nnn)
+  for (const why of mainDropped) await note(`main-folder check dropped, not run: ${why}`, nnn)
   if (info.startTier === 'judgment') await note(`starts on the judgment tier: Architecture Impact names ${info.invariants.join(', ')}`, nnn)
   // A parked plan closes with one `set` (the reason carries everything), not one note per closing step.
   const park = async (reason) => {
@@ -543,9 +606,16 @@ async function runPlan(nnn) {
     if (!failure) {
       await setPlan(nnn, { state: 'gate', round: ctx.round, tier: ctx.tier, sha: b.headSha }, results)
       results = []
-      const g = await gate(ctx)
+      let g = await gate(ctx)
       results.push(g.r)
       take(nnn, g.r)
+      if (!g.env && !g.fail && ctx.mainChecks.length) {
+        // The [auto:main] checks, from the main folder (ROOT): its code is the main branch, so they prove the live side
+        // effects of the plan's own checks (a log, a database), not the plan's code.
+        g = await gate({ ...ctx, wt: { path: ROOT }, checks: ctx.mainChecks, main: true })
+        results.push(g.r)
+        take(nnn, g.r)
+      }
       if (g.env || g.fail) failure = g
       else if (overLimit()) return park(limitReason())
       else {
@@ -739,7 +809,7 @@ async function run() {
     mode: 'run', run: RUN, ok: !!fin.ok, branch: RUN_BRANCH, stopReason, startedAt,
     merged: fin.merged ?? [], parked: fin.parked ?? [], report: fin.report, local: fin.local, reportCommitted: fin.reportCommitted ?? !!fin.ok, outcomes,
     pilot: pilotWaiting.length ? { size: PILOT_SIZE, waiting: pilotWaiting } : null,
-    finalGate, decisions,
+    finalGate, decisions, decisionsDropped: DROPPED,
     stuck: stuckWhy ? `STUCK: ${stuckWhy}` : null,
     agentCalls: COUNT.calls, notes: COUNT.notes,
   }
