@@ -13,10 +13,11 @@ every prompt from the plans and the state script.
 ## Steps
 
 1. **Refuse early.**
-   - Run `node scripts/orch-preflight.mjs --run <run>`. Any `FAIL` line → print it and STOP (the main folder must be
-     on `main` with no uncommitted tracked file, no run of that name may be live, the disk, packages, git
-     identity and settings must be in place).
    - Expand the range to plan numbers. Each must be an open plan under the plan folders; a missing one → STOP.
+   - Run `node scripts/orch-preflight.mjs --run <run> --plans <NNN,NNN,…>`. Any `FAIL` line → print it and STOP (the
+     main folder must be on `main` with no uncommitted tracked file, no run of that name may be live and
+     no live run may hold one of these plans or a plan whose scope overlaps one of them, the disk, packages, git
+     identity and settings must be in place).
 
 2. **Readiness (one batch of questions).** Start the `orchestrate` workflow
    (`.claude/workflows/orchestrate.js`) with `args`
@@ -31,10 +32,22 @@ every prompt from the plans and the state script.
    - Wait for the Human's `go`. Anything else → STOP.
 
 3. **Run.** Start the same workflow with `args`
-   `{ "mode": "run", "run": "<run>", "plans": [ … the plans still in the run … ], "startedAt": "<ISO time now>",
+   `{ "mode": "run", "run": "<run>", "plans": [ … the plans still in the run … ],
    "root": "<absolute main folder path>", "checks": { "<NNN>": [ … readiness commands … ] }, "ui": false }`
-   (`ui: true` only when the project validates UI cards with `orch-ui`). Do not answer, resume or message any agent
-   while it runs.
+   (`ui: true` only when the project validates UI cards with `orch-ui`; no start time — `init` reads its own clock).
+   Do not answer, resume or message any agent while it runs.
+
+   Tell the Human, in one line, how to see whether the run is stuck while it works — in a second terminal:
+
+   ```powershell
+   node scripts/orch-state.mjs watch --run <run>
+   ```
+
+   It prints one line and exits: `RUNNING`, `FINISHED`, `STOPPED: <why>` or `STUCK: plan <NNN> · <state> · no progress
+   for <n> min · last: <note>` (exit code 1; `orchestrator.staleMin` = 10 minutes, or the same
+   reason noted twice in a row). A dead agent is retried once on `orchestrator.fallbackModel`
+   (opus); a plan is parked after `orchestrator.maxAgentCallsPerPlan` agent calls or the same
+   failure twice in a row, and writes at most `orchestrator.maxNotesPerPlan` run notes.
 
    **Pilot** (`orchestrator.pilotSize` = 3; 0 = off): with more plans than that, the first
    `pilotSize` plans in wave order run, then the run stops (`pilot` in the result lists the plans that wait) and step 4
@@ -43,7 +56,11 @@ every prompt from the plans and the state script.
    rest, with the graded decisions and any new rule in `docs/brain/agent-rules.md` already in place.
 
 4. **Finish.** From the workflow result and `.claude/orchestrator-runs/<run>/status.json` (never from memory), print:
-   - merged plans and parked plans with their reason, and why the run stopped when it did;
+   - first, when the result's `stuck` is set (the run ended on a limit: `agent-call limit`, `same reason twice`, or
+     `run stopped with an error`), that line as it is — `STUCK: …` — before anything else; when the session's own model
+     was the one that died, say the Human can switch it with `/model`;
+   - merged plans and parked plans with their reason, and why the run stopped when it did; `reportCommitted` false →
+     say the report exists only as the local copy and why the run branch did not get it;
    - the final gate: `finalGate.ok` false → say so first (`final gate failed: <command>` and its output tail) and do
      **not** hand the run branch over as clean; no pull-request lines until the Human has seen it;
    - the report path on the run branch (`docs/orchestrator/runs/<run>/report.md`) and the local copy

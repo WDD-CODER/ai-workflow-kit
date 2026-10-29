@@ -55,7 +55,9 @@ outside the orchestrator (`take-plan`, `auto-solve` Phase 3), and every verdict.
 
 1. **Never put `model:` on a command or skill that runs inline.** That is a model switch: the turn and the turn
    after it get no cache hits, so the whole conversation is re-read at full price twice. Route only through a
-   sub-agent (agent file `model:`) or a skill with `context: fork` + `model:`.
+   sub-agent (agent file `model:`) or a skill with `context: fork` + `model:`. The orchestrator's model fallback
+   (`orchestrator.fallbackModel`, `docs/agent/orchestrator.md`) is a sub-agent `model:` on one retry of a dead agent,
+   so the rule holds; a review-tier agent never falls back to Haiku (the key refuses it).
 2. **Delegate only when the step reads a lot and returns little** (a build log, a sync, a scan). A sub-agent starts
    empty and loads its own prompt, `CLAUDE.md` (unless the agent sets `omitClaudeMd: true`) and a git status; for a
    step that reads one short file, doing it inline is cheaper. An agent that gets everything it needs from its

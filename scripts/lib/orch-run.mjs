@@ -61,10 +61,15 @@ export function uiCardProblem({ card, page, shots } = {}) {
   return null
 }
 
-/** The tier a plan's first builder starts on: judgment when Architecture Impact names an invariant other than INV-none. */
+/**
+ * The tier a plan's first builder starts on: judgment when Architecture Impact names an invariant (other than INV-none)
+ * the plan changes or deviates from, or names one without saying which (unreadable). A line that only `preserves` an
+ * invariant starts on build: most plans preserve something, and a judgment start for every one of them put the main
+ * session's model on plans a build-tier builder handles.
+ */
 export function startTier(planText) {
   const { entries } = parseArchImpact(String(planText))
-  const named = entries.filter((e) => e.id !== 'INV-none').map((e) => e.id)
+  const named = entries.filter((e) => e.id !== 'INV-none' && e.kind !== 'preserves').map((e) => e.id)
   return { tier: named.length ? 'judgment' : 'build', invariants: named }
 }
 
@@ -98,6 +103,44 @@ export function watchModeProblem(script, pattern = '') {
 
 /** Free space in GB (one decimal) from a statfs result. */
 export const freeGb = (st) => Math.floor((Number(st.bavail) * Number(st.bsize)) / 1e8) / 10
+
+const FINAL_STATES = ['merged', 'parked', 'left-run', 'skipped']
+
+/**
+ * The one line `orch-state.mjs watch` prints, from status.json alone: { line, stuck }.
+ * - phase finished → `FINISHED`; stopped → `STOPPED: <reason>`;
+ * - running with `updatedAt` older than `staleMin` minutes → `STUCK: plan <NNN> · <state> · no progress for <n> min ·
+ *   last: <last note>` (the plan: the one in a non-final state whose history is the latest, else `?`);
+ * - running with one plan's last two notes saying the same thing → `STUCK: plan <NNN> · <state> · same reason twice: <text>`;
+ * - else `RUNNING`.
+ * `nowMs` is the caller's clock (tests pass a fixed one).
+ */
+export function watchLine(status, { nowMs, staleMin }) {
+  const phase = status?.phase ?? 'unknown'
+  if (phase === 'finished') return { line: 'FINISHED', stuck: false }
+  if (phase === 'stopped') return { line: `STOPPED: ${status.stopReason ?? 'stopped'}`, stuck: false }
+  const plans = Object.values(status?.plans ?? {})
+  const notes = Array.isArray(status?.notes) ? status.notes : []
+  const lastAt = (p) => Date.parse((p.history ?? []).at(-1)?.at ?? '') || 0
+  const active = plans.filter((p) => !FINAL_STATES.includes(p.state)).sort((a, b) => lastAt(b) - lastAt(a))[0]
+  const who = active ? `plan ${active.nnn} · ${active.state}` : 'plan ? · no plan in progress'
+  const stateOf = (nnn) => plans.find((p) => String(p.nnn) === String(nnn))?.state ?? '?'
+  // The same reason twice in a row for one plan: the run is turning in a circle whatever updatedAt says.
+  const seen = new Map()
+  for (const n of notes) {
+    if (!n.plan) continue
+    const prev = seen.get(String(n.plan))
+    if (prev !== undefined && prev === n.text) return { line: `STUCK: plan ${n.plan} · ${stateOf(n.plan)} · same reason twice: ${n.text}`, stuck: true }
+    seen.set(String(n.plan), n.text)
+  }
+  const updated = Date.parse(status?.updatedAt ?? '')
+  const idleMin = Number.isFinite(updated) ? Math.floor((nowMs - updated) / 60000) : null
+  if (idleMin !== null && idleMin > staleMin) {
+    const last = notes.at(-1)?.text ?? 'no note yet'
+    return { line: `STUCK: ${who} · no progress for ${idleMin} min · last: ${last}`, stuck: true }
+  }
+  return { line: 'RUNNING', stuck: false }
+}
 
 // ---- UI environment (orch-preflight.mjs --ui) ----------------------------------------------------------------------
 // Each takes what a request returned — { status, allowOrigin } or { error } — and says what blocks the browser step.

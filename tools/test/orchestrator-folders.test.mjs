@@ -4,7 +4,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { join, resolve } from 'path'
 import { spawnSync } from 'child_process'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, realpathSync } from 'fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, realpathSync, cpSync } from 'fs'
 import { tmpdir } from 'os'
 import { pathToFileURL, fileURLToPath } from 'url'
 import { orchestratorProblems, commandProblems } from '../lib/kit.mjs'
@@ -119,6 +119,107 @@ test('slots: release detaches and removes the marker; uncommitted or unpushed wo
   assert.equal(r.released, true)
   assert.equal(sh(s.path, 'branch', '--show-current'), '')
   assert.equal(existsSync(join(s.path, '.worktree-plan')), false)
+})
+
+test('run slots: stop and finish give every held slot back through releaseRunSlots; a dirty slot is kept and says why', () => {
+  const main = repo()
+  const a = slotOf(main, 1)
+  const b = slotOf(main, 2)
+  for (const [s, n] of [[a, '001'], [b, '002']]) assert.equal(folders.claimSlot({ slot: s, branch: `feat/${n}-x`, base: 'main', planPath: `plans/${n}-x.plan.md`, branchExists: false }).ok, true)
+  writeFileSync(join(b.path, 'wip.txt'), 'x\n')
+  const status = { plans: { '001': { nnn: '001', branch: 'feat/001-x', slot: a.path.replace(/\\/g, '/') }, '002': { nnn: '002', branch: 'feat/002-x', slot: b.path }, '003': { nnn: '003', branch: 'feat/003-x' } } }
+  const slots = [{ ...a, plan: 'plans/001-x.plan.md', branch: 'feat/001-x', detached: false }, { ...b, plan: 'plans/002-x.plan.md', branch: 'feat/002-x', detached: false }]
+  const r = folders.releaseRunSlots({ status, slots, target: 'main' })
+  assert.deepEqual(r.lines, ['plan 001: slot wt-1 released', 'plan 002: slot wt-2 kept — uncommitted files in the slot'])
+  assert.equal(r.released, 1)
+  assert.equal(status.plans['001'].slot, undefined, 'a released slot leaves the plan')
+  assert.equal(status.plans['002'].slot, b.path, 'a kept slot stays recorded')
+  assert.equal(sh(a.path, 'branch', '--show-current'), '')
+  assert.equal(existsSync(join(a.path, '.worktree-plan')), false)
+  assert.equal(sh(b.path, 'branch', '--show-current'), 'feat/002-x')
+  // the installed command: `stop` on a run whose plan holds a clean slot prints the line and detaches the slot
+  const dir = tmp()
+  cpSync(join(root, 'scripts'), join(dir, 'scripts'), { recursive: true, dereference: true })
+  sh(dir, 'init', '-q', '-b', 'main')
+  sh(dir, 'config', 'user.email', 't@t')
+  sh(dir, 'config', 'user.name', 't')
+  writeFileSync(join(dir, 'a.txt'), 'a\n')
+  sh(dir, 'add', '-A')
+  sh(dir, 'commit', '-q', '-m', 'first')
+  const slot = join(tmp(), 'proj-wt-1')
+  sh(dir, 'worktree', 'add', '-q', '-b', 'feat/001-x', slot, 'main')
+  writeFileSync(join(slot, '.worktree-plan'), 'plans/001-x.plan.md\n')
+  const runs = join(dir, '.claude', 'orchestrator-runs', 's')
+  mkdirSync(runs, { recursive: true })
+  writeFileSync(join(runs, 'status.json'), `${JSON.stringify({ run: 's', phase: 'running', plans: { '001': { nnn: '001', branch: 'feat/001-x', state: 'building', slot: slot.replace(/\\/g, '/') } }, notes: [] })}\n`)
+  const stop = spawnSync(process.execPath, [join(dir, 'scripts', 'orch-state.mjs'), 'stop', '--run=s', '--reason=env'], { cwd: dir, encoding: 'utf8' })
+  assert.equal(stop.status, 0, stop.stdout + stop.stderr)
+  assert.match(stop.stdout, /^plan 001: slot wt-1 released$/m)
+  assert.equal(sh(slot, 'branch', '--show-current'), '', 'the slot is detached')
+  assert.equal(existsSync(join(slot, '.worktree-plan')), false)
+  const st = JSON.parse(readFileSync(join(runs, 'status.json'), 'utf8'))
+  assert.equal(st.phase, 'stopped')
+  assert.equal(st.plans['001'].slot, undefined)
+  assert.ok(st.notes.some((n) => /^slots given back when the run stopped: plan 001: slot wt-1 released/.test(n.text)), JSON.stringify(st.notes))
+})
+
+test('free-merged-slots leaves alone a slot a live orchestrator run holds; a stopped run frees it', () => {
+  const dir = tmp()
+  cpSync(join(root, 'scripts'), join(dir, 'scripts'), { recursive: true, dereference: true })
+  const origin = join(tmp(), 'origin.git')
+  sh(dir, 'init', '-q', '--bare', '-b', 'main', origin)
+  sh(dir, 'init', '-q', '-b', 'main')
+  sh(dir, 'config', 'user.email', 't@t')
+  sh(dir, 'config', 'user.name', 't')
+  writeFileSync(join(dir, 'a.txt'), 'a\n')
+  sh(dir, 'add', '-A')
+  sh(dir, 'commit', '-q', '-m', 'first')
+  sh(dir, 'remote', 'add', 'origin', origin)
+  sh(dir, 'push', '-q', '-u', 'origin', 'main')
+  writeFileSync(join(dir, '.git', 'info', 'exclude'), '.worktree-*\n') // as a real project's .gitignore does
+  const slot = join(tmp(), 'proj-wt-1')
+  // the race: a builder branch just cut from a run branch equal to origin/main is an ancestor of it
+  sh(dir, 'worktree', 'add', '-q', '-b', 'feat/001-x', slot, 'main')
+  writeFileSync(join(slot, '.worktree-plan'), 'plans/001-x.plan.md\n')
+  const runs = join(dir, '.claude', 'orchestrator-runs', 'live')
+  mkdirSync(runs, { recursive: true })
+  const status = (phase) => writeFileSync(join(runs, 'status.json'), `${JSON.stringify({ run: 'live', phase, updatedAt: new Date().toISOString(), plans: { '001': { nnn: '001', branch: 'feat/001-x', state: 'building', slot: slot.replace(/\\/g, '/') } }, notes: [] })}\n`)
+  const free = () => spawnSync(process.execPath, [join(dir, 'scripts', 'free-merged-slots.mjs'), '--no-fetch'], { cwd: dir, encoding: 'utf8' })
+  status('running')
+  let r = free()
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+  assert.match(r.stdout, /^wt-1: branch=feat\/001-x claimed by live orchestrator run live — left alone$/m)
+  assert.equal(sh(slot, 'branch', '--show-current'), 'feat/001-x')
+  status('stopped')
+  r = free()
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+  assert.match(r.stdout, /^wt-1: freed/m)
+  assert.equal(sh(slot, 'branch', '--show-current'), '')
+})
+
+test('preflight refuses a second run that names a plan of a live run or a plan whose scope overlaps one of its plans', () => {
+  const dir = tmp()
+  cpSync(join(root, 'scripts'), join(dir, 'scripts'), { recursive: true, dereference: true })
+  sh(dir, 'init', '-q', '-b', 'main')
+  sh(dir, 'config', 'user.email', 't@t')
+  sh(dir, 'config', 'user.name', 't')
+  mkdirSync(join(dir, 'plans'), { recursive: true })
+  mkdirSync(join(dir, 'src', 'a'), { recursive: true })
+  writeFileSync(join(dir, 'src', 'a', 'x.ts'), '1\n')
+  const plan = (nnn, scope) => writeFileSync(join(dir, 'plans', `${nnn}-p.plan.md`), `# Plan ${nnn} — p\n\nStatus: active\n\n## Read-Write Scope\n\n\`\`\`scope\n${scope}\n\`\`\`\n`)
+  plan('001', 'src/a/**')
+  plan('002', 'src/a/x.ts')
+  plan('003', 'docs/**')
+  sh(dir, 'add', '-A')
+  sh(dir, 'commit', '-q', '-m', 'plans')
+  const runs = join(dir, '.claude', 'orchestrator-runs', 'other')
+  mkdirSync(runs, { recursive: true })
+  writeFileSync(join(runs, 'status.json'), `${JSON.stringify({ run: 'other', phase: 'running', updatedAt: new Date().toISOString(), plans: { '001': { nnn: '001', state: 'building' } }, notes: [] })}\n`)
+  const pre = (...a) => spawnSync(process.execPath, [join(dir, 'scripts', 'orch-preflight.mjs'), '--run', 'new', ...a], { cwd: dir, encoding: 'utf8' }).stdout
+  assert.match(pre('--plans', '001'), /^FAIL run: plan 001 already in live run "other"/m)
+  assert.match(pre('--plans', '002,003'), /^FAIL run: scope overlap with live run "other": plan 002 and its plan 001 both write src\/a\/x\.ts/m)
+  assert.match(pre('--plans', '003'), /^OK {3}run$/m)
+  assert.match(pre(), /^OK {3}run$/m, 'no --plans: only the run name is checked')
 })
 
 const withPackages = (dir) => {

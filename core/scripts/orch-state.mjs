@@ -17,10 +17,15 @@
  *   node scripts/orch-state.mjs handoff    --run <name> --plan <NNN> --step s --check c --tail t --tried x
  *                                          the hand-off file a fresh judgment-tier builder reads
  *   node scripts/orch-state.mjs note       --run <name> [--plan <NNN>] --text "<decision>"
- *   node scripts/orch-state.mjs stop       --run <name> --reason "<why the run stopped>"
+ *   node scripts/orch-state.mjs stop       --run <name> --reason "<why the run stopped>"   (gives every held slot back)
+ *   node scripts/orch-state.mjs watch      --run <name> [--stale-min <n>]   one line: RUNNING, FINISHED, STOPPED: <why>
+ *                                          or STUCK: plan <NNN> · <state> · no progress for <n> min · last: <note>
+ *                                          (exit 1); reads status.json only — no git, no agent, no lock
  *   node scripts/orch-state.mjs disk       [--min <gb>]                     free disk vs orchestrator.minFreeDiskGb
  *   node scripts/orch-state.mjs clean      --run <name>                     the merge folder has no uncommitted file
  *   node scripts/orch-state.mjs finish     --run <name>                     report on the run branch + local copy
+ *                                          (the local copy first, so a report exists whatever the merge folder's state;
+ *                                          gives every held slot back)
  *
  * Every command prints its facts, then one last line `ORCH_JSON <json>` the workflow reads. Exit 0 when `ok`, else 1.
  * Values arrive as `--key=value` arguments (the workflow) or `--key value` (a value may not start with "-"), never as a
@@ -39,8 +44,8 @@ import { findOpenPlan } from './lib/plan-paths.mjs'
 import { planNumber, planTitle, mergeSubjectRe } from './lib/plan-deps.mjs'
 import { uiItems } from './lib/done-when.mjs'
 import { listSlots } from './lib/slot.mjs'
-import { ensureDeps, idleSlot, claimSlot, releaseSlot } from './lib/orch-folders.mjs'
-import { runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem } from './lib/orch-run.mjs'
+import { ensureDeps, idleSlot, claimSlot, releaseSlot, releaseRunSlots } from './lib/orch-folders.mjs'
+import { runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine } from './lib/orch-run.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const MAIN = '{{git.mainBranch}}'
@@ -50,6 +55,8 @@ const REPO = '{{project.repoName}}'
 const PM = '{{project.packageManager}}' === 'pnpm' ? 'pnpm' : 'npm'
 const USE_SLOTS = {{orchestrator.useSlots|json}} !== false
 const SERVER_ROOT = '{{paths.serverRoot}}'
+// Minutes without a status.json update after which `watch` prints STUCK (orchestrator.staleMin).
+const STALE_MIN = {{orchestrator.staleMin|json}}
 // Sensitive paths (the security reviewer runs on them): the same reading as ship-prep — a regex string replaces the
 // built-in list, a list of globs is added to it.
 const DEFAULT_SENSITIVE_RE = /auth|crypto|guard|interceptor|security|permission|payment|migration|secret|\.env|\.github\/workflows/i
@@ -61,7 +68,7 @@ const SENSITIVE_CODE_RE = /auth|permission|password|jwt|session[_-]?id|tokens?\b
 // Every flag takes a value. The workflow passes `--key=value` (one token, so a value can never become a flag); a
 // human may write `--key value`, where a value starting with "-" is refused. An unknown flag (--root among them: the
 // folder is always this script's own project) or a second positional word stops the command.
-const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tier', 'sha', 'role', 'model', 'effort', 'roles', 'reason', 'card', 'card-status', 'page', 'shots', 'via', 'step', 'check', 'tail', 'tried', 'text', 'min'])
+const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tier', 'sha', 'role', 'model', 'effort', 'roles', 'reason', 'card', 'card-status', 'page', 'shots', 'via', 'step', 'check', 'tail', 'tried', 'text', 'min', 'stale-min'])
 function parseArgs(argv) {
   const out = { _: [] }
   for (let i = 0; i < argv.length; i++) {
@@ -303,11 +310,6 @@ const commands = {
       if (b.status !== 0) fail(`git branch ${branch} ${from}: ${b.err}`)
       lines.push(`created ${branch} from ${from}`)
     }
-    if (!refExists(`origin/${branch}`)) {
-      const p = git(root, 'push', '--quiet', '-u', 'origin', branch)
-      if (p.status !== 0) fail(`git push origin ${branch}: ${p.err.split('\n').pop()}`, { envFailure: true })
-      lines.push(`pushed ${branch}`)
-    }
     const mf = mergeFolder(run)
     if (!existsSync(mf)) {
       const w = git(root, 'worktree', 'add', '--quiet', mf, branch)
@@ -318,9 +320,34 @@ const commands = {
       if (head !== branch) fail(`the merge folder ${mf} is on ${head || '(no branch)'}, not ${branch}`)
       const dirty = git(mf, 'status', '--porcelain').out
       if (dirty) fail(`the merge folder ${mf} has uncommitted files: ${dirty.split('\n').map((l) => l.slice(3)).join(', ')}`)
-      const ff = git(mf, 'merge', '--quiet', '--ff-only', `origin/${branch}`)
-      if (ff.status !== 0) fail(`the merge folder cannot fast-forward to origin/${branch}: ${ff.err}`)
+      if (refExists(`origin/${branch}`)) {
+        const ff = git(mf, 'merge', '--quiet', '--ff-only', `origin/${branch}`)
+        if (ff.status !== 0) fail(`the merge folder cannot fast-forward to origin/${branch}: ${ff.err}`)
+      }
     }
+    if (!refExists(`origin/${branch}`)) {
+      // The run branch gets a first commit of its own (empty). A builder branch cut from it is then never an ancestor
+      // of origin/<main>, so a Planner session's free-merged-slots cannot free a slot the run has just claimed (a fresh
+      // branch equal to origin/<main> looks merged until its first file change).
+      if (git(mf, 'rev-list', '--count', `origin/${MAIN}..HEAD`).out === '0') {
+        const c = git(mf, 'commit', '--quiet', '--allow-empty', '-m', `orch(${run}): run start`)
+        if (c.status !== 0) fail(`git commit the run start in ${mf}: ${(c.err || c.out).split('\n').pop()}`, { envFailure: true })
+        lines.push(`run start commit on ${branch}`)
+      }
+      const p = git(mf, 'push', '--quiet', '-u', 'origin', branch)
+      if (p.status !== 0) fail(`git push origin ${branch}: ${p.err.split('\n').pop()}`, { envFailure: true })
+      lines.push(`pushed ${branch}`)
+    }
+    // The merge step runs the project checks in this folder: a worktree starts without packages (a run lost its
+    // finished plan to `'ng' is not recognized`). A reused folder that has them installs nothing.
+    let deps
+    try {
+      deps = ensureDeps({ mainRoot: root, dst: mf, serverRoot: SERVER_ROOT, pm: PM })
+    } catch (e) {
+      fail(`installing the packages in the merge folder ${mf}: ${e.message}`, { envFailure: true })
+    }
+    lines.push(...deps.lines)
+    if (!deps.ok) fail(`the merge folder ${mf} has no scripts/node_modules (picomatch): ${deps.lines.join('; ') || 'no package.json in scripts/?'}`, { envFailure: true })
     const done = mergedPlans(run)
     const prev = readStatus(run)
     const status = prev ?? { run, branch, base: MAIN, startedAt: args.started || nowIso(), mainShaAtStart: git(root, 'rev-parse', `origin/${MAIN}`).out, plans: {}, notes: [], attempts: 0 }
@@ -333,7 +360,7 @@ const commands = {
     }
     status.freeDiskGb = diskGb()
     writeStatus(run, status)
-    emit({ ok: true, run, branch, mergeFolder: mf.replace(/\\/g, '/'), done: done.map((m) => m.nnn), mainSha: status.mainShaAtStart, attempt: status.attempts },
+    emit({ ok: true, run, branch, mergeFolder: mf.replace(/\\/g, '/'), done: done.map((m) => m.nnn), mainSha: status.mainShaAtStart, attempt: status.attempts, startedAt: status.startedAt },
       [...lines, `run ${run}: ${done.length} plan(s) already merged into ${branch}${done.length ? ` (${done.map((m) => m.nnn).join(', ')})` : ''}`])
   },
 
@@ -574,8 +601,28 @@ const commands = {
     const status = needStatus(run)
     status.phase = 'stopped'
     status.stopReason = String(args.reason ?? 'stopped')
+    const slots = giveSlotsBack(run, status)
     writeStatus(run, status)
-    emit({ ok: true, phase: status.phase })
+    emit({ ok: true, phase: status.phase, slots: slots.lines }, slots.lines)
+  },
+
+  // One line that says whether the run is stuck, from status.json only (no git, no agent, no lock): RUNNING,
+  // FINISHED, STOPPED: <reason>, or STUCK: … (exit 1) when the run made no progress for orchestrator.staleMin
+  // minutes (--stale-min overrides) or one plan noted the same reason twice in a row.
+  watch() {
+    const run = runName()
+    const p = statusPath(run)
+    if (!existsSync(p)) fail(`no run "${run}" — start it with: node scripts/orch-state.mjs init --run ${run}`)
+    let status
+    try {
+      status = JSON.parse(readFileSync(p, 'utf8'))
+    } catch (e) {
+      fail(`status.json of run "${run}" is unreadable: ${e.message}`)
+    }
+    const staleMin = args['stale-min'] !== undefined ? Number(args['stale-min']) : STALE_MIN
+    if (!(Number.isFinite(staleMin) && staleMin > 0)) fail('--stale-min takes a number of minutes')
+    const w = watchLine(status, { nowMs: Date.now(), staleMin })
+    emit({ ok: !w.stuck, stuck: w.stuck, line: w.line, phase: status.phase ?? 'unknown', updatedAt: status.updatedAt ?? null }, [w.line])
   },
 
   disk() {
@@ -594,41 +641,63 @@ const commands = {
     emit({ ok: files.length === 0, clean: files.length === 0, files, ...(files.length ? { error: `uncommitted files in the merge folder: ${files.join(', ')}` } : {}) })
   },
 
+  // The report, every time: the local copy (.claude/orchestrator-runs/<run>.md) is written first, from status.json and
+  // the merges git shows, so a merge folder that is dirty or cannot fast-forward still leaves a report; the copy on the
+  // run branch is committed after, and a failure there names the local file.
   finish() {
     const run = runName()
     const branch = runBranch(run)
     const status = needStatus(run)
     const mf = mergeFolder(run)
-    if (!existsSync(mf)) fail(`no merge folder ${mf}`)
     fetchOrigin()
-    const dirty = git(mf, 'status', '--porcelain').out
-    if (dirty) fail(`the merge folder ${mf} has uncommitted files: ${dirty.split('\n').map((l) => l.slice(3)).join(', ')}`)
-    const ff = git(mf, 'merge', '--quiet', '--ff-only', `origin/${branch}`)
-    if (ff.status !== 0) fail(`the merge folder cannot fast-forward to origin/${branch}: ${ff.err}`)
     const merged = mergedPlans(run)
     for (const m of merged) if (status.plans[m.nnn]) Object.assign(status.plans[m.nnn], { state: 'merged', sha: m.sha })
     if (status.phase === 'running') status.phase = 'finished'
     status.finishedAt = nowIso()
+    const slots = giveSlotsBack(run, status)
     writeStatus(run, status)
     const report = formatReport({ status, merged, mainShaNow: git(root, 'rev-parse', `origin/${MAIN}`).out, finishedAt: status.finishedAt, runBranch: branch, mainBranch: MAIN })
+    const local = join(runsDir(), `${run}.md`)
+    mkdirSync(runsDir(), { recursive: true })
+    writeFileSync(local, report)
+    const parked = Object.values(status.plans).filter((x) => x.state === 'parked' || x.state === 'left-run').map((x) => x.nnn)
     const rel = `docs/orchestrator/runs/${run}`
+    const base = { report: `${rel}/report.md`, local: local.replace(/\\/g, '/'), merged: merged.map((m) => m.nnn), parked, phase: status.phase, slots: slots.lines }
+    const notCommitted = (error, extra = {}) => emit({ ok: false, ...base, reportCommitted: false, error: `${error} — the report is in ${local}`, ...extra },
+      [...slots.lines, `report: local copy ${local} (not committed to ${branch}: ${error})`])
+    if (!existsSync(mf)) notCommitted(`no merge folder ${mf}`)
+    const dirty = git(mf, 'status', '--porcelain').out
+    if (dirty) notCommitted(`the merge folder ${mf} has uncommitted files: ${dirty.split('\n').map((l) => l.slice(3)).join(', ')}`)
+    const ff = git(mf, 'merge', '--quiet', '--ff-only', `origin/${branch}`)
+    if (ff.status !== 0) notCommitted(`the merge folder cannot fast-forward to origin/${branch}: ${ff.err}`)
     mkdirSync(join(mf, rel), { recursive: true })
     writeFileSync(join(mf, rel, 'report.md'), report)
     writeFileSync(join(mf, rel, 'status.json'), `${JSON.stringify(status, null, 2)}\n`)
     const add = git(mf, 'add', '--', `${rel}/report.md`, `${rel}/status.json`)
-    if (add.status !== 0) fail(`git add the report: ${add.err}`)
+    if (add.status !== 0) notCommitted(`git add the report: ${add.err}`)
     const c = git(mf, 'commit', '--quiet', '-m', `orch(${run}): run report`)
-    if (c.status !== 0 && !/nothing to commit/.test(c.out + c.err)) fail(`git commit the report: ${(c.err || c.out).split('\n').pop()}`)
+    if (c.status !== 0 && !/nothing to commit/.test(c.out + c.err)) notCommitted(`git commit the report: ${(c.err || c.out).split('\n').pop()}`)
     const p = git(mf, 'push', '--quiet', 'origin', branch)
-    if (p.status !== 0) fail(`git push origin ${branch}: ${p.err.split('\n').pop()}`, { envFailure: true })
-    const local = join(runsDir(), `${run}.md`)
-    mkdirSync(runsDir(), { recursive: true })
-    writeFileSync(local, report)
+    if (p.status !== 0) notCommitted(`git push origin ${branch}: ${p.err.split('\n').pop()}`, { envFailure: true })
     const left = git(mf, 'status', '--porcelain').out
-    const parked = Object.values(status.plans).filter((x) => x.state === 'parked' || x.state === 'left-run').map((x) => x.nnn)
-    emit({ ok: !left, report: `${rel}/report.md`, local: local.replace(/\\/g, '/'), merged: merged.map((m) => m.nnn), parked, phase: status.phase, ...(left ? { error: `merge folder not clean: ${left}` } : {}) },
-      [`report: ${rel}/report.md on ${branch}; local copy ${local}`, `merged ${merged.length}: ${merged.map((m) => m.nnn).join(', ') || 'none'}; parked ${parked.length}: ${parked.join(', ') || 'none'}`])
+    emit({ ok: !left, ...base, reportCommitted: true, ...(left ? { error: `merge folder not clean: ${left}` } : {}) },
+      [...slots.lines, `report: ${rel}/report.md on ${branch}; local copy ${local}`, `merged ${merged.length}: ${merged.map((m) => m.nnn).join(', ') || 'none'}; parked ${parked.length}: ${parked.join(', ') || 'none'}`])
   },
+}
+
+// Every slot the run still holds (status.plans[n].slot) is given back when the run stops or finishes, through the
+// same releaseSlot as `release`: a slot with uncommitted files or unpushed commits is kept and the line says why.
+// The target is the run branch on origin, else origin/<main>, else the local main branch (a scratch repository).
+function giveSlotsBack(run, status) {
+  const held = Object.values(status.plans ?? {}).filter((p) => p.slot)
+  if (!held.length) return { lines: [], released: 0 }
+  const target = [`origin/${runBranch(run)}`, `origin/${MAIN}`, MAIN].find((ref) => refExists(ref)) ?? MAIN
+  const r = releaseRunSlots({ status, slots: listSlots(), target })
+  if (r.lines.length) {
+    status.notes ??= []
+    status.notes.push({ at: nowIso(), text: `slots given back when the run ${status.phase}: ${r.lines.join('; ')}` })
+  }
+  return r
 }
 
 if (!commands[cmd]) {

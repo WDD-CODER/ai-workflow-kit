@@ -3,12 +3,14 @@
  * to detached HEAD @ origin/{{git.mainBranch}} (idle), stops its dev servers and clears its .worktree-plan. Run as
  * part of the Planner's pull/sync sequence so finished slots don't sit occupied
  * after a Worker's branch merges. See plans/326-planner-worker-workflow.plan.md.
+ * A slot a live orchestrator run holds (.claude/orchestrator-runs/<run>/status.json running, its slot path or plan
+ * branch) is left alone whatever git says: the run gives it back itself (orch-state.mjs release, stop, finish).
  *
  * Usage:
  *   node scripts/free-merged-slots.mjs             # fetch first
  *   node scripts/free-merged-slots.mjs --no-fetch  # local refs only (session start: fast, no network)
  */
-import { existsSync, rmSync } from 'fs'
+import { existsSync, rmSync, readdirSync, readFileSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { resolve, dirname, join } from 'path'
 import { fileURLToPath } from 'url'
@@ -17,6 +19,25 @@ import { stopSlotServers } from './lib/slot-procs.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(__dirname, '..')
+// A run counts as live while its status.json says running and was updated in the last two hours (orch-preflight's rule).
+const LIVE_MS = 2 * 60 * 60 * 1000
+const norm = (p) => String(p ?? '').replace(/\\/g, '/').replace(/\/+$/, '')
+
+// The slots (by path) and plan branches a live orchestrator run holds: an orchestrator builder's branch starts equal
+// to the run branch, so "merged into origin/main" says nothing about it until the run moves on. Never freed here.
+function liveRunHolds() {
+  const dir = join(repoRoot, '.claude', 'orchestrator-runs')
+  if (!existsSync(dir)) return []
+  const out = []
+  for (const name of readdirSync(dir)) {
+    try {
+      const s = JSON.parse(readFileSync(join(dir, name, 'status.json'), 'utf8'))
+      if (s.phase !== 'running' || Date.now() - Date.parse(s.updatedAt ?? 0) > LIVE_MS) continue
+      for (const p of Object.values(s.plans ?? {})) out.push({ run: name, slot: p.slot ? norm(p.slot) : null, branch: p.branch ?? null })
+    } catch { /* no status.json, or unreadable: not a live run */ }
+  }
+  return out
+}
 
 function git(cmdArgs, cwd) {
   return execFileSync('git', cmdArgs, { cwd: cwd || repoRoot, encoding: 'utf8' }).replace(/\r?\n+$/, '')
@@ -56,10 +77,16 @@ function main() {
     console.log('FREE_SLOTS: no {{slots.nameFormat}} worktrees found')
     return
   }
+  const live = liveRunHolds()
 
   for (const s of slots) {
     if (s.detached || !s.branch) {
       console.log(`wt-${s.slot}: idle — left alone`)
+      continue
+    }
+    const held = live.find((h) => (h.slot && h.slot === norm(s.path)) || (h.branch && h.branch === s.branch))
+    if (held) {
+      console.log(`wt-${s.slot}: branch=${s.branch} claimed by live orchestrator run ${held.run} — left alone`)
       continue
     }
     // Only a slot claimed through take-plan.mjs (.worktree-plan present) is

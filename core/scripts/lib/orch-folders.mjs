@@ -54,7 +54,9 @@ export function ensureDeps({ mainRoot, dst, serverRoot = '', pm = 'npm' }) {
       lines.push(`no ${lockFile(fpm)} in ${f}: nothing installed`)
       continue
     }
-    const [cmd, a] = hasLock ? installCommand(fpm) : ['npm', ['install', '--no-audit', '--no-fund']]
+    // Without a lock file the install writes none either: a new package-lock.json would make the folder dirty (the
+    // merge folder must stay clean for `clean` and `finish`).
+    const [cmd, a] = hasLock ? installCommand(fpm) : ['npm', ['install', '--no-audit', '--no-fund', '--no-package-lock']]
     const r = run(to, cmd, a)
     lines.push(r.status === 0 ? `installed the ${f === '.' ? 'root' : f} packages (${cmd} ${a[0]})` : `install in ${f} failed: ${(r.err || r.out).split('\n').pop()}`)
     const skipped = ignoredBuildScripts(`${r.out}\n${r.err}`)
@@ -83,6 +85,33 @@ export function claimSlot({ slot, branch, base, planPath, branchExists }) {
   if (s.status !== 0) return { ok: false, error: `git switch in ${slot.path}: ${s.err.split('\n').pop()}` }
   writeFileSync(join(slot.path, '.worktree-plan'), `${planPath}\n`)
   return { ok: true }
+}
+
+/**
+ * Every slot a run still holds (status.plans[n].slot, the path `worktree` recorded) is given back through releaseSlot
+ * when the run stops or finishes; a released slot loses its `slot` field. `slots` is listSlots() output. Returns
+ * { lines, released }: one line per slot — `plan NNN: slot wt-n released` or `… kept — <why>`.
+ */
+export function releaseRunSlots({ status, slots, target }) {
+  const lines = []
+  let released = 0
+  const norm = (p) => String(p ?? '').replace(/\\/g, '/').replace(/\/+$/, '')
+  for (const p of Object.values(status?.plans ?? {})) {
+    if (!p.slot) continue
+    const slot = (slots ?? []).find((s) => norm(s.path) === norm(p.slot))
+    if (!slot) {
+      lines.push(`plan ${p.nnn}: slot ${p.slot} is no longer a worktree`)
+      delete p.slot
+      continue
+    }
+    const r = releaseSlot({ path: slot.path, branch: p.branch ?? slot.branch ?? '', target })
+    if (r.released) {
+      released++
+      delete p.slot
+      lines.push(`plan ${p.nnn}: slot wt-${slot.slot} released`)
+    } else lines.push(`plan ${p.nnn}: slot wt-${slot.slot} kept — ${r.why}`)
+  }
+  return { lines, released }
 }
 
 /**

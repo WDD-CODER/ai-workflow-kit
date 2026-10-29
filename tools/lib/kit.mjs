@@ -127,6 +127,17 @@ export function orchestratorProblems(vals) {
   if (useSlots !== undefined && typeof useSlots !== 'boolean') {
     out.push(`orchestrator.useSlots is ${JSON.stringify(useSlots)} — it must be true or false`)
   }
+  // The model a dead agent is retried on once: the retry may be a review agent, so Haiku is never allowed here.
+  const fb = vals['orchestrator.fallbackModel']
+  if (fb !== undefined && (typeof fb !== 'string' || !MODEL_VALUE.test(fb) || /haiku/i.test(fb))) {
+    out.push(`orchestrator.fallbackModel is ${JSON.stringify(fb)} — allowed: "sonnet", "opus", "fable", "inherit" (no retry) or a non-Haiku model id starting "claude-"`)
+  }
+  for (const [key, min, max, what] of [['staleMin', 1, 240, 'minutes'], ['maxNotesPerPlan', 1, 100, 'notes'], ['maxAgentCallsPerPlan', 10, 500, 'agent calls']]) {
+    const v = vals[`orchestrator.${key}`]
+    if (v !== undefined && !(Number.isInteger(v) && v >= min && v <= max)) {
+      out.push(`orchestrator.${key} is ${JSON.stringify(v)} — it must be a whole number of ${what} from ${min} to ${max}`)
+    }
+  }
   return out
 }
 

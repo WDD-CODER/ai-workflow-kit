@@ -25,6 +25,10 @@ branch himself.
 | `maxFixRounds` | `{{orchestrator.maxFixRounds}}` | How many times problems go back to a builder before the plan is parked |
 | `minFreeDiskGb` | `{{orchestrator.minFreeDiskGb}}` | Free disk the environment check asks for, before the run and before a retry |
 | `pilotSize` | `{{orchestrator.pilotSize}}` | A run with more plans than this builds the first `pilotSize` plans in wave order, stops with the report and the numbered decisions, and starts the rest on the Human's `continue`; 0 = off |
+| `fallbackModel` | `{{orchestrator.fallbackModel}}` | The model a dead agent (one that returned nothing: a terminal API error, a blocked model) is retried on, once; `inherit` = no retry. Never Haiku: the retry may be a review agent |
+| `staleMin` | `{{orchestrator.staleMin}}` | Minutes without a `status.json` update after which `orch-state.mjs watch` prints `STUCK` |
+| `maxNotesPerPlan` | `{{orchestrator.maxNotesPerPlan}}` | Run notes one plan may write (every note is one runner agent call); the last one says `notes capped` |
+| `maxAgentCallsPerPlan` | `{{orchestrator.maxAgentCallsPerPlan}}` | Agent calls one plan may make before it is parked (`agent-call limit`) |
 
 ## The run
 
@@ -35,7 +39,12 @@ branch himself.
    asks the Human every question in **one batch**, writes each answer into that plan's `## Execution Notes` (a plan
    commit on `{{git.mainBranch}}`), and leaves out a plan whose question stays unanswered. Then the Human says `go`.
 2. **Start.** `orch-state.mjs init` creates `{{orchestrator.runBranchPrefix}}<run>` from `origin/{{git.mainBranch}}` (or reuses it on a
-   relaunch), pushes it, and adds the merge folder `<repo>-orch-merge-<run>` beside the main folder.
+   relaunch), adds the merge folder `<repo>-orch-merge-<run>` beside the main folder, gives the branch an empty first
+   commit `orch(<run>): run start` (a builder branch cut from it is then never an ancestor of `origin/{{git.mainBranch}}`, so a
+   Planner session's `free-merged-slots` cannot free a slot the run holds) and pushes it. The merge folder gets its
+   packages (`ensureDeps`, the same install a builder folder gets): the merge step runs the project checks there, and a
+   worktree starts without `node_modules`. A folder that cannot be provisioned is an environment failure before any
+   builder runs. `init` reads its own clock for `startedAt`; the command passes no time.
 3. **Per plan, wave by wave** (plans of one wave in parallel; plans that share scope — a lock group — one after the
    other):
    - builder (`orch-builder`, scope-guarded, on `feat/NNN-<slug>`): in an idle permanent slot when there is one
@@ -53,7 +62,10 @@ branch himself.
      <script in package.json>`, `node tools/…`, `node scripts/…` or `node --test <files>` (any other is dropped with
      a run note). A kit script that pushes, opens a pull request or writes run, plan or slot state (`kit-feedback`,
      `orch-state`, `decision-log`, `take-plan`, `slot-serve`, `sync`, …) is never a check, whatever its folder; the
-     project's own check scripts are. Exactly one result per command, or the gate fails;
+     project's own check scripts are; a script run with `--write`, `--apply`, `--fix` or `--update` is not a check
+     either. Exactly one result per command: a result the gate lost (a run got 1 of 8 back) makes the gate run only the
+     missing commands again, once, with no builder round; a command still missing after that is an environment failure.
+     A result for a command not asked for, or two for one command, is a fail;
    - finders in parallel (`orch-check-plan`, `orch-check-bugs`, `orch-check-rules`, and `orch-security` only when the
      diff touches a sensitive path or its added lines name auth, permission, password, token or role code), then `orch-verify` on every candidate;
    - the `[ui]` cards (below): each card's own e2e test, run by a gate; the UI validator (`orch-ui`) only for a
@@ -70,9 +82,57 @@ branch himself.
    branch (the merge folder) once. A failure is a finding in the report (`Stopped: final gate failed: <command> — <output
    tail>`, and the command's output) and the run branch is not handed over as clean; a merge can break a test no
    plan's own checks cover.
-5. **Report.** `orch-state.mjs finish` writes `docs/orchestrator/runs/<run>/report.md` and a copy of `status.json` to
-   the run branch, and copies the report to `.claude/orchestrator-runs/<run>.md` in the main folder (gitignored), so
-   it opens without a branch switch.
+5. **Report.** `orch-state.mjs finish` runs every time the workflow ends — after the last wave, when every plan parked,
+   and when a step threw (the run is then stopped with `run stopped with an error: …`). It writes the local copy
+   `.claude/orchestrator-runs/<run>.md` in the main folder first (gitignored, opens without a branch switch), then
+   `docs/orchestrator/runs/<run>/report.md` and a copy of `status.json` on the run branch; a merge folder that is dirty
+   or cannot fast-forward keeps the local copy and the result says `reportCommitted: false` with the reason. `stop` and
+   `finish` both give every slot the run still holds back (`releaseSlot`: a slot with uncommitted or unpushed work is
+   kept and the line says why), so a run that ends on an environment failure leaves no `{{slots.nameFormat}}` with a stale
+   `.worktree-plan`.
+
+**Environment failures** never cost a fix round: the plan pauses, `orch-preflight.mjs --env-only --run <run>` checks
+disk, database and packages (the main folder's and the merge folder's), and the plan is retried once — from the
+builder when the failure came before the merge, and as **the merge step only** when the merge failed (the branch is
+already built and verified; a run once rebuilt both its plans from the builder for a merge folder without packages). A
+second environment failure parks the plan with the reason.
+
+## A dead agent, a loop, and "is it stuck?"
+
+- **Model fallback.** Every agent call goes through one helper in the workflow. An agent that returns nothing (it died
+  on a terminal API error — a blocked model, for one — or the Human skipped it) is called once more on
+  `orchestrator.fallbackModel` (`{{orchestrator.fallbackModel}}`), and a run note says `model fallback: <label> <first
+  model> → <second>`. A second nothing goes to the caller's park or environment path as before. `inherit` turns the
+  retry off. The key refuses a Haiku value: a review agent (the checkers, the verifier, security, UI) never falls back
+  to Haiku. Only the orchestrator session's own model is out of reach: the Human switches it with `/model`.
+- **Limits per plan**, counted in the workflow (it has no clock): at most `maxNotesPerPlan` run notes (every note is
+  one runner agent call — a run once wrote about 30 closing notes in 4.5 minutes), then one last `notes capped` note;
+  the same failure reason twice in a row at the same step (`gate: …`, `checker: …`, `ui: …`, `merge: …`, trimmed to
+  120 characters) parks the plan at once as `same reason twice: <why>`; at most `maxAgentCallsPerPlan` agent calls, then
+  the plan is parked as `agent-call limit`. A parked plan closes with one state write, not a note per step.
+- **`watch`.** `node scripts/orch-state.mjs watch --run <run> [--stale-min <n>]` reads `status.json` only (no git, no
+  agent, no lock) and prints one line: `RUNNING`, `FINISHED`, `STOPPED: <reason>`, or `STUCK: plan <NNN> · <state> · no
+  progress for <n> min · last: <note>` when the phase is `running` and `updatedAt` is older than `orchestrator.staleMin`
+  (`{{orchestrator.staleMin}}` minutes), or `STUCK: plan <NNN> · <state> · same reason twice: <note>` when one plan's
+  last two notes say the same thing. `STUCK` exits 1, the rest 0 — a project can wrap it in a loop or a notifier. The
+  `/orchestrate` command tells the Human the line to run in a second terminal, and prints a `STUCK` line first in its
+  final report when the run ended on a limit.
+
+## Running beside a Planner session
+
+`/orchestrate` runs in a **second Claude Code session in the main folder** — never from a `{{slots.nameFormat}}` slot (the
+preflight refuses a main folder that is not on `{{git.mainBranch}}`, and a slot is a builder's folder). Rules that keep the
+two sessions apart:
+
+- The main folder must be clean (no uncommitted tracked file) at readiness, at `go` and at `continue`: the readiness
+  answers are a plan commit on `{{git.mainBranch}}`, and a run never writes the main folder itself.
+- Never edit a plan that is in a run: a builder reads it from its branch, and the readiness answers are the last plan
+  change before `go`. New tasks go to the plan after the run, or to a new plan.
+- One run at a time per plan and per file: the preflight (`--plans`) refuses a run that names a plan of a live run or a
+  plan whose Read-Write Scope overlaps one of its plans (lock groups exist only inside one run). A live run is one whose
+  `status.json` says `running` and was updated in the last two hours.
+- The Planner's `free-merged-slots` (session start, `/plan` step 2) leaves alone every slot a live run holds (by slot
+  path or plan branch in `status.json`); the run gives its slots back itself.
 
 ## The [ui] cards
 
@@ -104,8 +164,10 @@ With the UI step off, a failed script is a finding for the builder, and a card n
 - **Pass is computed, never read.** A role result's own `pass` flag is ignored: the workflow computes it from the
   gate results, the finders' problems and the verifier's verdicts (a kept `blocker` or `major` with confidence ≥ 80
   fails). A finder that says `pass: true` next to a `major` problem is a fail, and the run notes it.
-- **Start tier.** A plan whose `## Architecture Impact` names an invariant other than `INV-none` starts its builder on
-  the `judgment` tier; otherwise on `build`.
+- **Start tier.** A plan whose `## Architecture Impact` names an invariant other than `INV-none` that it `changes` or
+  is a `deviation` from — or names one without saying which — starts its builder on the `judgment` tier; a plan whose
+  lines only `preserves` invariants starts on `build` (most plans preserve something; a judgment start for every one of
+  them put the main session's model on plans a build-tier builder handles).
 - **Fix loop.** The first problem goes back to a builder on the same tier with the findings (round 1). A persisting
   failure (round 2 and later), an `ESCALATE` or `blocked` builder, or a second finding starts a **fresh** builder on
   the `judgment` tier that reads the hand-off file (`.claude/sessions/orch-<run>/handoff-<NNN>.md`), the plan and

@@ -9,6 +9,41 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Added
+- **The orchestrator survives a blocked model and says when it is stuck.** A dead agent (one that returned
+  nothing — a terminal API error, a blocked model) is retried once on `orchestrator.fallbackModel` (default `opus`;
+  `inherit` = no retry; never Haiku) with a run note naming both models. Hard limits per plan: `orchestrator.maxNotesPerPlan`
+  (default 12; every run note is one runner agent call), `orchestrator.maxAgentCallsPerPlan` (default 60, then the plan
+  is parked as `agent-call limit`), and the same failure reason twice in a row parks the plan at once. New command
+  `node scripts/orch-state.mjs watch --run <run>`: one line from `status.json` only — `RUNNING`, `FINISHED`,
+  `STOPPED: <why>` or `STUCK: plan <NNN> · <state> · no progress for <n> min · last: <note>` (exit 1) after
+  `orchestrator.staleMin` minutes (default 10) or the same note twice in a row. `/orchestrate` tells the Human the line
+  to run in a second terminal and prints `STUCK` first when a run ended on a limit.
+- **Running beside a Planner session.** `orch-state.mjs init` gives the run branch an empty first commit, so a builder
+  branch cut from it is never an ancestor of `origin/main` and `free-merged-slots` cannot free a slot the run holds;
+  `free-merged-slots` also leaves alone every slot a live run holds. The preflight (`--plans`) refuses a second run that
+  names a plan of a live run or a plan whose scope overlaps one of its plans. `docs/agent/orchestrator.md` gains
+  "Running beside a Planner session".
+
+### Fixed
+- **The merge folder has its packages.** `orch-state.mjs init` installs them (the same `ensureDeps` as a builder
+  folder); the env-only preflight checks the merge folder too. A run lost a finished plan to `'ng' is not recognized`
+  in the merge step.
+- A gate that returns fewer results than commands reruns only the missing commands, once, with no builder round; a
+  command still missing after that is an environment failure.
+- An environment failure at the merge retries the merge only, after the environment check: no builder, gate or
+  checkers run again for a branch that is already verified (a run rebuilt two plans from the builder for a merge
+  folder without packages).
+- The report and the decisions list are written every time a run ends — also when every plan parked or a step threw;
+  the local copy comes first, so a dirty merge folder no longer means no report (`reportCommitted: false` says why).
+- `init` reads its own clock for `startedAt`; the command no longer passes a made-up time.
+- A plan check command carrying `--write`, `--apply`, `--fix` or `--update` is dropped with a run note (a run passed
+  `kit-owned.mjs --write` as a gate command).
+- `stop` and `finish` give every slot the run still holds back, so a run that ends on an environment failure leaves no
+  `wt-N` with a stale `.worktree-plan`.
+- A plan whose Architecture Impact lines only `preserves` invariants starts on the build tier; judgment is for
+  `changes`, `deviation` or an unreadable line (two runs started on the main session's model for "preserves" lines).
+
 ### Changed
 
 - `security.yml` renders the production audit by `project.packageManager`: a pnpm project runs

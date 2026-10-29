@@ -910,6 +910,8 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     }
     const wf = read(od, '.claude/workflows/orchestrate.js')
     if (!wf.includes('const MAX_FIX_ROUNDS = 2') || !wf.includes('const RUN_PREFIX = "orch/"') || !wf.includes('const PILOT_SIZE = 3')) fail('orchestrator: orchestrate.js does not render maxFixRounds 2 / runBranchPrefix "orch/" / pilotSize 3')
+    if (!wf.includes('const FALLBACK_MODEL = "opus"') || !wf.includes('const MAX_NOTES = 12') || !wf.includes('const MAX_CALLS = 60')) fail('orchestrator: orchestrate.js does not render fallbackModel "opus" / maxNotesPerPlan 12 / maxAgentCallsPerPlan 60')
+    if (!read(od, 'scripts/orch-state.mjs').includes('const STALE_MIN = 10')) fail('orchestrator: orch-state.mjs does not render staleMin 10')
     // The learning loop's files: the rules seed fits its own cap, and the rendered files name the rule they teach.
     const rc = spawnSync(process.execPath, [join(od, 'scripts', 'decision-log.mjs'), 'rules', '--check', '--dir', od], { encoding: 'utf8' })
     if (rc.status !== 0) fail(`decision-log: the rules seed does not pass its own cap: ${(rc.stdout + rc.stderr).trim().split('\n').pop()}`)
@@ -922,6 +924,9 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     if (!read(od, 'scripts/orch-state.mjs').includes('const MIN_FREE_GB = 5')) fail('orchestrator: orch-state.mjs does not render minFreeDiskGb 5')
     const doc = read(od, 'docs/agent/orchestrator.md')
     if (!doc.includes('| `runBranchPrefix` | `orch/` |') || !doc.includes('| `maxFixRounds` | `2` |') || !doc.includes('| `minFreeDiskGb` | `5` |') || !doc.includes('| `pilotSize` | `3` |')) fail('orchestrator: orchestrator.md does not name the default settings')
+    if (!doc.includes('| `fallbackModel` | `opus` |') || !doc.includes('| `staleMin` | `10` |') || !doc.includes('| `maxNotesPerPlan` | `12` |') || !doc.includes('| `maxAgentCallsPerPlan` | `60` |')) fail('orchestrator: orchestrator.md does not name the plan 029 defaults (fallbackModel, staleMin, maxNotesPerPlan, maxAgentCallsPerPlan)')
+    const cmd = read(od, '.claude/commands/orchestrate.md')
+    if (!cmd.includes('node scripts/orch-state.mjs watch --run <run>') || cmd.includes('startedAt')) fail('orchestrator: orchestrate.md must name the watch line and pass no startedAt')
     if (!/^\.claude\/orchestrator-runs\/$/m.test(read(od, '.gitignore'))) fail('orchestrator: the rendered .gitignore does not ignore .claude/orchestrator-runs/')
   }
   rmSync(od, { recursive: true, force: true })
@@ -956,6 +961,11 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     [{ pilotSize: 11 }, 'orchestrator.pilotSize is 11 — it must be a whole number from 0 to 10'],
     [{ pilotSize: 1.5 }, 'orchestrator.pilotSize is 1.5 — it must be a whole number from 0 to 10'],
     [{ pilotSize: '3' }, 'orchestrator.pilotSize is "3" — it must be a whole number from 0 to 10'],
+    [{ fallbackModel: 'haiku' }, 'orchestrator.fallbackModel is "haiku" — allowed: "sonnet", "opus", "fable", "inherit" (no retry) or a non-Haiku model id starting "claude-"'],
+    [{ fallbackModel: 'claude-haiku-5-5' }, 'orchestrator.fallbackModel is "claude-haiku-5-5"'],
+    [{ staleMin: 0 }, 'orchestrator.staleMin is 0 — it must be a whole number of minutes from 1 to 240'],
+    [{ maxNotesPerPlan: 101 }, 'orchestrator.maxNotesPerPlan is 101 — it must be a whole number of notes from 1 to 100'],
+    [{ maxAgentCallsPerPlan: 5 }, 'orchestrator.maxAgentCallsPerPlan is 5 — it must be a whole number of agent calls from 10 to 500'],
   ]
   for (const [orch, msg] of bad) {
     const ob = tmp('orch-bad')
@@ -971,6 +981,9 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   writeFileSync(join(os, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, orchestrator: { maxFixRounds: 9 } }))
   const s = run('sync.mjs', ['--target', os, '--apply'])
   if (s.status !== 2 || !s.stderr.includes('KIT_SYNC: STOP — orchestrator.maxFixRounds is 9')) fail(`sync with orchestrator.maxFixRounds 9: exit ${s.status}, ${s.stderr.trim().split('\n')[0]}`)
+  writeFileSync(join(os, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, orchestrator: { fallbackModel: 'haiku', staleMin: 0 } }))
+  const s2 = run('sync.mjs', ['--target', os, '--apply'])
+  if (s2.status !== 2 || !s2.stderr.includes('orchestrator.fallbackModel is "haiku"') || !s2.stderr.includes('orchestrator.staleMin is 0')) fail(`sync with orchestrator.fallbackModel haiku / staleMin 0: exit ${s2.status}, ${s2.stderr.trim().split('\n')[0]}`)
   rmSync(os, { recursive: true, force: true })
 }
 
