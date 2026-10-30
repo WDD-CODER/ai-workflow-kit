@@ -7,6 +7,9 @@
  *   node scripts/orch-state.mjs order      --run <name> --plans <NNN,NNN>  waves from plan-order (merged plans left out)
  *   node scripts/orch-state.mjs done       --run <name>                     plans merged into the run branch (from git)
  *   node scripts/orch-state.mjs check-files --plan <NNN> --files a,b        the check files that do not exist and that the plan does not create
+ *   node scripts/orch-state.mjs scripts                                      package.json scripts as { name: body } (readiness maps npx checks)
+ *   node scripts/orch-state.mjs main-try   --run <name> --plan <NNN> --cmd "<command>"   runs a main-folder check once, records its exit
+ *   node scripts/orch-state.mjs main-tries --run <name>                     main-folder checks that exited 0 in the last 2 hours, per plan
  *   node scripts/orch-state.mjs plan-info  --run <name> --plan <NNN>        path, branch, start tier, [human] and [ui] items
  *   node scripts/orch-state.mjs worktree   --run <name> --plan <NNN>        the builder's folder on its plan branch: an idle
  *                                          wt-N slot first (orchestrator.useSlots), else its own folder; packages installed
@@ -63,6 +66,8 @@ const STALE_MIN = {{orchestrator.staleMin|json}}
 // The project's log query (commands.logQuery, optional): `finish` runs it once from the main folder for the report's
 // "App errors since the run started" section, with --since=plan-start replaced by the run's start time.
 const LOG_QUERY = {{commands.logQuery|json}}
+// Minutes one `main-try` command may run before it is stopped (orchestrator.gateTimeoutMin, the gate's own limit).
+const GATE_TIMEOUT_MIN = {{orchestrator.gateTimeoutMin|json}}
 // Sensitive paths (the security reviewer runs on them): the same reading as ship-prep — a regex string replaces the
 // built-in list, a list of globs is added to it.
 const DEFAULT_SENSITIVE_RE = /auth|crypto|guard|interceptor|security|permission|payment|migration|secret|\.env|\.github\/workflows/i
@@ -74,7 +79,7 @@ const SENSITIVE_CODE_RE = /auth|permission|password|jwt|session[_-]?id|tokens?\b
 // Every flag takes a value. The workflow passes `--key=value` (one token, so a value can never become a flag); a
 // human may write `--key value`, where a value starting with "-" is refused. An unknown flag (--root among them: the
 // folder is always this script's own project) or a second positional word stops the command.
-const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tier', 'sha', 'role', 'model', 'effort', 'roles', 'reason', 'card', 'card-status', 'page', 'shots', 'via', 'step', 'check', 'tail', 'tried', 'text', 'min', 'stale-min', 'files', 'command', 'where'])
+const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tier', 'sha', 'role', 'model', 'effort', 'roles', 'reason', 'card', 'card-status', 'page', 'shots', 'via', 'step', 'check', 'tail', 'tried', 'text', 'min', 'stale-min', 'files', 'cmd', 'command', 'where'])
 function parseArgs(argv) {
   const out = { _: [] }
   for (let i = 0; i < argv.length; i++) {
@@ -287,6 +292,39 @@ function npmScripts() {
   }
 }
 
+// The main-folder check shapes `main-try` will run: the same rules as mainCheckProblem in .claude/workflows/orchestrate.js
+// (the source of this copy) — node scripts/… or node tools/…, safe arguments, no kit state script, no write flag, nothing
+// that reads a slot's plan-start stamp. It runs a plan's command in the live main folder, so it is strict.
+const MAIN_TRY_DENY = /\brm\s+-[a-z]*[rf]|reset\s+--hard|push\s+(?:[^\n]*\s)?(?:--force|-f\b|--force-with-lease)|git\s+clean|branch\s+-D|stash\s+clear|filter-branch/
+const MAIN_TRY_SAFE_ARG = /^[A-Za-z0-9_./=:,@+-]+$/
+// Copy of NOT_A_CHECK in orchestrate.js: the kit scripts that push, open a pull request or write run/plan/slot state.
+const MAIN_TRY_NOT_A_CHECK = new Set([
+  'kit-feedback', 'orch-state', 'decision-log', 'take-plan', 'slot-serve', 'slot-stop', 'todo-query',
+  'todo-archive', 'plan-close', 'free-merged-slots', 'orphan-sweep', 'local-excludes', 'brain-capture-comment', 'sync', 'install', 'kit-sync',
+])
+function mainTryProblem(cmd) {
+  const c = String(cmd ?? '').trim()
+  if (MAIN_TRY_DENY.test(c)) return 'on the deny list'
+  if (/--since=plan-start\b|\.slot-plan-start/.test(c)) return 'needs a slot plan-start stamp; the main folder has none'
+  const w = c.split(/ +/)
+  if (w[0] !== 'node' || !/^(tools|scripts)\/[A-Za-z0-9_./-]+\.m?js$/.test(w[1] ?? '')) return 'only node scripts/<file>.mjs or node tools/<file>.mjs run from the main folder'
+  if (!w.slice(1).every((x) => MAIN_TRY_SAFE_ARG.test(x) && !x.includes('..'))) return 'unsafe argument'
+  const name = w[1].split('/').pop().toLowerCase().replace(/\.m?js$/, '')
+  if (MAIN_TRY_NOT_A_CHECK.has(name)) return `${name} changes state or pushes, it is not a check`
+  const writes = w.slice(2).find((x) => /^--(write|apply|fix|update)(=.*)?$/.test(x))
+  return writes ? `${writes.split('=')[0]} writes files, it is not a check` : null
+}
+const mainTriesPath = (run) => join(runsDir(), run, 'main-tries.json')
+function readMainTries(run) {
+  try {
+    const j = JSON.parse(readFileSync(mainTriesPath(run), 'utf8'))
+    return Array.isArray(j) ? j : []
+  } catch {
+    return []
+  }
+}
+const MAIN_TRY_WINDOW_MS = 2 * 60 * 60 * 1000
+
 function sensitiveTests() {
   const globRe = (g) => new RegExp(`^${g.split('**').map((part) => part.split('*').map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*')).join('.*')}$`)
   if (Array.isArray(SENSITIVE_CFG)) return [DEFAULT_SENSITIVE_RE, ...SENSITIVE_CFG.filter(Boolean).map(globRe)]
@@ -408,6 +446,46 @@ const commands = {
     if (files.some((f) => !/^(?!-)(?!.*\.\.)[A-Za-z0-9_./-]+$/.test(f))) fail('--files takes safe relative paths, comma-separated')
     const missing = files.filter((f) => !existsSync(join(root, f)) && !text.includes(f))
     emit({ ok: true, nnn, missing }, [missing.length ? `plan ${nnn}: no such file, and the plan does not create it: ${missing.join(', ')}` : `plan ${nnn}: every check file exists or is created by the plan`])
+  },
+
+  // Readiness maps an `npx <tool> …` check to the package.json script whose body is that command: it needs the bodies.
+  scripts() {
+    let scripts = {}
+    try {
+      const s = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).scripts
+      if (s && typeof s === 'object') scripts = Object.fromEntries(Object.entries(s).filter(([, v]) => typeof v === 'string'))
+    } catch { /* unreadable package.json: no scripts */ }
+    emit({ ok: true, scripts }, [`package.json: ${Object.keys(scripts).length} scripts`])
+  },
+
+  // A delegated readiness answer ("decide yourself") may keep a main-folder command only when it passed once from the
+  // main folder: the Planner runs it here, once, and the result is a fact in main-tries.json — never the Planner's word.
+  'main-try'() {
+    const run = runName()
+    const nnn = planNumber(args.plan ?? '')
+    if (!nnn) fail('--plan takes a plan number')
+    const command = String(args.cmd ?? '').trim()
+    const why = mainTryProblem(command)
+    if (why) fail(`main-try: ${command}: ${why}`)
+    const w = command.split(/ +/)
+    const r = spawnSync(process.execPath, w.slice(1), { cwd: root, encoding: 'utf8', timeout: GATE_TIMEOUT_MIN * 60000, shell: false, maxBuffer: 64 * 1024 * 1024 })
+    const exit = r.status ?? 1
+    mkdirSync(join(runsDir(), run), { recursive: true })
+    writeFileSync(mainTriesPath(run), JSON.stringify([...readMainTries(run), { plan: nnn, cmd: command, exit, at: nowIso() }], null, 2))
+    const tail = `${r.stdout ?? ''}\n${r.stderr ?? ''}`.split('\n').map((l) => l.trimEnd()).filter((l) => l.trim()).slice(-5)
+    emit({ ok: true, nnn, cmd: command, exit }, [...tail, `MAIN_TRY: ${command} exit ${exit}`])
+  },
+
+  'main-tries'() {
+    const run = runName()
+    const passed = {}
+    for (const t of readMainTries(run)) {
+      if (t.exit !== 0 || !(Date.now() - Date.parse(t.at) <= MAIN_TRY_WINDOW_MS)) continue
+      passed[t.plan] ??= []
+      if (!passed[t.plan].includes(t.cmd)) passed[t.plan].push(t.cmd)
+    }
+    const n = Object.values(passed).reduce((a, l) => a + l.length, 0)
+    emit({ ok: true, passed }, [`main tries: ${n} command(s) passed from the main folder in the last 2 hours`])
   },
 
   'plan-info'() {

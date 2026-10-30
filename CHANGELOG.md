@@ -25,6 +25,15 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
   the todo-sync bot already closed on `origin/<main>`. `free-merged-slots.mjs` removes the clean merge folder of a merged
   run. `slot-serve.mjs --ref <branch>` serves a branch in an idle slot for validation (`.worktree-validating`); the slot
   views show `validating`, `idleSlot` and `take-plan` skip it and `slot-stop.mjs` ends it.
+- **Readiness checks what a plan claims against the code.** Up to 8 claims per plan (a count next to a code noun, a
+  named symbol said to do something, an "every X" goal) are searched in the code in the same readiness call; a wrong
+  count or an "every X" with hits outside the plan's scope becomes a question with a default.
+- **A delegated readiness answer never approves a main-folder command nobody saw pass.** New `orch-state.mjs main-try`
+  and `main-tries`; a run started with `mainDelegated` keeps only the commands that exited 0 from the main folder.
+- **`npx` checks are kept as project scripts.** An `npx <tool> …` check maps to the package.json script that runs it,
+  or is listed under `dropped npx checks:` in the readiness summary and the run report; `/plan` writes
+  `<pm> run <script>` checks.
+- **A run no longer pauses for `go` on a main-folder command it would drop** (a slot-only `--since=plan-start` check).
 - **The run report lists the app errors logged during the run.** When `commands.logQuery` is set, `orch-state.mjs
   finish` runs it once from the main folder with `--since=plan-start` replaced by the run's start time and adds an
   `App errors since the run started` section (command, exit code, first 20 lines).

@@ -97,6 +97,21 @@ test('validator: verifier keeps only >= 80 confidence, and a refutation must be 
   assert.equal(v([{ id: 'a', verdict: 'refuted', confidence: 90, severity: 'major', refutation: 'src/a.mjs:4 guards null' }], true).ok, true)
 })
 
+test('validator: readiness claims are optional; a claim needs claim and found, question and default are strings', () => {
+  const entry = (claims) => ({ plan: 'plans/001-x.plan.md', state: 'ready', questions: [], envNeeds: [], commands: [], ...(claims === undefined ? {} : { claims }) })
+  const r = (claims) => validateAgentResult({ role: 'orch-readiness', model: 'm', effort: 'high', plans: [entry(claims)] })
+  assert.equal(r(undefined).ok, true, 'claims may be left out')
+  assert.equal(r([]).ok, true)
+  assert.equal(r([{ claim: 'the editor has 3 handlers', found: '1 (src/a.ts:8)', question: 'fix the plan?', default: 'build for what the code has' }]).ok, true)
+  assert.equal(r([{ claim: 'x has 2 y', found: '2 (a.ts:1)', question: '', default: '' }]).ok, true, 'a held claim has empty question and default')
+  const noFound = r([{ claim: 'the editor has 3 handlers', question: 'fix the plan?' }])
+  assert.equal(noFound.ok, false)
+  assert.match(noFound.errors.join('\n'), /claims\[0\]\.found is required/)
+  assert.match(r([{ found: 'x' }]).errors.join('\n'), /claims\[0\]\.claim is required/)
+  assert.match(r([{ claim: 'a', found: 'b', question: 3 }]).errors.join('\n'), /question must be a string/)
+  assert.match(r('nope').errors.join('\n'), /claims must be a list/)
+})
+
 test('the merge agent and the orchestrator merge prompt give the same steps: --no-ff --no-commit, checks, then the commit', () => {
   const agentText = read('orch-merge.md')
   const workflow = readFileSync(join(project, '.claude', 'workflows', 'orchestrate.js'), 'utf8')
