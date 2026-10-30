@@ -3,7 +3,7 @@
     "version": "1.12.0"
   },
   "source": "local:.",
-  "commit": "edd6f8b2dfb0d4976314728331e9a0641aecfe13",
+  "commit": "5b3c7e5a9012404d19c0e5d538c9776d33d80064",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -25,27 +25,27 @@
       "source": "core/.claude/agents/kit-runner.md"
     },
     ".claude/agents/orch-builder.md": {
-      "sha256": "7c5b7d17b2b248a933e736bdd0a23e053917807c1a24683b012f8a0a35c8a71d",
+      "sha256": "08fa6b6a3e19689d3fb1f786234bcd8bcf7fa91c7cb044dd115b0af900689625",
       "kind": "managed",
       "source": "core/.claude/agents/orch-builder.md"
     },
     ".claude/agents/orch-check-bugs.md": {
-      "sha256": "0a3d5fa5c9b62485c0e4e46e2421a7ab14e772b482dedcbb845535090087a60a",
+      "sha256": "b25fe5d867fa79965eaf458dce17e9943b64f90a08849012c86f06cb506dd3a6",
       "kind": "managed",
       "source": "core/.claude/agents/orch-check-bugs.md"
     },
     ".claude/agents/orch-check-plan.md": {
-      "sha256": "88aa0edf4ebc6093e04308bbc14c11fc38f968b1ccd0411b66671751759270c6",
+      "sha256": "95d4c6d9f23ddeb4f87a4c233828c58dd3c90b6dea6b65ec49f252d719a00760",
       "kind": "managed",
       "source": "core/.claude/agents/orch-check-plan.md"
     },
     ".claude/agents/orch-check-rules.md": {
-      "sha256": "e86c137a65007feeb654ba25091c69ccf44c55efc097f88c8daa37c25c1b5a8d",
+      "sha256": "4c8c2f27e853229aa7d69b1e919b4c48a9e79b5329fb9301af9789875215f2e7",
       "kind": "managed",
       "source": "core/.claude/agents/orch-check-rules.md"
     },
     ".claude/agents/orch-gate.md": {
-      "sha256": "5f2362c0837d547aa3465da00c9e1de741634edd7bb64216db33f7da754f41a1",
+      "sha256": "38a7831b43e2281aa4b164e4ea3a5a2181930eaf7d0c829410d5e9ca7c6ae9f3",
       "kind": "managed",
       "source": "core/.claude/agents/orch-gate.md"
     },
@@ -55,7 +55,7 @@
       "source": "core/.claude/agents/orch-merge.md"
     },
     ".claude/agents/orch-readiness.md": {
-      "sha256": "67db186b6da3710cf73392898aaa73b22866673354abc2ca6bbd77bb09920a0e",
+      "sha256": "28e5b597f6fe0083324d3e0005686a37379afcd9c91ea5db920ed8a923bb41dd",
       "kind": "managed",
       "source": "core/.claude/agents/orch-readiness.md"
     },
@@ -65,7 +65,7 @@
       "source": "core/.claude/agents/orch-report.md"
     },
     ".claude/agents/orch-security.md": {
-      "sha256": "9f6619682574e58eaaf7404c06b2d5379934b108ae0587b9fe2a7b20cbbb74e1",
+      "sha256": "cc85d87be82dcfff58c4c4d8e2735a5a2b8d5362f1eec136edf4dcdffcdf674d",
       "kind": "managed",
       "source": "core/.claude/agents/orch-security.md"
     },
@@ -75,12 +75,12 @@
       "source": "core/.claude/agents/orch-triage.md"
     },
     ".claude/agents/orch-ui.md": {
-      "sha256": "cf41f17e1b057a35d326c746407d41ceb289048f21bee652d43901c120e93a1c",
+      "sha256": "cdf1478c55bff79d3b0ff04596f766ac20493204a231a35122f789c012d1aba5",
       "kind": "managed",
       "source": "core/.claude/agents/orch-ui.md"
     },
     ".claude/agents/orch-verify.md": {
-      "sha256": "21def0fbe34329e36a775b4230bc4a8f66a6dd87d5f18185fe5fbefdddffd7cf",
+      "sha256": "6eeda1faf84b32a6cec6b7ae4b00d8ed386bd71c4da823ccee72b6d6217edcc2",
       "kind": "managed",
       "source": "core/.claude/agents/orch-verify.md"
     },
@@ -275,7 +275,7 @@
       "source": "core/.claude/skills/worktree-setup/SKILL.md"
     },
     ".claude/workflows/orchestrate.js": {
-      "sha256": "28098ccc1c6ebcc25adb8b1aa3a44a4097f636eac3ee83b51776974bcac48314",
+      "sha256": "1d1f5e0dc560c7194442857c1e953260bf907890dd2202a03bfc786ef646f4da",
       "kind": "managed",
       "source": "core/.claude/workflows/orchestrate.js"
     },
@@ -330,7 +330,7 @@
       "source": "core/docs/agent/agent-evals.md"
     },
     "docs/agent/agent-roles.md": {
-      "sha256": "1f58f76dd11f1b60c3a10ca9c046af78d7472a78d87b63c68bfae7b2e1e08a64",
+      "sha256": "03486e9d35a280256e41e448f72a6c0b04fcf9c169fd671107fddf7dfe15033c",
       "kind": "managed",
       "source": "core/docs/agent/agent-roles.md"
     },
@@ -660,7 +660,7 @@
       "source": "core/scripts/lib/orch-folders.mjs"
     },
     "scripts/lib/orch-run.mjs": {
-      "sha256": "198fd574ac070d11b6b98d57abe0285a4c85c45c1820421c318102e4a8e30196",
+      "sha256": "6ee916178a51768ff271addc37131deae95c2eab1f11f7d794f82da06109b4e8",
       "kind": "managed",
       "source": "core/scripts/lib/orch-run.mjs"
     },
@@ -720,7 +720,7 @@
       "source": "core/scripts/orch-preflight.mjs"
     },
     "scripts/orch-state.mjs": {
-      "sha256": "8fc3b06bac299cdedfe158c5d4c52cb73ffbb1181e43451f781c697290c28cf6",
+      "sha256": "6b7e5c36c32dc66064825721cdfd18984b90d47a347d3429ebea4cebbbdeaeeb",
       "kind": "managed",
       "source": "core/scripts/orch-state.mjs"
     },

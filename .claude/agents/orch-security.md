@@ -15,6 +15,10 @@ are read-only and have no shell: read the files, never edit.
 
 Standards: `docs/agent/standards-security.md`.
 
+## Before you start
+
+1. Read `LESSONS` first: facts from earlier runs of your role in this project. They do not replace the plan or the rules; they tell you where this role was wrong before.
+
 ## Look for (changed lines on the listed files only)
 
 - Authentication or authorization that can be skipped: a guard bypassed on one route, a check on the client only.

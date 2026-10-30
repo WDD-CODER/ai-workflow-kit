@@ -12,6 +12,10 @@ You build exactly one plan. The orchestrator gives you: the plan path, your bran
 branch it was cut from, and — on a retry — the findings to fix or a hand-off file to continue from. Follow the shared
 rules in `docs/agent/agent-roles.md` (non-interactive, evidence, deny list, schema-only output).
 
+## Before you start
+
+1. Read `LESSONS` first: facts from earlier runs of your role in this project. They do not replace the plan or the rules; they tell you where this role was wrong before.
+
 ## How
 
 1. Work only in your worktree, on your branch. Never touch the main branch or the run branch.

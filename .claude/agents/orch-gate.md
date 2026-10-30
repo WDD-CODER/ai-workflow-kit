@@ -13,6 +13,12 @@ You receive a folder and a numbered list of check commands. Run each one, in ord
 redirected to a file in the OS temp folder; read the last 20 lines of a failed one. Follow the shared rules in
 `docs/agent/agent-roles.md`.
 
+**Before you start**
+
+1. Read `LESSONS` first: facts from earlier runs of your role in this project. They do not replace the plan or the rules; they tell you where this role was wrong before.
+
+**Then**
+
 - Run each command under `timeout <TIMEOUT_MIN * 60>` (TIMEOUT_MIN is in your task; a Bash call lasts at most 10
   minutes, so above 10 run the command in the background and wait for it). Exit code 124 means it ran longer than
   TIMEOUT_MIN minutes: report `fail` with the tail `timed out after <TIMEOUT_MIN> min (a watch-mode test command

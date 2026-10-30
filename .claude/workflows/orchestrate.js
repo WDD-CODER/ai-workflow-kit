@@ -264,6 +264,38 @@ const state = (argv, label, plan) => {
   return runner('orch-state.mjs', out, label, plan, { once: argv[0] === 'note' || argv[0] === 'finish' })
 }
 const roleArg = (results) => results.filter(Boolean).filter((r) => r.role && r.model).map((r) => `${r.role}=${r.model}/${r.effort ?? ''}`).join(',')
+
+// ---- what earlier runs taught (docs/agent/decision-review.md §0) ----------------------------------------------------------
+// One `orch-state.mjs context` call per launch (readiness and run) reads the role's lessons (docs/brain/agent-lessons/), the
+// rules sections and the last run-log rows; each role's task then carries LESSONS (and RULES, RECENT_RUNS) as a JSON array of
+// lines — `[]` when there is none. No model call: the runner agent only copies the command's output.
+const LEARN = { lessons: {}, rules: {}, recent: [] }
+const lineList = (v) => (Array.isArray(v) ? v.filter((l) => typeof l === 'string' && l.trim() !== '') : [])
+const lessonsOf = (role) => lineList(LEARN.lessons[role])
+const rulesOf = (group) => lineList(LEARN.rules[group])
+async function loadLearning() {
+  const r = await state(['context', '--run', RUN], 'learning context')
+  if (!r?.ok) return String(r?.error ?? 'unreadable').slice(0, 200)
+  const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {})
+  LEARN.lessons = obj(r.lessons)
+  LEARN.rules = obj(r.rules)
+  LEARN.recent = lineList(r.recent)
+  return null
+}
+// The facts a plan's lessons are written from (lessonFacts in scripts/lib/orch-run.mjs) ride on that plan's next `set` call:
+// no agent call of their own. A list fact (` || `-joined) keeps every line; a scalar keeps the last value.
+const FACTS = {}
+const FACT_LISTS = new Set(['miss', 'round-cause', 'gate-event'])
+function queueFact(nnn, key, value) {
+  const f = (FACTS[nnn] ??= {})
+  const v = String(value).replace(/\s+/g, ' ').trim()
+  if (!v) return
+  f[key] = FACT_LISTS.has(key) && f[key] ? `${f[key]} || ${v}` : v
+}
+// What the verifier said about a plan's candidates, across its rounds: refuted and low-confidence problems are remembered by
+// file and rule, so one that comes back in a later round is a fact (reappeared / lateLow).
+const VERIFY_MEM = {}
+const ruleName = (r) => String(r ?? '').replace(/[;|=]/g, ',').replace(/\s+/g, ' ').trim().slice(0, 40)
 const CARD_FIELDS = ['card', 'card-status', 'page', 'shots', 'via']
 async function setPlan(nnn, fields, results = []) {
   // Agent-supplied [ui] values are checked before the call; a bad one is not recorded (a run note says why).
@@ -278,6 +310,9 @@ async function setPlan(nnn, fields, results = []) {
   for (const [k, v] of Object.entries(fields)) if (v !== undefined && v !== null) argv.push(`--${k}`, String(v))
   const roles = roleArg(results)
   if (roles) argv.push('--roles', roles)
+  // Lesson facts queued for this plan go with this call.
+  for (const [k, v] of Object.entries(FACTS[nnn] ?? {})) if (fields[k] === undefined) argv.push(`--${k}`, v)
+  delete FACTS[nnn]
   return state(argv, `state ${nnn} ${fields.state ?? ''}`, nnn)
 }
 // A run note is one runner agent call: at most MAX_NOTES per plan (run-level notes count under "run"), then one last
@@ -385,9 +420,12 @@ async function readiness() {
   const order = await state(['order', '--run', RUN, '--plans', PLANS.join(',')], 'plan order')
   if (!order.ok) return { mode: 'readiness', run: RUN, ok: false, error: order.error }
   const plans = order.waves.flat()
+  // Lessons from earlier runs go to every readiness agent: its own lessons, the `readiness` rules and the last runs of the
+  // run log (a reason that parked a plan in two of the last three runs is asked about once, before the run).
+  await loadLearning()
   const results = await parallel(plans.map((nnn) => () => ask([
     `Readiness check for one plan of orchestrator run ${RUN}. Follow .claude/agents/orch-readiness.md; return one entry in plans.`,
-    task({ PLAN: order.plans[nnn]?.path ?? nnn, RUN_ORDER: order.waves, RUN_PLANS: plans }),
+    task({ PLAN: order.plans[nnn]?.path ?? nnn, RUN_ORDER: order.waves, RUN_PLANS: plans, LESSONS: lessonsOf('readiness'), RULES: rulesOf('readiness'), RECENT_RUNS: LEARN.recent }),
   ].join('\n\n'), { agentType: 'orch-readiness', schema: SCHEMA.readiness, label: `readiness ${nnn}`, phase: 'Readiness', plan: nnn })))
   const pre = await runner('orch-preflight.mjs', ['--run', RUN, '--plans', PLANS.join(',')], 'preflight')
   // A check whose file does not exist (and that the plan does not create) can never pass: a run once spent fix rounds
@@ -468,7 +506,7 @@ async function builder(ctx, mode, findings) {
     task({
       PLAN: ctx.info.path, BRANCH: ctx.info.branch, WORKTREE: ctx.wt.path, RUN_BRANCH: RUN_BRANCH, MODE: mode, TIER: ctx.tier,
       ROUND: ctx.round, CHECKS: ctx.checks, FINDINGS: findings.length ? findings : undefined,
-      HANDOFF: mode === 'handoff' ? ctx.handoff : undefined,
+      HANDOFF: mode === 'handoff' ? ctx.handoff : undefined, LESSONS: lessonsOf('builder'),
     }),
     mode === 'fix' ? 'Fix exactly the FINDINGS, rerun the checks, commit and push your branch.' : '',
     mode === 'handoff' ? 'You are a fresh builder: read the HANDOFF file, the plan and git diff against the run branch; rerun the failing check first.' : '',
@@ -486,7 +524,7 @@ async function builder(ctx, mode, findings) {
 
 const gateAgent = (ctx, commands, label) => ask([
   `Gate for plan ${ctx.nnn} of run ${RUN}. Follow .claude/agents/orch-gate.md.`,
-  task({ FOLDER: ctx.wt.path, COMMANDS: commands, TIMEOUT_MIN: GATE_TIMEOUT_MIN }),
+  task({ FOLDER: ctx.wt.path, COMMANDS: commands, TIMEOUT_MIN: GATE_TIMEOUT_MIN, LESSONS: lessonsOf('gate') }),
 ].join('\n\n'), { agentType: 'orch-gate', schema: SCHEMA.gate, label, phase: 'Build', effort: 'low', plan: ctx.nnn !== 'final' ? ctx.nnn : undefined })
 
 async function gate(ctx) {
@@ -512,6 +550,14 @@ async function gate(ctx) {
     if (missingCmds.length) return { r, env: true, why: `${kind} returned no result, twice, for: ${missingCmds.join(', ')}` }
   }
   const missing = missingCmds.map((c) => ({ command: c, status: 'fail', tail: 'the gate returned no result for this check' }))
+  // A timeout and an env-fail that was rerun are facts for the gate's lessons (the gate agent marks both in the tail).
+  if (ctx.nnn !== 'final') {
+    for (const x of known) {
+      const tail = String(x.tail ?? '').trim()
+      if (/timed out after/i.test(tail)) queueFact(ctx.nnn, 'gate-event', `timed out: ${x.command}`)
+      else if (/^rerun after env-fail:/i.test(tail)) queueFact(ctx.nnn, 'gate-event', `env-fail rerun: ${x.command}`)
+    }
+  }
   const env = known.filter((x) => x.status === 'env-fail')
   const failed = [...known.filter((x) => x.status !== 'pass' && x.status !== 'env-fail'), ...missing, ...twice, ...unknown]
   if (env.length && !missing.length && !unknown.length && !twice.length) return { r, env: true, why: `${kind} env-fail: ${env.map((x) => x.command).join(', ')}` }
@@ -527,13 +573,47 @@ async function gate(ctx) {
   return { r }
 }
 
+// The verifier's totals for a plan so far (candidates, refuted, per finder) and the problems that came back after being
+// refuted or kept below the threshold: queued as facts for the plan's next `set` (lessonFacts in scripts/lib/orch-run.mjs).
+function recordVerify(nnn, candidates, verdictOf, kept) {
+  if (!verdictOf.size) return
+  const m = (VERIFY_MEM[nnn] ??= { refuted: new Set(), low: new Set(), candidates: 0, refutedN: 0, rules: new Set(), byRole: {}, lateLow: new Set(), reappeared: new Set() })
+  const key = (c) => `${c.file}|${c.rule}`
+  for (const c of kept) {
+    if (m.refuted.has(key(c))) m.reappeared.add(ruleName(c.rule))
+    if (m.low.has(key(c))) m.lateLow.add(ruleName(c.rule))
+  }
+  for (const c of candidates) {
+    const role = String(c.id).replace(/-\d+$/, '')
+    const b = (m.byRole[role] ??= { candidates: 0, refuted: 0, rules: new Set() })
+    b.candidates += 1
+    m.candidates += 1
+    const x = verdictOf.get(c.id)
+    if (x?.verdict === 'refuted') {
+      b.refuted += 1
+      m.refutedN += 1
+      b.rules.add(ruleName(c.rule))
+      m.rules.add(ruleName(c.rule))
+      m.refuted.add(key(c))
+    } else if (x?.verdict === 'keep' && x.confidence < KEEP_THRESHOLD) m.low.add(key(c))
+  }
+  queueFact(nnn, 'candidates', m.candidates)
+  queueFact(nnn, 'refuted', m.refutedN)
+  queueFact(nnn, 'refuted-rules', [...m.rules].slice(0, 6).join('|'))
+  queueFact(nnn, 'verify-by', Object.entries(m.byRole).map(([role, b]) => `${role}=${b.candidates}/${b.refuted}/${[...b.rules].slice(0, 3).join('|')}`).join(';'))
+  queueFact(nnn, 'late-low', [...m.lateLow].slice(0, 4).join('|'))
+  queueFact(nnn, 'reappeared', [...m.reappeared].slice(0, 4).join('|'))
+}
+
 async function checkers(ctx) {
   const diff = await state(['diff', '--run', RUN, '--plan', ctx.nnn], `diff ${ctx.nnn}`, ctx.nnn)
   if (Array.isArray(diff.files)) CHANGED_FILES[ctx.nnn] = diff.files
   if (!diff.ok) return { env: !!diff.envFailure, fail: !diff.envFailure, why: `diff: ${diff.error}`, findings: [] }
   const roles = diff.sensitive ? [...FINDERS, 'orch-security'] : FINDERS
   const base = task({ PLAN: ctx.info.path, BRANCH: `origin/${ctx.info.branch}`, BASE: `origin/${RUN_BRANCH}`, FOLDER: ctx.wt.path, FILES: diff.files })
-  const found = await parallel(roles.map((role) => () => ask(`Check plan ${ctx.nnn} of run ${RUN}. Follow .claude/agents/${role}.md.\n\n${base}`,
+  // Each finder's own lessons, and the `checkers` rules (the security reviewer reads the security standards instead).
+  const own = (role) => task({ LESSONS: lessonsOf(role.replace('orch-', '')), RULES: role === 'orch-security' ? undefined : rulesOf('checkers') })
+  const found = await parallel(roles.map((role) => () => ask(`Check plan ${ctx.nnn} of run ${RUN}. Follow .claude/agents/${role}.md.\n\n${base}\n${own(role)}`,
     { agentType: role, schema: SCHEMA.finder, label: `${role.replace('orch-', '')} ${ctx.nnn}`, phase: 'Build', plan: ctx.nnn })))
   const results = found.filter(Boolean)
   const missing = roles.filter((_, i) => !found[i])
@@ -545,7 +625,7 @@ async function checkers(ctx) {
   }
   if (missing.length) return { results, fail: true, env: false, why: `checker returned nothing: ${missing.join(', ')}`, findings: [] }
   if (!candidates.length) return { results, diff }
-  const v = await ask(`Verify the candidate problems of plan ${ctx.nnn} of run ${RUN}. Follow .claude/agents/orch-verify.md.\n\n${task({ PLAN: ctx.info.path, BRANCH: `origin/${ctx.info.branch}`, BASE: `origin/${RUN_BRANCH}`, FOLDER: ctx.wt.path, CANDIDATES: candidates })}`,
+  const v = await ask(`Verify the candidate problems of plan ${ctx.nnn} of run ${RUN}. Follow .claude/agents/orch-verify.md.\n\n${task({ PLAN: ctx.info.path, BRANCH: `origin/${ctx.info.branch}`, BASE: `origin/${RUN_BRANCH}`, FOLDER: ctx.wt.path, CANDIDATES: candidates, LESSONS: lessonsOf('verify'), RULES: rulesOf('checkers') })}`,
     { agentType: 'orch-verify', schema: SCHEMA.verify, label: `verify ${ctx.nnn}`, phase: 'Build', plan: ctx.nnn })
   results.push(v)
   // A candidate without a verdict (or no verifier result) stays kept: dropping needs a concrete refutation.
@@ -555,6 +635,7 @@ async function checkers(ctx) {
     if (!x) return FAILING.includes(c.severity)
     return x.verdict === 'keep' && x.confidence >= KEEP_THRESHOLD && FAILING.includes(x.severity)
   })
+  recordVerify(ctx.nnn, candidates, verdictOf, kept)
   if (kept.length) return { results, diff, fail: true, why: `checker: ${kept.map((k) => `${k.severity} ${k.file}:${k.line} ${k.rule}`).join('; ')}`, findings: kept }
   return { results, diff }
 }
@@ -593,7 +674,7 @@ async function ui(ctx) {
   if (scripted.length) {
     const g = await ask([
       `UI gate for plan ${ctx.nnn} of run ${RUN}: run each [ui] card's own e2e test. Follow .claude/agents/orch-gate.md.`,
-      task({ FOLDER: ctx.wt.path, COMMANDS: scripted.map((c) => c.test), TIMEOUT_MIN: GATE_TIMEOUT_MIN }),
+      task({ FOLDER: ctx.wt.path, COMMANDS: scripted.map((c) => c.test), TIMEOUT_MIN: GATE_TIMEOUT_MIN, LESSONS: lessonsOf('gate') }),
     ].join('\n\n'), { agentType: 'orch-gate', schema: SCHEMA.gate, label: `ui-gate ${ctx.nnn}`, phase: 'Build', effort: 'low', plan: ctx.nnn })
     if (!g) return { env: true, why: 'the UI gate agent returned nothing' }
     results.push(g)
@@ -637,6 +718,7 @@ async function ui(ctx) {
       PRE_CHECKED: passed.length ? passed.map((c) => c.card) : undefined,
       KNOWN_FINDINGS: known.length ? known : undefined,
       BATCH: batches.length > 1 ? `${i + 1} of ${batches.length}` : undefined,
+      LESSONS: lessonsOf('ui'), RULES: rulesOf('ui'),
     })}`, { agentType: 'orch-ui', schema: SCHEMA.ui, label: batches.length > 1 ? `ui ${ctx.nnn} ${i + 1}/${batches.length}` : `ui ${ctx.nnn}`, phase: 'Build', plan: ctx.nnn })
     if (!r) return { results, fail: true, why: 'the UI agent returned nothing', findings: [] }
     results.push(r)
@@ -694,6 +776,14 @@ async function runPlan(nnn) {
   const mainUnseen = mainExtra.filter((c) => !mainCheckProblem(c) && unseen(c)).map((c) => String(c).trim())
   const mainChecks = [...new Set(mainExtra.filter((c) => !mainCheckProblem(c) && !unseen(c)).map((c) => String(c).trim()))]
   const ctx = { nnn, info, tier: info.startTier, round: 0, escalated: false, checks, mergeChecks: mergeChecksOf(checks), mainChecks, handoff: `.claude/sessions/orch-${RUN}/handoff-${nnn}.md` }
+  // What readiness had to ask about this plan (args.asked: { <NNN>: [question, …] }, only plans with a question or an
+  // environment need): a plan with no entry was ready. The facts feed the readiness lessons (parked after ready) and the
+  // Planner's (the plan's own gaps). Sent with the plan's first `set`.
+  if (A.asked && typeof A.asked === 'object' && !Array.isArray(A.asked)) {
+    const qs = (Array.isArray(A.asked[nnn]) ? A.asked[nnn] : []).map((x) => String(x).replace(/\s+/g, ' ').trim().slice(0, 120)).filter(Boolean)
+    queueFact(nnn, 'ready', qs.length ? 'no' : 'yes')
+    if (qs.length) queueFact(nnn, 'asked', qs.slice(0, 3).join(' || '))
+  }
   for (const why of dropped) await note(`check command dropped, not run: ${why}`, nnn)
   for (const why of mainDropped) await note(`main-folder check dropped, not run: ${why}`, nnn)
   for (const c of new Set(mainUnseen)) await note(`main-folder check dropped: not seen passing from the main folder — ${c}`, nnn)
@@ -787,6 +877,8 @@ async function runPlan(nnn) {
             await setPlan(nnn, { round: ctx.round }, results)
             return park(u.why)
           }
+          // A card that fails after clean checkers is a miss of the finders that passed this plan (a lesson for each).
+          if (u.fail && !u.env) queueFact(nnn, 'miss', `ui: ${String(u.why).slice(0, 160)}`)
           if (u.env || u.fail) failure = u
           else if (overLimit()) return park(limitReason())
           else {
@@ -820,6 +912,7 @@ async function runPlan(nnn) {
     lastWhy = why
     if (ctx.round >= MAX_FIX_ROUNDS || (ctx.tier === 'judgment' && ctx.escalated)) return park(`${failure.why} (fix rounds used: ${ctx.round} of ${MAX_FIX_ROUNDS})`)
     ctx.round += 1
+    queueFact(nnn, 'round-cause', `round ${ctx.round}: ${String(failure.why ?? '').slice(0, 280)}`)
     findings = failure.findings ?? []
     ctx.knownFindings = findings.filter((f) => /^ui-/.test(f.id)).map((f) => `${f.file}: ${f.reasoning}`)
     if (failure.escalate || ctx.round >= 2) {
@@ -850,6 +943,9 @@ async function run() {
   const init = await state(['init', '--run', RUN], 'start run')
   if (!init.ok) return { mode: 'run', run: RUN, ok: false, stopped: 'init', problems: [init.error] }
   mergeFolder = init.mergeFolder
+  // The roles' lessons and rules sections, once for the run (a failed read is a note; every role then gets `[]`).
+  const learnProblem = await loadLearning()
+  if (learnProblem) await note(`lessons not read: ${learnProblem}`)
   // A relaunch: the decisions the earlier launch recorded are kept, so a repeat of one is filed under it, not numbered.
   for (const p of Array.isArray(init.priorDecisions) ? init.priorDecisions : []) {
     if (p && /^D\d+$/.test(String(p.id)) && typeof p.text === 'string') DECISIONS.push({ plan: String(p.plan), text: p.text, id: p.id, prior: true, alsoFrom: Array.isArray(p.alsoFrom) ? p.alsoFrom : [] })
@@ -953,6 +1049,11 @@ async function run() {
       const why = g.fail ? `final gate failed: ${g.check} — ${String(g.tail ?? '').split('\n').slice(-5).join(' / ')}` : `final gate could not run: ${g.why}`
       finalGate = { ok: false, command: g.check, tail: g.tail, why }
       await note(why.slice(0, 380))
+      // A final-gate failure that names a file only one plan of this run changed is a miss of that plan's finders.
+      if (g.fail) {
+        const hits = Object.entries(CHANGED_FILES).filter(([, files]) => files.some((f) => String(g.tail ?? '').includes(f))).map(([n]) => n)
+        if (hits.length === 1) await setPlan(hits[0], { miss: `final gate failed: ${String(g.check ?? '').slice(0, 80)}` })
+      }
       if (!stopReason) {
         stopReason = why.slice(0, 380)
         await state(['stop', '--run', RUN, '--reason', stopReason])
@@ -1018,7 +1119,8 @@ async function run() {
   }
   if (triageNote) await note(triageNote)
   phase('Report')
-  const fin = await state(['finish', '--run', RUN], 'report')
+  // `finish` also writes the run's lessons and its run-log row (no model call) and ends the report with the trend line.
+  const fin = await state(['finish', '--run', RUN, '--final-gate', finalGate ? (finalGate.ok ? 'ok' : 'failed') : 'none'], 'report')
   // A run that ended on a limit or an error: the command prints this line first (STUCK), before the lists.
   const LIMIT = /^(agent-call limit|same reason twice|run stopped with an error)/
   const stuckWhy = LIMIT.test(String(stopReason ?? '')) ? stopReason : outcomes.find((o) => LIMIT.test(String(o.reason ?? '')))?.reason ?? null
@@ -1029,6 +1131,7 @@ async function run() {
     finalGate, decisions: decisions.map(({ prior, ...d }) => ({ ...d, alsoFrom: d.alsoFrom.map(({ fresh, ...x }) => x) })), decisionsDropped: DROPPED,
     mergeFolder, triage: { ...(fin.triage ?? { mode: TRIAGE }), ...(triageNote ? { note: triageNote } : {}) },
     stuck: stuckWhy ? `STUCK: ${stuckWhy}` : null,
+    learning: fin.learning ?? null,
     agentCalls: COUNT.calls, notes: COUNT.notes,
   }
 }

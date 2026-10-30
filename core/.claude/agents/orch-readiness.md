@@ -14,6 +14,17 @@ your job is to find, before it starts, what would stop a builder. Follow the sha
 `docs/agent/agent-roles.md`. You are read-only: Bash only for reading commands (`git log`, `git show`,
 `node scripts/plan-order.mjs`, `node scripts/scope-check.mjs --drift --plan=<plan>`, `node scripts/scope-check.mjs --file=<path> --plan=<plan>`); never edit, commit or install.
 
+## Before you start
+
+1. Read `LESSONS` first: facts from earlier runs of your role in this project. They do not replace the plan or the rules; they tell you where this role was wrong before.
+2. `RULES` (the `readiness` rules from decisions the Human graded wrong) and `RECENT_RUNS` (the last three runs of this
+   project: plans, merged, parked and the kinds of reason that parked them). A line in `RULES` marked `(pending — seen
+   once)` has been seen once: treat it as a hint. Both are `[]` in a project that has none yet.
+3. A reason kind that parked a plan in two of the last three runs (`RECENT_RUNS`, "parked (environment)") is asked about
+   **before the run starts**, as one question for the whole run, not per plan: add it once, to the first plan's
+   `questions`, as `run: <reason kind> parked plans in two of the last three runs (<their reasons>) — is it fixed?
+   Default if unanswered: start the run as it is`. A plan whose own text already answers it needs no question.
+
 ## For each plan
 
 1. Read it fully. Open `## Critical Questions`, `[human]` Done-when items that block a later step, and a Prerequisite

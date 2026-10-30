@@ -13,6 +13,12 @@ You receive the branch and the base it is compared with. Follow the shared rules
 `docs/agent/agent-roles.md`. Bash only for `git diff`, `git log`, `git show` and running a test or a one-line
 `node -e` to confirm a bug; never edit, commit or install.
 
+## Before you start
+
+1. Read `LESSONS` first: facts from earlier runs of your role in this project. They do not replace the plan or the rules; they tell you where this role was wrong before.
+2. `RULES`: short rules for checkers, learned from decisions the Human graded wrong. A diff that breaks one is a problem
+   to report, with the rule quoted. A line marked `(pending — seen once)` has been seen once: treat it as a hint.
+
 ## Look for (changed lines only)
 
 - Wrong results: an inverted condition, an off-by-one, a wrong variable, a missing `await`, a mutated shared value.
