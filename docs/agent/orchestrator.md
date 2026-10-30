@@ -85,9 +85,11 @@ branch himself.
    `continue` relaunches the same run with `pilot: false`: merged plans are skipped from git, the rest are built with
    the graded decisions and any new rule in `docs/brain/agent-rules.md` in place (`docs/agent/decision-review.md`).
    **Final gate.** After the last wave, one `orch-gate` runs the project's build, lint and test commands on the run
-   branch (the merge folder) once. A failure is a finding in the report (`Stopped: final gate failed: <command> — <output
-   tail>`, and the command's output) and the run branch is not handed over as clean; a merge can break a test no
-   plan's own checks cover.
+   branch (the merge folder) once, plus `node scripts/kit-manifest-check.mjs` when the project has a kit manifest
+   (the manifest.json under docs/workflow-kit; the pull request's rules job runs the check; a run once finished green and its pull
+   request failed on three test fixtures no manifest entry classified). A failure is a finding in the report
+   (`Stopped: final gate failed: <command> — <output tail>`, and the command's output) and the run branch is not handed
+   over as clean; a merge can break a test no plan's own checks cover.
 5. **Report.** `orch-state.mjs finish` runs every time the workflow ends — after the last wave, when every plan parked,
    and when a step threw (the run is then stopped with `run stopped with an error: …`). It writes the local copy
    `.claude/orchestrator-runs/<run>.md` in the main folder first (gitignored, opens without a branch switch), then
@@ -95,7 +97,11 @@ branch himself.
    or cannot fast-forward keeps the local copy and the result says `reportCommitted: false` with the reason. `stop` and
    `finish` both give every slot the run still holds back (`releaseSlot`: a slot with uncommitted or unpushed work is
    kept and the line says why), so a run that ends on an environment failure leaves no `wt-N` with a stale
-   `.worktree-plan`.
+   `.worktree-plan`. When `commands.logQuery` is set, `finish` runs it once from the main folder (no shell; only
+   `node scripts/…` or `node tools/…`), with `--since=plan-start` replaced by the run's start time, and the report gets
+   an `App errors since the run started` section: the command, its exit code and its first 20 lines, never parsed.
+   `main untouched` stays `yes` when the only files that changed on `main` during the run are
+   plan files and `.claude/todo.md` (the Planner's own pushes); the line counts them.
 
 **Environment failures** never cost a fix round: the plan pauses, `orch-preflight.mjs --env-only --run <run>` checks
 disk, database and packages (the main folder's and the merge folder's), and the plan is retried once — from the
@@ -122,6 +128,12 @@ belongs in the worktree and is dropped with a run note. A failure is a real fail
 and goes to the builder like any gate failure. The main folder's code is `origin/main`, not the plan
 branch, so a main check proves the side effects of the plan's own checks (a clean log after its tests ran), never the
 plan's code. The merge step and the final gate never run them.
+
+A check that reads a slot's plan-start stamp (`--since=plan-start`, `.slot-plan-start`) is slot-only and is dropped at
+launch with the note `main-folder check dropped, not run: … needs a slot's plan-start stamp`. `take-plan` writes that
+stamp in a `wt-N` slot; a run never takes a plan that way, so the main folder has no stamp, and its
+servers run `origin/main` anyway. A run once spent three fix rounds and a restart on such a check. The
+report's `App errors since the run started` section (`commands.logQuery`, above) covers the same question for the run.
 
 A main check always waits for `go`. It is the one place in a run where a plan-supplied command touches the Human's
 live environment, so readiness lists every one under `mainApproval` (`<NNN>: <command>`), `askHuman` is true, and

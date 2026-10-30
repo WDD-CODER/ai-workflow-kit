@@ -10,6 +10,12 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 ## [Unreleased]
 
 ### Added
+- **The run report lists the app errors logged during the run.** When `commands.logQuery` is set, `orch-state.mjs
+  finish` runs it once from the main folder with `--since=plan-start` replaced by the run's start time and adds an
+  `App errors since the run started` section (command, exit code, first 20 lines).
+- **The final gate runs the kit manifest check.** A project with `docs/workflow-kit/manifest.json` gets
+  `node scripts/kit-manifest-check.mjs` in the run's final gate, so a file no manifest entry classifies fails the
+  run, not the pull request's rules job.
 - **A slot merge deletes the branch only when the repo does not.** New `scripts/branch-autodelete-check.mjs` reads
   GitHub's `delete_branch_on_merge` setting and the pull-request workflows and prints `auto`, `manual` or `unknown`;
   on `auto` the merge skips `git push origin --delete`, and a branch that is already gone is never reported as open.
@@ -19,6 +25,11 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
   warning colour on `STUCK`. Read-only and token-free: it reads `status.json` and the journal and runs `watch`.
 
 ### Fixed
+- **A run no longer stalls on a slot-only check.** A main-folder check that reads a slot's plan-start stamp
+  (`--since=plan-start`, `.slot-plan-start`) is dropped at launch with a note; it could never pass from the main
+  folder and once cost three fix rounds and a restart. Readiness leaves it out of `mainCommands`.
+- **"main untouched" ignores the Planner's plan pushes.** The run report says `untouched: yes` when only plan files
+  and `.claude/todo.md` changed on main during the run, and counts them.
 - **A plan number counts the plan files on every branch.** `next-plan-number.mjs` read plan files only in the
   checkout, on `origin/<main>` and in the main worktree, and took the rest from branch names shaped
   `<type>/NNN-<slug>`, so two plans saved on a `plan/<slug>` branch were invisible and their number was offered

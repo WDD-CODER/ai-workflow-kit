@@ -46,7 +46,7 @@ import { planNumber, planTitle, mergeSubjectRe } from './lib/plan-deps.mjs'
 import { uiItems } from './lib/done-when.mjs'
 import { listSlots } from './lib/slot.mjs'
 import { ensureDeps, idleSlot, claimSlot, releaseSlot, releaseRunSlots } from './lib/orch-folders.mjs'
-import { runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine } from './lib/orch-run.mjs'
+import { runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine, logQueryArgs } from './lib/orch-run.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const MAIN = 'main'
@@ -58,6 +58,9 @@ const USE_SLOTS = true !== false
 const SERVER_ROOT = ''
 // Minutes without a status.json update after which `watch` prints STUCK (orchestrator.staleMin).
 const STALE_MIN = 10
+// The project's log query (commands.logQuery, optional): `finish` runs it once from the main folder for the report's
+// "App errors since the run started" section, with --since=plan-start replaced by the run's start time.
+const LOG_QUERY = ""
 // Sensitive paths (the security reviewer runs on them): the same reading as ship-prep — a regex string replaces the
 // built-in list, a list of globs is added to it.
 const DEFAULT_SENSITIVE_RE = /auth|crypto|guard|interceptor|security|permission|payment|migration|secret|\.env|\.github\/workflows/i
@@ -361,7 +364,9 @@ const commands = {
     }
     status.freeDiskGb = diskGb()
     writeStatus(run, status)
-    emit({ ok: true, run, branch, mergeFolder: mf.replace(/\\/g, '/'), done: done.map((m) => m.nnn), mainSha: status.mainShaAtStart, attempt: status.attempts, startedAt: status.startedAt },
+    // The final gate adds the kit manifest check (the PR's rules job) when the project has both the manifest and the script.
+    const kitManifest = existsSync(join(mf, 'docs', 'workflow-kit', 'manifest.json')) && existsSync(join(mf, 'scripts', 'kit-manifest-check.mjs'))
+    emit({ ok: true, run, branch, mergeFolder: mf.replace(/\\/g, '/'), done: done.map((m) => m.nnn), mainSha: status.mainShaAtStart, attempt: status.attempts, startedAt: status.startedAt, kitManifest },
       [...lines, `run ${run}: ${done.length} plan(s) already merged into ${branch}${done.length ? ` (${done.map((m) => m.nnn).join(', ')})` : ''}`])
   },
 
@@ -669,7 +674,13 @@ const commands = {
     status.finishedAt = nowIso()
     const slots = giveSlotsBack(run, status)
     writeStatus(run, status)
-    const report = formatReport({ status, merged, mainShaNow: git(root, 'rev-parse', `origin/${MAIN}`).out, finishedAt: status.finishedAt, runBranch: branch, mainBranch: MAIN })
+    const mainShaNow = git(root, 'rev-parse', `origin/${MAIN}`).out
+    // The files main changed during the run: a commit that touches only plans and the todo list (the Planner's own
+    // pushes) does not make main "touched".
+    const changed = status.mainShaAtStart && status.mainShaAtStart !== mainShaNow ? git(root, 'diff', '--name-only', status.mainShaAtStart, mainShaNow) : null
+    const mainChangedFiles = changed && changed.status === 0 ? changed.out.split('\n').map((l) => l.trim()).filter(Boolean) : null
+    const appErrors = runLogQuery(status.startedAt)
+    const report = formatReport({ status, merged, mainShaNow, finishedAt: status.finishedAt, runBranch: branch, mainBranch: MAIN, mainChangedFiles, appErrors })
     const local = join(runsDir(), `${run}.md`)
     mkdirSync(runsDir(), { recursive: true })
     writeFileSync(local, report)
@@ -696,6 +707,19 @@ const commands = {
     emit({ ok: !left, ...base, reportCommitted: true, ...(left ? { error: `merge folder not clean: ${left}` } : {}) },
       [...slots.lines, `report: ${rel}/report.md on ${branch}; local copy ${local}`, `merged ${merged.length}: ${merged.map((m) => m.nnn).join(', ') || 'none'}; parked ${parked.length}: ${parked.join(', ') || 'none'}`])
   },
+}
+
+// The app errors logged since the run started, for the report: the project's commands.logQuery run once from the main
+// folder (no shell; node scripts/… or node tools/… only), --since=plan-start replaced by the run's start time. The
+// output is shown as is (first 20 lines), never parsed. Unset → null (no section).
+function runLogQuery(startedAt) {
+  const args = logQueryArgs(LOG_QUERY, startedAt)
+  if (!args) return null
+  if (args.error) return { command: String(LOG_QUERY), error: args.error }
+  const r = spawnSync(process.execPath, args.args, { cwd: root, encoding: 'utf8', timeout: 60000, shell: false })
+  if (r.error) return { command: args.command, error: r.error.message }
+  const lines = `${r.stdout ?? ''}\n${r.stderr ?? ''}`.split('\n').map((l) => l.trimEnd()).filter((l) => l.trim())
+  return { command: args.command, exit: r.status, lines: lines.slice(0, 20), more: Math.max(0, lines.length - 20) }
 }
 
 // Every slot the run still holds (status.plans[n].slot) is given back when the run stops or finishes, through the

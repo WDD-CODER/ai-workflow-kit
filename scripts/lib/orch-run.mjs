@@ -240,17 +240,47 @@ export function validationList(mergedPlans) {
  * The run report (Markdown) from status.json and the merges git shows. `merged` is the ordered list of
  * { nnn, branch, sha } read from the anchored merge subjects — never a count kept in memory.
  */
-export function formatReport({ status, merged, mainShaNow, finishedAt, runBranch, mainBranch }) {
+/**
+ * The project's log query (commands.logQuery) as node arguments for the report's app-errors section, or null when it
+ * is unset, or { error } when it is not `node scripts/…` / `node tools/…`. `--since=plan-start` (a slot's stamp, which
+ * the main folder never has) becomes `--since=<the run's start time>`.
+ */
+export function logQueryArgs(cmd, startedAt) {
+  const c = String(cmd ?? '').trim()
+  if (!c) return null
+  const w = c.split(/ +/)
+  if (w[0] !== 'node' || !/^(scripts|tools)\/[A-Za-z0-9_./-]+\.m?js$/.test(w[1] ?? '') || w[1].includes('..')) return { error: 'commands.logQuery is not node scripts/… or node tools/…, not run' }
+  const args = w.slice(1).map((x) => (x === '--since=plan-start' && startedAt ? `--since=${startedAt}` : x))
+  return { args, command: `node ${args.join(' ')}` }
+}
+
+/** Main counts as untouched when it did not move, or when every file it changed is a plan file or the todo list. */
+export function mainUntouched(startSha, nowSha, changedFiles) {
+  if (!startSha || startSha === nowSha) return { untouched: true, adminFiles: 0 }
+  if (!Array.isArray(changedFiles)) return { untouched: false, adminFiles: 0 }
+  const admin = changedFiles.filter((f) => /^plans\/.*\.plan\.md$/.test(f) || f === '.claude/todo.md')
+  return { untouched: admin.length === changedFiles.length, adminFiles: admin.length }
+}
+
+function appErrorsSection(e) {
+  if (!e) return []
+  const head = ['## App errors since the run started', '', `Command (from the main folder): \`${e.command}\``]
+  if (e.error) return [...head, `Could not run: ${e.error}`, '']
+  return [...head, `Exit code: ${e.exit ?? '?'}`, '', '```text', ...(e.lines.length ? e.lines : ['(no output)']), ...(e.more ? [`… ${e.more} more line(s)`] : []), '```', '']
+}
+
+export function formatReport({ status, merged, mainShaNow, finishedAt, runBranch, mainBranch, mainChangedFiles = null, appErrors = null }) {
   const plans = Object.values(status.plans ?? {}).sort((a, b) => (a.nnn < b.nnn ? -1 : 1))
   const mergedSet = new Map(merged.map((m) => [m.nnn, m]))
   const parked = plans.filter((p) => !mergedSet.has(p.nnn) && ['parked', 'left-run', 'skipped'].includes(p.state))
-  const untouched = !status.mainShaAtStart || status.mainShaAtStart === mainShaNow
+  const { untouched, adminFiles } = mainUntouched(status.mainShaAtStart, mainShaNow, mainChangedFiles)
+  const adminNote = untouched && adminFiles ? ` (${adminFiles} plan/todo file(s) changed on ${mainBranch})` : ''
   const lines = [
     `# Orchestrator run ${status.run}`,
     '',
     `Run branch: \`${runBranch}\` (from \`origin/${mainBranch}\` at ${String(status.mainShaAtStart ?? '').slice(0, 7)}) · started ${status.startedAt ?? '?'} · finished ${finishedAt}`,
     `Result: ${merged.length} merged, ${parked.length} parked, skipped or left out, ${plans.length} in the run (counted from git and status.json).`,
-    `\`${mainBranch}\` untouched: ${untouched ? 'yes' : 'NO'} — origin/${mainBranch} is ${String(mainShaNow).slice(0, 7)}.`,
+    `\`${mainBranch}\` untouched: ${untouched ? 'yes' : 'NO'}${adminNote} — origin/${mainBranch} is ${String(mainShaNow).slice(0, 7)}.`,
     status.stopReason ? `Stopped: ${status.stopReason}` : '',
     '',
     '## Plans',
@@ -263,6 +293,7 @@ export function formatReport({ status, merged, mainShaNow, finishedAt, runBranch
       return `| ${p.nnn} ${p.title ?? ''} | ${state} | ${p.round ?? 0} | ${p.tier ?? ''} | ${m ? m.sha.slice(0, 7) : ''} | ${(p.reason ?? '').replace(/\|/g, '/')} |`
     }),
     '',
+    ...appErrorsSection(appErrors),
     '## Decisions taken',
     '',
     ...((status.notes ?? []).length ? status.notes.map((n) => `- ${n.plan ? `${n.plan}: ` : ''}${n.text}`) : ['- none']),
