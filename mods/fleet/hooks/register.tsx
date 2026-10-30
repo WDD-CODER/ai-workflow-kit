@@ -556,7 +556,7 @@ const drawDock = (ui: DockUi, mine: unknown, below: unknown) => {
 export const register: Register = (on, rawOptions) => {
   registerQuickReply(on, {})
   registerRunProgress(on, {})
-  options ={ ...options, ...(rawOptions as Partial<Opts>) }
+  options = { ...options, ...(rawOptions as Partial<Opts>) }
   ttlMs = Math.max(1, Number(options.cacheTtlMinutes) || 60) * 60000
   warnAt = Number(options.contextWarnPercent) || 70
   PORT_BASE_FE = Number(options.fePortBase) || 0

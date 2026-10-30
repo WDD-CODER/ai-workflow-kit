@@ -33,7 +33,7 @@ Still true, verified by the reviewer: argv-only process calls, no `$.env`, `http
 
 ## Common guarantees (all three)
 
-- **No shell.** Every process call is `$.process.run(argv)` — an argument vector, never a shell string. Nothing from a prompt, a file or a PR reaches an argv (file paths are the model's tool inputs and are only *compared*, never executed).
+- **No shell.** Every process call is `$.process.run(argv)` — an argument vector, never a shell string. Nothing from a prompt, a file or a PR reaches an argv (file paths are the model's tool inputs and are only *compared*, never executed). The one exception is fleet's orchestrator run name: it comes from a run folder name under `.claude/orchestrator-runs/` and is checked against `^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$` before it is passed as `--run=<run>`.
 - **Known executables only:** `git`, `gh`, `node scripts/<kit script>.mjs`, `df`/`ss`/`netstat`, `powershell -NoProfile -Command "(Get-PSDrive -Name C).Free"`. All with timeouts (≤ 15 s).
 - **No secrets.** No `$.env.get` at all. No `.env` reads. `pushUrl` is the only sensitive option and is declared `sensitive` so it lives in secure storage, not settings.json.
 - **No model calls except where named:** fleet's `/handoff` and *Keep warm* (`$.model.fork`); nothing else spends usage.
@@ -45,7 +45,8 @@ Still true, verified by the reviewer: argv-only process calls, no `$.env`, `http
 
 | Concern | Finding |
 | --- | --- |
-| Host processes | `git branch/status/rev-list/worktree/rev-parse`; `df -k`; `ss`/`netstat` (via `sh -c` **only** on Linux, with a fixed string and no interpolation); `powershell … Get-PSDrive`; `node scripts/slot-stop.mjs` only when `autoStopPorts` is on, in a slot, and no `/remote` link is live. |
+| Host processes | `git branch/status/rev-list/worktree/rev-parse`; `df -k`; `ss`/`netstat` (via `sh -c` **only** on Linux, with a fixed string and no interpolation); `powershell … Get-PSDrive`; `node scripts/slot-stop.mjs` only when `autoStopPorts` is on, in a slot, and no `/remote` link is live; `node scripts/orch-state.mjs watch --run=<run>` while an orchestrator run is live (8 s timeout, argv, no shell; `<run>` is a run folder name only, checked against `^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$`). |
+| Files read | `.claude/orchestrator-runs/*/status.json` in the checkout; the workflow `journal.jsonl` and the agent transcript files' modification times under the Claude config folder (this session and the 6 newest sessions of the same project). Read-only; a journal over 4 MiB is skipped. |
 | Files written | `.claude/.session-lock` (same shape as the shell workflow); `.claude/sessions/handoff-<branch>.md` on `/handoff`. Never outside the session's checkout. |
 | Permission effect | `tool.check` on Bash: **deny only** (`git checkout/switch/reset` while another live session holds the folder). It never returns `allow`, so it cannot lift a rule or the classifier. Fails **closed** (`.catch` → deny) when the registry cannot be read. |
 | Network | One optional `POST` to `pushUrl`, only when it starts with `https://`, body = the notification text (e.g. "PR #<n>: all 9 checks green"). Nothing else leaves the machine. Phone pushes never carry file contents or prompts. |

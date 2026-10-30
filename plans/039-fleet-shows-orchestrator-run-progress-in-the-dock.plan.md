@@ -59,6 +59,7 @@ mods/fleet/tests/run-progress.test.ts
 mods/fleet/tests/fleet.test.ts
 mods/fleet/.claude-plugin/plugin.json
 mods/README.md
+mods/SECURITY.md
 CHANGELOG.md
 plans/039-*.plan.md
 ```
