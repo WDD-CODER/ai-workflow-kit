@@ -3,7 +3,7 @@
     "version": "1.12.0"
   },
   "source": "local:.",
-  "commit": "9b842f156c0df144ce04f8cc204fe96eadea6fa4",
+  "commit": "ffceeb95322afb0ad5049d8d3160d221d6ebd242",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -168,6 +168,11 @@
       "sha256": "fbefaf44ed48fbf9cb832b5b80deabe5cb03161d931a961f7145c97c463f8450",
       "kind": "managed",
       "source": "core/.claude/commands/review.md"
+    },
+    ".claude/commands/scout.md": {
+      "sha256": "1b14c6ace4ba6db132a56391183a9c6a6e2a7da64f33df6518c96bd125500828",
+      "kind": "managed",
+      "source": "core/.claude/commands/scout.md"
     },
     ".claude/commands/security.md": {
       "sha256": "4367997e2bf4c2c4de770f2443d2f7dac17f7fa0e5567a93e71a1b3acd68cd1d",
@@ -375,7 +380,7 @@
       "source": "core/docs/agent/standards-security.md"
     },
     "docs/agent/workflow-map.md": {
-      "sha256": "c5e21bde5c200a09d47c8dc52cd8d52ec024e2bfb7b7fc28cdc25ba4e86cd84f",
+      "sha256": "777b26f3a83c2148dcebc112a7e3b07f294ef7f9834db8a1343578e1d87bb60f",
       "kind": "managed",
       "source": "core/docs/agent/workflow-map.md"
     },
@@ -508,6 +513,11 @@
       "sha256": "52652e3fcba5712add187b11b8122beb7f2dc92c4e52d2bcd9ea787b42325b58",
       "kind": "seed",
       "source": "templates/docs/project/tech-stack.md"
+    },
+    "docs/scout/sources.json": {
+      "sha256": "5230547b992d3d5c0576123aa226bdecfb52240eedba8b7d15b072a714ea801e",
+      "kind": "seed",
+      "source": "templates/docs/scout/sources.json"
     },
     "scripts/brain-capture-comment.mjs": {
       "sha256": "f2fa5d887f9b7b2d7d58d64956d54c61fd4503d067a0661449fce7a3cf933dce",
@@ -728,6 +738,21 @@
       "sha256": "ecdca657fb30fb49e8f18fac8e0df3f276bfcc8a8e7de8543607014bb8ab566d",
       "kind": "managed",
       "source": "core/scripts/scope-guard.sh"
+    },
+    "scripts/scout/page-template.html": {
+      "sha256": "3af382e4209868e3933a1d256dd070d12f2b507b99ffc32a8376c3acf8d95a6c",
+      "kind": "managed",
+      "source": "core/scripts/scout/page-template.html"
+    },
+    "scripts/scout/pr.mjs": {
+      "sha256": "34ff0260aabe90a989f726e0de34e8df5c4f44e949b0c7fe06986c56e1a51736",
+      "kind": "managed",
+      "source": "core/scripts/scout/pr.mjs"
+    },
+    "scripts/scout/render.mjs": {
+      "sha256": "8cdd9333e4c0eed8d7ed1c5d2c2352b5e8b66971e7c5354443e707f0a4b9911a",
+      "kind": "managed",
+      "source": "core/scripts/scout/render.mjs"
     },
     "scripts/session-lock.sh": {
       "sha256": "cdb12ee087929b92bbdb7f2151a99c1d4f1697de62cdcbf5d373934db9478d0d",

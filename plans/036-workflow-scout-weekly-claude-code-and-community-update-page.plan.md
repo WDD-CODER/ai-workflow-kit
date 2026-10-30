@@ -66,6 +66,10 @@ docs/agent/**
 docs/brain/**
 .kit/install.json
 plans/036-*.plan.md
+core/scripts/scout/**
+templates/docs/scout/**
+core/docs/agent/workflow-map.md
+docs/scout/**
 ```
 
 The cloud routine itself is created through `/schedule`, not by a file in this repo.
@@ -119,11 +123,11 @@ and wait for the Human's go.
 
 ## Atomic Sub-tasks
 
-- [ ] C0: Check the plan is still right and test a cloud routine before building — Step 0 reality check + routine spike, findings written in this plan — plans/036-workflow-scout-weekly-claude-code-and-community-update-page.plan.md
-- [ ] C1: List which news sources to scan and remember what was already seen — Sources config + cursor state format — tools/scout/sources.json
-- [ ] C2: Collect updates and judge which fit the project's workflow, within a budget — Scout command (collect, judge fit, emit JSON, budget caps) — core/.claude/commands/scout.md
-- [ ] C3: Turn the findings into an easy-to-read web page — Advertiser-style page template + JSON→HTML renderer + tests — templates/scout-page.html, tools/scout/render.mjs, tools/test/scout-render.test.mjs
-- [ ] C4: Open a weekly PR with the top 5 findings and the page link — Branch + PR step (top-5 text, page link, useful checkboxes) — tools/scout/pr.mjs
+- [x] C0: Check the plan is still right and test a cloud routine before building — Step 0 reality check + routine spike, findings written in this plan — plans/036-workflow-scout-weekly-claude-code-and-community-update-page.plan.md
+- [x] C1: List which news sources to scan and remember what was already seen — Sources config + cursor state format — tools/scout/sources.json
+- [x] C2: Collect updates and judge which fit the project's workflow, within a budget — Scout command (collect, judge fit, emit JSON, budget caps) — core/.claude/commands/scout.md
+- [x] C3: Turn the findings into an easy-to-read web page — Advertiser-style page template + JSON→HTML renderer + tests — templates/scout-page.html, tools/scout/render.mjs, tools/test/scout-render.test.mjs
+- [x] C4: Open a weekly PR with the top 5 findings and the page link — Branch + PR step (top-5 text, page link, useful checkboxes) — tools/scout/pr.mjs
 - [ ] C5: Document the scout, render the kit's own copies and release — README/CHANGELOG section, install-check strings, `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .`, kit PR merged + release — README.md, CHANGELOG.md, tools/install-check.mjs, .claude/**, docs/agent/**, .kit/install.json
 - [ ] C6: Bring the scout into the first project and run it once by hand to get the first page and PR — `kit-sync` in the project, then a manual run there (runs in that project, shipped with its own workflow) — docs/scout/** in the project
 - [ ] C7: Schedule it weekly after the Human's go and receive one automatic PR — Create the weekly cloud routine (the Human's go); receive one scheduled PR — cloud routine
@@ -145,3 +149,27 @@ Nightly skill improvement (plan 035); applying any recommendation.
 ## Execution Notes
 
 - Moved from FoodVibe plan 411 with no work done: the kit has no scout files yet.
+- 2026-10-30 C0 — Step 0: `scope-check --drift` reported drift (plans 034, 037, 038, 040 merged since the snapshot;
+  none adds scout files). Built on origin/main `938aaca`. Sources re-checked with `gh api`: all exist and are active;
+  anthropics/claude-code no license file, claude-plugins-official Apache-2.0, marckrenn/claude-code-changelog none
+  (read only), awesome-claude-code NOASSERTION, superpowers MIT, gstack MIT, audit-setup MIT.
+- 2026-10-30 C0 — routine spike (from the Claude Code docs, routines.md / cloud-environments.md; not yet tried live):
+  (a) a cloud scheduled run clones the repo and can push a branch; a PR must go through `gh api` REST —
+  `gh pr` / `gh issue` (GraphQL) are rejected. Default network reaches GitHub hosts only; the `web` sources need
+  custom network access. WebFetch/WebSearch in a cloud run: not documented. (b) One model per routine, none per step;
+  no token or turn cap → the budget is the fixed caps in `sources.json` (the plan's fallback). (c) `/doctor` and
+  project `.claude/commands` in a cloud run: not documented → `/doctor` dropped from the scout; the routine prompt
+  names the command file and its steps. (d) Weekly preset exists; cron in UTC; runs draw subscription usage.
+  Not a STOP: the run can push and open a PR.
+- 2026-10-30 path change (Escalation Protocol): the plan's `tools/scout/**` and `templates/scout-page.html` never reach
+  a project (`tools/` is kit-only; a root `templates/` file installs once at the project root). Built as
+  `core/scripts/scout/{render,pr}.mjs` + `core/scripts/scout/page-template.html` (managed → `scripts/scout/`) and
+  the seed `templates/docs/scout/sources.json` (→ `docs/scout/sources.json`, the project's own after install).
+  Scope block extended with those paths, `core/docs/agent/workflow-map.md` and `docs/scout/**`.
+  Human, 2026-10-30: `approved: core/scripts/scout/**, templates/docs/scout/**, core/docs/agent/workflow-map.md,
+  docs/scout/**` ("your relocation is right: tools/ never reaches a project").
+- 2026-10-30 review fixes (Human): render.mjs refuses any absolute drive path outside a URL; pr.mjs refuses unless on
+  the default branch with only the page and state.json changed (also in a dry run; `--base` overrides the lookup).
+- 2026-10-30 C1–C4 built; C5 docs, install-check strings, sync and drift-check done — kit PR, merge and release wait
+  for the Human's review. C6–C8 not started: they need the first project, the Human's go for the billed routine, and
+  the Human's ticks.

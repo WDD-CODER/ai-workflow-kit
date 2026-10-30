@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title><!--SCOUT:TITLE--></title>
+<style>
+  :root {
+    --bg: #fbfaf7; --card: #ffffff; --ink: #1d1d1f; --muted: #5f6368; --line: #e3e0d8;
+    --accent: #c4501f; --adopt: #1f7a4d; --improve: #2457a6; --remove: #8a3b9e; --security: #b3261e; --parked: #6b6b6b;
+    --callout: #fff4e5; --code: #f2efe8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141416; --card: #1d1d21; --ink: #ececef; --muted: #a3a3ab; --line: #2e2e35;
+      --accent: #f08a5d; --adopt: #5cc896; --improve: #7aa7f0; --remove: #c78ad8; --security: #f28b82; --parked: #9a9a9a;
+      --callout: #2a2118; --code: #26262c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 32px 16px 64px; }
+  header h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 4px; }
+  header p { color: var(--muted); margin: 0; }
+  h2 { font-size: 1.15rem; margin: 40px 0 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--accent); }
+  h3 { font-size: 1.2rem; margin: 6px 0 4px; }
+  p { margin: 6px 0; }
+  a { color: var(--improve); }
+  code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: .9em; overflow-wrap: anywhere; }
+  .hero, .callout, .pick { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin: 12px 0; }
+  .hero { display: grid; grid-template-columns: 44px 1fr; gap: 12px; }
+  .rank { font-size: 1.8rem; font-weight: 800; color: var(--accent); line-height: 1; }
+  .hook { font-weight: 600; }
+  .file, .meta { color: var(--muted); font-size: .92rem; }
+  .callout { background: var(--callout); border-color: var(--accent); }
+  .tag { display: inline-block; font-size: .75rem; font-weight: 700; padding: 1px 8px; border-radius: 99px; color: #fff; }
+  .tag-adopt { background: var(--adopt); } .tag-improve { background: var(--improve); } .tag-remove { background: var(--remove); }
+  .tag-security { background: var(--security); } .tag-parked { background: var(--parked); }
+  @media (prefers-color-scheme: dark) { .tag { color: #141416; } }
+  .effort { font-size: .75rem; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; }
+  .also { padding-left: 18px; } .also li { margin: 6px 0; }
+  .budget { background: var(--callout); border-left: 4px solid var(--security); padding: 8px 12px; border-radius: 6px; font-weight: 600; }
+  footer { margin-top: 48px; border-top: 1px solid var(--line); padding-top: 12px; color: var(--muted); font-size: .9rem; }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>What's new for your workflow</h1>
+  <p><!--SCOUT:DATE--> · <!--SCOUT:SUMMARY--></p>
+</header>
+<!--SCOUT:BUDGET-->
+<!--SCOUT:TOP-->
+<!--SCOUT:REPLACES-->
+<!--SCOUT:COMMUNITY-->
+<!--SCOUT:ALSO-->
+<footer>
+<!--SCOUT:FOOTER-->
+</footer>
+</main>
+</body>
+</html>

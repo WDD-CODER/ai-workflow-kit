@@ -177,6 +177,22 @@ Cost: every run prints `SKILL_IMPROVER: billing plan-limits` (signed in with the
 (`tools/skill-improver/lib/`) with a `--target` switch; only `skill` exists today, any other target exits 2 with
 `unknown target <t>`. Editor command: `/improve-skill`; grader: the `skill-judge` agent.
 
+## Workflow scout (weekly news page)
+
+`/scout` collects what is new in Claude Code and in community skills and plugins since its last run, keeps what fits
+the project's own setup files, and opens one pull request on `chore/scout-<date>` with a short page
+(`docs/scout/<date>.html`). The page lists the top 5 to adopt, "native feature now replaces your custom part"
+callouts, community picks (license, stars, last commit) and the rest in one list. Nothing is applied.
+
+- The model writes a JSON report; `scripts/scout/render.mjs` builds the page from a fixed template, so every page
+  looks the same and the run stays cheap. `scripts/scout/pr.mjs` opens the pull request through `gh api`.
+- Sources and caps live in `docs/scout/sources.json` (a seed: the project's own after install). The cursors live in
+  `docs/scout/state.json`; a run with nothing new says so and opens no pull request.
+- Both scripts refuse secrets, `.env`-style values, machine paths and transcript text, so the page is safe in a
+  public repository.
+- The weekly run is a Claude Code cloud scheduled task created with `/schedule` after the Human's go. The command's
+  `Weekly cloud run` section has the prompt and the network setting the web sources need.
+
 ## Sync (see what a newer kit changes)
 
 ```powershell
