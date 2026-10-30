@@ -339,6 +339,16 @@ only the Bash tool's command text triggers it.
 
 ---
 
+## A plan's count or every-X goal was wrong and readiness did not look
+
+**What hurt:** A plan said the draft editor has 3 row-delete handlers; it has 1. Another aimed to make every number box tap-to-edit, but four number boxes sat outside its Read-Write Scope. The builders were right to stay in scope and log `seen:`, but both gaps surfaced after the merge as decisions to grade, not before the run as questions. Separately, a delegated "decide yourself" approved a main-folder command nobody had seen run, and `npx <tool> build` checks landed in `denied` where nobody looked.
+
+**Why the obvious fix is wrong:** A second agent or a post-build checker pays the cost after the damage. Trusting the `go` inside a delegated reply treats the Human as having reviewed a command only the Planner saw.
+
+**What to do instead:** Readiness checks up to 8 claims per plan in its own call and turns each mismatch into a question with a default (`docs/agent/orchestrator.md`, "What a plan claims"). A delegated answer keeps a main-folder command only when `orch-state.mjs main-try` saw it pass from the main folder; an `npx` check maps to the package.json script that runs it or is shown as dropped.
+
+---
+
 ## A state call can fail on the copy, not the command
 
 **What hurt:** A run parked a plan at its first step, `worktree: unreadable ORCH_JSON from: node scripts/orch-state.mjs worktree …`. The command had exited 0 and printed a well-formed line; the `kit-runner` agent's copy of that line is what the workflow reads (it has no file access), and the copy did not parse. The error named neither the line nor the parser's message, so the cause could only be dug out of the workflow journal by hand — and stayed unconfirmed. The same runner had also run `git checkout main && git pull` in the main folder on its own before the command.

@@ -38,7 +38,7 @@ next to it; a kind collapses only after measured agreement (shadow mode until th
   (also on `decisions: ok`) with the 13 fields in Technical Considerations, never twice for the same run and id;
   `grade` writes the follow-up rows by the rule in A8; `stats` computes agreement per kind; `stats --write` keeps
   `triage-calibration.md` within 40 lines and 3,000 characters.
-- [auto] `node --test tools/test/` and `node tools/install-check.mjs` pass (new config keys rendered and refused when
+- [auto] `node --test "tools/test/*.test.mjs"` and `node tools/install-check.mjs` pass (new config keys rendered and refused when
   wrong; `orch-triage.md` renders `model: sonnet` by default).
 - [auto] `node tools/sync.mjs --target . --apply` then `node tools/drift-check.mjs --target .` reports no drift.
 - [human] The next FoodVibe run (after a kit sync) prints `triage: shadow · …`, an `ask` block with recommendations
@@ -248,12 +248,18 @@ While implementing: whenever the plan leaves something open and you choose, note
 "Decisions you made on your own".
 
 Finishing steps:
-1. Fetch origin and rebase this branch on the latest origin/main. If there are conflicts, stop and tell me which files
-   conflict.
-2. From the kit root run: npm run build, npm run lint, npm test. Fix failures that belong to this plan, then rerun.
-   Also run this plan's own `[auto]` Done-when commands (they include `node --test tools/test/`, which `npm test` does
-   not run); any that still fail go under "Open risks".
-3. Commit everything and push the branch to origin.
+1. Fetch origin. If this branch was never pushed, rebase it on the latest origin/main. If it was already pushed, merge
+   origin/main into it instead (no rebase, so no force push is needed). Known conflicts: CHANGELOG.md → keep both
+   sides; .kit/install.json → take origin/main's copy, rerun `node tools/sync.mjs --target . --apply`, and confirm the
+   `required` key still lists 5 steps for .github/workflows/ci.yml and 2 for security.yml. Any other conflict → stop
+   and tell me which files conflict.
+2. From the kit root run: npm run build, npm run lint, npm test, `node tools/drift-check.mjs --target .` and
+   `node --test "tools/test/*.test.mjs"` (quoted glob: the bare folder form fails on Node 24). Also run this plan's own
+   `[auto]` Done-when commands. Fix failures that belong to this plan, then rerun; any that still fail go under
+   "Open risks". A timing failure in tools/test/guards.test.mjs that passes when that file is rerun alone is machine
+   load, not this plan: note it under "Open risks" and move on.
+3. Commit everything and push the branch to origin. If the push is refused, do not try another route: give me the
+   exact command to run.
 4. Your final message must be exactly this block, plain text, nothing before or after it:
 
 ```text
@@ -276,6 +282,8 @@ Checks:
 build: pass/fail
 lint: pass/fail
 test: pass/fail
+drift-check: pass/fail
+tool tests: pass/fail
 <if any failed: the failing lines only>
 
 Files changed (git diff --stat origin/main...HEAD):
@@ -285,3 +293,6 @@ Open risks / things you could not verify:
 <list, or "none">
 === END ===
 ```
+
+After the Human approves the hand-off: open the PR, wait for both CI checks (leak-check and e2e) to pass, then merge.
+If a check fails, stop and show me the failing lines.

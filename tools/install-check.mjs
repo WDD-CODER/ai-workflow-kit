@@ -970,6 +970,10 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     // Plan 034: a main-folder check always waits for go.
     if (!cmd.includes('"mainApproved": true') || !cmd.includes('from the main folder') || !cmd.includes('no main-folder command')) fail('orchestrator: orchestrate.md must list the main-folder commands, wait for go and pass mainApproved')
     if (!doc.includes('stopped: main-approval')) fail('orchestrator: orchestrator.md does not say the run refuses unapproved main checks (stopped: main-approval)')
+    // Plan 043: readiness checks the plan's claims; a delegated answer is backed by main-try; npx checks map to scripts.
+    if (!read(od, '.claude/agents/orch-readiness.md').includes('claims')) fail('orchestrator: orch-readiness.md does not name claims')
+    if (!cmd.includes('mainDelegated') || !cmd.includes('main-try')) fail('orchestrator: orchestrate.md must pass mainDelegated and run main-try on a delegated reply')
+    if (!doc.includes('## What a plan claims') || !read(od, 'scripts/orch-state.mjs').includes("'main-try'")) fail('orchestrator: orchestrator.md / orch-state.mjs do not carry the claims and main-try rules')
     if (!/^\.claude\/orchestrator-runs\/$/m.test(read(od, '.gitignore'))) fail('orchestrator: the rendered .gitignore does not ignore .claude/orchestrator-runs/')
   }
   rmSync(od, { recursive: true, force: true })

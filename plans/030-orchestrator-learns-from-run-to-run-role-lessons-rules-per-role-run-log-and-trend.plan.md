@@ -140,7 +140,7 @@ going down.
 - [auto] **Budget printed, not guessed.** `orch-state.mjs lessons` and `finish` print the size in characters of every
   `LESSONS`, `RULES` and `RECENT_RUNS` block the next run will inject, and the report carries the total ("Context
   added by learning: 3.1k chars across 10 roles"). The orchestrator test asserts the line.
-- [auto] `node tools/install-check.mjs`, `node tools/e2e-check.mjs`, `node --test tools/test/` pass; the kit's own
+- [auto] `node tools/install-check.mjs`, `node tools/e2e-check.mjs`, `node --test "tools/test/*.test.mjs"` pass; the kit's own
   installed copies are in step (`node tools/sync.mjs --target . --apply` then `node tools/drift-check.mjs --target .`:
   0 undeclared differences); a `kit-sync` dry run into FoodVibe from the branch has 0 `conflict` rows.
 - [human] On the next FoodVibe run: after the run report, the Human opens `docs/brain/agent-lessons/check-bugs.md`,
@@ -272,7 +272,7 @@ for the Human's go.
 - [ ] L10: Close the kit side — `tools/kit-inbox.mjs` + `/kit-inbox` (kit-only: the command file lives outside `core/` and is never rendered; `install-check` asserts a fresh install has none); `kit-feedback.mjs` `seen-in: N` on a matching open inbox file (stubbed `gh` in the test; `--dry-run` names the path); `feedback/README.md` says `seen-in: 2` or more is a priority — tools/kit-inbox.mjs, .claude/commands/kit-inbox.md, core/scripts/kit-feedback.mjs, tools/install-check.mjs, feedback/README.md, tools/test/kit-inbox.test.mjs, tools/test/kit-feedback.test.mjs
 - [ ] L11: Let the Planner learn from the gaps its earlier plans had — `/plan`'s Architect + PM review reads `docs/brain/agent-lessons/planner.md` first and adds an `open:` line for a question or drift the draft would repeat; `agent-roles.md` lists the planner role's lessons — core/.claude/commands/plan.md, core/docs/agent/agent-roles.md, core/docs/agent/decision-review.md
 - [ ] L12: Document and bring the kit's own copies in step — `workflow-map.md` names the new seeds, commands and steps; `decision-review.md` has a §0 "What learns what" table (fact → who writes it → who reads it → cap); one `AGENTS.md` line ("every orchestrator role and the Planner read their own lessons and rules section; see `docs/agent/decision-review.md`"); CHANGELOG `[Unreleased]`; run the Step 0 sync command — core/docs/agent/workflow-map.md, core/docs/agent/decision-review.md, templates/AGENTS.md, CHANGELOG.md
-- [ ] L13: Prove it all works — install-check, e2e-check, `node --test tools/test/`, `tools/orchestrator-e2e.mjs`, drift-check on the kit, and a `kit-sync` dry run into FoodVibe from the branch with 0 `conflict` rows
+- [ ] L13: Prove it all works — install-check, e2e-check, `node --test "tools/test/*.test.mjs"`, `tools/orchestrator-e2e.mjs`, drift-check on the kit, and a `kit-sync` dry run into FoodVibe from the branch with 0 `conflict` rows
 
 ## Out of Scope
 - Claude Code's subagent `memory:` frontmatter field (`.claude/agent-memory/<name>/`): not used. It depends on auto
@@ -319,3 +319,64 @@ for the Human's go.
   `LESSONS`/`RULES`/`RECENT_RUNS` travel as JSON arrays because of how `task()` renders values; `/kit-inbox` needs no
   exclusion list — a file outside `core/` is never rendered. Overlap search: no similar title; scope overlap only with
   merged plans 022–028 and with 029 (now a dependency).
+
+## Finish — review hand-off (replaces /ship)
+
+Build order: wave 1 — plans 041, 045 and 048 wait for it.
+
+When the plan is fully implemented, finish with a review hand-off instead of shipping. Do NOT merge, do NOT run /ship,
+do NOT open a PR. This replaces every merge, `/ship`, PR, release or tag step written elsewhere in this plan. `[human]`
+items and Human steps stay open and are listed under "Open risks".
+
+While implementing: whenever the plan leaves something open and you choose, note it right away so it appears under
+"Decisions you made on your own".
+
+Finishing steps:
+1. Fetch origin. If this branch was never pushed, rebase it on the latest origin/main. If it was already pushed, merge
+   origin/main into it instead (no rebase, so no force push is needed). Known conflicts: CHANGELOG.md → keep both
+   sides; .kit/install.json → take origin/main's copy, rerun `node tools/sync.mjs --target . --apply`, and confirm the
+   `required` key still lists 5 steps for .github/workflows/ci.yml and 2 for security.yml. Any other conflict → stop
+   and tell me which files conflict.
+2. From the kit root run: npm run build, npm run lint, npm test, `node tools/drift-check.mjs --target .` and
+   `node --test "tools/test/*.test.mjs"` (quoted glob: the bare folder form fails on Node 24). Also run this plan's own
+   `[auto]` Done-when commands. Fix failures that belong to this plan, then rerun; any that still fail go under
+   "Open risks". A timing failure in tools/test/guards.test.mjs that passes when that file is rerun alone is machine
+   load, not this plan: note it under "Open risks" and move on.
+3. Commit everything and push the branch to origin. If the push is refused, do not try another route: give me the
+   exact command to run.
+4. Your final message must be exactly this block, plain text, nothing before or after it:
+
+```text
+=== REVIEW HAND-OFF ===
+Plan: <number and title>
+Branch: <branch name>
+Head commit: <short hash>
+Based on origin/main at: <short hash>
+
+Steps (one line per plan step):
+<step id> | done / partial / skipped | <file(s) changed> | <one-line note>
+
+Not in the plan (changes you made that the plan did not ask for, and why):
+<list, or "none">
+
+Decisions you made on your own (anything the plan left open):
+<list, or "none">
+
+Checks:
+build: pass/fail
+lint: pass/fail
+test: pass/fail
+drift-check: pass/fail
+tool tests: pass/fail
+<if any failed: the failing lines only>
+
+Files changed (git diff --stat origin/main...HEAD):
+<paste>
+
+Open risks / things you could not verify:
+<list, or "none">
+=== END ===
+```
+
+After the Human approves the hand-off: open the PR, wait for both CI checks (leak-check and e2e) to pass, then merge.
+If a check fails, stop and show me the failing lines.

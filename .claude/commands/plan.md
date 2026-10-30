@@ -70,6 +70,9 @@ mid-brief inside a slot goes through save-plan only. Check against the real code
   kit-rendered file such as `.github/workflows/ci.yml` — lists the kit manifest in its scope (the manifest.json under
   docs/workflow-kit that `scripts/kit-manifest-check.mjs` reads) and that check in a Done-when, or CI's `rules` job fails
   on `unrecorded-coupling-strings`.
+- A check command is `npm run <package.json script>`, `node scripts/…`, `node tools/…` or
+  `node --test <files>`; an `npx <tool> …` check is rewritten to the script that runs it (a `fixed:` line), or the
+  script is added in scope.
 - The project's own checks in `docs/project/plan-checks.md`, when that file exists.
 
 **Overlap** (every time, also on a brief that is not a plan yet)

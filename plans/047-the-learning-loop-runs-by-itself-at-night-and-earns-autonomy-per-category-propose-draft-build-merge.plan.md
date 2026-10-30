@@ -64,7 +64,7 @@ Categories and their **hard ceilings** (the Human can lower, never raise past th
   kit paths and generic one-line descriptions only, never run names or project paths).
 - [auto] Kill switch: `kit-learn.config.json` `"paused": true` → `nightly` prints `KIT_LEARN: paused` and does
   nothing else (not even collect).
-- [auto] `node --test tools/test/`, `node tools/install-check.mjs`, `node tools/leak-check.mjs`, R1.
+- [auto] `node --test "tools/test/*.test.mjs"`, `node tools/install-check.mjs`, `node tools/leak-check.mjs`, R1.
 - [auto] `schtasks /query /tn "ai-workflow-kit kit-learn" /xml` shows a daily trigger and `StartWhenAvailable` false.
 - [human] After the Human's go: the scheduled task runs one night; the next morning `/kit-learn` shows the prepared
   cards at once and the morning line; at the 30-day review the Human sees the autonomy table and decides promotions.
@@ -159,7 +159,7 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 - [ ] N1: Hold the settings in git where the Human reviews them — `kit-learn.config.json` (kit root, kit-only): `paused`, `budgetTokens` (300000), `soakDays` (3), `maxPRsOpen` (3 — no new PR while 3 loop PRs are open), per-category `ceiling` (default L0 for every category until the Human raises it), `cardsTop` (5); schema check in `tools/kit-learn.mjs` — kit-learn.config.json, tools/kit-learn.mjs, tools/test/kit-learn-autonomy.test.mjs
 - [ ] N2: Count each category's record from the Human's own decisions — `tools/kit-learn.mjs autonomy`: per category from `proposals` (decision, edited or not, PR merged/closed, reverts from `git log --grep "Revert \"learn("`, regressions from 046 K2); the Goals table — tools/lib/kit-learn/**, tools/test/kit-learn-autonomy.test.mjs
 - [ ] N3: Promote only with the Human, demote without — gates as in Goals; `apply` accepts `promote <category>` and `ceiling <category> L<n>`; demotion rules as in Goals write the `autonomy` row and a `proposals` row `{action: demote, why}` — tools/kit-learn.mjs, tools/lib/kit-learn/**, tools/test/kit-learn-autonomy.test.mjs
-- [ ] N4: Act at each level — L1: for an issue whose recommended action's category is at L1+, write the artifact (a `kit-lessons.mjs add`, an eval case folder, a plan draft via the `/plan` flow headless) on `learn/<date>-<issue>` from a fresh worktree of `origin/main` under `<home>/.kit-learn/wt/`, run `node --test tools/test/`, push, `gh pr create`; L2: also builds the plan's sub-tasks with the kit's Worker flow in that worktree and requires the regression test (046 K6) to fail on `origin/main` and pass on the branch; record the PR in `proposals` — tools/kit-learn.mjs, tools/lib/kit-learn/**, tools/test/kit-learn-autonomy.test.mjs
+- [ ] N4: Act at each level — L1: for an issue whose recommended action's category is at L1+, write the artifact (a `kit-lessons.mjs add`, an eval case folder, a plan draft via the `/plan` flow headless) on `learn/<date>-<issue>` from a fresh worktree of `origin/main` under `<home>/.kit-learn/wt/`, run `node --test "tools/test/*.test.mjs"`, push, `gh pr create`; L2: also builds the plan's sub-tasks with the kit's Worker flow in that worktree and requires the regression test (046 K6) to fail on `origin/main` and pass on the branch; record the PR in `proposals` — tools/kit-learn.mjs, tools/lib/kit-learn/**, tools/test/kit-learn-autonomy.test.mjs
 - [ ] N5: Merge only proven, low-risk kinds (P2) — L3 for `lesson` and `eval-case` only: after `soakDays` with CI green, `node tools/agent-eval.mjs` non-regression on the role's case set (recall and precision each within 0.02 of `main`), and no new event against the issue → `gh pr merge --squash`; anything else waits for the Human — tools/kit-learn.mjs, tools/lib/kit-learn/**, tools/test/kit-learn-autonomy.test.mjs
 - [ ] N6: Guard every change the loop makes — allowed paths per category (`lesson` → `core/docs/agent/kit-lessons/**`; `eval-case` → `docs/agent-evals/cases/**`; `fixture` → `tools/test/**`, `tools/fixtures/**` new files only; `plan-draft`/`amend` → `plans/*.plan.md`; `script-fix` → `core/scripts/**` ≤3 files + its test; `agent-prompt` → via 048 only); 046 K10 protected paths → abort; `node tools/leak-check.mjs --root <changed files> --project-only` and a scan of the PR body before push — tools/lib/kit-learn/**, tools/test/kit-learn-autonomy.test.mjs
 - [ ] N7: Run at night within a budget — `tools/kit-learn.mjs nightly`: `paused` check; `collect`; if new evidence: one headless `claude -p "/kit-learn --nightly"` through plan 035's runner (budget kill, usage sum); `/kit-learn --nightly` writes cards for L0 items to `.kit-learn/cards-<date>.md` and returns the L1+ list for N4; morning line to `.kit-learn/morning-<date>.txt` and the `cursor` — tools/kit-learn.mjs, .claude/commands/kit-learn.md, tools/test/kit-learn.test.mjs
@@ -218,12 +218,18 @@ While implementing: whenever the plan leaves something open and you choose, note
 "Decisions you made on your own".
 
 Finishing steps:
-1. Fetch origin and rebase this branch on the latest origin/main. If there are conflicts, stop and tell me which files
-   conflict.
-2. From the kit root run: npm run build, npm run lint, npm test. Fix failures that belong to this plan, then rerun.
-   Also run this plan's own `[auto]` Done-when commands (they include `node --test tools/test/`, which `npm test` does
-   not run); any that still fail go under "Open risks".
-3. Commit everything and push the branch to origin.
+1. Fetch origin. If this branch was never pushed, rebase it on the latest origin/main. If it was already pushed, merge
+   origin/main into it instead (no rebase, so no force push is needed). Known conflicts: CHANGELOG.md → keep both
+   sides; .kit/install.json → take origin/main's copy, rerun `node tools/sync.mjs --target . --apply`, and confirm the
+   `required` key still lists 5 steps for .github/workflows/ci.yml and 2 for security.yml. Any other conflict → stop
+   and tell me which files conflict.
+2. From the kit root run: npm run build, npm run lint, npm test, `node tools/drift-check.mjs --target .` and
+   `node --test "tools/test/*.test.mjs"` (quoted glob: the bare folder form fails on Node 24). Also run this plan's own
+   `[auto]` Done-when commands. Fix failures that belong to this plan, then rerun; any that still fail go under
+   "Open risks". A timing failure in tools/test/guards.test.mjs that passes when that file is rerun alone is machine
+   load, not this plan: note it under "Open risks" and move on.
+3. Commit everything and push the branch to origin. If the push is refused, do not try another route: give me the
+   exact command to run.
 4. Your final message must be exactly this block, plain text, nothing before or after it:
 
 ```text
@@ -246,6 +252,8 @@ Checks:
 build: pass/fail
 lint: pass/fail
 test: pass/fail
+drift-check: pass/fail
+tool tests: pass/fail
 <if any failed: the failing lines only>
 
 Files changed (git diff --stat origin/main...HEAD):
@@ -255,3 +263,6 @@ Open risks / things you could not verify:
 <list, or "none">
 === END ===
 ```
+
+After the Human approves the hand-off: open the PR, wait for both CI checks (leak-check and e2e) to pass, then merge.
+If a check fails, stop and show me the failing lines.

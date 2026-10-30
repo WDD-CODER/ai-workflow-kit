@@ -4,7 +4,7 @@
  * on leave, on cancel and on error; each one it leaves out is a question. Styling-only and backend-only plans are
  * skipped. The real agent is a model; the test keeps the rule and its fixtures honest.
  */
-const plan = (title, body) => `# Plan 601 — ${title}
+const plan = (title, body, scope = 'src/app/profile/**') => `# Plan 601 — ${title}
 
 Status: draft
 Depends-on: none
@@ -15,7 +15,7 @@ ${body}
 ## Read-Write Scope
 
 \`\`\`scope
-src/app/profile/**
+${scope}
 \`\`\`
 
 ## Atomic Sub-tasks
@@ -46,6 +46,40 @@ export const STYLE_PLAN = plan('Restyle the profile heading', '- [auto] css-only
 
 /** Backend only: no questions. */
 export const BACKEND_PLAN = plan('Add a profile endpoint', '- [auto] backend-only: GET /profile returns 200 for a signed-in user')
+
+/** Says "3 row-delete handlers"; the source (FALSE_COUNT_FILES) has 1. */
+export const FALSE_COUNT_PLAN = plan('Confirm before the draft editor deletes a row', '- [auto] The draft editor has 3 row-delete handlers; each asks before it deletes', 'src/app/draft/**')
+export const FALSE_COUNT_FILES = { 'src/app/draft/draft-editor.ts': 'class DraftEditor {\n  onRowDelete(i: number) {}\n  onRowAdd() {}\n}' }
+
+/** Says "every number box", scope src/app/a/**; number boxes also sit in src/app/b/**. */
+export const EVERY_PLAN = plan('Make every number box tap-to-edit', '- [ui] Every number box is tap-to-edit on the event pages', 'src/app/a/**')
+export const EVERY_FILES = {
+  'src/app/a/event-guests.html': '<number-box [value]="guests"></number-box>',
+  'src/app/b/event-deposit.html': '<number-box [value]="deposit"></number-box>',
+}
+
+/**
+ * The claims rule (orch-readiness.md, step 4): a count next to a code noun, and an "every X" goal, are checked against
+ * the files. Returns one question per mismatch: a wrong count → build for what the code has; an "every X" with hits
+ * outside the plan's scope → widen scope or leave them as follow-ups.
+ */
+export function claimGaps(text, files) {
+  const out = []
+  const t = String(text)
+  const lines = (re) => Object.entries(files).flatMap(([f, src]) => src.split('\n').map((l, i) => [`${f}:${i + 1}`, l]).filter(([, l]) => re.test(l)).map(([at]) => at))
+  const count = /\b(\d+)\s+([a-z]+)-([a-z]+)\s+(?:handlers?|endpoints?)\b/i.exec(t)
+  if (count) {
+    const hits = lines(new RegExp(`${count[2]}\\w*${count[3]}|${count[3]}\\w*${count[2]}`, 'i'))
+    if (hits.length !== Number(count[1])) out.push(`claim: ${count[0]} — found: ${hits.length} (${hits.join(', ')}) — build for what the code has, or fix the plan? Default if unanswered: build for what the code has`)
+  }
+  const every = /\bevery ([a-z]+ [a-z]+) is\b/i.exec(t)
+  if (every) {
+    const scope = (/```scope\n([\s\S]*?)```/.exec(t)?.[1] ?? '').split('\n').map((g) => g.trim().replace(/\*\*$/, '')).filter(Boolean)
+    const outside = lines(new RegExp(every[1].replace(' ', '[ -]?'), 'i')).filter((at) => !scope.some((g) => at.startsWith(g)))
+    if (outside.length) out.push(`claim: every ${every[1]} — found: ${outside.length} outside scope (${outside.join(', ')}) — widen scope to these files, or leave them as follow-ups? Default if unanswered: leave them as follow-ups`)
+  }
+  return out
+}
 
 const WHEN = ['edit', 'leave', 'cancel', 'error']
 

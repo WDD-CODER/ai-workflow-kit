@@ -3,7 +3,7 @@
     "version": "1.12.0"
   },
   "source": "local:.",
-  "commit": "25276e1355a78c4b7a148eab5aa19dda26a8b926",
+  "commit": "0569a9364b7230031bf2641fbcf2bf3172172362",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -55,7 +55,7 @@
       "source": "core/.claude/agents/orch-merge.md"
     },
     ".claude/agents/orch-readiness.md": {
-      "sha256": "0c56ee99aa3d3848391c9441a1d6bba449d571f83bc0f47f3801e1692878353e",
+      "sha256": "67db186b6da3710cf73392898aaa73b22866673354abc2ca6bbd77bb09920a0e",
       "kind": "managed",
       "source": "core/.claude/agents/orch-readiness.md"
     },
@@ -150,12 +150,12 @@
       "source": "core/.claude/commands/kit-feedback.md"
     },
     ".claude/commands/orchestrate.md": {
-      "sha256": "5028d615ffeaa74ab60751ff600f5245e7e6ef277b372f4f514f7445adf611db",
+      "sha256": "45a140b4018004299a70a2e6fbcc70d973c2ff308d9cb75da41ea5bbd198e58b",
       "kind": "managed",
       "source": "core/.claude/commands/orchestrate.md"
     },
     ".claude/commands/plan.md": {
-      "sha256": "13f96501339f0792f8d6c6bd39ef5d88dab69b4f9f3afd7fc4e9ca0d7eea5e57",
+      "sha256": "80f0690f2a24caaa15c018d437ddae98675d46ebb67e903e2a495f1d377745ac",
       "kind": "managed",
       "source": "core/.claude/commands/plan.md"
     },
@@ -275,7 +275,7 @@
       "source": "core/.claude/skills/worktree-setup/SKILL.md"
     },
     ".claude/workflows/orchestrate.js": {
-      "sha256": "ea6497b9f0c7ed303ad2830754836035524c70454a3bd1c824f2ce15332b6238",
+      "sha256": "28098ccc1c6ebcc25adb8b1aa3a44a4097f636eac3ee83b51776974bcac48314",
       "kind": "managed",
       "source": "core/.claude/workflows/orchestrate.js"
     },
@@ -330,7 +330,7 @@
       "source": "core/docs/agent/agent-evals.md"
     },
     "docs/agent/agent-roles.md": {
-      "sha256": "d9c2c17b78fb3a92cc270519d242cc0b91e1c6e7f81346dad04068273ac5be66",
+      "sha256": "1f58f76dd11f1b60c3a10ca9c046af78d7472a78d87b63c68bfae7b2e1e08a64",
       "kind": "managed",
       "source": "core/docs/agent/agent-roles.md"
     },
@@ -355,7 +355,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "3ea2c0f88484caf245d971c33d6a88337c35067c72ac55f1110a12972031afd1",
+      "sha256": "ae292351ed8a64f895c218d92c304b19c7da4a71dcf4d2d9ba6b981245254af4",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -665,7 +665,7 @@
       "source": "core/scripts/orch-preflight.mjs"
     },
     "scripts/orch-state.mjs": {
-      "sha256": "282bfc3383d86a207c9a07ac5825982797d39d48a31aa07eab613618dec2ec67",
+      "sha256": "8fc3b06bac299cdedfe158c5d4c52cb73ffbb1181e43451f781c697290c28cf6",
       "kind": "managed",
       "source": "core/scripts/orch-state.mjs"
     },

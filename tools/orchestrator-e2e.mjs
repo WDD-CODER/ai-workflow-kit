@@ -505,7 +505,7 @@ async function main() {
   // step nor the final gate runs it.
   // Plan 034: without the Human's approval the run does not start — no state file, no init.
   const ioRefused = await runWorkflow({ mode: 'run', run: 'iota', plans: ['206'], root: proj, mainChecks: { '206': [MAIN_CMD, 'npm run build'] } })
-  check('iota: mainChecks without mainApproved stop the run before init (no status.json)', ioRefused?.ok === false && ioRefused?.stopped === 'main-approval' && ioRefused?.problems?.length === 2 && /^plan 206 runs node scripts\/log-ok\.mjs --since=15m from the main folder/.test(ioRefused?.problems?.[0] ?? '') && !existsSync(join(proj, '.claude', 'orchestrator-runs', 'iota', 'status.json')), JSON.stringify(ioRefused))
+  check('iota: mainChecks without mainApproved stop the run before init (no status.json)', ioRefused?.ok === false && ioRefused?.stopped === 'main-approval' && ioRefused?.problems?.length === 1 &&/^plan 206 runs node scripts\/log-ok\.mjs --since=15m from the main folder/.test(ioRefused?.problems?.[0] ?? '') && !existsSync(join(proj, '.claude', 'orchestrator-runs', 'iota', 'status.json')), JSON.stringify(ioRefused))
   const io = await runWorkflow({ mode: 'run', run: 'iota', plans: ['206'], root: proj, mainChecks: { '206': [MAIN_CMD, 'npm run build'] }, mainApproved: true })
   const sio = JSON.parse(readFileSync(join(proj, '.claude', 'orchestrator-runs', 'iota', 'status.json'), 'utf8'))
   const ioGates = calls.filter((c) => c.type === 'orch-gate' && c.nnn === '206')
