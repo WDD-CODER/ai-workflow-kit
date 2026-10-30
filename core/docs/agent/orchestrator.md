@@ -66,7 +66,10 @@ branch himself.
      a run note). A kit script that pushes, opens a pull request or writes run, plan or slot state (`kit-feedback`,
      `orch-state`, `decision-log`, `take-plan`, `slot-serve`, `sync`, …) is never a check, whatever its folder; the
      project's own check scripts are; a script run with `--write`, `--apply`, `--fix` or `--update` is not a check
-     either. Exactly one result per command: a result the gate lost (a run got 1 of 8 back) makes the gate run only the
+     either. An `npx <tool> <args>` check runs as the package.json script whose body is exactly that command
+     (readiness asks `orch-state.mjs scripts`; `npx eslint .` → `{{project.packageManager}} run lint`); one no script runs
+     is denied with the reason, shown in the readiness summary under `dropped npx checks:` and in the run report, and
+     never stops the run — the gate still runs the project's build and tests. Exactly one result per command: a result the gate lost (a run got 1 of 8 back) makes the gate run only the
      missing commands again, once, with no builder round; a command still missing after that is an environment failure.
      A result for a command not asked for, or two for one command, is a fail. When the plan has `[auto:main]` items,
      a second gate then runs their commands from the main folder (below);
@@ -140,6 +143,35 @@ live environment, so readiness lists every one under `mainApproval` (`<NNN>: <co
 `/orchestrate` shows them in its list and waits — even when nothing else is open. After `go` the command passes
 `"mainApproved": true` to the run; without it the workflow refuses to start (`stopped: main-approval`, before `init`,
 no state file). A run with no `[auto:main]` item is unchanged and still starts on its own.
+
+**A delegated answer** (the Human replies `decide yourself`, `defaults` or `you choose`) never approves a main-folder
+command nobody has seen run: the Planner is the only reviewer, and `go` inside a delegated reply proves nothing. For
+each `mainApproval` line the Planner runs `orch-state.mjs main-try --run <run> --plan <NNN> --cmd "<command>"` once from
+the main folder; it refuses what `mainCheckProblem` refuses, runs the rest with no shell under the gate timeout, records
+`{ plan, cmd, exit, at }` in `.claude/orchestrator-runs/<run>/main-tries.json` and prints `MAIN_TRY: <command> exit
+<n>`. The run is started with `"mainDelegated": true`; it reads `orch-state.mjs main-tries --run <run>` once after
+`init` and keeps only a command that exited 0 for that plan in the last 2 hours (the window preflight uses for a live
+run). Any other is left out with the run note `main-folder check dropped: not seen passing from the main folder —
+<command>` — no second question. Without `mainDelegated` nothing changes.
+
+The run-start approval list only holds commands that can run: a command `mainCheckProblem` refuses (a slot-only
+`--since=plan-start` check among them) never stops the run on `main-approval`; it gets the `main-folder check dropped,
+not run` note at its plan.
+
+## What a plan claims
+
+A plan says things about the code — "the editor has 3 row-delete handlers", "every number box is tap-to-edit" — and a
+builder trusts them, so a wrong one is found after the merge as a decision to grade. The readiness agent checks them in
+the same call (no extra agent, `judgment` tier): at most 8 claims per plan, in plan order — a number next to a code noun,
+a named file or symbol said to have or do something, and every `every|all|each <noun>` goal (a file the plan marks new
+is skipped). A count or name is searched in the code and the real count goes in `found` with `file:line`. An "every X"
+is searched in the whole repo and each hit (at most 10) goes through `scope-check.mjs --file`; the `SCOPE: out` hits are
+listed. Every mismatch is a plan question with a default: a wrong count → `build for what the code has; the builder logs
+the difference as seen:`; an "every X" with hits outside scope → `widen scope to these files, or leave them as
+follow-ups?`, default `leave them as follow-ups` (a delegated answer lists those files in the plan's Execution Notes
+readiness line). The workflow validates `claims` like the other readiness fields: past 8 valid claims the rest is
+reported as `claimsOver`, an invalid one (no `claim` or no `found`) as a question to check by hand. Cost: about 8–16k
+input tokens per plan for the Grep and scope calls.
 
 ## A dead agent, a loop, and "is it stuck?"
 

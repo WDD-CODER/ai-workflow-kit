@@ -46,7 +46,7 @@ Common fields: `role` (the agent name), `model`, `effort`, optional `decisions` 
 
 | Role | Required fields | `pass` computed from |
 | --- | --- | --- |
-| `orch-readiness` | `plans[]`: `{plan, state: ready\|questions\|blocked, questions[], envNeeds[], commands[]}` | — |
+| `orch-readiness` | `plans[]`: `{plan, state: ready\|questions\|blocked, questions[], envNeeds[], commands[], claims[]?: {plan, claim, found, question, default}}` | — |
 | `orch-builder` | `status: built\|blocked\|ESCALATE`, `branch`, `summary`, `evidence[]` (non-empty when built), `blocker` (when not built) | — |
 | `orch-gate` | `results[]`: `{command, status: pass\|fail\|env-fail, tail?}` (`tail` on fail) | every result `pass` |
 | `orch-check-plan`, `-bugs`, `-rules`, `orch-security` | `problems[]`: `{id, file, line, rule, reasoning, severity}` | no `blocker` / `major` problem |

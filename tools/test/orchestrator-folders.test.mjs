@@ -268,6 +268,53 @@ test('deps: a folder with no lock file is left as it is, said in one line', () =
   assert.deepEqual(r, { ok: true, lines: ['no package-lock.json in .: nothing installed'] })
 })
 
+// Plan 043: `main-try` runs a main-folder check once for a delegated readiness answer and records its exit;
+// `main-tries` lists what passed in the last 2 hours. Only the shapes mainCheckProblem allows are run.
+test('orch-state main-try runs a project script once and records its exit; main-tries lists only fresh exit-0 entries; refused shapes are never run', () => {
+  const dir = join(tmp(), 'main')
+  mkdirSync(dir)
+  sh(dir, 'init', '-q', '-b', 'main')
+  cpSync(join(root, 'scripts'), join(dir, 'scripts'), { recursive: true, dereference: true })
+  writeFileSync(join(dir, 'scripts', 'try-ok.mjs'), "import { appendFileSync } from 'fs'\nappendFileSync('ran.txt', 'ok\\n')\nconsole.log('all good')\n")
+  writeFileSync(join(dir, 'scripts', 'try-bad.mjs'), "import { appendFileSync } from 'fs'\nappendFileSync('ran.txt', 'bad\\n')\nconsole.error('it broke')\nprocess.exit(3)\n")
+  writeFileSync(join(dir, 'package.json'), '{"scripts":{"build":"echo hi"}}')
+  const state = (...a) => {
+    const r = spawnSync(process.execPath, [join(dir, 'scripts', 'orch-state.mjs'), ...a], { cwd: dir, encoding: 'utf8' })
+    const line = String(r.stdout).split(/\r?\n/).reverse().find((l) => l.startsWith('ORCH_JSON '))
+    assert.ok(line, `${a.join(' ')}: ${r.stdout}${r.stderr}`)
+    return { ...JSON.parse(line.slice('ORCH_JSON '.length)), status: r.status, stdout: r.stdout }
+  }
+  const ran = () => (existsSync(join(dir, 'ran.txt')) ? readFileSync(join(dir, 'ran.txt'), 'utf8').trim().split('\n') : [])
+  const ok = state('main-try', '--run=r', '--plan=001', '--cmd=node scripts/try-ok.mjs')
+  assert.equal(ok.ok, true)
+  assert.equal(ok.exit, 0)
+  assert.match(ok.stdout, /MAIN_TRY: node scripts\/try-ok\.mjs exit 0/)
+  assert.match(ok.stdout, /all good/, 'the last output lines are shown')
+  const bad = state('main-try', '--run=r', '--plan=001', '--cmd=node scripts/try-bad.mjs')
+  assert.equal(bad.exit, 3)
+  assert.match(bad.stdout, /MAIN_TRY: node scripts\/try-bad\.mjs exit 3/)
+  assert.deepEqual(ran(), ['ok', 'bad'])
+  // Refused: nothing runs, exit 1, `main-try: <command>: <why>`.
+  for (const cmd of ['npm run build', 'node --test x', 'node scripts/orch-state.mjs stop --run=r', 'node scripts/try-ok.mjs --write', 'node scripts/../try-ok.mjs', 'node scripts/try-ok.mjs --since=plan-start']) {
+    const r = state('main-try', '--run=r', '--plan=001', `--cmd=${cmd}`)
+    assert.equal(r.ok, false, cmd)
+    assert.equal(r.status, 1, cmd)
+    assert.ok(r.error.startsWith(`main-try: ${cmd}: `), r.error)
+  }
+  assert.deepEqual(ran(), ['ok', 'bad'], 'a refused command is not run')
+  // Only the exit-0 entry is listed; an entry older than 2 hours is not.
+  const file = join(dir, '.claude', 'orchestrator-runs', 'r', 'main-tries.json')
+  const tries = JSON.parse(readFileSync(file, 'utf8'))
+  assert.deepEqual(tries.map((t) => [t.plan, t.cmd, t.exit]), [['001', 'node scripts/try-ok.mjs', 0], ['001', 'node scripts/try-bad.mjs', 3]])
+  assert.deepEqual(state('main-tries', '--run=r').passed, { '001': ['node scripts/try-ok.mjs'] })
+  tries.push({ plan: '002', cmd: 'node scripts/old.mjs', exit: 0, at: new Date(Date.now() - 3 * 3600 * 1000).toISOString() })
+  writeFileSync(file, JSON.stringify(tries))
+  assert.deepEqual(state('main-tries', '--run=r').passed, { '001': ['node scripts/try-ok.mjs'] }, 'older than 2 hours: not listed')
+  assert.deepEqual(state('main-tries', '--run=other').passed, {}, 'another run has no tries')
+  // `scripts` gives the package.json bodies.
+  assert.deepEqual(state('scripts').scripts, { build: 'echo hi' })
+})
+
 // Plan 033: the workflow may run a state command twice (a retried copy). `worktree` for a plan that already has its
 // folder returns that folder: one worktree, one path, nothing claimed twice.
 test('orch-state worktree twice for the same plan returns the same path and makes one folder', () => {

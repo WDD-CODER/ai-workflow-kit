@@ -97,6 +97,15 @@ function mainCheckProblem(cmd) {
   if (SLOT_ONLY_RE.test(c)) return `${c}: --since=plan-start needs a slot's plan-start stamp; the main folder has none — the report lists app errors since the run started instead`
   return checkProblem(c, null) ?? (/^node (tools|scripts)\//.test(c) ? null : `${c}: only node scripts/… or node tools/… run from the main folder`)
 }
+// An `npx <tool> <args>` check is not an allowed shape, but a package.json script that runs exactly that command is:
+// the first script whose body (spaces collapsed) is the command without `npx `, or the whole `npx …` command.
+// `bodies` is { name: body } from `orch-state.mjs scripts`; null = no script runs it.
+const collapse = (s) => String(s ?? '').trim().replace(/\s+/g, ' ')
+function npxScript(cmd, bodies) {
+  const whole = collapse(cmd)
+  const rest = whole.replace(/^npx /, '')
+  return Object.keys(bodies ?? {}).find((name) => collapse(bodies[name]) === rest || collapse(bodies[name]) === whole) ?? null
+}
 // The plan branch shape (lib/orch-run.mjs PLAN_BRANCH_RE): it reaches git commands the agents run.
 const PLAN_BRANCH_RE = /^feat\/\d+-[a-z0-9-]+$/
 // [ui] card values recorded through `set` (lib/orch-run.mjs uiCardProblem): the same rules, checked before the call.
@@ -132,7 +141,7 @@ const PROBLEM = {
 const SCHEMA = {
   readiness: {
     type: 'object',
-    properties: { ...COMMON, plans: { type: 'array', items: { type: 'object', properties: { plan: str, state: { type: 'string', enum: ['ready', 'questions', 'blocked'] }, questions: strList, envNeeds: strList, commands: strList, mainCommands: strList }, required: ['plan', 'state', 'questions', 'envNeeds', 'commands'] } } },
+    properties: { ...COMMON, plans: { type: 'array', items: { type: 'object', properties: { plan: str, state: { type: 'string', enum: ['ready', 'questions', 'blocked'] }, questions: strList, envNeeds: strList, commands: strList, mainCommands: strList, claims: { type: 'array', items: { type: 'object', properties: { plan: str, claim: str, found: str, question: str, default: str }, required: ['claim', 'found'] } } }, required: ['plan', 'state', 'questions', 'envNeeds', 'commands'] } } },
     required: ['role', 'model', 'effort', 'plans'],
   },
   builder: {
@@ -275,6 +284,9 @@ async function note(text, nnn) {
 }
 
 let mergeFolder = null
+// { <NNN>: [command] }: the main-folder commands `main-try` saw pass (exit 0, last 2 hours) for this run; read once in
+// run() when args.mainDelegated is set, null otherwise.
+let mainPassed = null
 
 // Decisions agents took on their own: the `behaviour:` and `seen:` entries of every role result's `decisions` list.
 // They are numbered D1…Dn at the end of the run, grouped by plan, and the Human grades them in one reply
@@ -314,6 +326,8 @@ function serial(fn) {
 // ---- readiness ------------------------------------------------------------------------------------------------------
 async function readiness() {
   phase('Readiness')
+  // At most this many claims per plan are kept (docs/agent/orchestrator.md "What a plan claims"); the rest are counted.
+  const MAX_CLAIMS = 8
   const order = await state(['order', '--run', RUN, '--plans', PLANS.join(',')], 'plan order')
   if (!order.ok) return { mode: 'readiness', run: RUN, ok: false, error: order.error }
   const plans = order.waves.flat()
@@ -331,22 +345,57 @@ async function readiness() {
     const r = await state(['check-files', '--plan', nnn, '--files', files.join(',')], `check files ${nnn}`, nnn)
     return r?.ok ? r.missing ?? [] : []
   }
+  // The package.json script bodies, asked once and only when a plan has an `npx` check to map.
+  let bodies
+  const scriptBodies = async () => {
+    if (bodies === undefined) {
+      const s = await state(['scripts'], 'package scripts')
+      bodies = s?.ok && s.scripts && typeof s.scripts === 'object' ? s.scripts : {}
+    }
+    return bodies
+  }
+  const isNpx = (c) => /^npx\s/.test(String(c ?? '').trim())
   const out = []
   for (let i = 0; i < plans.length; i++) {
     const nnn = plans[i]
     const r = results[i]
     const p = r?.plans?.[0]
     if (!p) {
-      out.push({ nnn, state: 'questions', questions: ['The readiness agent returned no result for this plan — check it by hand.'], envNeeds: [], commands: [], mainCommands: [] })
+      out.push({ nnn, state: 'questions', questions: ['The readiness agent returned no result for this plan — check it by hand.'], envNeeds: [], commands: [], mainCommands: [], claims: [] })
       continue
     }
     const main = Array.isArray(p.mainCommands) ? p.mainCommands : []
-    const missing = new Set(await missingOf(nnn, [...p.commands, ...main]))
+    // An `npx` check becomes the package.json script that runs the same command; one no script runs is denied below.
+    const mapped = []
+    let commands = p.commands
+    if (commands.some(isNpx)) {
+      const known = await scriptBodies()
+      commands = commands.map((c) => {
+        const name = isNpx(c) ? npxScript(c, known) : null
+        if (!name) return c
+        mapped.push(`${collapse(c)} → ${PM} run ${name}`)
+        return `${PM} run ${name}`
+      })
+    }
+    const missing = new Set(await missingOf(nnn, [...commands, ...main]))
     const noFile = (c) => (checkFilesOf(c).find((f) => missing.has(f)) ? `${c}: ${checkFilesOf(c).find((f) => missing.has(f))} does not exist in the project and the plan does not create it` : null)
-    const problem = (c, isMain) => (isMain ? mainCheckProblem(c) : checkProblem(c, null)) ?? noFile(c)
-    const denied = [...p.commands.filter((c) => problem(c, false)), ...main.filter((c) => problem(c, true))]
-    const deniedWhy = [...p.commands.filter((c) => problem(c, false)).map((c) => problem(c, false)), ...main.filter((c) => problem(c, true)).map((c) => problem(c, true))]
-    out.push({ nnn, path: order.plans[nnn]?.path, state: p.state, questions: p.questions, envNeeds: p.envNeeds, commands: p.commands.filter((c) => !problem(c, false)), mainCommands: main.filter((c) => !problem(c, true)), denied, deniedWhy, missingFiles: [...missing], model: r.model })
+    const npxWhy = (c) => (isNpx(c) ? `${collapse(c)}: no package.json script runs "${collapse(c).replace(/^npx /, '')}" — add one and write the check as ${PM} run <script>` : null)
+    const problem = (c, isMain) => (isMain ? mainCheckProblem(c) : npxWhy(c) ?? checkProblem(c, null)) ?? noFile(c)
+    const denied = [...commands.filter((c) => problem(c, false)), ...main.filter((c) => problem(c, true))]
+    const deniedWhy = [...commands.filter((c) => problem(c, false)).map((c) => problem(c, false)), ...main.filter((c) => problem(c, true)).map((c) => problem(c, true))]
+    const npxDropped = commands.filter(isNpx).map(npxWhy)
+    // Claims (what the plan says about the code, checked against it): the first MAX_CLAIMS valid ones are kept, the rest
+    // counted; a kept claim with a question is a plan question, and an unreadable one asks for a check by hand.
+    const claimsRaw = Array.isArray(p.claims) ? p.claims : []
+    const claimsValid = claimsRaw.filter((c) => typeof c?.claim === 'string' && c.claim.trim() !== '' && typeof c?.found === 'string' && c.found.trim() !== '')
+    const claims = claimsValid.slice(0, MAX_CLAIMS)
+    const claimsOver = claimsValid.length - claims.length
+    const claimsBad = claimsRaw.length - claimsValid.length
+    const claimQuestions = claims.filter((c) => typeof c.question === 'string' && c.question.trim() !== '')
+      .map((c) => `${nnn} claim: ${c.claim.trim()} — found: ${c.found.trim()} — ${c.question.trim()} Default if unanswered: ${typeof c.default === 'string' && c.default.trim() !== '' ? c.default.trim() : 'none given — the Human answers'}`)
+    if (claimsBad > 0) claimQuestions.push(`${nnn}: readiness returned ${claimsBad} unreadable claim(s) — check the plan's counts and every-X goals by hand`)
+    const questions = [...p.questions, ...claimQuestions]
+    out.push({ nnn, path: order.plans[nnn]?.path, state: p.state === 'ready' && claimQuestions.length ? 'questions' : p.state, questions, envNeeds: p.envNeeds, commands: commands.filter((c) => !problem(c, false)), mainCommands: main.filter((c) => !problem(c, true)), denied, deniedWhy, missingFiles: [...missing], model: r.model, claims, claimsOver, claimsBad, mapped, npxDropped })
   }
   // Nothing to ask (every plan ready, no question, no environment need, no check file missing, no main-folder command,
   // preflight ok) → the command starts the run without waiting for `go`; the Human's `ask` word forces the pause. A
@@ -584,10 +633,15 @@ async function runPlan(nnn) {
   // after the worktree gate passed; never part of the merge or the final gate.
   const mainExtra = Array.isArray((A.mainChecks ?? {})[nnn]) ? A.mainChecks[nnn] : []
   const mainDropped = mainExtra.map((c) => mainCheckProblem(c)).filter(Boolean)
-  const mainChecks = [...new Set(mainExtra.filter((c) => !mainCheckProblem(c)).map((c) => String(c).trim()))]
+  // A delegated readiness answer ("decide yourself") keeps a main-folder command only when `main-try` saw it pass from
+  // the main folder (mainPassed, read once after init); any other is dropped with a note, never asked about again.
+  const unseen = (c) => A.mainDelegated === true && !(mainPassed?.[nnn] ?? []).includes(String(c).trim())
+  const mainUnseen = mainExtra.filter((c) => !mainCheckProblem(c) && unseen(c)).map((c) => String(c).trim())
+  const mainChecks = [...new Set(mainExtra.filter((c) => !mainCheckProblem(c) && !unseen(c)).map((c) => String(c).trim()))]
   const ctx = { nnn, info, tier: info.startTier, round: 0, escalated: false, checks, mergeChecks: mergeChecksOf(checks), mainChecks, handoff: `.claude/sessions/orch-${RUN}/handoff-${nnn}.md` }
   for (const why of dropped) await note(`check command dropped, not run: ${why}`, nnn)
   for (const why of mainDropped) await note(`main-folder check dropped, not run: ${why}`, nnn)
+  for (const c of new Set(mainUnseen)) await note(`main-folder check dropped: not seen passing from the main folder — ${c}`, nnn)
   if (info.startTier === 'judgment') await note(`starts on the judgment tier: Architecture Impact names ${info.invariants.join(', ')}`, nnn)
   // A parked plan closes with one `set` (the reason carries everything), not one note per closing step.
   const park = async (reason) => {
@@ -733,12 +787,20 @@ async function run() {
   // A main-folder check runs a plan's command in the live environment. Readiness listed them (mainApproval) and the
   // command waited for the Human's `go` before passing `mainApproved`; without it the run does not start — nothing is
   // created, no state file, no init.
-  const mainList = Object.entries(A.mainChecks ?? {}).flatMap(([nnn, cmds]) => (Array.isArray(cmds) ? cmds : []).map((c) => `plan ${nnn} runs ${c} from the main folder — readiness lists it and the Human says go; the command then passes "mainApproved": true`))
+  // A command mainCheckProblem refuses (a slot-only --since=plan-start check among them) is dropped at its plan's gate
+  // with a note: it is not listed here, so it never stops the run for a go.
+  const mainList = Object.entries(A.mainChecks ?? {}).flatMap(([nnn, cmds]) => (Array.isArray(cmds) ? cmds : []).filter((c) => !mainCheckProblem(c)).map((c) => `plan ${nnn} runs ${c} from the main folder — readiness lists it and the Human says go; the command then passes "mainApproved": true`))
   if (mainList.length && A.mainApproved !== true) return { mode: 'run', run: RUN, ok: false, stopped: 'main-approval', problems: mainList }
   // No start time is passed: init reads its own clock (a value the model wrote was invented) and returns it.
   const init = await state(['init', '--run', RUN], 'start run')
   if (!init.ok) return { mode: 'run', run: RUN, ok: false, stopped: 'init', problems: [init.error] }
   mergeFolder = init.mergeFolder
+  if (A.mainDelegated === true && Object.values(A.mainChecks ?? {}).some((l) => Array.isArray(l) && l.length)) {
+    const tries = await state(['main-tries', '--run', RUN], 'main tries')
+    mainPassed = tries?.ok && tries.passed && typeof tries.passed === 'object' ? tries.passed : {}
+  }
+  // npx checks readiness could not map to a package.json script: one run note, so the report shows them.
+  if (Array.isArray(A.npxDropped) && A.npxDropped.length) await note(`dropped npx checks: ${A.npxDropped.join('; ')}`)
   // The PR's rules job runs the kit manifest check; the final gate runs it too when the project has a manifest, so a
   // new file a builder forgot to classify fails the run, not the PR.
   const finalChecks = [...PROJECT_CHECKS, ...(init.kitManifest === true ? ['node scripts/kit-manifest-check.mjs'] : [])]

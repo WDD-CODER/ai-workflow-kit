@@ -9,7 +9,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import { tmpdir } from 'os'
 import { pathToFileURL, fileURLToPath } from 'url'
 import { orchestratorProblems, commandProblems } from '../lib/kit.mjs'
-import { SILENT_PLAN, COVERED_PLAN, PARTLY_PLAN, STYLE_PLAN, BACKEND_PLAN, behaviourGaps } from '../fixtures/orchestrator/readiness.mjs'
+import { SILENT_PLAN, COVERED_PLAN, PARTLY_PLAN, STYLE_PLAN, BACKEND_PLAN, behaviourGaps, FALSE_COUNT_PLAN, FALSE_COUNT_FILES, EVERY_PLAN, EVERY_FILES, claimGaps } from '../fixtures/orchestrator/readiness.mjs'
 
 const kit = resolve(fileURLToPath(new URL('../..', import.meta.url)))
 const root = process.env.ORCH_ROOT ? resolve(process.env.ORCH_ROOT) : kit
@@ -100,6 +100,21 @@ test('readiness: a plan with interactive behaviour and no "what happens when" ge
   assert.deepEqual(behaviourGaps(BACKEND_PLAN), [], 'backend-only plan is skipped')
 })
 
+test('readiness: the claims rule is stated by the agent file and the fixture plans give one count question and one widen-scope question', () => {
+  const agent = readFileSync(join(root, '.claude', 'agents', 'orch-readiness.md'), 'utf8')
+  assert.match(agent, /Claims/)
+  assert.match(agent, /at most 8/)
+  assert.match(agent, /leave them as\s+follow-ups/)
+  const count = claimGaps(FALSE_COUNT_PLAN, FALSE_COUNT_FILES)
+  assert.equal(count.length, 1)
+  assert.match(count[0], /3 row-delete handlers — found: 1 \(src\/app\/draft\/draft-editor\.ts:2\)/)
+  assert.match(count[0], /Default if unanswered: build for what the code has/)
+  const every = claimGaps(EVERY_PLAN, EVERY_FILES)
+  assert.equal(every.length, 1)
+  assert.match(every[0], /found: 1 outside scope \(src\/app\/b\/event-deposit\.html:1\) — widen scope to these files, or leave them as follow-ups\? Default if unanswered: leave them as follow-ups/)
+  assert.deepEqual(claimGaps(COVERED_PLAN, {}), [], 'a plan with no count and no every-X goal has no claim')
+})
+
 test('the builder and take-plan state the no-invented-behaviour rule and read agent-rules.md, never decision-log.md', () => {
   for (const f of ['.claude/agents/orch-builder.md', '.claude/commands/take-plan.md']) {
     const t = readFileSync(join(root, f), 'utf8')
@@ -141,6 +156,8 @@ async function runFlow(args, hooks = {}) {
     if (cmd === 'plan-info') return { ok: true, path: `plans/${f.plan}-x.plan.md`, branch: `feat/${f.plan}-x`, startTier: 'build', invariants: [], npmScripts: [], uiItems: [] }
     if (cmd === 'worktree') return { ok: true, path: `/wt/${f.plan}` }
     if (cmd === 'check-files') return { ok: true, nnn: f.plan, missing: (hooks.missingFiles?.(f.files.split(',')) ?? []) }
+    if (cmd === 'scripts') return { ok: true, scripts: hooks.scripts ?? {} }
+    if (cmd === 'main-tries') return { ok: true, passed: hooks.passed ?? {} }
     if (cmd === 'finish') return { ok: true, merged: [], parked: [], report: 'r', local: 'l', reportCommitted: true }
     if (cmd === 'diff') return { ok: true, files: [], sensitive: false }
     return { ok: true }
@@ -656,6 +673,123 @@ test('readiness: askHuman is false only when every plan is ready with no questio
     const r = await runFlow({ mode: 'readiness', plans: ['101'] }, { readiness: () => hook })
     assert.equal(r.result.askHuman, true, why)
   }
+})
+
+// ---- plan 043: claims, npx checks, delegated main-folder answers ------------------------------------------------------
+const PM_NAME = /const PM = "(\w+)"/.exec(wfSource)?.[1] === 'pnpm' ? 'pnpm' : 'npm'
+const claim = (n, extra = {}) => ({ claim: `the editor has ${n} handlers`, found: `1 (src/a.ts:${n})`, question: '', default: '', ...extra })
+
+test('readiness: a claim with a question becomes a plan question with its default and makes askHuman true', async () => {
+  const hook = { claims: [claim(3, { question: 'build for what the code has, or fix the plan?', default: 'build for what the code has' }), claim(1)] }
+  const r = await runFlow({ mode: 'readiness', plans: ['101'] }, { readiness: () => hook })
+  const p = r.result.plans[0]
+  assert.deepEqual(p.questions, ['101 claim: the editor has 3 handlers — found: 1 (src/a.ts:3) — build for what the code has, or fix the plan? Default if unanswered: build for what the code has'])
+  assert.equal(p.state, 'questions', 'a ready plan with a claim question is no longer ready')
+  assert.equal(p.claims.length, 2)
+  assert.equal(r.result.askHuman, true)
+  // A held claim (no question) asks nothing.
+  const held = await runFlow({ mode: 'readiness', plans: ['101'] }, { readiness: () => ({ claims: [claim(1)] }) })
+  assert.equal(held.result.askHuman, false)
+  assert.equal(held.result.plans[0].state, 'ready')
+  // No default given → the Human answers.
+  const nodef = await runFlow({ mode: 'readiness', plans: ['101'] }, { readiness: () => ({ claims: [claim(2, { question: 'fix the plan?' })] }) })
+  assert.match(nodef.result.plans[0].questions[0], /Default if unanswered: none given — the Human answers$/)
+})
+
+test('readiness: more than 8 claims keep 8 and report the rest as claimsOver; a claim without found is an unreadable-claim question', async () => {
+  const ten = await runFlow({ mode: 'readiness', plans: ['101'] }, { readiness: () => ({ claims: Array.from({ length: 10 }, (_, i) => claim(i + 1)) }) })
+  assert.equal(ten.result.plans[0].claims.length, 8)
+  assert.equal(ten.result.plans[0].claimsOver, 2)
+  assert.equal(ten.result.askHuman, false, 'held claims over the cap ask nothing')
+  const bad = await runFlow({ mode: 'readiness', plans: ['101'] }, { readiness: () => ({ claims: [claim(1), { claim: 'x has 2 y', question: 'q?' }, { found: 'z' }] }) })
+  const p = bad.result.plans[0]
+  assert.equal(p.claimsBad, 2)
+  assert.equal(p.claims.length, 1)
+  assert.deepEqual(p.questions, ["101: readiness returned 2 unreadable claim(s) — check the plan's counts and every-X goals by hand"])
+  assert.equal(bad.result.askHuman, true)
+})
+
+test('readiness: an npx check maps to the package.json script that runs it; an unmapped one is denied and shown, never asked', async () => {
+  const mapped = await runFlow({ mode: 'readiness', plans: ['101'] }, { readiness: () => ({ commands: ['npx  ng build', 'npm run lint'] }), scripts: { build: 'ng build', lint: 'eslint .' } })
+  const p = mapped.result.plans[0]
+  assert.deepEqual(p.commands, [`${PM_NAME} run build`, 'npm run lint'])
+  assert.deepEqual(p.mapped, [`npx ng build → ${PM_NAME} run build`])
+  assert.deepEqual(p.denied, [])
+  assert.equal(mapped.commands.filter((c) => /orch-state\.mjs scripts$/.test(c)).length, 1, 'one scripts call')
+  const lost = await runFlow({ mode: 'readiness', plans: ['101', '102'] }, { readiness: () => ({ commands: ['npx ng test', 'npm run build'] }), scripts: { build: 'ng build' } })
+  for (const q of lost.result.plans) {
+    assert.deepEqual(q.denied, ['npx ng test'])
+    assert.deepEqual(q.commands, ['npm run build'])
+    assert.match(q.npxDropped[0], new RegExp(`^npx ng test: no package.json script runs "ng test" — add one and write the check as ${PM_NAME} run <script>$`))
+  }
+  assert.equal(lost.result.askHuman, false, 'an unmapped npx check is shown, not asked')
+  assert.equal(lost.commands.filter((c) => /orch-state\.mjs scripts$/.test(c)).length, 1, 'scripts is asked once for the whole readiness')
+  // No npx check → no scripts call.
+  const plain = await runFlow({ mode: 'readiness', plans: ['101'] }, { readiness: () => ({ commands: ['npm run build'] }) })
+  assert.ok(!plain.commands.some((c) => /orch-state\.mjs scripts/.test(c)))
+  // mainCommands keep refusing npx.
+  const main = await runFlow({ mode: 'readiness', plans: ['101'] }, { readiness: () => ({ mainCommands: ['npx ng build'] }) })
+  assert.deepEqual(main.result.plans[0].mainCommands, [])
+})
+
+test('run: a delegated answer keeps only the main-folder commands main-try saw pass; the rest are dropped with a note and no question', async () => {
+  const a = 'node scripts/log-query.mjs --since=15m'
+  const b = 'node scripts/other-check.mjs'
+  const { calls, notes, commands, result } = await runFlow({ plans: ['101'], pilot: false, mainChecks: { 101: [a, b] }, mainApproved: true, mainDelegated: true }, { passed: { 101: [a] } })
+  const main = calls.filter((c) => c.type === 'orch-gate' && c.label === 'gate 101 main')
+  assert.equal(main.length, 1)
+  assert.deepEqual(JSON.parse(main[0].task.COMMANDS), [a])
+  assert.ok(notes.some((n) => n.includes(`main-folder check dropped: not seen passing from the main folder — ${b}`)), notes.join('\n'))
+  assert.ok(!notes.some((n) => n.includes(`not seen passing from the main folder — ${a}`)))
+  assert.equal(commands.filter((c) => /orch-state\.mjs main-tries --run=r1/.test(c)).length, 1)
+  assert.equal(result.outcomes[0].state, 'merged')
+  // Nothing passed → no main gate at all.
+  const none = await runFlow({ plans: ['101'], pilot: false, mainChecks: { 101: [a] }, mainApproved: true, mainDelegated: true })
+  assert.equal(none.calls.filter((c) => c.label === 'gate 101 main').length, 0)
+  // Without mainDelegated nothing changes and main-tries is never called.
+  const plain = await runFlow({ plans: ['101'], pilot: false, mainChecks: { 101: [a, b] }, mainApproved: true })
+  assert.equal(JSON.parse(plain.calls.find((c) => c.label === 'gate 101 main').task.COMMANDS).length, 2)
+  assert.ok(!plain.commands.some((c) => /main-tries/.test(c)))
+  // A delegated run without mainApproved still stops on main-approval.
+  const refused = await runFlow({ plans: ['101'], pilot: false, mainChecks: { 101: [a] }, mainDelegated: true })
+  assert.equal(refused.result.stopped, 'main-approval')
+})
+
+// main-try copies mainCheckProblem's rules by design (orch-state.mjs cannot import the workflow): this fails the day a
+// name is added to one list and not the other, or one side stops refusing a slot-only check.
+test('main-try and the workflow hold the same NOT_A_CHECK names and both refuse --since=plan-start', async () => {
+  const names = (src, constName) => {
+    const m = new RegExp(`const ${constName} = new Set\\(\\[([\\s\\S]*?)\\]\\)`).exec(src)
+    assert.ok(m, `${constName} not found`)
+    return [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]).sort()
+  }
+  const stateSrc = readFileSync(join(root, 'scripts', 'orch-state.mjs'), 'utf8')
+  const inState = names(stateSrc, 'MAIN_TRY_NOT_A_CHECK')
+  const inWorkflow = names(wfSource, 'NOT_A_CHECK')
+  assert.ok(inWorkflow.length > 10)
+  assert.deepEqual(inState, inWorkflow)
+  // The workflow side: a slot-only main command is dropped with the plan-start reason, never kept.
+  const slotOnly = 'node scripts/log-query.mjs --since=plan-start --level=error'
+  const flow = await runFlow({ mode: 'readiness', plans: ['101'] }, { readiness: () => ({ mainCommands: [slotOnly] }) })
+  assert.deepEqual(flow.result.plans[0].mainCommands, [])
+  assert.match(flow.result.plans[0].deniedWhy[0], /--since=plan-start needs a slot's plan-start stamp/)
+  // The main-try side: refused before anything runs or is written.
+  const r = spawnSync(process.execPath, [join(root, 'scripts', 'orch-state.mjs'), 'main-try', '--run=same-rules', '--plan=001', `--cmd=${slotOnly}`], { cwd: root, encoding: 'utf8' })
+  assert.equal(r.status, 1)
+  assert.match(r.stdout, /main-try: node scripts\/log-query\.mjs --since=plan-start --level=error: needs a slot plan-start stamp/)
+  assert.ok(!existsSync(join(root, '.claude', 'orchestrator-runs', 'same-rules')), 'a refused command leaves no run state')
+})
+
+test('run: a main-folder command the run would drop (slot-only) never stops it on main-approval', async () => {
+  const slotOnly = 'node scripts/log-query.mjs --since=plan-start --level=error'
+  const r = await runFlow({ plans: ['101'], pilot: false, mainChecks: { 101: [slotOnly] } })
+  assert.notEqual(r.result.stopped, 'main-approval')
+  assert.equal(r.result.outcomes[0].state, 'merged')
+  assert.ok(r.notes.some((n) => /main-folder check dropped, not run/.test(n)), r.notes.join('\n'))
+  // A command that can run still needs the approval, next to the slot-only one.
+  const mixed = await runFlow({ plans: ['101'], pilot: false, mainChecks: { 101: [slotOnly, 'node scripts/log-query.mjs --since=15m'] } })
+  assert.equal(mixed.result.stopped, 'main-approval')
+  assert.equal(mixed.result.problems.length, 1)
 })
 
 // Plan 034: the run refuses main-folder checks the Human did not approve — before init, with no runner call.
