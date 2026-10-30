@@ -1027,7 +1027,7 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     '.claude/agents/orch-gate.md': 'haiku', '.claude/agents/orch-report.md': 'haiku',
     '.claude/agents/orch-check-plan.md': 'sonnet', '.claude/agents/orch-check-bugs.md': 'sonnet', '.claude/agents/orch-check-rules.md': 'sonnet',
     '.claude/agents/orch-verify.md': 'sonnet', '.claude/agents/orch-security.md': 'sonnet', '.claude/agents/orch-ui.md': 'sonnet',
-    '.claude/agents/orch-merge.md': 'sonnet',
+    '.claude/agents/orch-merge.md': 'sonnet', '.claude/agents/skill-judge.md': 'sonnet',
   }
   // Every agent file pins model: and effort: and has no empty tools:; the builder cannot start agents or message
   // anyone; no role agent names a deny-listed command.
@@ -1124,7 +1124,7 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   else {
     expect(ma, 'models.analysis haiku keeps validators on review', {
       '.claude/agents/orch-check-plan.md': 'sonnet', '.claude/agents/orch-check-bugs.md': 'sonnet', '.claude/agents/orch-check-rules.md': 'sonnet',
-      '.claude/agents/orch-verify.md': 'sonnet', '.claude/agents/orch-security.md': 'sonnet', '.claude/agents/orch-ui.md': 'sonnet',
+      '.claude/agents/orch-verify.md': 'sonnet', '.claude/agents/orch-security.md': 'sonnet', '.claude/agents/orch-ui.md': 'sonnet', '.claude/agents/skill-judge.md': 'sonnet',
       '.claude/agents/orch-merge.md': 'haiku', '.claude/agents/kit-prevalidate.md': 'haiku',
     })
     if (!/^omitClaudeMd: true$/m.test(read(ma, '.claude/agents/git-agent.md'))) fail('git-agent.md does not set omitClaudeMd: true')
@@ -1138,7 +1138,7 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   if (o.status !== 0) fail(`install with models.analysis opus: exit ${o.status}`)
   else expect(mo, 'models.analysis opus keeps validators on opus', {
     '.claude/agents/orch-check-plan.md': 'opus', '.claude/agents/orch-check-bugs.md': 'opus', '.claude/agents/orch-check-rules.md': 'opus',
-    '.claude/agents/orch-verify.md': 'opus', '.claude/agents/orch-security.md': 'opus', '.claude/agents/orch-ui.md': 'opus',
+    '.claude/agents/orch-verify.md': 'opus', '.claude/agents/orch-security.md': 'opus', '.claude/agents/orch-ui.md': 'opus', '.claude/agents/skill-judge.md': 'opus',
   })
   rmSync(mo, { recursive: true, force: true })
   const mos = tmp('models-analysis-opus-review-sonnet')
@@ -1147,6 +1147,32 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   if (os.status !== 0) fail(`install with models.analysis opus + review sonnet: exit ${os.status}`)
   else expect(mos, 'an explicit models.review wins over models.analysis', { '.claude/agents/orch-verify.md': 'sonnet', '.claude/agents/kit-prevalidate.md': 'opus' })
   rmSync(mos, { recursive: true, force: true })
+}
+
+// Skill improver (plan 035): the judge is a review-tier agent that is never Haiku in any rendered tree; the scheduler
+// script never catches up a missed night; the runner has the reusable lib/ core and refuses an unknown target.
+{
+  const judge = readFileSync(join(kit, 'core', '.claude', 'agents', 'skill-judge.md'), 'utf8')
+  if (!/^model: \{\{models\.review\}\}$/m.test(judge)) fail('skill-judge.md must carry model: {{models.review}} (the review tier, never Haiku)')
+  const jd = tmp('skill-judge')
+  writeFileSync(join(jd, 'kit.config.json'), JSON.stringify(CORE_CFG))
+  const ji = run('install.mjs', ['--target', jd])
+  if (ji.status !== 0) fail(`install for skill-judge: exit ${ji.status}`)
+  else {
+    const m = /^model:\s*(\S+)\s*$/m.exec(read(jd, '.claude/agents/skill-judge.md'))?.[1] ?? ''
+    if (!m || /haiku/i.test(m)) fail(`the rendered skill-judge.md model is "${m}" — it must not be Haiku`)
+    if (!files(jd).includes('.claude/commands/improve-skill.md')) fail('install did not render .claude/commands/improve-skill.md')
+  }
+  rmSync(jd, { recursive: true, force: true })
+  const ps = readFileSync(join(kit, 'kit-skill-improver.ps1'), 'utf8')
+  for (const s of ['StartWhenAvailable = $false', "[string]$Time = '02:10'", 'DisallowStartIfOnBatteries = $true', '--target skill']) {
+    if (!ps.includes(s)) fail(`kit-skill-improver.ps1 does not contain: ${s}`)
+  }
+  for (const f of ['budget', 'worktree', 'guards', 'pr', 'log']) {
+    if (!existsSync(join(kit, 'tools', 'skill-improver', 'lib', `${f}.mjs`))) fail(`tools/skill-improver/lib/${f}.mjs is missing`)
+  }
+  const unk = spawnSync(process.execPath, [join(kit, 'tools', 'skill-improver', 'run.mjs'), '--target', 'agent'], { encoding: 'utf8' })
+  if (unk.status !== 2 || !unk.stderr.includes('unknown target agent')) fail(`run.mjs --target agent: exit ${unk.status}, ${unk.stderr.trim()}`)
 }
 
 // sync --apply that updates the kit-managed scripts/package.json refreshes the project's scripts/package-lock.json
