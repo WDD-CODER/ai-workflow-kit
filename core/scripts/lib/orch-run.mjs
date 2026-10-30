@@ -335,6 +335,7 @@ function decisionsSection(decisions, triage) {
   const full = (d) => {
     const out = [`- ${d.id} · ${d.plan} · ${d.verdict}${d.forced ? ` (rule: ${d.forced})` : ''}${d.kind && d.kind !== '-' ? ` · ${d.kind}` : ''} · ${d.text}`]
     if (d.rec) out.push(`  recommend: ${d.rec}${d.why ? ` — why: ${d.why}` : ''}`)
+    else if (d.why) out.push(`  why: ${d.why}`)
     for (const a of d.alsoFrom ?? []) out.push(`  also: ${a.text} (${a.role ?? 'agent'}, round ${a.round ?? 0})`)
     return out
   }

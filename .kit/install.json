@@ -3,7 +3,7 @@
     "version": "1.12.0"
   },
   "source": "local:.",
-  "commit": "95f75196f894227c95490b3d004a813987108d53",
+  "commit": "25276e1355a78c4b7a148eab5aa19dda26a8b926",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -70,7 +70,7 @@
       "source": "core/.claude/agents/orch-security.md"
     },
     ".claude/agents/orch-triage.md": {
-      "sha256": "6ae44d389eeba8b661bea6b9dd32eec9b7cf04ded2c93b992f3ac372b2a3598e",
+      "sha256": "c739305028594786c5d678186e3c3ea6fdea3a85d7b640ca18307da0dae3a939",
       "kind": "managed",
       "source": "core/.claude/agents/orch-triage.md"
     },
@@ -275,7 +275,7 @@
       "source": "core/.claude/skills/worktree-setup/SKILL.md"
     },
     ".claude/workflows/orchestrate.js": {
-      "sha256": "49d1d9f790599fc313ffc107d2f81510ffcac674e9f209ac602c4bd2c0e686b9",
+      "sha256": "ea6497b9f0c7ed303ad2830754836035524c70454a3bd1c824f2ce15332b6238",
       "kind": "managed",
       "source": "core/.claude/workflows/orchestrate.js"
     },
@@ -605,7 +605,7 @@
       "source": "core/scripts/lib/orch-folders.mjs"
     },
     "scripts/lib/orch-run.mjs": {
-      "sha256": "581026677f095dfc24d215c59ac5ca06340391d5c86e33272e0c03d70df4d752",
+      "sha256": "198fd574ac070d11b6b98d57abe0285a4c85c45c1820421c318102e4a8e30196",
       "kind": "managed",
       "source": "core/scripts/lib/orch-run.mjs"
     },

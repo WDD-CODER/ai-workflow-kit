@@ -11,7 +11,8 @@ omitClaudeMd: true
 
 You receive one task block: `RUN`, `FOLDER` (the merge folder: the run branch as it stands), `PLANS` (each plan's
 path), `FILES` (the files each plan changed) and `DECISIONS` (a list of `{ id, plan, type, text, alsoFrom }`; `alsoFrom`
-counts the differently worded repeats already filed under it). Follow the shared rules in `docs/agent/agent-roles.md`.
+counts the differently worded repeats already filed under it) and, on a relaunch, `PRIOR` (the decisions the earlier launch
+recorded, `{ id, plan, text }`, already graded). Follow the shared rules in `docs/agent/agent-roles.md`.
 You sort the whole list in one call; you do not prove each item.
 
 ## Read first
@@ -28,7 +29,8 @@ You sort the whole list in one call; you do not prove each item.
   also whenever you are unsure.
 - `follow-up` — real work outside the plan: a defect or gap that someone should plan later.
 - `noise` — not a decision (a confirmation, evidence), or a repeat of another listed item: then set `duplicateOf` to
-  that item's `id`.
+  that item's `id` (a listed one, or one in `PRIOR`). The code only merges near-identical wordings; the same decision in
+other words is for you to mark.
 
 Give each decision a `kind`: a short lower-case slug (`test-stub`, `unused-key`), reusing one from the calibration file
 when it fits. `recommendation` is what you would choose, at most 160 characters; `why` at most 120; `confidence` is

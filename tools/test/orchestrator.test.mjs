@@ -9,7 +9,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import { tmpdir } from 'os'
 import { pathToFileURL, fileURLToPath } from 'url'
 import { orchestratorProblems, commandProblems } from '../lib/kit.mjs'
-import { DECISIONS as RUN_499_502, PASS_1_LAST, DUPLICATES as REAL_DUPLICATES } from '../fixtures/orchestrator/decisions-499-502.mjs'
+import { DECISIONS as RUN_499_502, PASS_1_LAST, DUPLICATES as REAL_DUPLICATES, SYNTHETIC_REPEAT } from '../fixtures/orchestrator/decisions-499-502.mjs'
 import { SILENT_PLAN, COVERED_PLAN, PARTLY_PLAN, STYLE_PLAN, BACKEND_PLAN, behaviourGaps } from '../fixtures/orchestrator/readiness.mjs'
 
 const kit = resolve(fileURLToPath(new URL('../..', import.meta.url)))
@@ -846,28 +846,61 @@ test('decisions: a repeat in other words is one decision with an alsoFrom line; 
   assert.ok(!decisionCalls(n.commands).some((c) => arg(c, 'id') === 'D11'), 'the repeat of D9 is not a new decision')
 })
 
-// Plan 041 Step 0: the real wording of run 499-502 does not collapse the way the plan expects. Every pair the Human
-// found scores 0.19-0.32 on the plan's word-overlap rule (threshold 0.6); D22 and D17 are even of different types
-// (behaviour vs seen). This test states the plan's expectation and stays `todo` until the Planner decides the rule.
-test('run 499-502 fixture: the five real duplicates collapse, D7-D10 stay four items, 33 decisions remain', { todo: 'Step 0 STOP: the plan\'s rule scores the real pairs 0.19-0.32, below 0.6 — the Planner decides the rule' }, async () => {
-  const text = (id) => RUN_499_502.find((d) => d.id === id).text
+// Plan 041 (the Human's decision, 2026-10-30): code merges only near-identical wordings; the same decision in other words
+// is the triage's duplicateOf. The real run 499-502 shows why: the five pairs the Human found by hand score 0.19-0.32 on
+// the word rule and the closest pair that is not a duplicate (D7/D8) scores 0.48.
+test('run 499-502 fixture: code merges no real pair but an exact repeat across launches; the triage marks the five hand-found duplicates as noise and the Human still sees all 38', async () => {
+  const byLegacy = (id) => RUN_499_502.find((d) => d.id === id)
   const plansOf = (from, to) => {
     const out = {}
     for (const d of RUN_499_502.filter((x) => +x.id.slice(1) >= from && +x.id.slice(1) <= to)) (out[d.plan] ??= []).push(d.text)
     return out
   }
   const one = plansOf(1, PASS_1_LAST)
-  const first = await runFlow({ plans: Object.keys(one), pilot: false }, { builder: (nnn) => ({ decisions: one[nnn] }) })
+  const first = await runFlow({ plans: Object.keys(one), pilot: false }, { builder: (nnn) => ({ decisions: one[nnn] }), triage: (ds) => ds.map((d) => ({ id: d.id, verdict: 'ask', kind: 'k', confidence: 80 })) })
+  assert.equal(first.result.decisions.length, 19, 'pass 1: 19 lines, 19 decisions — D7/D8 (0.48) are two items')
+  for (const d of first.result.decisions) assert.equal(d.text, byLegacy(d.id).text, `pass 1 numbers ${d.id} like the real run`)
+  // Pass 2, the relaunch: the real lines plus one SYNTHETIC exact repeat of D11 (marked in the fixture).
   const two = plansOf(PASS_1_LAST + 1, 38)
-  const second = await runFlow({ plans: Object.keys(two), pilot: false }, { init: { priorDecisions: first.result.decisions }, builder: (nnn) => ({ decisions: two[nnn] }) })
+  two[SYNTHETIC_REPEAT.plan] = [...two[SYNTHETIC_REPEAT.plan], SYNTHETIC_REPEAT.text]
+  const textToLegacy = new Map(RUN_499_502.map((d) => [d.text, d.id]))
+  const second = await runFlow({ plans: Object.keys(two), pilot: false }, {
+    init: { priorDecisions: first.result.decisions },
+    builder: (nnn) => ({ decisions: two[nnn] }),
+    // A stub triage that returns the hand-found pairs as duplicateOf (the target may be an earlier launch's decision).
+    triage: (ds, t) => {
+      assert.equal(JSON.parse(t.PRIOR).length, 19, 'the triage is told about the decisions of the earlier launch')
+      return ds.map((d) => {
+        const dupOf = REAL_DUPLICATES[textToLegacy.get(d.text)]
+        return { id: d.id, verdict: 'accept', kind: 'k', confidence: 90, ...(dupOf ? { duplicateOf: dupOf } : {}) }
+      })
+    },
+  })
+  assert.equal(second.result.decisions.length, 19, 'the synthetic exact repeat of D11 is merged by code (not a 20th decision), the 19 real lines are not')
+  assert.ok(!second.result.decisions.some((d) => d.text === SYNTHETIC_REPEAT.text), 'the repeat is not numbered')
+  assert.equal(decisionCalls(second.commands).filter((c) => arg(c, 'dup-of')).length, 0, 'an identical line files nothing under the kept one')
   const all = [...first.result.decisions, ...second.result.decisions]
-  assert.equal(all.length, 33)
+  assert.equal(all.length, 38, 'all 38 real decisions stay')
   for (const [dup, kept] of Object.entries(REAL_DUPLICATES)) {
-    const k = all.find((d) => d.text === text(kept))
-    const seen = [...(k?.alsoFrom ?? []), ...decisionCalls(second.commands).filter((c) => arg(c, 'dup-of')).map((c) => ({ text: arg(c, 'text') }))]
-    assert.ok(seen.some((a) => text(dup).startsWith(a.text.slice(0, 60))), `${dup} is filed under ${kept}`)
+    const d = second.result.decisions.find((x) => x.text === byLegacy(dup).text)
+    assert.deepEqual([d.verdict, d.why], ['noise', `duplicate of ${kept}`], `${dup} is noise, a duplicate of ${kept}`)
   }
-  for (const id of ['D7', 'D8', 'D9', 'D10']) assert.ok(all.some((d) => d.text === text(id)), `${id} stays its own item`)
+  assert.equal(second.result.decisions.filter((d) => d.verdict === 'noise').length, 5, 'only the five')
+  // Shadow mode: the report lists every one of the 38, the five under Noise with their reason.
+  const stats = { kinds: {}, all: { last: 50, graded: 0, agreement: null } }
+  const report = lib.formatReport({ status: { run: 'r', plans: {}, notes: [], mainShaAtStart: 'a' }, decisions: all, merged: [], mainShaNow: 'a', finishedAt: 'T', runBranch: 'orch/r', mainBranch: 'main', triage: { mode: 'shadow', stats, minAgreement: 0.9, minGraded: 20 } })
+  for (const d of all) assert.ok(report.includes(d.text), `${d.id} is in the shadow report in full`)
+  const noise = report.slice(report.indexOf('### Noise'))
+  for (const dup of Object.keys(REAL_DUPLICATES)) assert.ok(noise.includes(byLegacy(dup).text), `${dup} sits under Noise`)
+  assert.ok(noise.includes('duplicate of D19'))
+})
+
+test('dedupe by code: D7/D8 (0.48) and every pair that is not an exact or near-identical repeat stay separate', async () => {
+  const lines = RUN_499_502.map((d) => d.text)
+  const r = await runFlow({ plans: ['500'], pilot: false }, { builder: () => ({ decisions: RUN_499_502.filter((d) => d.plan === '500').map((d) => d.text) }) })
+  assert.equal(r.result.decisions.length, RUN_499_502.filter((d) => d.plan === '500').length, 'plan 500: every real line is its own decision')
+  const seen = await runFlow({ plans: ['499'], pilot: false }, { builder: () => ({ decisions: lines.slice(0, 10) }) })
+  assert.equal(seen.result.decisions.length, 10, 'plan 499: D7/D8 are two items')
 })
 
 test('orch-state decision: upserts by id, applies the hard rules again, files duplicates under the kept decision', () => {

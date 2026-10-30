@@ -920,6 +920,8 @@ async function run() {
           RUN, FOLDER: mergeFolder, PLANS: Object.fromEntries([...new Set(decisions.map((d) => d.plan))].map((p) => [p, order.plans?.[p]?.path ?? `plans/${p}`])),
           FILES: Object.fromEntries([...new Set(decisions.map((d) => d.plan))].map((p) => [p, CHANGED_FILES[p] ?? []])),
           DECISIONS: decisions.map((d) => ({ id: d.id, plan: d.plan, type: decisionType(d.text), text: d.text, alsoFrom: d.alsoFrom.length })),
+          // Decisions an earlier launch of the run recorded (already graded): a new decision may be a `duplicateOf` one of them.
+          PRIOR: DECISIONS.some((d) => d.prior) ? DECISIONS.filter((d) => d.prior).map((d) => ({ id: d.id, plan: d.plan, text: d.text })) : undefined,
         }),
       ].join('\n\n'), { agentType: 'orch-triage', schema: SCHEMA.triage, label: 'triage', phase: 'Report' })
     } catch (e) {
@@ -928,9 +930,10 @@ async function run() {
     if (!t || typeof t !== 'object' || !Array.isArray(t.items)) triageNote = 'triage: no usable result — full list'
     else {
       const byId = new Map(decisions.map((d) => [d.id, d]))
+      const priorIds = new Set(DECISIONS.filter((d) => d.prior).map((d) => d.id))
       for (const it of t.items) {
         if (!it || !byId.has(it.id) || verdicts.has(it.id)) continue
-        const dup = typeof it.duplicateOf === 'string' && it.duplicateOf !== it.id && byId.has(it.duplicateOf)
+        const dup = typeof it.duplicateOf === 'string' && it.duplicateOf !== it.id && (byId.has(it.duplicateOf) || priorIds.has(it.duplicateOf))
         verdicts.set(it.id, dup ? { verdict: 'noise', forced: null, kind: '-', confidence: null, rec: '', why: `duplicate of ${it.duplicateOf}` } : {
           ...triageForce({ text: byId.get(it.id).text, verdict: it.verdict, confidence: it.confidence }),
           kind: typeof it.kind === 'string' ? it.kind : '-', confidence: Number.isFinite(it.confidence) ? it.confidence : null,

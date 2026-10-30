@@ -196,3 +196,6 @@ export const DECISIONS = [
 ]
 export const PASS_1_LAST = 19
 export const DUPLICATES = { D20: 'D19', D21: 'D11', D22: 'D17', D23: 'D19', D31: 'D18' }
+// SYNTHETIC (not part of the real run): an exact repeat of D11 in the relaunch, to prove code merges a near-identical line
+// across launches. Every real line above is untouched.
+export const SYNTHETIC_REPEAT = { synthetic: true, of: 'D11', plan: '500', text: "behaviour: extended the shared counter with a hold directive rather than moving page steppers onto app-counter; each page keeps its own input and skin (cook-view ink, menu paper pill) - reverse: replace the page buttons with app-counter and delete the directive attributes" }
