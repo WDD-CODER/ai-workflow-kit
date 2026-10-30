@@ -76,7 +76,7 @@ runs went across every project.
   plan, flakes per run, tokens per plan (or `-`).
 - [auto] Install and sync refuse a `brain.*` config value that looks like a connection string
   (`/mongodb(\+srv)?:\/\//`): `brain.uri is not a config key — the connection string lives in KIT_BRAIN_URI`.
-- [auto] `node --test tools/test/`, `node tools/install-check.mjs`, `node tools/e2e-check.mjs`,
+- [auto] `node --test "tools/test/*.test.mjs"`, `node tools/install-check.mjs`, `node tools/e2e-check.mjs`,
   `node tools/leak-check.mjs`, and R1's sync + drift pass.
 - [human] After H0 and a kit sync into FoodVibe: `node scripts/brain.mjs setup` then `node scripts/brain.mjs check`
   print `BRAIN: ok` on each machine; `node scripts/brain.mjs backfill` sends the past runs; after the next
@@ -264,12 +264,18 @@ While implementing: whenever the plan leaves something open and you choose, note
 "Decisions you made on your own".
 
 Finishing steps:
-1. Fetch origin and rebase this branch on the latest origin/main. If there are conflicts, stop and tell me which files
-   conflict.
-2. From the kit root run: npm run build, npm run lint, npm test. Fix failures that belong to this plan, then rerun.
-   Also run this plan's own `[auto]` Done-when commands (they include `node --test tools/test/`, which `npm test` does
-   not run); any that still fail go under "Open risks".
-3. Commit everything and push the branch to origin.
+1. Fetch origin. If this branch was never pushed, rebase it on the latest origin/main. If it was already pushed, merge
+   origin/main into it instead (no rebase, so no force push is needed). Known conflicts: CHANGELOG.md → keep both
+   sides; .kit/install.json → take origin/main's copy, rerun `node tools/sync.mjs --target . --apply`, and confirm the
+   `required` key still lists 5 steps for .github/workflows/ci.yml and 2 for security.yml. Any other conflict → stop
+   and tell me which files conflict.
+2. From the kit root run: npm run build, npm run lint, npm test, `node tools/drift-check.mjs --target .` and
+   `node --test "tools/test/*.test.mjs"` (quoted glob: the bare folder form fails on Node 24). Also run this plan's own
+   `[auto]` Done-when commands. Fix failures that belong to this plan, then rerun; any that still fail go under
+   "Open risks". A timing failure in tools/test/guards.test.mjs that passes when that file is rerun alone is machine
+   load, not this plan: note it under "Open risks" and move on.
+3. Commit everything and push the branch to origin. If the push is refused, do not try another route: give me the
+   exact command to run.
 4. Your final message must be exactly this block, plain text, nothing before or after it:
 
 ```text
@@ -292,6 +298,8 @@ Checks:
 build: pass/fail
 lint: pass/fail
 test: pass/fail
+drift-check: pass/fail
+tool tests: pass/fail
 <if any failed: the failing lines only>
 
 Files changed (git diff --stat origin/main...HEAD):
@@ -301,3 +309,6 @@ Open risks / things you could not verify:
 <list, or "none">
 === END ===
 ```
+
+After the Human approves the hand-off: open the PR, wait for both CI checks (leak-check and e2e) to pass, then merge.
+If a check fails, stop and show me the failing lines.

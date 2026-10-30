@@ -65,7 +65,7 @@ finds more real problems without more false alarms, and the Human merges the cha
   role — weighted by its current recall gap; printed with its numbers before any token is spent.
 - [auto] After an accepted change the runner re-checks the cheapest model within 0.05 of the best for that role
   (BASELINE's rule) and prints it; it never changes `models.*` by itself.
-- [auto] Budget: shares plan 035's nightly cap; `--budget` stops cleanly; `node --test tools/test/`, `install-check`,
+- [auto] Budget: shares plan 035's nightly cap; `--budget` stops cleanly; `node --test "tools/test/*.test.mjs"`, `install-check`,
   `leak-check`, R1 pass.
 - [human] The Human merges a first agent-improver PR after reading its table; the BASELINE re-run with
   `adjacent` tolerance is committed as the new baseline.
@@ -216,12 +216,18 @@ While implementing: whenever the plan leaves something open and you choose, note
 "Decisions you made on your own".
 
 Finishing steps:
-1. Fetch origin and rebase this branch on the latest origin/main. If there are conflicts, stop and tell me which files
-   conflict.
-2. From the kit root run: npm run build, npm run lint, npm test. Fix failures that belong to this plan, then rerun.
-   Also run this plan's own `[auto]` Done-when commands (they include `node --test tools/test/`, which `npm test` does
-   not run); any that still fail go under "Open risks".
-3. Commit everything and push the branch to origin.
+1. Fetch origin. If this branch was never pushed, rebase it on the latest origin/main. If it was already pushed, merge
+   origin/main into it instead (no rebase, so no force push is needed). Known conflicts: CHANGELOG.md → keep both
+   sides; .kit/install.json → take origin/main's copy, rerun `node tools/sync.mjs --target . --apply`, and confirm the
+   `required` key still lists 5 steps for .github/workflows/ci.yml and 2 for security.yml. Any other conflict → stop
+   and tell me which files conflict.
+2. From the kit root run: npm run build, npm run lint, npm test, `node tools/drift-check.mjs --target .` and
+   `node --test "tools/test/*.test.mjs"` (quoted glob: the bare folder form fails on Node 24). Also run this plan's own
+   `[auto]` Done-when commands. Fix failures that belong to this plan, then rerun; any that still fail go under
+   "Open risks". A timing failure in tools/test/guards.test.mjs that passes when that file is rerun alone is machine
+   load, not this plan: note it under "Open risks" and move on.
+3. Commit everything and push the branch to origin. If the push is refused, do not try another route: give me the
+   exact command to run.
 4. Your final message must be exactly this block, plain text, nothing before or after it:
 
 ```text
@@ -244,6 +250,8 @@ Checks:
 build: pass/fail
 lint: pass/fail
 test: pass/fail
+drift-check: pass/fail
+tool tests: pass/fail
 <if any failed: the failing lines only>
 
 Files changed (git diff --stat origin/main...HEAD):
@@ -253,3 +261,6 @@ Open risks / things you could not verify:
 <list, or "none">
 === END ===
 ```
+
+After the Human approves the hand-off: open the PR, wait for both CI checks (leak-check and e2e) to pass, then merge.
+If a check fails, stop and show me the failing lines.
