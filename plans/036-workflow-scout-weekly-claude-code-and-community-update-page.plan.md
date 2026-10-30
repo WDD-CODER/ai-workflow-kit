@@ -166,6 +166,10 @@ Nightly skill improvement (plan 035); applying any recommendation.
   `core/scripts/scout/{render,pr}.mjs` + `core/scripts/scout/page-template.html` (managed → `scripts/scout/`) and
   the seed `templates/docs/scout/sources.json` (→ `docs/scout/sources.json`, the project's own after install).
   Scope block extended with those paths, `core/docs/agent/workflow-map.md` and `docs/scout/**`.
+  Human, 2026-10-30: `approved: core/scripts/scout/**, templates/docs/scout/**, core/docs/agent/workflow-map.md,
+  docs/scout/**` ("your relocation is right: tools/ never reaches a project").
+- 2026-10-30 review fixes (Human): render.mjs refuses any absolute drive path outside a URL; pr.mjs refuses unless on
+  the default branch with only the page and state.json changed (also in a dry run; `--base` overrides the lookup).
 - 2026-10-30 C1–C4 built; C5 docs, install-check strings, sync and drift-check done — kit PR, merge and release wait
   for the Human's review. C6–C8 not started: they need the first project, the Human's go for the billed routine, and
   the Human's ticks.

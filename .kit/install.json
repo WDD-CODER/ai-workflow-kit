@@ -3,7 +3,7 @@
     "version": "1.12.0"
   },
   "source": "local:.",
-  "commit": "596e8653bfcdb21c10917b63eaebd30ab76b3686",
+  "commit": "ffceeb95322afb0ad5049d8d3160d221d6ebd242",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -745,12 +745,12 @@
       "source": "core/scripts/scout/page-template.html"
     },
     "scripts/scout/pr.mjs": {
-      "sha256": "f13dcb07fe73b8ff95975b73e227ea456e9dec6e2141b88ffa3980b392ed0dfd",
+      "sha256": "34ff0260aabe90a989f726e0de34e8df5c4f44e949b0c7fe06986c56e1a51736",
       "kind": "managed",
       "source": "core/scripts/scout/pr.mjs"
     },
     "scripts/scout/render.mjs": {
-      "sha256": "dd9fa27f8a385f838be481e3a4541e6e0ed3200475680b95a5cb7aaad3885325",
+      "sha256": "8cdd9333e4c0eed8d7ed1c5d2c2352b5e8b66971e7c5354443e707f0a4b9911a",
       "kind": "managed",
       "source": "core/scripts/scout/render.mjs"
     },

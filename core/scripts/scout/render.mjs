@@ -50,7 +50,8 @@ export function privacyProblem(text) {
     ['an Anthropic key', /\bsk-ant-[A-Za-z0-9_-]{10,}/],
     // A setting such as SOME_TIMEOUT_MS=600000 is fine; a long secret-looking value is not.
     ['a .env line', /\b[A-Z][A-Z0-9_]{2,}=['"]?[A-Za-z0-9_\-/+]{20,}/],
-    ['a machine path', /[A-Za-z]:[\\/]+Users[\\/]+\w|\/(?:Users|home)\/[a-z][\w.-]*\//],
+    // Any absolute drive path (a URL's "https:/" has a letter before the drive letter), or a Users / home folder.
+    ['a machine path', /(?<![A-Za-z])[A-Za-z]:[\\/]|\/(?:Users|home)\/[a-z][\w.-]*\//],
     ['transcript text', /"role"\s*:\s*"(?:user|assistant)"|^(?:Human|Assistant):\s/m],
   ]
   for (const [why, re] of checks) if (re.test(t)) return `it contains ${why}`

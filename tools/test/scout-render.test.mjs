@@ -111,6 +111,13 @@ test('privacy: secrets, .env values, machine paths and transcript text are refus
   assert.equal(R.privacyProblem('Set BASH_DEFAULT_TIMEOUT_MS=600000 for longer runs.'), null)
 })
 
+test('privacy: any drive path is refused; an https source url still passes', () => {
+  const page = (it) => R.renderPage(R.validateReport(report([it])).report, template)
+  assert.match(R.privacyProblem(page(item(1, { hook: 'Lives in C:\\coding projects\\x' }))), /a machine path/)
+  assert.match(R.privacyProblem('see d:/work/repo'), /a machine path/)
+  assert.equal(R.privacyProblem(page(item(1, { source: { name: 'Docs', url: 'https://code.claude.com/docs/en/overview' } }))), null)
+})
+
 test('CLI: writes the page and state; a second run with nothing new writes nothing and says so', () => {
   const root = project()
   try {
@@ -150,14 +157,64 @@ test('CLI: a refused report exits 2 and writes nothing', () => {
   }
 })
 
-test('pr: body has the top 5 as text, the page link and the useful checkboxes; dry run calls nothing', () => {
+// A git project on `main` with the seed committed; the report lives outside the tree. git needs the real PATH; --repo
+// and --base keep gh out of it.
+function gitProject() {
   const root = project()
+  const git = (...a) => {
+    const r = spawnSync('git', a, { cwd: root, encoding: 'utf8' })
+    assert.equal(r.status, 0, r.stderr)
+    return r.stdout
+  }
+  git('init', '-q', '-b', 'main')
+  git('-c', 'user.name=t', '-c', 'user.email=t@example.com', 'add', '.')
+  git('-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '-m', 'seed')
+  return { root, git }
+}
+const reportFile = (r) => {
+  const f = join(mkdtempSync(join(tmpdir(), 'scout-report-')), 'r.json')
+  writeFileSync(f, JSON.stringify(r))
+  return f
+}
+const runPr = (root, file, args) => spawnSync(process.execPath, [prJs, '--report', file, '--root', root, '--repo', 'acme/app', '--base', 'main', ...args], { encoding: 'utf8' })
+
+test('pr: refuses off the default branch or with other changes in the tree — also in a dry run', () => {
+  const { root, git } = gitProject()
+  try {
+    const f = reportFile(report([item(1)]))
+    assert.equal(run(renderJs, root, f).status, 0)
+    assert.equal(runPr(root, f, ['--dry-run']).status, 0)
+
+    writeFileSync(join(root, 'stray.txt'), 'x')
+    git('add', 'stray.txt')
+    const dirty = runPr(root, f, ['--dry-run'])
+    assert.equal(dirty.status, 2)
+    assert.match(dirty.stderr, /SCOUT: the working tree has other changes \(stray\.txt\) — they would ride along/)
+    git('rm', '-q', '--cached', 'stray.txt')
+    rmSync(join(root, 'stray.txt'))
+
+    git('switch', '-q', '-c', 'feature')
+    const off = runPr(root, f, ['--dry-run'])
+    assert.equal(off.status, 2)
+    assert.match(off.stderr, /SCOUT: on branch feature, not the default branch main/)
+    assert.equal(git('rev-parse', '--abbrev-ref', 'HEAD').trim(), 'feature', 'nothing switched')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('treeProblem reads porcelain lines with a leading space', () => {
+  assert.equal(P.treeProblem('main', 'main', '?? docs/scout/2026-11-02.html\n M docs/scout/state.json\n', 'docs/scout/2026-11-02.html'), null)
+  assert.match(P.treeProblem('main', 'main', ' M README.md\n', 'docs/scout/2026-11-02.html'), /README\.md/)
+})
+
+test('pr: body has the top 5 as text, the page link and the useful checkboxes; dry run calls nothing', () => {
+  const { root } = gitProject()
   try {
     const items = [1, 2, 3, 4, 5, 6].map((n) => item(n))
-    const f = join(root, 'r.json')
-    writeFileSync(f, JSON.stringify(report(items)))
+    const f = reportFile(report(items))
     assert.equal(run(renderJs, root, f).status, 0)
-    const r = run(prJs, root, f, ['--repo', 'acme/app', '--dry-run'])
+    const r = runPr(root, f, ['--dry-run'])
     assert.equal(r.status, 0, r.stderr)
     assert.match(r.stdout, /branch: chore\/scout-2026-11-02/)
     assert.match(r.stdout, /## Top 5\n\n1\. \*\*Tip number 1 saves time\*\* — Hook 1 \(`\.claude\/commands\/ship\.md`\)/)
