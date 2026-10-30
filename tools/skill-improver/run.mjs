@@ -16,6 +16,7 @@
  * to <state>/spend.jsonl: {date, target, mode, usd, tokens, result}.
  * Exit: 0 done (PR, no-change or paused), 2 out-of-scope or unknown target, 3 budget reached, 1 error.
  */
+import { spawnSync } from 'child_process'
 import { existsSync, readFileSync, mkdirSync, mkdtempSync, cpSync, copyFileSync, readdirSync, statSync, rmSync } from 'fs'
 import { join, resolve, dirname, relative } from 'path'
 import { fileURLToPath } from 'url'
@@ -225,9 +226,26 @@ async function improveSkill({ skill, evidenceFor, meter, repoRoot }) {
       return { result: 'no-change' }
     }
 
-    git(wt.path, 'add', '--', skillRel)
+    // The kit renders core/packs skills into its own .claude/skills/ and records hashes in .kit/install.json; without a
+    // sync the kit CI drift step fails on this PR. Sync in the worktree, then require drift-check to pass.
+    const node = (args) => spawnSync(process.execPath, args, { cwd: wt.path, encoding: 'utf8', timeout: 180000 })
+    const sync = node(['tools/sync.mjs', '--target', '.', '--apply'])
+    const drift = sync.status === 0 ? node(['tools/drift-check.mjs', '--target', '.']) : null
+    if (sync.status !== 0 || drift.status !== 0) {
+      const why = sync.status !== 0 ? 'sync failed' : 'drift-check failed'
+      const out = drift ?? sync
+      log(`no-change ${skill} ${before.toFixed(2)} ${after.toFixed(2)} ${why}`)
+      console.log(`SKILL_IMPROVER: no-change ${skill} (${why}), nothing pushed\n${(out.stdout + out.stderr).trim().split('\n').slice(0, 5).join('\n')}`)
+      return { result: 'no-change' }
+    }
+    const afterSync = git(wt.path, 'status', '--porcelain', '-uall').split('\n').filter(Boolean).map((l) => l.slice(3).replace(/^"|"$/g, ''))
+    const badSync = outOfScope(afterSync, allowed)
+    if (badSync) throw new OutOfScope(badSync)
+
+    const stage = [skillRel, `.claude/skills/${skill}`, '.kit/install.json'].filter((p) => existsSync(join(wt.path, p)))
+    git(wt.path, 'add', '--', ...stage)
     git(wt.path, 'commit', '-q', '-m', `chore(skill): improve ${skill} (evals ${Math.round(before * 100)}% -> ${Math.round(after * 100)}%)`)
-    const diffStat = git(wt.path, 'diff', '--stat', 'origin/main', '--', skillRel)
+    const diffStat = git(wt.path, 'diff', '--stat', 'origin/main', '--', ...stage)
     const bodyText = buildBody({
       skill,
       evidence: evidenceFor,

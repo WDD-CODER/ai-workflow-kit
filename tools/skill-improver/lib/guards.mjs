@@ -9,8 +9,15 @@ import { fileURLToPath } from 'url'
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-/** Allowed paths for the `skill` target: anything under `<anywhere>/.claude/skills/<skill>/`. */
-export const skillAllowed = (skill) => [new RegExp(`(^|/)\\.claude/skills/${esc(skill)}/`)]
+/**
+ * Allowed paths for the `skill` target, nothing else: the skill folder under core/ or packs/<pack>/, the kit's rendered
+ * copy `.claude/skills/<skill>/`, and `.kit/install.json` (the hashes a sync records).
+ */
+export const skillAllowed = (skill) => [
+  new RegExp(`^(core|packs/[^/]+)/\\.claude/skills/${esc(skill)}/`),
+  new RegExp(`^\\.claude/skills/${esc(skill)}/`),
+  /^\.kit\/install\.json$/,
+]
 
 /** Path guard: every changed path must match one allowed pattern. Returns the first offender or null. */
 export function outOfScope(paths, allowed) {

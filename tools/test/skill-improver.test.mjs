@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, existsSync, copyFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -25,8 +25,11 @@ test('meter counts a message once and ignores cache reads', () => {
   assert.equal(m.over(), false)
 })
 
-test('path guard allows only the skill folder', () => {
-  assert.equal(outOfScope(['packs/x/.claude/skills/demo/SKILL.md', 'core/.claude/skills/demo/evals/evals.json'], skillAllowed('demo')), null)
+test('path guard allows only the skill folder, its rendered copy and .kit/install.json', () => {
+  assert.equal(outOfScope(['packs/x/.claude/skills/demo/SKILL.md', 'core/.claude/skills/demo/evals/evals.json', '.claude/skills/demo/SKILL.md', '.kit/install.json'], skillAllowed('demo')), null)
+  assert.equal(outOfScope(['docs/.claude/skills/demo/SKILL.md'], skillAllowed('demo')), 'docs/.claude/skills/demo/SKILL.md')
+  assert.equal(outOfScope(['.kit/config.json'], skillAllowed('demo')), '.kit/config.json')
+  assert.equal(outOfScope(['.claude/skills/demo2/SKILL.md'], skillAllowed('demo')), '.claude/skills/demo2/SKILL.md')
   assert.equal(outOfScope(['core/.claude/skills/demo/SKILL.md', 'README.md'], skillAllowed('demo')), 'README.md')
   assert.equal(outOfScope(['core/.claude/skills/demo2/SKILL.md'], skillAllowed('demo')), 'core/.claude/skills/demo2/SKILL.md')
 })
@@ -85,14 +88,17 @@ function sandboxKit() {
   g(root, 'clone', '-q', origin, repo)
   g(repo, 'config', 'user.email', 't@example.com')
   g(repo, 'config', 'user.name', 't')
-  const skill = join(repo, 'core', '.claude', 'skills', 'demo')
-  mkdirSync(join(skill, 'evals'), { recursive: true })
-  writeFileSync(join(skill, 'SKILL.md'), '---\nname: demo\ndescription: demo skill\n---\nDo the thing.\n')
-  writeFileSync(join(skill, 'evals', 'evals.json'), JSON.stringify({ skill_name: 'demo', evals: [{ id: 1, prompt: 'do it', expected_output: 'x', files: [], assertions: ['says IMPROVED'] }] }))
-  for (const f of ['commands/improve-skill.md', 'agents/skill-judge.md']) {
-    mkdirSync(dirname(join(repo, 'core', '.claude', f)), { recursive: true })
-    writeFileSync(join(repo, 'core', '.claude', f), readFileSync(join(kit, 'core', '.claude', f)))
+  // A real kit installed into itself (core, tools, .kit config and hashes), so the runner's sync + drift-check run for real.
+  const tracked = execFileSync('git', ['ls-files', '-co', '--exclude-standard', '-z'], { cwd: kit, encoding: 'utf8' }).split('\0').filter(Boolean)
+  for (const f of tracked) {
+    if (/^(plans|tools\/test|node_modules)\//.test(f) || !existsSync(join(kit, f))) continue
+    mkdirSync(dirname(join(repo, f)), { recursive: true })
+    copyFileSync(join(kit, f), join(repo, f))
   }
+  mkdirSync(join(repo, 'core', '.claude', 'skills', 'preflight', 'evals'), { recursive: true })
+  writeFileSync(join(repo, 'core', '.claude', 'skills', 'preflight', 'evals', 'evals.json'), JSON.stringify({ skill_name: 'preflight', evals: [{ id: 1, prompt: 'do it', expected_output: 'x', files: [], assertions: ['says IMPROVED'] }] }))
+  const sy = spawnSync(process.execPath, ['tools/sync.mjs', '--target', '.', '--apply'], { cwd: repo, encoding: 'utf8' })
+  assert.equal(sy.status, 0, sy.stdout + sy.stderr)
   g(repo, 'add', '-A')
   g(repo, 'commit', '-q', '-m', 'init')
   g(repo, 'push', '-q', 'origin', 'main')
@@ -130,7 +136,7 @@ if (sys.includes('improve-skill') || sys.includes('Edit only files inside')) {
 function runIt(env, extra = []) {
   const s = sandboxKit()
   const home = join(s.root, 'home')
-  const r = spawnSync(process.execPath, [RUN, '--repo', s.repo, '--skill', 'demo', '--once', ...extra], {
+  const r = spawnSync(process.execPath, [RUN, '--repo', s.repo, '--skill', 'preflight', '--once', ...extra], {
     encoding: 'utf8',
     env: { ...process.env, SKILL_IMPROVER_HOME: home, SKILL_IMPROVER_PROJECTS: join(s.root, 'no-transcripts'), SKILL_IMPROVER_CLAUDE: s.fakeClaude, SKILL_IMPROVER_GH: s.fakeGh, ...env },
   })
@@ -139,21 +145,35 @@ function runIt(env, extra = []) {
   const remote = execFileSync('git', ['--git-dir', s.origin, 'branch'], { encoding: 'utf8' })
   const logFile = join(home, 'log.txt')
   const spendFile = join(home, 'spend.jsonl')
-  return { r, remote, branches, log: existsSync(logFile) ? readFileSync(logFile, 'utf8') : '', spend: existsSync(spendFile) ? readFileSync(spendFile, 'utf8') : '' }
+  return { r, remote, origin: s.origin, root: s.root, branches, log: existsSync(logFile) ? readFileSync(logFile, 'utf8') : '', spend: existsSync(spendFile) ? readFileSync(spendFile, 'utf8') : '' }
 }
 
 test('run: improved candidate beats the old skill, pushes a branch and opens a PR', () => {
   const { r, remote } = runIt({ FAKE_MODE: 'improve' })
   assert.equal(r.status, 0, r.stdout + r.stderr)
   assert.match(r.stdout, /SKILL_IMPROVER: pr https:\/\/example\.test\/pr\/1/)
-  assert.match(remote, /chore\/skill-improve-demo-/)
+  assert.match(remote, /chore\/skill-improve-preflight-/)
+})
+
+test('run: the PR commit holds exactly the core skill, its rendered copy and .kit/install.json, and drift-check passes', () => {
+  const { r, remote, origin, root } = runIt({ FAKE_MODE: 'improve' })
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+  const branch = remote.split('\n').map((l) => l.replace('*', '').trim()).find((b) => b.startsWith('chore/skill-improve-preflight-'))
+  assert.ok(branch, remote)
+  const names = execFileSync('git', ['--git-dir', origin, 'diff', '--name-only', 'main', branch], { encoding: 'utf8' }).split('\n').filter(Boolean).sort()
+  assert.deepEqual(names, ['.claude/skills/preflight/SKILL.md', '.kit/install.json', 'core/.claude/skills/preflight/SKILL.md'])
+  const check = join(root, 'check')
+  execFileSync('git', ['clone', '-q', '--branch', branch, origin, check])
+  const d = spawnSync(process.execPath, ['tools/drift-check.mjs', '--target', '.'], { cwd: check, encoding: 'utf8' })
+  assert.equal(d.status, 0, d.stdout + d.stderr)
+  assert.match(d.stdout, /KIT_DRIFT: ok/)
 })
 
 test('run: a candidate that does not beat the old one opens no PR and logs no-change', () => {
   const { r, remote, log } = runIt({ FAKE_MODE: 'nochange' })
   assert.equal(r.status, 0, r.stdout + r.stderr)
   assert.doesNotMatch(remote, /skill-improve/)
-  assert.match(log, /no-change demo/)
+  assert.match(log, /no-change preflight/)
 })
 
 test('run: --budget stops, prints budget reached, pushes nothing', () => {

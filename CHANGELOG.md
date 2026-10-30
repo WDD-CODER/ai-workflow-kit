@@ -18,7 +18,7 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
   what the current agent is doing, from the workflow journal) and the run's `orch-state.mjs watch` line, in the
   warning colour on `STUCK`. Read-only and token-free: it reads `status.json` and the journal and runs `watch`.
 
-- **Nightly skill improver** (plan 035). `tools/skill-improver/` (evidence, picker, runner with a reusable `lib/` core and
+- **Nightly skill improver.** `tools/skill-improver/` (evidence, picker, runner with a reusable `lib/` core and
   a `--target` switch), the `/improve-skill` command, the blind `skill-judge` agent (review tier, never Haiku) and
   `kit-skill-improver.ps1` (daily 02:10, AC power only, never catches up). One skill per night, a PR only when the new
   version beats the old one on its evals; hard token cap, path guard and leak guard; every run prints its billing mode

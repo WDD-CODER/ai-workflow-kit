@@ -167,7 +167,7 @@ node tools/skill-improver/run.mjs --budget 20000    # stops with "SKILL_IMPROVER
 ```
 
 Guards: hard cap 400000 tokens per run (a 2nd skill only when the 1st finished under 200000); a candidate that
-touches anything outside `.claude/skills/<skill>/` aborts with `SKILL_IMPROVER: out-of-scope <path>`; `leak-check`
+touches anything outside the skill folder, its rendered `.claude/skills/<skill>/` copy and `.kit/install.json` aborts with `SKILL_IMPROVER: out-of-scope <path>`; `leak-check`
 runs on the diff and the PR body before every push; the run pauses while 3 improver PRs are open. The task runs on AC
 power only and does not catch up after a missed night.
 
