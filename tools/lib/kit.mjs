@@ -26,8 +26,24 @@ import { spawnSync } from 'child_process'
 import { createHash } from 'crypto'
 import { resolve, join, dirname, basename, relative, sep } from 'path'
 import { fileURLToPath } from 'url'
+import { requiredSteps } from '../../core/scripts/lib/override-steps.mjs'
 
 export const KIT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
+
+const WORKFLOW_DEST = /^\.github\/workflows\/[^/]+\.ya?ml$/
+/**
+ * The steps each rendered workflow requires of a project's copy: { "<dest>": [names] } from the `# KIT:required`
+ * markers of the rendered text (a step a KIT:if dropped is not required). Workflows without a marker are left out.
+ */
+export function requiredByDest(files) {
+  const out = {}
+  for (const f of files) {
+    if (f.kind !== 'managed' || !WORKFLOW_DEST.test(f.dest)) continue
+    const names = requiredSteps(f.content, f.dest)
+    if (names.length) out[f.dest] = names
+  }
+  return out
+}
 export const NOT_SET = '(not set)'
 // Empty is the right rendering for these (they are prefixes / optional fragments, not words in a sentence).
 const BLANK_OK = new Set(['paths.srcRoot', 'paths.serverRoot', 'paths.slotEnvFile', 'kit.mcpArgs', 'commands.slotPrepare', 'commands.dev', 'commands.testCi', 'orchestrator.watchTestPattern', 'slots.feMatcher', 'slots.feEnvFile'])
@@ -821,6 +837,7 @@ export function planFiles({ kitRoot, packs, layers = [], cursor, yesChef, vals, 
     files.push(file)
   }
   files.sort((a, b) => (a.dest < b.dest ? -1 : 1))
+  requiredByDest(files) // a KIT:required marker above anything but a "- name:" line is a render error
   return { files, report }
 }
 

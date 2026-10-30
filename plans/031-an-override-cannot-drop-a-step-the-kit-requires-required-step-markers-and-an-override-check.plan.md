@@ -49,7 +49,7 @@ overridden workflow lacks one. The kit's own checkout (which overrides `ci.yml` 
   right after **Install workflow script dependencies**, itself marked required; `core/.claude/commands/ship.md` Phase 1
   lists `node scripts/override-check.mjs` among the kit-runner's build-gate commands; `install-check` asserts both.
 - [auto] `node tools/install-check.mjs`, `node tools/e2e-check.mjs`, `node tools/workflow-link-check.mjs`,
-  `node tools/drift-check.mjs --target .`, `npm run build`, `npm run lint` and `node --test tools/test/` pass.
+  `node tools/drift-check.mjs --target .`, `npm run build`, `npm run lint` and `node --test "tools/test/*.test.mjs"` pass.
 - [human] In FoodVibe after the sync: `node scripts/override-check.mjs` prints `OVERRIDE_CHECK: ok — 2 override(s) checked, 7 required step(s) found`;
   comment out the `Install workflow script dependencies` step in its `ci.yml`, run it again and see the `FAIL` line
   naming that step; restore the step.
@@ -171,15 +171,15 @@ comment between two list items — the markers in O1 are comments, never keys.
 
 These are the plan's milestones: a Worker does them in order and ticks each one after it is checked.
 
-- [ ] O1: Mark the load-bearing steps of the kit's workflow templates so every copy knows what it must keep — `# KIT:required …` comment above seven steps; a misplaced marker is a render error — core/.github/workflows/ci.yml, core/.github/workflows/security.yml, tools/lib/kit.mjs
-- [ ] O2: Add one shared reader for required and present step names, used by the kit's tools and the project script — `requiredSteps`, `stepNames`, `missingSteps` — core/scripts/lib/override-steps.mjs
-- [ ] O3: Record the required steps of each rendered workflow in the install record at install and at sync — `.kit/install.json` `required` key from the rendered text — tools/install.mjs, tools/sync.mjs, tools/lib/kit.mjs
-- [ ] O4: Give projects a script that fails by name when an override lacks a required step, and run it in CI and in the ship build gate — `scripts/override-check.mjs`, the `Kit override check` lint step (itself required), one kit-runner command in /ship Phase 1 — core/scripts/override-check.mjs, core/.github/workflows/ci.yml, core/.claude/commands/ship.md
-- [ ] O5: Make the kit's drift check report a missing required step as an undeclared difference, except on the kit's own checkout — `override-missing-step` rows counted in the FAIL line — tools/drift-check.mjs
-- [ ] B1: Document the marker, the script and the CI step, and record the FoodVibe case as a gotcha — docs/CHANGE-LOOP.md, core/docs/agent/pr-check-fix-loop.md, core/docs/agent/workflow-map.md, core/docs/brain/gotchas/ci.md, CHANGELOG.md
-- [ ] C1: Let a project list the steps its overrides must keep before it edits them — `--list` — core/scripts/override-check.mjs
-- [ ] T1: Prove it with tests: the install record, the script's four outcomes, the drift row, the kit-checkout skip — tools/test/override-check.test.mjs, tools/install-check.mjs
-- [ ] R1: Re-render the kit's own copies with sync, check drift, and run every kit check — scripts/, .claude/commands/ship.md, docs/agent/, .kit/install.json
+- [x] O1: Mark the load-bearing steps of the kit's workflow templates so every copy knows what it must keep — `# KIT:required …` comment above seven steps; a misplaced marker is a render error — core/.github/workflows/ci.yml, core/.github/workflows/security.yml, tools/lib/kit.mjs
+- [x] O2: Add one shared reader for required and present step names, used by the kit's tools and the project script — `requiredSteps`, `stepNames`, `missingSteps` — core/scripts/lib/override-steps.mjs
+- [x] O3: Record the required steps of each rendered workflow in the install record at install and at sync — `.kit/install.json` `required` key from the rendered text — tools/install.mjs, tools/sync.mjs, tools/lib/kit.mjs
+- [x] O4: Give projects a script that fails by name when an override lacks a required step, and run it in CI and in the ship build gate — `scripts/override-check.mjs`, the `Kit override check` lint step (itself required), one kit-runner command in /ship Phase 1 — core/scripts/override-check.mjs, core/.github/workflows/ci.yml, core/.claude/commands/ship.md
+- [x] O5: Make the kit's drift check report a missing required step as an undeclared difference, except on the kit's own checkout — `override-missing-step` rows counted in the FAIL line — tools/drift-check.mjs
+- [x] B1: Document the marker, the script and the CI step, and record the FoodVibe case as a gotcha — docs/CHANGE-LOOP.md, core/docs/agent/pr-check-fix-loop.md, core/docs/agent/workflow-map.md, core/docs/brain/gotchas/ci.md, CHANGELOG.md
+- [x] C1: Let a project list the steps its overrides must keep before it edits them — `--list` — core/scripts/override-check.mjs
+- [x] T1: Prove it with tests: the install record, the script's four outcomes, the drift row, the kit-checkout skip — tools/test/override-check.test.mjs, tools/install-check.mjs
+- [x] R1: Re-render the kit's own copies with sync, check drift, and run every kit check — scripts/, .claude/commands/ship.md, docs/agent/, .kit/install.json
 
 ## Technical Considerations
 - Dependencies: none on open plans. Plan 029 (B2) also edits `tools/lib/kit.mjs` and `tools/install-check.mjs`; both
@@ -214,6 +214,7 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
   a second record would drift from it. (Planner, 2026-10-29.)
 
 ## Execution Notes
+- Step order (Planner, 2026-10-30): the `required[".github/workflows/ci.yml"]` list in the success criteria is the set of required names, not their order; `Kit override check` sits right after `Install workflow script dependencies`, so the recorded order is Install, Kit override check, Workflow script tests, Secret scan, Require quality gates.
 - Origin: the FoodVibe plan-505 workflow report (2026-10-28), verdict row 3 — `ci.yml` override lacked the kit's
   `scripts/` install step; `Cannot find package 'picomatch'` in CI `lint`; one CI round lost. Rows 1, 2, 4–7 of that
   report were fixed by kit PRs #54 and #55; row 8 is plan 029 A9.

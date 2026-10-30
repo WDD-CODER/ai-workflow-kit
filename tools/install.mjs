@@ -45,7 +45,7 @@ import { resolveSource } from './lib/source.mjs'
 import {
   KIT_ROOT, REQUIRED, isEmpty, readJson, sha256, resolveConfig, planFiles, parseArgs, unflatten, NOT_SET, readOverrides, isHook,
   markHooksExecutable, commandProblems, ownsAgents, ignoredPaths, AGENTS_WORKFLOW, frontendNote, presentAlternative, backendNote,
-  detectStack, splitList, withUpstream, projectConfigPath, configLabel,
+  detectStack, splitList, withUpstream, projectConfigPath, configLabel, requiredByDest,
 } from './lib/kit.mjs'
 
 let args
@@ -189,7 +189,7 @@ if (args.adopt) {
     process.exit(1)
   }
   const sorted = Object.fromEntries(Object.entries(record).sort(([a], [b]) => (a < b ? -1 : 1)))
-  const out = { kit: { version: readJson(join(kitRoot, 'kit.json')).version }, ...origin, packs, layers, cursor: !!args.cursor, yesChef: !!args['yes-chef'], files: sorted }
+  const out = { kit: { version: readJson(join(kitRoot, 'kit.json')).version }, ...origin, packs, layers, cursor: !!args.cursor, yesChef: !!args['yes-chef'], files: sorted, required: requiredByDest(plan.files) }
   if (!args['dry-run']) {
     mkdirSync(join(target, '.kit'), { recursive: true })
     writeFileSync(join(target, '.kit', 'install.json'), JSON.stringify(out, null, 2) + '\n', 'utf8')
@@ -251,7 +251,7 @@ if (hookNote) log(hookNote)
 const kitVersion = readJson(join(kitRoot, 'kit.json')).version
 const sorted = Object.fromEntries(Object.entries(record).sort(([a], [b]) => (a < b ? -1 : 1)))
 const installJson = JSON.stringify(
-  { kit: { version: kitVersion }, ...origin, packs, layers, cursor: !!args.cursor, yesChef: !!args['yes-chef'], files: sorted },
+  { kit: { version: kitVersion }, ...origin, packs, layers, cursor: !!args.cursor, yesChef: !!args['yes-chef'], files: sorted, required: requiredByDest(plan.files) },
   null,
   2,
 ) + '\n'

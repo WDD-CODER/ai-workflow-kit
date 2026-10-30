@@ -219,6 +219,20 @@ function ciProblems(dir, fx) {
     if (testMode === 'run' && testJob.includes('--if-present')) out.push('ci.yml testMode run: the test job must not pass on a missing script')
   }
   if (!has(lintJob, '      - name: Install workflow script dependencies', "        if: hashFiles('scripts/package-lock.json') != ''", '        working-directory: scripts')) out.push('ci.yml must install the scripts/ dependencies inside scripts/ before the workflow script tests')
+  // Required-step markers (plan 031): the record lists them, each sits directly above its step, and the lint job checks overrides.
+  const MARK = '# KIT:required — a project override must keep this step'
+  const inst = JSON.parse(read(dir, '.kit/install.json'))
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+  if (!same(inst.required?.['.github/workflows/ci.yml'], ['Install workflow script dependencies', 'Kit override check', 'Workflow script tests', 'Secret scan (gitleaks)', 'Require quality gates'])) out.push(`.kit/install.json required[ci.yml] is ${JSON.stringify(inst.required?.['.github/workflows/ci.yml'])}`)
+  if (!same(inst.required?.['.github/workflows/security.yml'], ['npm audit (workflow scripts, report only)', 'Semgrep OWASP Top Ten'])) out.push(`.kit/install.json required[security.yml] is ${JSON.stringify(inst.required?.['.github/workflows/security.yml'])}`)
+  for (const [name, text] of [['ci.yml', ci], ['security.yml', sec]]) {
+    const ls = text.split('\n')
+    ls.forEach((l, i) => {
+      if (/^\s*#\s*KIT:required\b/.test(l) && (l !== MARK || !/^ +- name: /.test(ls[i + 1] ?? ''))) out.push(`${name}:${i + 1}: a KIT:required marker must be "${MARK}" directly above a "- name:" line`)
+    })
+  }
+  if (!has(lintJob, '      - name: Kit override check', '        run: node scripts/override-check.mjs') || lintJob.indexOf('Install workflow script dependencies') > lintJob.indexOf('Kit override check')) out.push('ci.yml lint job must run node scripts/override-check.mjs (step Kit override check) after Install workflow script dependencies')
+  if (!read(dir, '.claude/commands/ship.md').includes('node scripts/override-check.mjs')) out.push('/ship Phase 1 must list node scripts/override-check.mjs among the build-gate commands')
   if (haveActionlint) {
     const wf = readdirSync(join(dir, '.github/workflows')).filter((x) => /\.ya?ml$/.test(x)).map((x) => join(dir, '.github/workflows', x))
     const r = spawnSync(actionlint, ['-no-color', ...wf], { encoding: 'utf8' })

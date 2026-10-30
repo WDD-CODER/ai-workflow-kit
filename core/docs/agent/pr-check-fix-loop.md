@@ -13,6 +13,7 @@ Use plain `gh` / `git` / `npx` / `npm` shell only — identical from Claude Code
 | GitHub check (job) | Workflow | Classify failures by failed step |
 | --- | --- | --- |
 | `lint` | `.github/workflows/ci.yml` | ESLint → `[lint]` |
+| `lint` (step **Kit override check**) | `.github/workflows/ci.yml` | `OVERRIDE_CHECK: FAIL` → `[lint]`: an overridden workflow lost a step the kit requires. Fix = add the named step back from the kit's template; never delete its `# KIT:required` marker or the check. |
 | `build` | `.github/workflows/ci.yml` | Build → `[build]` |
 | `test` | `.github/workflows/ci.yml` | Unit tests → `[test]` |
 | `gitleaks` | `.github/workflows/ci.yml` | Secret scan (gitleaks) → `[security-scan]` |
