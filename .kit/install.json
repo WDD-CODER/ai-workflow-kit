@@ -3,7 +3,7 @@
     "version": "1.12.0"
   },
   "source": "local:.",
-  "commit": "8dd9dd98298a68ae6041502e89918b6f827a6d12",
+  "commit": "fc716074ea576a44b535b535e855444b8df5fcd7",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -155,7 +155,7 @@
       "source": "core/.claude/commands/orchestrate.md"
     },
     ".claude/commands/plan.md": {
-      "sha256": "80f0690f2a24caaa15c018d437ddae98675d46ebb67e903e2a495f1d377745ac",
+      "sha256": "aa39c1cf66e8771ad7bd4cc080b8cf8f3f2e5ebd2c6e023d022a6d094972b749",
       "kind": "managed",
       "source": "core/.claude/commands/plan.md"
     },
@@ -325,7 +325,7 @@
       "source": "core/README_WORKFLOW.md"
     },
     "docs/agent/agent-evals.md": {
-      "sha256": "0ed2999b53d2c07e08b1e707e6c15b4f14e7885aa4dce4cf01f6db3582d2cb9d",
+      "sha256": "3e9143a742cbd41dcf3195068f6be1eb2d92d6e7dd2334568cf6f08b35f38466",
       "kind": "managed",
       "source": "core/docs/agent/agent-evals.md"
     },
@@ -340,7 +340,7 @@
       "source": "core/docs/agent/brain-capture.md"
     },
     "docs/agent/decision-review.md": {
-      "sha256": "e616ab01f5014cb7bc8313b34d7551c17f372bf84cadce65054894b9c08867ee",
+      "sha256": "a1bebf1dd50750e32dce866afddd8d42bccbd44fa3f989682f8abe0caa95e030",
       "kind": "managed",
       "source": "core/docs/agent/decision-review.md"
     },
@@ -625,7 +625,7 @@
       "source": "core/scripts/handoff-check.sh"
     },
     "scripts/kit-feedback.mjs": {
-      "sha256": "9566af2520c9ab314e34f36c9052474e6d2ef3cda8172d5c69d0564578d9309f",
+      "sha256": "ddaf01a4d6b28f61c3b646b5e1eab7eb02fbd9845019b3517d60cca248a93a24",
       "kind": "managed",
       "source": "core/scripts/kit-feedback.mjs"
     },
