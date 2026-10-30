@@ -399,13 +399,14 @@ test('status line shows the 5h reset time only once the session knows it', async
   expect(statuses.join('\n')).not.toMatch(/↻/)
   limits = [{ kind: 'five_hour', percentUsed: 62, resetsAt: at(2 * H + 10 * 60_000) }]
   await $.command.run(run('health'))
-  await $.turn.complete({ text: '' } as never)
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' } as never)
   expect(statuses.at(-1)).toMatch(/5h 62% ↻\S+ \(2h10m\)/)
   const { text } = await $.command.run(run('health'))
   expect(text).toMatch(/limits: 5h 62% \(resets \S+, in 2h10m\)/)
 })
 
-test('refresh notice: once per window in this session, re-scheduled when resetsAt changes, 95% re-armed', async ($, on) => {
+// Long: the clock advances 9 h past the 30 s heartbeat (over 1000 ticks).
+test('refresh notice: once per window in this session, re-scheduled when resetsAt changes, 95% re-armed', { timeoutMs: 30_000 }, async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   mock.store(on)
   const toasts: string[] = []
@@ -416,14 +417,14 @@ test('refresh notice: once per window in this session, re-scheduled when resetsA
   expect(toasts.join()).toMatch(/95% \(resets /)
   // The window moves later (a new reply reports another resetsAt): the old timer must not fire.
   limits = [{ kind: 'five_hour', percentUsed: 96, resetsAt: at(2 * H) }]
-  await $.turn.complete({ text: '' } as never)
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' } as never)
   await clock.advance(H + 60_000)
   expect(toasts.filter(t => t.includes('refreshed')).length).toBe(0)
   await clock.advance(H)
   expect(toasts.filter(t => t.includes('refreshed')).length).toBe(1)
   // Next window: a new resetsAt and 96% again → the 95% notice fires again, and one more refresh later.
   limits = [{ kind: 'five_hour', percentUsed: 96, resetsAt: at(7 * H) }]
-  await $.turn.complete({ text: '' } as never)
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' } as never)
   expect(toasts.filter(t => t.includes('95%')).length).toBe(2)
   await clock.advance(6 * H)
   expect(toasts.filter(t => t.includes('refreshed')).length).toBe(2)
@@ -462,7 +463,7 @@ test('a 7-day window held at 95% is announced once, not again after each 5-hour 
     { kind: 'five_hour', percentUsed: 5, resetsAt: at(6 * H) },
     { kind: 'seven_day', percentUsed: 96, resetsAt: at(3 * 24 * H) },
   ]
-  await $.turn.complete({ text: '' } as never)
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' } as never)
   expect(toasts.filter(t => t.includes('refreshed')).length).toBe(1)
   expect(toasts.filter(t => t.includes('7-day usage window is at 95%')).length).toBe(1)
 })
