@@ -108,6 +108,15 @@ branch himself.
    an `App errors since the run started` section: the command, its exit code and its first 20 lines, never parsed.
    `{{git.mainBranch}} untouched` stays `yes` when the only files that changed on `{{git.mainBranch}}` during the run are
    plan files and `.claude/todo.md` (the Planner's own pushes); the line counts them.
+   **Learning** (plan 030, no model call): `finish` also appends the lesson lines of the run to
+   `docs/brain/agent-lessons/<role>.md` and this run's row to `docs/brain/run-log.md` (and fills the `✗` columns of the
+   earlier rows from `decision-log.md`), both in the merge folder and in the report's commit, and ends the report with
+   `Context added by learning: 3.1k chars across 10 roles` and one trend line (`node scripts/orch-state.mjs trend`;
+   `Trend: first logged run` with fewer than two rows). At the next launch one `orch-state.mjs context` call (per
+   launch, not per plan) reads the lessons, the rules sections and the last three run-log rows, and the workflow puts
+   `LESSONS`, `RULES` and `RECENT_RUNS` as JSON arrays of lines in the matching role tasks (`docs/agent/agent-roles.md`
+   rule 11). A project without the seeds gets `[]` until its first run writes them. What learns what, and the caps:
+   `docs/agent/decision-review.md` §0.
 
 **Environment failures** never cost a fix round: the plan pauses, `orch-preflight.mjs --env-only --run <run>` checks
 disk, database and packages (the main folder's and the merge folder's), and the plan is retried once — from the
@@ -272,6 +281,22 @@ With the UI step off, a failed script is a finding for the builder, and a card n
   done set from those subjects and never redoes a merged plan.
 - `status.json` (`.claude/orchestrator-runs/<run>/status.json`) is written only by `orch-state.mjs`, after every step:
   per plan its state, round, builder tier, sha, reason, free disk and the model and effort each agent echoed.
+  **Lesson facts** (plan 030) — the workflow queues them in memory and they ride on the plan's next `set` call, so they
+  cost no agent call; `orch-state.mjs lessons` (also run by `finish`) turns them into lesson lines with no model call:
+
+  | Field (per plan) | Set by | Meaning |
+  | --- | --- | --- |
+  | `roundCauses[]` | `set --round-cause "round 2: <why>"` | the reason a fix round began (`checker: major src/x.ts:12 <rule>`, `gate: <command>`, …) |
+  | `escalations[]` | `handoff` | `{ step, check }` of each escalation to a fresh judgment-tier builder |
+  | `verify` | `set --candidates --refuted --refuted-rules --verify-by --late-low --reappeared` | the verifier's totals for the plan so far: candidates and refuted, per finder (`byRole`), refuted rule names, problems kept below the threshold that later mattered (`lateLow`) and refuted ones that came back (`reappeared`) |
+  | `misses[]` | `set --miss "<what>"` | a `[ui]` card, or the final gate (when the failure names a file only one plan changed), failed after the checkers passed that plan |
+  | `gateEvents[]` | `set --gate-event "<text>"` | `timed out: <command>`, `env-fail rerun: <command>` |
+  | `ready`, `asked[]` | `set --ready yes\|no --asked "q1 \|\| q2"` | whether readiness called the plan ready (from `args.asked`), and the questions it had to ask |
+  | `uiCards[].regressed` | `set --card …` | the card passed earlier and fails now |
+
+  Not derived from transcripts: a fact is a field the workflow wrote when it happened. The literal "card failed in the
+  browser after its script had passed" cannot happen (a passing script card never reaches the browser agent); the `ui`
+  lesson is the card that **regressed** (passed in one round, failed in a later one).
 - Times come from `orch-state.mjs` and the workflow's `args` (`startedAt`); the workflow script has no clock.
 - Every count in a message comes from `status.json` or an anchored git command run in the same turn.
 - A relaunch while a run of that name is live (status `running`, updated in the last 2 hours) is refused; after a

@@ -436,17 +436,52 @@ const fileKind = (file) => {
 const esc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const clip = (s, n) => (String(s).length > n ? `${String(s).slice(0, n - 1)}…` : String(s))
 
-// One fix round's cause (`round 2: checker: major src/x.ts:12 <rule>`) as lesson lines for the builder.
+// Lesson lines are built from fixed templates and enumerated values (a rule name, a file kind, a count, a command of an
+// allowed shape). Free text that a model or the repo produced (a finding's reasoning, a question, a card title, a park
+// reason, a tail) is never copied into a line the next run's agents read: a lesson is data, not an instruction.
+/** A rule name as a short tag: only letters, digits and `. : / _ -`, 40 characters at most; anything else is dropped. */
+export function ruleTag(s) {
+  const t = String(s ?? '').replace(/[^A-Za-z0-9 ._:/-]/g, ' ').replace(/\s+/g, ' ').trim()
+  // a category of up to three words, optionally `: ` and up to four more — a rule name, never a sentence
+  return t.length <= 40 && /^[\w./-]+(?: [\w./-]+){0,2}(?:: [\w./-]+(?: [\w./-]+){0,3})?$/.test(t) ? t : 'other rule'
+}
+/** A check command of an allowed shape (`npm run <script>`, `node tools|scripts/<file> <safe args>`), else a generic name. */
+export function commandTag(s) {
+  const c = String(s ?? '').trim()
+  return /^(?:npm|pnpm) run [\w:-]{1,40}$/.test(c) || /^node (?:tools|scripts)\/[\w./-]{1,60}(?: [\w./=:,@+-]{1,40}){0,3}$/.test(c) ? c : 'a check command'
+}
+const stepTag = (s) => (/^round \d{1,2}$/.test(String(s ?? '').trim()) ? String(s).trim() : 'a step')
+
+// One fix round's cause (`round 2: checker: major src/x.ts:12 <rule>`) as lesson lines for the builder: the rule name
+// (as a tag) and the kind of file, or which stage failed.
 function causeLessons(cause) {
   const m = /^round \d+:\s*(.*)$/.exec(String(cause))
   const why = (m ? m[1] : String(cause)).trim()
   if (/^checker:/.test(why)) {
-    return why.replace(/^checker:\s*/, '').split(/;\s+(?=(?:blocker|major|minor|nit)\s)/).map((item) => {
+    const items = why.replace(/^checker:\s*/, '').split(/;\s+(?=(?:blocker|major|minor|nit)\s)/).map((item) => {
       const x = /^(?:blocker|major|minor|nit)\s+(\S+?):(\d+)\s+(.+)$/.exec(item.trim())
-      return x ? `fix round caused by: ${x[3].trim()} (${fileKind(x[1])})` : `fix round caused by: checker: ${item.trim()}`
+      return x ? `fix round caused by: ${ruleTag(x[3])} (${fileKind(x[1])})` : 'fix round caused by: a checker finding'
     })
+    return [...new Set(items)]
   }
-  return [`fix round caused by: ${why}`]
+  if (/^gate/.test(why)) return [`fix round caused by: a gate check failed (${commandTag(why.replace(/^gate[^:]*:\s*/, '').split(', ')[0])})`]
+  if (/^ui/.test(why)) return ['fix round caused by: a [ui] card failed']
+  if (/^merge/.test(why)) return ['fix round caused by: the merge into the run branch']
+  return ['fix round caused by: another failure']
+}
+// A miss is one of two enumerated kinds (a [ui] card, the final gate); a gate event one of two kinds with a command tag.
+const missTag = (s) => (/^ui:/.test(String(s)) ? 'a [ui] card failed after the checkers passed' : /^final gate/.test(String(s)) ? 'the final gate failed after the checkers passed' : 'a later check failed after the checkers passed')
+const gateEventTag = (s) => {
+  const m = /^(timed out|env-fail rerun):\s*(.*)$/.exec(String(s))
+  return m ? `${m[1]}: ${commandTag(m[2])}` : null
+}
+// A readiness question is filed under the kind of gap it asks about, never by its words.
+const askedKind = (q) => {
+  const t = String(q)
+  if (/\b(cancel|leave|edit|error)\b/i.test(t)) return 'behaviour on edit, leave, cancel or error'
+  if (/\bclaim\b/i.test(t)) return 'a claim about the code'
+  if (/\b(depends?|prerequisite|plan \d+)\b/i.test(t)) return 'a prerequisite plan'
+  return 'an open question'
 }
 
 /**
@@ -464,21 +499,24 @@ export function lessonFacts(status) {
   const plans = Object.values(status?.plans ?? {}).sort((a, b) => (String(a.nnn) < String(b.nnn) ? -1 : 1))
   for (const p of plans) {
     for (const c of p.roundCauses ?? []) for (const t of causeLessons(c)) add('builder', t)
-    for (const e of p.escalations ?? []) add('builder', `escalated to the judgment tier at ${e.step ?? 'a step'}: ${clip(e.check ?? 'a failing check', 120)}`)
-    if (['parked', 'left-run'].includes(p.state) && p.reason) add('builder', `parked: ${clip(p.reason, 140)}`)
-    if (p.ready === true && p.state === 'parked' && reasonKind(p.reason) === 'environment') add('readiness', `parked on environment after ready: ${clip(p.reason, 120)}`)
+    for (const e of p.escalations ?? []) add('builder', `escalated to the judgment tier at ${stepTag(e.step)}: ${commandTag(e.check)}`)
+    if (['parked', 'left-run'].includes(p.state) && p.reason) add('builder', `parked: ${reasonKind(p.reason)}`)
+    if (p.ready === true && p.state === 'parked' && reasonKind(p.reason) === 'environment') add('readiness', 'parked on environment after ready')
     for (const [role, v] of Object.entries(p.verify?.byRole ?? {})) {
-      const rules = (v.rules ?? []).filter(Boolean)
+      const rules = (v.rules ?? []).filter(Boolean).map(ruleTag)
       if (FINDER_ROLES.includes(role) && v.refuted > 0 && rules.length) add(role, `${v.refuted} of ${v.candidates} candidates refuted: ${rules.join(', ')}`, new RegExp(`^\\d+ of \\d+ candidates refuted: ${esc(rules.join(', '))}$`))
     }
     const ran = FINDER_ROLES.filter((r) => Object.keys(p.models ?? {}).includes(`orch-${r}`))
-    for (const what of p.misses ?? []) for (const r of ran) add(r, `missed: ${clip(what, 200)}`)
-    if ((p.verify?.lateLow ?? []).length) add('verify', `kept with a confidence below the keep threshold, then caused a fix round: ${p.verify.lateLow.join(', ')}`)
-    if ((p.verify?.reappeared ?? []).length) add('verify', `refuted, but the problem reappeared in a later round: ${p.verify.reappeared.join(', ')}`)
-    for (const ev of p.gateEvents ?? []) add('gate', ev)
-    for (const c of p.uiCards ?? []) if (c.regressed) add('ui', `card failed after it had passed: ${clip(c.card, 120)}`)
-    for (const q of p.asked ?? []) add('planner', `plan ${p.nnn} had to be asked: ${clip(q, 200)}`)
-    for (const c of p.uiCards ?? []) if (c.status === 'plan-drift') add('planner', `plan ${p.nnn} drifted from its card: ${clip(c.card, 120)}`)
+    for (const what of [...new Set((p.misses ?? []).map(missTag))]) for (const r of ran) add(r, `missed: ${what}`)
+    if ((p.verify?.lateLow ?? []).length) add('verify', `kept with a confidence below the keep threshold, then caused a fix round: ${p.verify.lateLow.map(ruleTag).join(', ')}`)
+    if ((p.verify?.reappeared ?? []).length) add('verify', `refuted, but the problem reappeared in a later round: ${p.verify.reappeared.map(ruleTag).join(', ')}`)
+    for (const ev of p.gateEvents ?? []) {
+      const t = gateEventTag(ev)
+      if (t) add('gate', t)
+    }
+    if ((p.uiCards ?? []).some((c) => c.regressed)) add('ui', 'a [ui] card failed after it had passed')
+    for (const k of [...new Set((p.asked ?? []).map(askedKind))]) add('planner', `plan ${p.nnn} had to be asked about: ${k}`)
+    if ((p.uiCards ?? []).some((c) => c.status === 'plan-drift')) add('planner', `plan ${p.nnn} drifted from its [ui] card`)
   }
   return out
 }
