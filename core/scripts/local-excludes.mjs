@@ -25,6 +25,7 @@ export const RUNTIME_IGNORES = [
   '.worktree-port',
   '.worktree-root',
   '.worktree-plan',
+  '.worktree-validating',
   '.worktree-cleanup',
   '.claude/.slot-pids',
   '.claude/.slot-plan-start',

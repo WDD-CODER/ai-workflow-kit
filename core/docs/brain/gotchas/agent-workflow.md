@@ -356,3 +356,13 @@ only the Bash tool's command text triggers it.
 **Why the obvious fix is wrong:** Raising the runner's effort for every state call pays on every call for an event seen once; a file hand-off between `orch-state.mjs` and the workflow is out of reach (the workflow script cannot read files).
 
 **What to do instead:** The workflow retries a state command once when its copy does not parse (effort `medium`, not for `note` and `finish`), writes a run note `runner retry: … — first attempt: <error>`, and a second failure parks the plan with the parser's message, the first non-ASCII character and the raw line JSON-escaped (`docs/agent/orchestrator.md`, "A bad copy of a state line"). `kit-runner.md` says in so many words: run only the commands in the list, copy an asked-for line character for character.
+
+---
+
+## A green run, a red pull request
+
+**What hurt:** On 2026-10-29 an orchestrator run finished green and its pull request failed on the CI `rules` job (`KIT_MANIFEST: FAIL — 3 unclassified`); another plan hit the same failure the day before. About ten minutes each. The final gate ran only the project build, lint and test commands, and nothing said which other CI commands it skipped.
+
+**Why the obvious fix is wrong:** Adding one more hard-coded check to the gate fixes that one job and leaves the next CI-only job to repeat it. Rerunning CI until it passes hides a real failure behind a flake.
+
+**What to do instead:** List the cheap CI commands in `orchestrator.ciMirror` (kit.config.json): the final gate runs them after the project checks and the kit manifest check. Install and sync print a `NOTE ci-mirror:` line for each workflow command the gate does not run. A check that passes only on a rerun is recorded as a flake in `status.json` and the report (`## Flaky checks`), so it can be fixed instead of paid for in fix rounds.

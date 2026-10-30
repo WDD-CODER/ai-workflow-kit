@@ -9,8 +9,8 @@
  *   node scripts/slot-stop.mjs --if-slot  # SessionEnd hook: silent no-op (exit 0) outside a slot
  * Cross-platform: use this instead of taskkill/kill by hand (Git Bash rewrites `/PID`).
  */
-import { isSlot } from './lib/slot.mjs'
-import { stopSlotServers } from './lib/slot-procs.mjs'
+import { isSlot, endValidating } from './lib/slot.mjs'
+import { stopSlotServers, repoRoot } from './lib/slot-procs.mjs'
 
 if (!isSlot()) {
   if (process.argv.includes('--if-slot')) process.exit(0)
@@ -19,4 +19,7 @@ if (!isSlot()) {
 }
 const lines = stopSlotServers()
 for (const l of lines) console.log(`SLOT_STOP: ${l}`)
+// A slot that served a branch for validation (slot-serve.mjs --ref) is idle again once its servers are stopped.
+const validated = endValidating(repoRoot)
+if (validated) console.log(`SLOT_STOP: validating ${validated} ended`)
 console.log(lines.length ? `SLOT_STOP: ok - ${lines.length} action(s)` : 'SLOT_STOP: ok - nothing running')

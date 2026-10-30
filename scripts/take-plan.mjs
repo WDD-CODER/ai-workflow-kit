@@ -27,7 +27,7 @@ import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync } from '
 import { execFileSync } from 'child_process'
 import { resolve, dirname, join } from 'path'
 import { fileURLToPath } from 'url'
-import { isSlot, slotNumber, ports, listSlots } from './lib/slot.mjs'
+import { isSlot, slotNumber, ports, listSlots, readValidating } from './lib/slot.mjs'
 import { extractScopeGlobs } from './lib/plan-scope.mjs'
 import { findOpenPlanIn } from './lib/plan-paths.mjs'
 import { parseInvariants, checkPlanArch } from './lib/invariants.mjs'
@@ -146,7 +146,7 @@ const hasFrontend = projectHasFrontend() // commands.dev names a package.json sc
 
 // --- (a) not a slot -> refuse, and say where to go ----------------------------
 if (!isSlot()) {
-  const free = listSlots().filter((s) => !s.plan)
+  const free = listSlots().filter((s) => !s.plan && !s.validating)
   const where = free.length
     ? ` Free slots: ${free.map((s) => `wt-${s.slot} (${s.path})`).join(', ')}. Open the session in one of those folders and run it there.`
     : ' No free slot right now - ask the Human which slot to use.'
@@ -158,6 +158,9 @@ if (!arg) fail('usage: node scripts/take-plan.mjs <NNN>')
 const nnn = /^\d+$/.test(arg) ? arg.padStart(3, '0') : arg // 1 -> 001, matching plans/NNN-*.plan.md
 
 const n = slotNumber()
+// A slot that serves a branch for the Human's validation (slot-serve.mjs --ref) is not free to claim.
+const validating = readValidating(repoRoot)
+if (validating) fail(`slot wt-${n} is validating ${validating.branch} - run node scripts/slot-stop.mjs first`)
 const { fe: fePort, be: bePort } = ports()
 
 // --- (b) fetch + locate and validate the plan on origin/main ----------------

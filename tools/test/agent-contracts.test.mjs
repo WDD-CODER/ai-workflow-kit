@@ -126,6 +126,14 @@ test('the merge agent and the orchestrator merge prompt give the same steps: --n
   assert.doesNotMatch(agentText, /git merge --no-ff origin\/<plan branch> -m/, 'no direct merge commit in the agent file')
 })
 
+test('orch-gate keeps the trace of an env-fail rerun that passed (flake record)', () => {
+  const text = read('orch-gate.md')
+  assert.match(text, /`pass` with `tail` set to `rerun after env-fail: /, 'a passing rerun is reported pass with the rerun tail')
+  assert.match(text, /never retry a `fail`/, 'a fail is never rerun')
+  const r = validateAgentResult({ role: 'orch-gate', model: 'm', effort: 'low', results: [{ command: 'x', status: 'pass', tail: 'rerun after env-fail: EBUSY lock' }], pass: true })
+  assert.equal(r.ok, true, 'the validator accepts a pass that carries the rerun tail')
+})
+
 test('validator: gate, builder, merge and the reply parser', () => {
   const gate = (results, pass) => validateAgentResult({ role: 'orch-gate', model: 'm', effort: 'low', results, pass })
   assert.equal(gate([{ command: 'x', status: 'fail' }], false).ok, false, 'a failed command needs its tail')
