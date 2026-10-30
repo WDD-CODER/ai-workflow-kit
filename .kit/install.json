@@ -3,7 +3,7 @@
     "version": "1.12.0"
   },
   "source": "local:.",
-  "commit": "8ee680cb5974b85009c4e669af88f9e03584f0c3",
+  "commit": "edd6f8b2dfb0d4976314728331e9a0641aecfe13",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -389,6 +389,56 @@
       "kind": "managed",
       "source": "core/docs/agent/workflow-map.md"
     },
+    "docs/brain/agent-lessons/builder.md": {
+      "sha256": "4a9df27ff8b3e44f00b7e14117d995c0d35b9cd053fa1a0d769615581ffe704a",
+      "kind": "seed",
+      "source": "templates/docs/brain/agent-lessons/builder.md"
+    },
+    "docs/brain/agent-lessons/check-bugs.md": {
+      "sha256": "1c690ab501168cdd201e4b1b7a532dabaa189393c732df7799c032fb3e818db1",
+      "kind": "seed",
+      "source": "templates/docs/brain/agent-lessons/check-bugs.md"
+    },
+    "docs/brain/agent-lessons/check-plan.md": {
+      "sha256": "875be2fdc68e619c77acdc24a4de69332a4c9ae1b85b6d9161c38f314e572f52",
+      "kind": "seed",
+      "source": "templates/docs/brain/agent-lessons/check-plan.md"
+    },
+    "docs/brain/agent-lessons/check-rules.md": {
+      "sha256": "6e5eef625c8d94a79aa35d8e08a49d48433ea03285907ff0bb97d7cf4507cba2",
+      "kind": "seed",
+      "source": "templates/docs/brain/agent-lessons/check-rules.md"
+    },
+    "docs/brain/agent-lessons/gate.md": {
+      "sha256": "2f87df2f924d1e80305aac5cc20093416d1285e4ab599969e6e88edc2322b76f",
+      "kind": "seed",
+      "source": "templates/docs/brain/agent-lessons/gate.md"
+    },
+    "docs/brain/agent-lessons/planner.md": {
+      "sha256": "786c3b3431ae7605ad486b9a5ca9c47f7ae29f2bc284bd247103ed677f3475fe",
+      "kind": "seed",
+      "source": "templates/docs/brain/agent-lessons/planner.md"
+    },
+    "docs/brain/agent-lessons/readiness.md": {
+      "sha256": "2c0763cf67b00e8b20cba0f6fb84c2fe205a11157552637ca67de1b9320d013f",
+      "kind": "seed",
+      "source": "templates/docs/brain/agent-lessons/readiness.md"
+    },
+    "docs/brain/agent-lessons/security.md": {
+      "sha256": "7eb27cb28138de0e915085a9a4382f8a8e14846fddccf2d813ecb25916eb535b",
+      "kind": "seed",
+      "source": "templates/docs/brain/agent-lessons/security.md"
+    },
+    "docs/brain/agent-lessons/ui.md": {
+      "sha256": "0c9c11142e9ef42a1c8e35ba1630069e51ac785154449fee89beecedda0810a2",
+      "kind": "seed",
+      "source": "templates/docs/brain/agent-lessons/ui.md"
+    },
+    "docs/brain/agent-lessons/verify.md": {
+      "sha256": "73ba4c967f2b1cc167b1cf23d2646215bb137961f0b99d013572e89a3809049b",
+      "kind": "seed",
+      "source": "templates/docs/brain/agent-lessons/verify.md"
+    },
     "docs/brain/agent-rules.md": {
       "sha256": "8c6dd9fe074e69ca38354147c64136481081d5789438c623672a351ab48e533e",
       "kind": "seed",
@@ -514,6 +564,11 @@
       "kind": "seed",
       "source": "templates/docs/brain/projectbrief.md"
     },
+    "docs/brain/run-log.md": {
+      "sha256": "2a65250cde0675177a2318c3faade756e87eebaeb6c388b8fbde322f600fc59a",
+      "kind": "seed",
+      "source": "templates/docs/brain/run-log.md"
+    },
     "docs/project/current-state.md": {
       "sha256": "e730b96502485404bf8e325affe545d4e36e02be347a24577016f5833b73771c",
       "kind": "seed",
@@ -550,7 +605,7 @@
       "source": "core/scripts/branch-guard.sh"
     },
     "scripts/decision-log.mjs": {
-      "sha256": "adade4000c1ceb3ede9435a4d9bb87ab67ddb83d23910268f4085919b4e40d60",
+      "sha256": "070dcc2ceb84f2ed2f804ec71d982a25886be81fe6f549a2bcc83e4926415d11",
       "kind": "managed",
       "source": "core/scripts/decision-log.mjs"
     },
