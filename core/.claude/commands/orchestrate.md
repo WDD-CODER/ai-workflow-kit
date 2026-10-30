@@ -66,7 +66,8 @@ every prompt from the plans and the state script.
    **Pilot** (`orchestrator.pilotSize` = {{orchestrator.pilotSize}}; 0 = off): with more plans than that, the first
    `pilotSize` plans in wave order run, then the run stops (`pilot` in the result lists the plans that wait) and step 4
    prints the report and the decisions. On the Human's `continue`, start the workflow again with the same `run`, all
-   the plans, `"pilot": false` and `"firstDecision": <the last D number + 1>`: it skips what is merged and builds the
+   the plans and `"pilot": false` (no `firstDecision`: the run keeps its decisions in `status.json`, numbers on from the
+   highest earlier id and files a repeat of an earlier decision under it): it skips what is merged and builds the
    rest, with the graded decisions and any new rule in `docs/brain/agent-rules.md` already in place.
 
 4. **Finish.** From the workflow result and `.claude/orchestrator-runs/<run>/status.json` (never from memory), print:
@@ -81,11 +82,24 @@ every prompt from the plans and the state script.
      `.claude\orchestrator-runs\<run>.md`;
    - when the report has an `App errors since the run started` section: its command and its lines as the report shows
      them (the project's own output — a line such as `no entries` means none); never run the log command again;
-   - the **decisions** the workflow returned, numbered `D1…Dn`, grouped by plan, `behaviour:` first, one line each
-     (`D3 · plan <NNN> · behaviour: …`), then the reply format: `decisions: ok` or `D<n> ✗ <what I'd choose>` (several on
-     one line, comma-separated). When the result's `decisionsDropped` counts are not all zero, add one line
-     `dropped <n> confirmation line(s) (not decisions)` with the total — they cost no note and need no grade. With no
-     decisions print `decisions: none` and skip the next two bullets;
+   - the **decisions** the workflow returned (`decisions`, each with `verdict`, `forced`, `kind`, `confidence`, `rec`,
+     `why` and `alsoFrom`; `triage` has the mode, the `line` and the id lists). Duplicates are already merged. When
+     `triage.mode` is `shadow` or `filter` and `triage.note` is not set and some decision has a verdict other than
+     `none`, print:
+     1. `Run <run> — <n> merged. Decisions: <ask + askMore> to grade, <accepted> accepted by triage, <followUps> follow-ups (saved on your reply).`
+     2. the `triage.line`;
+     3. each id of `triage.ask` in full, at most 10: `D33 · <plan> · ask · <decision text>` and, indented under it,
+        `recommend: <rec> — why: <why>`; then `<n> more to grade: D… (in the report)` for `triage.askMore`;
+     4. `accepted: D1 D2 … (reply D<n> ✗ to override)` for `triage.accepted` (in `filter` mode an id is left out when it
+        is in `triage.collapsed`; say `collapsed: <n>`), each with its text on one line when the mode is `shadow`;
+        `follow-ups: D7 D8 …` and `noise: D15 …` the same way;
+     5. the reply line `reply: decisions: ok | D<n> ✗ <what I'd choose>` (several on one line, comma-separated).
+     When `triage.mode` is `off`, `triage.note` is set (print it: `triage: no usable result — full list`) or every verdict
+     is `none`, print today's list: numbered `D1…Dn`, grouped by plan, `behaviour:` first, one line each
+     (`D3 · plan <NNN> · behaviour: …`), then the reply format: `decisions: ok` or `D<n> ✗ <what I'd choose>`. When the
+     result's `decisionsDropped` counts are not all zero, add one line `dropped <n> confirmation line(s) (not
+     decisions)` with the total — they cost no note and need no grade. With no decisions print `decisions: none` and
+     skip the next two bullets;
    - the Human's next step as PowerShell lines, one command per line:
 
      ```powershell
@@ -96,10 +110,22 @@ every prompt from the plans and the state script.
    The Human reviews and merges the run branch; the run never merges into `{{git.mainBranch}}`.
 
 5. **Learning step, after the Human's decisions reply** (no command from the Human). Write the workflow's `decisions`
-   to a scratch file `.claude/sessions/decisions-<run>.json` (`[{ "id": "D1", "plan": "451", "text": "…" }]`), then
-   follow `docs/agent/decision-review.md`: `node scripts/decision-log.mjs learn --reply "<the reply>"` — `LEARNING:
-   nothing to record` ends the step with no model call; otherwise log the `✗` items, propose a rule when the same kind
-   repeats, send generic lessons to the kit. A pilot run then waits for `continue`.
+   (all fields as returned) to a scratch file `.claude/sessions/decisions-<run>.json`, then work in the run's merge
+   folder (`mergeFolder` in the result), passing `--dir <mergeFolder>` to each script, so the brain files travel with
+   the run branch. In this order:
+   1. `node scripts/decision-log.mjs grade --run <run> --reply "<the reply>" --decisions .claude/sessions/decisions-<run>.json --dir <mergeFolder>`
+      — one grade row per decision (ok ones too) and the follow-up rows; exit 2 means the reply is malformed: say so and
+      ask again, nothing was written;
+   2. `node scripts/decision-log.mjs stats --write --dir <mergeFolder>` — agreement per kind and the short calibration
+      file the triage agent reads;
+   3. `node scripts/decision-log.mjs learn --reply "<the reply>"` — follow `docs/agent/decision-review.md`:
+      `LEARNING: nothing to record` skips this item with no model call; otherwise log the `✗` items (`add … --dir
+      <mergeFolder>`, then `repeats` and `rules`), propose a rule when the same kind repeats, send generic lessons to
+      the kit;
+   4. `node scripts/orch-state.mjs brain-commit --run <run>` — commits `docs/brain` on the run branch
+      (`BRAIN: committed <n> file(s) on <branch>` or `BRAIN: nothing to commit`).
+
+   A pilot run then waits for `continue`.
 
 ## Never
 

@@ -269,7 +269,90 @@ function appErrorsSection(e) {
   return [...head, `Exit code: ${e.exit ?? '?'}`, '', '```text', ...(e.lines.length ? e.lines : ['(no output)']), ...(e.more ? [`… ${e.more} more line(s)`] : []), '```', '']
 }
 
-export function formatReport({ status, merged, mainShaNow, finishedAt, runBranch, mainBranch, mainChangedFiles = null, appErrors = null }) {
+// ---- decision triage (docs/agent/decision-review.md §5) --------------------------------------------------------------
+export const TRIAGE_VERDICTS = ['accept', 'ask', 'follow-up', 'noise']
+// A decision that names one of these is never accepted by the triage agent: the Human sees it. `author` and
+// `authorship` do not match (`auth` alone is a word); `price` does. The workflow carries a mirror copy of this rule.
+export const TRIAGE_SENSITIVE_RE = /\b(auth|authn|authz|authentication|authori[sz]\w*|login|password\w*|permission\w*|roles?|tokens?|sessions?|secur\w*|secrets?|encrypt\w*|schema\w*|migrat\w*|columns?|data shape|payments?|pay|prices?|pricing|money|billing|invoices?|currenc\w*|refunds?)\b/i
+
+/** `behaviour`, `seen`, `removes` — the type word a decision line starts with; `other` when it has none. */
+export function decisionType(text) {
+  const m = /^\s*(behaviour|seen|removes):/i.exec(String(text ?? ''))
+  return m ? m[1].toLowerCase() : 'other'
+}
+
+/**
+ * The hard rules, applied by code to the triage agent's verdict (never trusted): returns { verdict, forced }.
+ * `none` stays `none`; an `ask` stays `ask`. For the rest, a type other than behaviour/seen (a `removes` type) and a
+ * sensitive word turn the verdict into `ask` (forced `type` / `keyword`); a `seen:` accept becomes `follow-up` (forced
+ * `seen`); an accept with a confidence below 70 or none becomes `ask` (forced `confidence`). A `follow-up` or `noise`
+ * keeps its verdict unless the type or keyword rule fires: it hides nothing the Human must see.
+ */
+export function triageForce({ type, text, verdict, confidence }) {
+  if (!TRIAGE_VERDICTS.includes(verdict)) return { verdict: 'none', forced: null }
+  if (verdict === 'ask') return { verdict: 'ask', forced: null }
+  const t = String(type ?? decisionType(text)).toLowerCase()
+  if (t !== 'behaviour' && t !== 'seen') return { verdict: 'ask', forced: 'type' }
+  if (TRIAGE_SENSITIVE_RE.test(String(text ?? ''))) return { verdict: 'ask', forced: 'keyword' }
+  if (verdict === 'accept' && t === 'seen') return { verdict: 'follow-up', forced: 'seen' }
+  const c = confidence === null || confidence === undefined || confidence === '' ? NaN : Number(confidence)
+  if (verdict === 'accept' && !(c >= 70)) return { verdict: 'ask', forced: 'confidence' }
+  return { verdict, forced: null }
+}
+
+const idNum = (d) => Number(String(d.id).replace(/\D/g, '')) || 0
+/**
+ * What the Human is shown for the run's decisions, from each decision's `verdict` / `forced` / `kind` / `confidence`.
+ * Returns { ask, askMore, accepted, followUps, noise, none, collapsed, line }: `ask` is at most `maxAsk` items in this
+ * order — forced `type`, forced `keyword`, the agent's own asks by confidence (high first), forced `confidence`, then
+ * id — and `askMore` is the rest. In `filter` mode a non-ask item whose kind has at least `minGraded` graded rows and
+ * at least `minAgreement` agreement goes to `collapsed` (never an ask, never `none`); in `shadow` and `off` nothing is
+ * collapsed, and in `off` every item is `none`.
+ */
+export function triageView({ decisions, mode = 'shadow', stats = null, minAgreement = 0.9, minGraded = 20, maxAsk = 10 }) {
+  const items = (Array.isArray(decisions) ? decisions : []).map((d) => ({ ...d, verdict: mode === 'off' || !TRIAGE_VERDICTS.includes(d.verdict) ? 'none' : d.verdict }))
+  const rank = (d) => (d.forced === 'type' ? 0 : d.forced === 'keyword' ? 1 : d.forced === 'confidence' ? 3 : 2)
+  const asks = items.filter((d) => d.verdict === 'ask').sort((a, b) => rank(a) - rank(b) || (rank(a) === 2 ? (Number(b.confidence) || 0) - (Number(a.confidence) || 0) : 0) || idNum(a) - idNum(b))
+  const calibrated = (d) => {
+    if (mode !== 'filter' || !d.kind || d.kind === '-') return false
+    const k = stats?.kinds?.[d.kind]
+    return !!k && k.graded >= minGraded && k.agreement !== null && k.agreement >= minAgreement
+  }
+  const rest = (verdict) => items.filter((d) => d.verdict === verdict)
+  const collapsed = [...rest('accept'), ...rest('follow-up'), ...rest('noise')].filter(calibrated)
+  const shown = (verdict) => rest(verdict).filter((d) => !collapsed.includes(d))
+  const all = stats?.all
+  const pct = all && all.graded > 0 && all.agreement !== null ? `${Math.round(all.agreement * 100)}%` : 'n/a (first run)'
+  const view = { ask: asks.slice(0, maxAsk), askMore: asks.slice(maxAsk), accepted: shown('accept'), followUps: shown('follow-up'), noise: shown('noise'), none: rest('none'), collapsed }
+  return { ...view, line: `triage: ${mode} · agreement (last ${all?.last ?? 50}): ${pct} · collapsed: ${collapsed.length} · ask: ${asks.length} · follow-ups: ${rest('follow-up').length}` }
+}
+
+const short = (s, n) => (String(s).length > n ? `${String(s).slice(0, n - 1)}…` : String(s))
+function decisionsSection(decisions, triage) {
+  const list = Array.isArray(decisions) ? decisions : []
+  if (!list.length) return ['## Decisions', '', '- none', '']
+  const view = triageView({ decisions: list, ...triage })
+  const full = (d) => {
+    const out = [`- ${d.id} · ${d.plan} · ${d.verdict}${d.forced ? ` (rule: ${d.forced})` : ''}${d.kind && d.kind !== '-' ? ` · ${d.kind}` : ''} · ${d.text}`]
+    if (d.rec) out.push(`  recommend: ${d.rec}${d.why ? ` — why: ${d.why}` : ''}`)
+    for (const a of d.alsoFrom ?? []) out.push(`  also: ${a.text} (${a.role ?? 'agent'}, round ${a.round ?? 0})`)
+    return out
+  }
+  const lines = (d) => (view.collapsed.includes(d) ? [`- ${d.id} · ${d.plan} · ${d.verdict} · ${d.kind} · ${short(d.text, 100)} (collapsed: the kind agrees with the Human)`] : full(d))
+  const block = (title, items, fn = lines) => (items.length ? [`### ${title}`, '', ...items.flatMap(fn), ''] : [])
+  const byId = (a, b) => idNum(a) - idNum(b)
+  const inFilter = (verdict) => [...view[verdict === 'accept' ? 'accepted' : verdict === 'follow-up' ? 'followUps' : 'noise'], ...view.collapsed.filter((d) => d.verdict === verdict)].sort(byId)
+  return [
+    '## Decisions', '', view.line, '',
+    ...block('To grade', [...view.ask, ...view.askMore], full),
+    ...block('Accepted by triage', inFilter('accept')),
+    ...block('Follow-ups', inFilter('follow-up')),
+    ...block('Noise', inFilter('noise')),
+    ...block('Not triaged', view.none, full),
+  ]
+}
+
+export function formatReport({ status, merged, mainShaNow, finishedAt, runBranch, mainBranch, mainChangedFiles = null, appErrors = null, decisions = null, triage = {} }) {
   const plans = Object.values(status.plans ?? {}).sort((a, b) => (a.nnn < b.nnn ? -1 : 1))
   const mergedSet = new Map(merged.map((m) => [m.nnn, m]))
   const parked = plans.filter((p) => !mergedSet.has(p.nnn) && ['parked', 'left-run', 'skipped'].includes(p.state))
@@ -294,7 +377,8 @@ export function formatReport({ status, merged, mainShaNow, finishedAt, runBranch
     }),
     '',
     ...appErrorsSection(appErrors),
-    '## Decisions taken',
+    ...decisionsSection(decisions ?? status.decisions, triage),
+    '## Run notes',
     '',
     ...((status.notes ?? []).length ? status.notes.map((n) => `- ${n.plan ? `${n.plan}: ` : ''}${n.text}`) : ['- none']),
     '',

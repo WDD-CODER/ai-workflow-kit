@@ -42,7 +42,7 @@ the model's own `pass` flag (`docs/agent/agent-roles.md`).
 | `.claude/agents/orch-readiness.md` | judgment | the orchestrator |
 | `.claude/agents/orch-gate.md`, `orch-report.md` | mechanical | the orchestrator |
 | `.claude/agents/orch-check-plan.md`, `orch-check-bugs.md`, `orch-check-rules.md`, `orch-verify.md` | review | the orchestrator, `/review-it` |
-| `.claude/agents/orch-security.md`, `orch-ui.md` | review | the orchestrator |
+| `.claude/agents/orch-security.md`, `orch-ui.md`, `orch-triage.md` | review | the orchestrator |
 | `.claude/agents/orch-merge.md` | analysis | the orchestrator |
 
 The role agents (`orch-*`) share one contract — non-interactive, evidence for every claim, a JSON result that names

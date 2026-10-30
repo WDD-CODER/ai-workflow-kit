@@ -81,6 +81,13 @@ mid-brief inside a slot goes through save-plan only. Check against the real code
   `<path>`?") or shares a file with the draft ("shares `<files>` with `<path>` (Status: …)"), unless the draft
   already names it. List every other plan you read on one line: `checked: <plan numbers>`.
 
+**Follow-ups** (when the draft has scope files and `docs/brain/follow-ups.md` exists)
+- Run `node scripts/decision-log.mjs follow-ups --open --files "<the draft's scope files, comma-separated>"`. Each
+  `FOLLOW_UP <run> <id> <file:line> — <text>` line is a defect an agent saw earlier in a file this plan touches and no
+  plan has taken. Add one line per row: `open: <run> <id> seen in <file> — include?`. When the Human includes one, write
+  `- follow-up: <run> <id>` in the plan's Execution Notes (that closes it for the next search). `FOLLOW_UPS: none` or no
+  file: nothing to add.
+
 **Output** — one block, printed before the plan is saved. One line per gap:
 
 ```

@@ -104,6 +104,7 @@ writing stay on the main session's model.
 | `orch-gate`, `orch-report` | mechanical | the orchestrator | per-command pass / fail / env-fail; the final report |
 | `orch-check-plan`, `orch-check-bugs`, `orch-check-rules`, `orch-verify` | analysis | the orchestrator, `/review-it` | candidate problems with file:line; keep / refuted verdicts with confidence |
 | `orch-security`, `orch-ui`, `orch-merge` | analysis | the orchestrator | security problems (sensitive paths only); UI card results; merged sha or reason |
+| `orch-triage` | review | the orchestrator (once per run) | a verdict, kind and recommendation per decision the agents took (`docs/agent/decision-review.md` §5) |
 
 Every `orch-*` agent follows `docs/agent/agent-roles.md`: non-interactive, evidence for every claim, a JSON result naming its model and effort.
 

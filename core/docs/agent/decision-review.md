@@ -58,6 +58,30 @@ runs no command.
    `human-verdict <date>:`). Such a case holds project code, so it stays in the project's own case set;
    only a generic one goes to the kit.
 
+## 5. Triage, grades and follow-ups (orchestrator)
+
+- **One line per decision.** The workflow merges a differently worded repeat in code: the same type, in the same plan
+  (a `seen:` defect in any plan), and either the same `file:line` named or 60 % of the words alike with no different
+  `file:line`. The first wording is kept; the repeats stay under it as `also:` lines. Decisions live in `status.json`
+  (`decisions[]`), so a relaunch numbers on from the highest earlier id and files a repeat of an earlier decision under it.
+- **Triage.** `orchestrator.triage` is `off`, `shadow` (default) or `filter`. Unless `off`, one `orch-triage` call per run
+  recommends `accept`, `ask`, `follow-up` or `noise` for each new decision, with a `kind`, a recommendation, a reason and a
+  confidence. A dead or unusable result gives today's full list and the note `triage: no usable result — full list`.
+- **The code re-applies the hard rules** to every verdict: a `seen:` accept is a follow-up; a type other than
+  `behaviour` or `seen`, a decision naming auth, permissions, data shape, money or security, and an accept with
+  confidence below 70 are all `ask`. The agent only orders and labels; every decision stays gradeable.
+- **Shadow shows everything; filter collapses a kind** only after `orchestrator.triageMinGraded` graded decisions of that kind
+  agreed with the Human at `orchestrator.triageMinAgreement` or better (an `ask` agrees with `✗`, every other verdict with
+  `ok`). An `ask` is never collapsed.
+- **Grades.** After the Human's reply `decision-log.mjs grade` appends one JSON line per decision, `ok` ones included, to
+  `decision-grades.jsonl` (in `docs/brain/`) (13 fields; never twice for one run and id). `stats --write` keeps
+  `triage-calibration.md` (in `docs/brain/`) (at most 40 lines) from them; the triage agent reads it.
+- **Follow-ups.** Every graded `seen:` item (except a triage `noise` the Human left ok) and a `behaviour:` item the triage
+  called a follow-up become a row in `docs/brain/follow-ups.md`. `/plan`'s review lists the open rows for the files a
+  new plan touches (`decision-log.mjs follow-ups --open --files …`); a plan that takes one writes `- follow-up: <run> <id>`
+  in its Execution Notes. The grades, calibration and follow-ups are committed on the run branch
+  (`orch-state.mjs brain-commit`), so the pull request carries them.
+
 ## 4. Pilot and final gate (orchestrator)
 
 A run with more plans than `orchestrator.pilotSize` builds the first plans in wave order, stops with the report and the
