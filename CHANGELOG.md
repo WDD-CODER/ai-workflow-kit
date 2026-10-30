@@ -17,6 +17,17 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
   (JSON report into a fixed page template; cursors in `docs/scout/state.json`; nothing new = no page) and
   `scripts/scout/pr.mjs` (pull request through `gh api`, which cloud scheduled runs allow). Both refuse secrets,
   machine paths and transcript text. New seed `docs/scout/sources.json` holds the sources and caps. Proposals only.
+- **Decision triage.** A run lists each decision once: a repeat in other words (a fix round, a checker, a relaunch) is
+  merged in code and shown as `also:`. Decisions are records in `status.json` (no longer notes, so never cut by
+  `maxNotesPerPlan`), and a relaunch numbers on without `firstDecision`. One `orch-triage` call per run (new agent,
+  `review` tier) recommends a verdict per decision; the code re-applies the hard rules. New `orchestrator.triage`
+  (`shadow`, default; `off`; `filter`), `triageMinAgreement` (0.9) and `triageMinGraded` (20). After the Human's reply,
+  `decision-log.mjs grade` writes every graded decision to `docs/brain/decision-grades.jsonl`, `stats --write` keeps
+  `docs/brain/triage-calibration.md`, graded `seen:` items become rows in `docs/brain/follow-ups.md` (listed by
+  `/plan`'s review via `follow-ups --open`), and `orch-state.mjs brain-commit` commits them on the run branch. The
+  report's `## Decisions taken` is now `## Decisions` plus `## Run notes`. **Projects with `docs/workflow-kit/manifest.json`:**
+  classify the three new `docs/brain` files (`decision-grades.jsonl`, `triage-calibration.md`, `follow-ups.md`) before
+  the next run, or the final gate's manifest check fails.
 - **Readiness checks what a plan claims against the code.** Up to 8 claims per plan (a count next to a code noun, a
   named symbol said to do something, an "every X" goal) are searched in the code in the same readiness call; a wrong
   count or an "every X" with hits outside the plan's scope becomes a question with a default.

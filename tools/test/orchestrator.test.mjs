@@ -9,6 +9,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import { tmpdir } from 'os'
 import { pathToFileURL, fileURLToPath } from 'url'
 import { orchestratorProblems, commandProblems } from '../lib/kit.mjs'
+import { DECISIONS as RUN_499_502, PASS_1_LAST, DUPLICATES as REAL_DUPLICATES, SYNTHETIC_REPEAT } from '../fixtures/orchestrator/decisions-499-502.mjs'
 import { SILENT_PLAN, COVERED_PLAN, PARTLY_PLAN, STYLE_PLAN, BACKEND_PLAN, behaviourGaps, FALSE_COUNT_PLAN, FALSE_COUNT_FILES, EVERY_PLAN, EVERY_FILES, claimGaps } from '../fixtures/orchestrator/readiness.mjs'
 
 const kit = resolve(fileURLToPath(new URL('../..', import.meta.url)))
@@ -203,6 +204,13 @@ async function runFlow(args, hooks = {}) {
       }
       return { ...base, merged: true, sha: 'def5678' }
     }
+    if (type === 'orch-triage') {
+      // hooks.triage(decisions, task) → items (a list), null (a dead agent), a non-list value (an unusable result), or
+      // undefined (no items: every decision stays untriaged).
+      const r = hooks.triage?.(JSON.parse(t.DECISIONS), t)
+      if (r === null) return null
+      return { ...base, items: r === undefined ? [] : r }
+    }
     if (type === 'orch-ui') return { ...base, cards: JSON.parse(t.CARDS ?? '[]').map((c) => ({ card: c.card, page: c.page, status: 'pass', screenshots: [] })) }
     if (type === 'orch-readiness') {
       const plan = /plans\/(\d+)-/.exec(t.PLAN ?? '')?.[1]
@@ -235,13 +243,13 @@ test('UI cards go to the browser agent in batches of 5: 12 cards -> 3 fresh agen
 test('decisions: numbered D1…Dn across the run, grouped by plan with behaviour: first, noted for the report', async () => {
   const decisions = { 101: ['seen: src/a.js:12 — NaN at 100 %', 'behaviour: no dialog on leave — reverse: add one'], 102: ['behaviour: saved on blur — reverse: remove the handler'] }
   const { result, commands } = await runFlow({ plans: ['101', '102'], pilot: false }, { builder: (nnn) => ({ decisions: decisions[nnn] }) })
-  assert.deepEqual(result.decisions, [
+  assert.deepEqual(result.decisions.map(({ id, plan, text }) => ({ id, plan, text })), [
     { id: 'D1', plan: '101', text: 'behaviour: no dialog on leave — reverse: add one' },
     { id: 'D2', plan: '101', text: 'seen: src/a.js:12 — NaN at 100 %' },
     { id: 'D3', plan: '102', text: 'behaviour: saved on blur — reverse: remove the handler' },
   ])
-  const notes = commands.filter((c) => /orch-state\.mjs note/.test(c) && /--text="?D\d/.test(c))
-  assert.equal(notes.length, 3, 'each decision is a run note, so it prints under "Decisions taken"')
+  const records = commands.filter((c) => /orch-state\.mjs decision /.test(c) && /--id=D\d/.test(c))
+  assert.equal(records.length, 3, 'each decision is one decision record (not a note), so it prints under "Decisions"')
   const second = await runFlow({ plans: ['103'], pilot: false, firstDecision: 4 }, { builder: () => ({ decisions: ['behaviour: x — reverse: y'] }) })
   assert.equal(second.result.decisions[0].id, 'D4', 'a continue run numbers on from the first launch')
 })
@@ -442,11 +450,20 @@ test('an environment failure at the merge retries the merge only: one builder, o
 })
 
 test('notes cap: a plan writes at most maxNotesPerPlan run notes; the last says so; later ones cost no agent call', async () => {
-  const decisions = Array.from({ length: MAX_NOTES + 5 }, (_, i) => `seen: a.js:${i + 1} — item ${i + 1}`)
-  const { notes } = await runFlow({ plans: ['101'], pilot: false }, { builder: () => ({ decisions }) })
+  // Every card whose test command is not allowed is one note ("[ui] card test dropped").
+  const uiCards = Array.from({ length: MAX_NOTES + 5 }, (_, i) => ({ card: `Card ${i + 1} shows text`, page: 'https://app.example/p', test: 'curl http://x' }))
+  const { notes } = await runFlow({ plans: ['101'], pilot: false }, { builder: () => ({ uiCards }) })
   const mine = notes.filter((c) => c.includes('--plan=101'))
   assert.equal(mine.length, MAX_NOTES, `${MAX_NOTES} note agent calls for the plan, not ${MAX_NOTES + 5}`)
   assert.match(mine.at(-1), /notes capped: \d+ notes written for plan 101/)
+})
+
+test('decisions are records, never cut by maxNotesPerPlan: more decisions than the cap are all kept', async () => {
+  const decisions = Array.from({ length: MAX_NOTES + 5 }, (_, i) => `seen: a${i}.js:${i + 1} — item number ${i + 1} is a different defect of its own kind ${'xyz'.repeat(i % 3)}${i}`)
+  const { result, commands } = await runFlow({ plans: ['101'], pilot: false }, { builder: () => ({ decisions }) })
+  assert.equal(result.decisions.length, MAX_NOTES + 5)
+  assert.equal(commands.filter((c) => /orch-state\.mjs decision /.test(c) && /--id=D\d/.test(c)).length, MAX_NOTES + 5)
+  assert.ok(!commands.some((c) => /notes capped/.test(c)))
 })
 
 test('agent-call limit: a plan over maxAgentCallsPerPlan is parked before its next stage', async () => {
@@ -627,11 +644,11 @@ test('the report: app errors since the run started — the log query with plan-s
 
 test('decisions: only behaviour: and seen: entries are kept; confirmations are dropped and counted, with no run note', async () => {
   const decisions = ['Ran the six commands one by one, all exit 0', 'behaviour: no dialog on leave — reverse: add one', 'Verified by rerun: 4 of 4 passed', 'seen: src/a.js:12 — NaN at 100 %', '  SEEN: src/b.js:3 — dup  ']
-  const { result, notes } = await runFlow({ plans: ['101'], pilot: false }, { builder: () => ({ decisions }) })
+  const { result, commands } = await runFlow({ plans: ['101'], pilot: false }, { builder: () => ({ decisions }) })
   assert.deepEqual(result.decisions.map((d) => d.text), ['behaviour: no dialog on leave — reverse: add one', 'seen: src/a.js:12 — NaN at 100 %', 'SEEN: src/b.js:3 — dup'])
   assert.deepEqual(result.decisionsDropped, { 101: 2 })
-  assert.equal(notes.filter((n) => /--text="?D\d/.test(n)).length, 3, 'one note per kept decision, none for a dropped line')
-  assert.ok(!notes.some((n) => /Ran the six commands|Verified by rerun/.test(n)))
+  assert.equal(commands.filter((c) => /orch-state\.mjs decision /.test(c) && /--id=D\d/.test(c)).length, 3, 'one record per kept decision, none for a dropped line')
+  assert.ok(!commands.some((n) => /Ran the six commands|Verified by rerun/.test(n)))
   const clean = await runFlow({ plans: ['101'], pilot: false })
   assert.deepEqual(clean.result.decisionsDropped, {})
 })
@@ -828,8 +845,8 @@ test('runner: a bad copy of ORCH_JSON is retried once at medium with a note, twi
   const none = await runFlow({ plans: ['101'], pilot: false }, { runner: (cmd) => (isWt(cmd) ? 'RUN 1: node scripts/orch-state.mjs worktree → exit 0\nclaimed slot wt-2\n' : undefined) })
   assert.equal(none.commands.filter(isWt).length, 2)
   assert.match(none.result.outcomes[0].reason, /^worktree: no ORCH_JSON line from: node scripts\/orch-state\.mjs worktree --run=r1 --plan=101 \(exit 0\) after 2 attempts — last lines: "RUN 1: node scripts\/orch-state\.mjs worktree → exit 0 \| claimed slot wt-2"$/)
-  // A builder decision makes the run write a note; that note and the final `finish` both come back unreadable.
-  const nf = await runFlow({ plans: ['101'], pilot: false }, { builder: () => ({ decisions: ['behaviour: kept the flag — reverse: drop it'] }), runner: (cmd) => (/^node scripts\/orch-state\.mjs (note|finish) /.test(cmd) ? 'garbage' : undefined) })
+  // A triage with no usable result makes the run write a note; that note and the final `finish` both come back unreadable.
+  const nf = await runFlow({ plans: ['101'], pilot: false }, { builder: () => ({ decisions: ['behaviour: kept the flag — reverse: drop it'] }), triage: () => 'junk', runner: (cmd) => (/^node scripts\/orch-state\.mjs (note|finish) /.test(cmd) ? 'garbage' : undefined) })
   assert.equal(nf.commands.filter((c) => /^node scripts\/orch-state\.mjs finish /.test(c)).length, 1, 'finish is never run twice')
   const noteCmds = nf.commands.filter((c) => /^node scripts\/orch-state\.mjs note /.test(c))
   assert.ok(noteCmds.length > 0)
@@ -839,4 +856,262 @@ test('runner: a bad copy of ORCH_JSON is retried once at medium with a note, twi
     assert.equal(r.commands.filter(isWt).length, 1, `${why}: no retry`)
     assert.equal(r.result.outcomes[0].state, 'merged', why)
   }
+})
+
+// ---- plan 041: decision triage — duplicates, the triage call, the hard rules, what the Human is shown ---------------
+const decisionCalls = (commands) => commands.filter((c) => /orch-state\.mjs decision /.test(c))
+const arg = (cmd, key) => {
+  const m = new RegExp(`--${key}=(?:"([^"]*)"|(\\S*))`).exec(cmd)
+  return m ? (m[1] ?? m[2]) : undefined
+}
+const accepting = (ds) => ds.map((d) => ({ id: d.id, verdict: 'accept', kind: 'k', recommendation: 'fine', why: 'reversible', confidence: 90 }))
+
+test('triage: one orch-triage call per run for every new decision; none when triage is off or nothing was decided', async () => {
+  const dec = { 101: ['behaviour: show a spinner while saving — reverse: remove it', 'seen: src/a.js:3 — stale import'], 102: ['behaviour: keep the old tab order — reverse: reorder'] }
+  const r = await runFlow({ plans: ['101', '102'], pilot: false }, { builder: (n) => ({ decisions: dec[n] }), triage: accepting })
+  const calls = r.calls.filter((c) => c.type === 'orch-triage')
+  assert.equal(calls.length, 1)
+  assert.equal(JSON.parse(calls[0].task.DECISIONS).length, 3)
+  assert.deepEqual(Object.keys(JSON.parse(calls[0].task.PLANS)).sort(), ['101', '102'])
+  assert.equal(calls[0].task.FOLDER, '/merge', 'it reads the merge folder')
+  assert.equal(r.result.mergeFolder, '/merge')
+  const off = await runFlow({ plans: ['101', '102'], pilot: false }, { builder: (n) => ({ decisions: dec[n] }), triage: accepting, source: (s) => s.replace('const TRIAGE = "shadow"', 'const TRIAGE = "off"') })
+  assert.equal(off.calls.filter((c) => c.type === 'orch-triage').length, 0)
+  assert.ok(off.result.decisions.every((d) => d.verdict === 'none'), 'off: every decision stays untriaged')
+  const quiet = await runFlow({ plans: ['101'], pilot: false }, { triage: accepting })
+  assert.equal(quiet.calls.filter((c) => c.type === 'orch-triage').length, 0, 'nothing decided, no call')
+})
+
+test('triage: a dead, non-list or missing result gives today\'s full list and a note, and the report is still written', async () => {
+  const dec = ['behaviour: show a spinner while saving — reverse: remove it', 'seen: src/a.js:3 — stale import']
+  for (const [why, hook] of [['null', () => null], ['not a list', () => 'junk']]) {
+    const r = await runFlow({ plans: ['101'], pilot: false }, { builder: () => ({ decisions: dec }), triage: hook })
+    assert.equal(r.result.ok, true, why)
+    assert.ok(r.result.decisions.length === 2 && r.result.decisions.every((d) => d.verdict === 'none'), why)
+    assert.ok(r.notes.some((n) => n.includes('triage: no usable result')), `${why}: ${r.notes.join(' | ')}`)
+    assert.equal(r.result.triage.note, 'triage: no usable result — full list')
+    assert.ok(r.commands.some((c) => /orch-state\.mjs finish /.test(c)), `${why}: the report step ran`)
+  }
+})
+
+test('triage: an unknown id is ignored, a listed id with no item is untriaged, a duplicateOf makes noise', async () => {
+  const dec = ['behaviour: show a spinner while saving — reverse: remove it', 'behaviour: keep the old tab order — reverse: reorder', 'behaviour: truncate long names — reverse: wrap them']
+  const r = await runFlow({ plans: ['101'], pilot: false }, {
+    builder: () => ({ decisions: dec }),
+    triage: () => [{ id: 'D1', verdict: 'accept', confidence: 90 }, { id: 'D2', verdict: 'accept', confidence: 90, duplicateOf: 'D1' }, { id: 'D99', verdict: 'ask' }],
+  })
+  const by = Object.fromEntries(r.result.decisions.map((d) => [d.id, d]))
+  assert.equal(by.D1.verdict, 'accept')
+  assert.deepEqual([by.D2.verdict, by.D2.why], ['noise', 'duplicate of D1'])
+  assert.equal(by.D3.verdict, 'none')
+  assert.equal(r.result.decisions.length, 3)
+})
+
+test('triage: the hard rules are applied in code — the workflow and lib agree on every case', async () => {
+  const rows = [
+    ['behaviour: show a spinner while saving — reverse: remove it', 'accept', 90],
+    ['behaviour: a choice nobody asked about — reverse: undo it', 'accept', 60],
+    ['behaviour: another unsure choice here — reverse: undo that', 'accept', undefined],
+    ['seen: src/a.js:3 — a stale import', 'accept', 95],
+    ['behaviour: the login button is hidden for guests — reverse: show it', 'accept', 95],
+    ['behaviour: the price shows two decimals — reverse: round it', 'accept', 95],
+    ['behaviour: the author name is kept as typed — reverse: trim it', 'accept', 95],
+    ['behaviour: an ask stays an ask — reverse: nothing', 'ask', 99],
+    ['behaviour: a follow up stays one — reverse: nothing', 'follow-up', 40],
+  ]
+  const r = await runFlow({ plans: ['101'], pilot: false }, {
+    builder: () => ({ decisions: rows.map((x) => x[0]) }),
+    triage: (ds) => ds.map((d) => { const row = rows.find((x) => x[0] === d.text); return { id: d.id, verdict: row[1], confidence: row[2], kind: 'k', recommendation: 'r', why: 'w' } }),
+  })
+  for (const [text, verdict, confidence] of rows) {
+    const d = r.result.decisions.find((x) => x.text === text)
+    const want = lib.triageForce({ text, verdict, confidence })
+    assert.deepEqual([d.verdict, d.forced ?? null], [want.verdict, want.forced], text)
+    const rec = decisionCalls(r.commands).find((c) => c.includes(`--id=${d.id}`))
+    assert.equal(arg(rec, 'verdict'), want.verdict, 'the recorded verdict is the forced one')
+  }
+  const forced = Object.fromEntries(rows.map(([t]) => [t, r.result.decisions.find((x) => x.text === t)]))
+  assert.equal(forced[rows[1][0]].forced, 'confidence')
+  assert.equal(forced[rows[2][0]].forced, 'confidence', 'no confidence at all is below 70')
+  assert.equal(forced[rows[3][0]].verdict, 'follow-up')
+  assert.equal(forced[rows[4][0]].forced, 'keyword')
+  assert.equal(forced[rows[5][0]].forced, 'keyword', 'price matches')
+  assert.equal(forced[rows[6][0]].verdict, 'accept', 'author does not match auth')
+})
+
+test('triageForce: type, keyword, seen and confidence rules; none and ask are left alone', () => {
+  const f = (o) => lib.triageForce(o)
+  assert.deepEqual(f({ text: 'behaviour: x', verdict: 'accept', confidence: 70 }), { verdict: 'accept', forced: null })
+  assert.deepEqual(f({ text: 'behaviour: x', verdict: 'accept', confidence: 69 }), { verdict: 'ask', forced: 'confidence' })
+  assert.deepEqual(f({ text: 'seen: a.js:1 — x', verdict: 'accept', confidence: 99 }), { verdict: 'follow-up', forced: 'seen' })
+  assert.deepEqual(f({ text: 'removes: the old route — reverse: add it', verdict: 'accept', confidence: 99 }), { verdict: 'ask', forced: 'type' })
+  assert.deepEqual(f({ text: 'removes: the old route', verdict: 'noise' }), { verdict: 'ask', forced: 'type' })
+  assert.deepEqual(f({ text: 'behaviour: the author is kept', verdict: 'accept', confidence: 99 }), { verdict: 'accept', forced: null }, 'author is not auth')
+  for (const w of ['price', 'prices', 'login', 'password', 'permission', 'token', 'schema', 'migration', 'column', 'refund', 'security', 'pay']) {
+    assert.deepEqual(f({ text: `behaviour: the ${w} changes`, verdict: 'accept', confidence: 99 }), { verdict: 'ask', forced: 'keyword' }, w)
+  }
+  assert.deepEqual(f({ text: 'behaviour: auth stays', verdict: 'follow-up' }), { verdict: 'ask', forced: 'keyword' })
+  assert.deepEqual(f({ text: 'behaviour: x', verdict: 'none' }), { verdict: 'none', forced: null })
+  assert.deepEqual(f({ text: 'behaviour: x', verdict: 'ask' }), { verdict: 'ask', forced: null })
+  assert.deepEqual(f({ text: 'behaviour: x', verdict: 'bogus' }), { verdict: 'none', forced: null })
+  assert.deepEqual(f({ type: 'removes', text: 'x', verdict: 'accept', confidence: 99 }), { verdict: 'ask', forced: 'type' })
+})
+
+test('decisions: a repeat in other words is one decision with an alsoFrom line; a relaunch numbers on and files repeats of earlier ones', async () => {
+  const same = { 101: ['behaviour: the hold repeats while the stepper is pressed — reverse: remove it', 'behaviour: hold repeats while pressed on the stepper — reverse: drop it', 'seen: src/a.js:5 — NaN shows at 100 %', 'seen: src/a.js:5 — something else about that line', 'seen: src/b.js:9 — NaN shows at 100 %'] }
+  const r = await runFlow({ plans: ['101'], pilot: false }, { builder: (n) => ({ decisions: same[n] }) })
+  assert.equal(r.result.decisions.length, 3, 'the hold (twice), a.js:5 (twice) and b.js:9 — b.js:9 is another line, so another decision')
+  const hold = r.result.decisions.find((d) => /hold repeats/.test(d.text))
+  assert.deepEqual(hold.alsoFrom.map((a) => [a.role, a.round]), [['orch-builder', 0]])
+  assert.equal(decisionCalls(r.commands).filter((c) => arg(c, 'dup-of')).length, 2, 'one call per duplicate')
+  // behaviour: lines only merge inside one plan, seen: lines run-wide.
+  const two = { 101: ['behaviour: the hold repeats while pressed — reverse: x', 'seen: server log shows CORS errors on the main server'], 102: ['behaviour: the hold repeats while pressed — reverse: x', 'seen: the server log shows CORS errors on main server'] }
+  const t = await runFlow({ plans: ['101', '102'], pilot: false }, { builder: (n) => ({ decisions: two[n] }) })
+  assert.equal(t.result.decisions.filter((d) => d.text.startsWith('behaviour:')).length, 2, 'two plans, two behaviour decisions')
+  assert.equal(t.result.decisions.filter((d) => d.text.startsWith('seen:')).length, 1, 'one defect across plans')
+  // A relaunch: the earlier launch's decisions come from init, no firstDecision is passed.
+  const prior = [
+    { id: 'D7', plan: '101', text: 'behaviour: saved on blur — reverse: remove the handler', alsoFrom: [] },
+    { id: 'D9', plan: '101', text: 'seen: src/a.js:12 — NaN at 100 %', alsoFrom: [] },
+  ]
+  const n = await runFlow({ plans: ['101'], pilot: false }, { init: { priorDecisions: prior }, builder: () => ({ decisions: ['behaviour: a brand new choice — reverse: undo it', 'seen: src/a.js:12 — a NaN shows at 100 % here too'] }) })
+  assert.deepEqual(n.result.decisions.map((d) => d.id), ['D10'], 'numbers on from the highest earlier id')
+  assert.deepEqual(decisionCalls(n.commands).filter((c) => arg(c, 'dup-of')).map((c) => arg(c, 'dup-of')), ['D9'])
+  assert.ok(!decisionCalls(n.commands).some((c) => arg(c, 'id') === 'D11'), 'the repeat of D9 is not a new decision')
+})
+
+// Plan 041 (the Human's decision, 2026-10-30): code merges only near-identical wordings; the same decision in other words
+// is the triage's duplicateOf. The real run 499-502 shows why: the five pairs the Human found by hand score 0.19-0.32 on
+// the word rule and the closest pair that is not a duplicate (D7/D8) scores 0.48.
+test('run 499-502 fixture: code merges no real pair but an exact repeat across launches; the triage marks the five hand-found duplicates as noise and the Human still sees all 38', async () => {
+  const byLegacy = (id) => RUN_499_502.find((d) => d.id === id)
+  const plansOf = (from, to) => {
+    const out = {}
+    for (const d of RUN_499_502.filter((x) => +x.id.slice(1) >= from && +x.id.slice(1) <= to)) (out[d.plan] ??= []).push(d.text)
+    return out
+  }
+  const one = plansOf(1, PASS_1_LAST)
+  const first = await runFlow({ plans: Object.keys(one), pilot: false }, { builder: (nnn) => ({ decisions: one[nnn] }), triage: (ds) => ds.map((d) => ({ id: d.id, verdict: 'ask', kind: 'k', confidence: 80 })) })
+  assert.equal(first.result.decisions.length, 19, 'pass 1: 19 lines, 19 decisions — D7/D8 (0.48) are two items')
+  for (const d of first.result.decisions) assert.equal(d.text, byLegacy(d.id).text, `pass 1 numbers ${d.id} like the real run`)
+  // Pass 2, the relaunch: the real lines plus one SYNTHETIC exact repeat of D11 (marked in the fixture).
+  const two = plansOf(PASS_1_LAST + 1, 38)
+  two[SYNTHETIC_REPEAT.plan] = [...two[SYNTHETIC_REPEAT.plan], SYNTHETIC_REPEAT.text]
+  const textToLegacy = new Map(RUN_499_502.map((d) => [d.text, d.id]))
+  const second = await runFlow({ plans: Object.keys(two), pilot: false }, {
+    init: { priorDecisions: first.result.decisions },
+    builder: (nnn) => ({ decisions: two[nnn] }),
+    // A stub triage that returns the hand-found pairs as duplicateOf (the target may be an earlier launch's decision).
+    triage: (ds, t) => {
+      assert.equal(JSON.parse(t.PRIOR).length, 19, 'the triage is told about the decisions of the earlier launch')
+      return ds.map((d) => {
+        const dupOf = REAL_DUPLICATES[textToLegacy.get(d.text)]
+        return { id: d.id, verdict: 'accept', kind: 'k', confidence: 90, ...(dupOf ? { duplicateOf: dupOf } : {}) }
+      })
+    },
+  })
+  assert.equal(second.result.decisions.length, 19, 'the synthetic exact repeat of D11 is merged by code (not a 20th decision), the 19 real lines are not')
+  assert.ok(!second.result.decisions.some((d) => d.text === SYNTHETIC_REPEAT.text), 'the repeat is not numbered')
+  assert.equal(decisionCalls(second.commands).filter((c) => arg(c, 'dup-of')).length, 0, 'an identical line files nothing under the kept one')
+  const all = [...first.result.decisions, ...second.result.decisions]
+  assert.equal(all.length, 38, 'all 38 real decisions stay')
+  for (const [dup, kept] of Object.entries(REAL_DUPLICATES)) {
+    const d = second.result.decisions.find((x) => x.text === byLegacy(dup).text)
+    assert.deepEqual([d.verdict, d.why], ['noise', `duplicate of ${kept}`], `${dup} is noise, a duplicate of ${kept}`)
+  }
+  assert.equal(second.result.decisions.filter((d) => d.verdict === 'noise').length, 5, 'only the five')
+  // Shadow mode: the report lists every one of the 38, the five under Noise with their reason.
+  const stats = { kinds: {}, all: { last: 50, graded: 0, agreement: null } }
+  const report = lib.formatReport({ status: { run: 'r', plans: {}, notes: [], mainShaAtStart: 'a' }, decisions: all, merged: [], mainShaNow: 'a', finishedAt: 'T', runBranch: 'orch/r', mainBranch: 'main', triage: { mode: 'shadow', stats, minAgreement: 0.9, minGraded: 20 } })
+  for (const d of all) assert.ok(report.includes(d.text), `${d.id} is in the shadow report in full`)
+  const noise = report.slice(report.indexOf('### Noise'))
+  for (const dup of Object.keys(REAL_DUPLICATES)) assert.ok(noise.includes(byLegacy(dup).text), `${dup} sits under Noise`)
+  assert.ok(noise.includes('duplicate of D19'))
+})
+
+test('dedupe by code: D7/D8 (0.48) and every pair that is not an exact or near-identical repeat stay separate', async () => {
+  const lines = RUN_499_502.map((d) => d.text)
+  const r = await runFlow({ plans: ['500'], pilot: false }, { builder: () => ({ decisions: RUN_499_502.filter((d) => d.plan === '500').map((d) => d.text) }) })
+  assert.equal(r.result.decisions.length, RUN_499_502.filter((d) => d.plan === '500').length, 'plan 500: every real line is its own decision')
+  const seen = await runFlow({ plans: ['499'], pilot: false }, { builder: () => ({ decisions: lines.slice(0, 10) }) })
+  assert.equal(seen.result.decisions.length, 10, 'plan 499: D7/D8 are two items')
+})
+
+test('orch-state decision: upserts by id, applies the hard rules again, files duplicates under the kept decision', () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'orch-decision-')))
+  try {
+    cpSync(join(root, 'scripts'), join(dir, 'scripts'), { recursive: true, dereference: true })
+    const runs = join(dir, '.claude', 'orchestrator-runs', 'd')
+    mkdirSync(runs, { recursive: true })
+    writeFileSync(join(runs, 'status.json'), `${JSON.stringify({ run: 'd', phase: 'running', plans: {}, notes: [], attempts: 1 })}\n`)
+    const run = (...a) => spawnSync(process.execPath, [join(dir, 'scripts', 'orch-state.mjs'), 'decision', '--run=d', ...a], { cwd: dir, encoding: 'utf8' })
+    const status = () => JSON.parse(readFileSync(join(runs, 'status.json'), 'utf8'))
+    let r = run('--plan=101', '--id=D1', '--text=behaviour: the login page is hidden — reverse: show it', '--verdict=accept', '--kind=hidden-page', '--confidence=95', '--rec=Keep it hidden', '--why=reversible')
+    assert.equal(r.status, 0, r.stdout + r.stderr)
+    assert.match(r.stdout, /"verdict":"ask","forced":"keyword"/, 'a runner that passes accept still gets the hard rule')
+    r = run('--plan=101', '--id=D1', '--text=behaviour: the login page is hidden — reverse: show it', '--verdict=accept', '--confidence=95')
+    assert.equal(status().decisions.length, 1, 'a retry upserts')
+    assert.equal(run('--plan=101', '--dup-of=D1', '--text=behaviour: login page hidden for guests', '--role=orch-check-bugs', '--round=1').status, 0)
+    assert.equal(run('--plan=101', '--dup-of=D1', '--text=behaviour: login page hidden for guests', '--role=orch-check-bugs', '--round=1').status, 0)
+    assert.deepEqual(status().decisions[0].alsoFrom, [{ text: 'behaviour: login page hidden for guests', role: 'orch-check-bugs', round: 1 }], 'the same duplicate is filed once')
+    assert.notEqual(run('--plan=101', '--dup-of=D5', '--text=x').status, 0, 'no such decision')
+    assert.notEqual(run('--plan=101', '--id=7', '--text=x').status, 0, 'an id is D<n>')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('triageView: the ask order, the cut at ten, and filter collapsing only a calibrated kind', () => {
+  const ds = [
+    { id: 'D1', verdict: 'ask', forced: 'confidence', confidence: 50, kind: 'a' },
+    { id: 'D2', verdict: 'ask', forced: null, confidence: 60, kind: 'a' },
+    { id: 'D3', verdict: 'ask', forced: null, confidence: 95, kind: 'a' },
+    { id: 'D4', verdict: 'ask', forced: 'keyword', confidence: 90, kind: 'a' },
+    { id: 'D5', verdict: 'ask', forced: 'type', kind: 'a' },
+    { id: 'D6', verdict: 'accept', kind: 'k1' },
+    { id: 'D7', verdict: 'follow-up', kind: 'k1' },
+    { id: 'D8', verdict: 'noise', kind: '-' },
+    { id: 'D9', verdict: 'none' },
+    { id: 'D10', verdict: 'accept', kind: 'k2' },
+  ]
+  const stats = { kinds: { k1: { graded: 25, agreement: 0.95 }, k2: { graded: 10, agreement: 1 } }, all: { last: 50, graded: 35, agreement: 0.93 } }
+  const ids = (l) => l.map((d) => d.id)
+  const shadow = lib.triageView({ decisions: ds, mode: 'shadow', stats })
+  assert.deepEqual(ids(shadow.ask), ['D5', 'D4', 'D3', 'D2', 'D1'], 'forced type, forced keyword, agent asks high confidence first, forced confidence')
+  assert.deepEqual([ids(shadow.accepted), ids(shadow.followUps), ids(shadow.noise), ids(shadow.none), shadow.collapsed.length], [['D6', 'D10'], ['D7'], ['D8'], ['D9'], 0])
+  assert.equal(shadow.line, 'triage: shadow · agreement (last 50): 93% · collapsed: 0 · ask: 5 · follow-ups: 1')
+  const cut = lib.triageView({ decisions: ds, mode: 'shadow', stats, maxAsk: 3 })
+  assert.deepEqual([ids(cut.ask), ids(cut.askMore)], [['D5', 'D4', 'D3'], ['D2', 'D1']])
+  const filter = lib.triageView({ decisions: ds, mode: 'filter', stats, minAgreement: 0.9, minGraded: 20 })
+  assert.deepEqual(ids(filter.collapsed), ['D6', 'D7'], 'k1 has 25 graded at 95 %; k2 has too few; an ask is never collapsed')
+  assert.deepEqual(ids(filter.accepted), ['D10'])
+  assert.match(filter.line, /collapsed: 2 · ask: 5 · follow-ups: 1$/)
+  assert.deepEqual(ids(lib.triageView({ decisions: ds, mode: 'filter', stats, minAgreement: 0.96, minGraded: 20 }).collapsed), [], 'agreement below the bar')
+  const first = lib.triageView({ decisions: ds, mode: 'shadow', stats: { kinds: {}, all: { last: 50, graded: 0, agreement: null } } })
+  assert.match(first.line, /agreement \(last 50\): n\/a \(first run\)/)
+  const off = lib.triageView({ decisions: ds, mode: 'off', stats })
+  assert.ok(ids(off.none).length === 10 && off.ask.length === 0, 'off: everything is untriaged')
+})
+
+test('the report: shadow lists every decision in full, filter collapses only a calibrated kind, duplicates show as also', () => {
+  const decisions = [
+    { id: 'D1', plan: '101', verdict: 'ask', forced: 'keyword', kind: 'k', text: 'behaviour: the login page is hidden — reverse: show it', rec: 'Keep it', why: 'reversible', alsoFrom: [{ text: 'behaviour: login hidden', role: 'orch-check-bugs', round: 1 }] },
+    { id: 'D2', plan: '101', verdict: 'accept', kind: 'k1', text: 'behaviour: a long accepted choice about the spinner that goes on and on and on for more than a hundred characters in all', alsoFrom: [] },
+    { id: 'D3', plan: '102', verdict: 'follow-up', kind: 'k1', text: 'seen: src/a.js:3 — stale import', alsoFrom: [] },
+    { id: 'D4', plan: '102', verdict: 'none', text: 'behaviour: not triaged — reverse: x', alsoFrom: [] },
+  ]
+  const stats = { kinds: { k1: { graded: 30, agreement: 0.95 } }, all: { last: 50, graded: 30, agreement: 0.95 } }
+  const status = { run: 'r', plans: {}, notes: [{ plan: '101', text: 'a run note' }], mainShaAtStart: 'a', decisions }
+  const report = (mode) => lib.formatReport({ status, merged: [], mainShaNow: 'a', finishedAt: 'T', runBranch: 'orch/r', mainBranch: 'main', triage: { mode, stats, minAgreement: 0.9, minGraded: 20 } })
+  const shadow = report('shadow')
+  for (const h of ['## Decisions', '### To grade', '### Accepted by triage', '### Follow-ups', '### Not triaged', '## Run notes']) assert.ok(shadow.includes(h), h)
+  assert.ok(!shadow.includes('## Decisions taken'))
+  for (const d of decisions) assert.ok(shadow.includes(d.text), `${d.id} in full`)
+  assert.ok(shadow.includes('also: behaviour: login hidden (orch-check-bugs, round 1)'))
+  assert.ok(shadow.includes('recommend: Keep it — why: reversible'))
+  assert.ok(!shadow.includes('(collapsed'))
+  const filter = report('filter')
+  assert.ok(filter.includes('(collapsed') && !filter.includes(decisions[1].text), 'a calibrated kind is one short line')
+  assert.ok(filter.includes(decisions[0].text) && filter.includes(decisions[3].text), 'an ask and an untriaged item stay in full')
+  assert.ok(lib.formatReport({ status: { ...status, decisions: [] }, merged: [], mainShaNow: 'a', finishedAt: 'T', runBranch: 'orch/r', mainBranch: 'main' }).includes('## Decisions\n\n- none'))
 })

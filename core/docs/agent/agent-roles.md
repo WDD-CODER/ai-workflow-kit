@@ -31,7 +31,9 @@ names. `/review-it` uses the same finders and verifier. Model tiers and escalati
    result's own fields, never in `decisions` — the orchestrator drops it there and only counts it.
 10. **At most 5 items per agent.** An agent that checks a list of items (the UI validator's cards, the verifier's
     candidates) gets at most 5 of them; a longer list goes to further fresh agents, one batch each. Accuracy drops on a
-    long list — the orchestrator splits the UI cards into batches of 5.
+    long list — the orchestrator splits the UI cards into batches of 5. One exception: `orch-triage` sorts a run's whole
+    decision list in one call. It does not prove each item, only orders and labels them; the code re-applies the hard
+    rules to every verdict.
 
 ### Deny list
 
@@ -54,6 +56,7 @@ Common fields: `role` (the agent name), `model`, `effort`, optional `decisions` 
 | `orch-ui` | `cards[]`: `{card, status: pass\|fail\|plan-drift, screenshots[]}` | every card `pass` |
 | `orch-merge` | `merged` (boolean), `sha` when merged, `reason` when not, optional `envFailure` | — |
 | `orch-report` | `report` (the final report text) | — |
+| `orch-triage` | `items[]`: `{id, verdict: accept\|ask\|follow-up\|noise, kind, recommendation ≤160, why ≤120, confidence: 0–100, duplicateOf?}` | — (the code re-applies the hard rules) |
 
 Severity: `blocker` (wrong result, data loss, a security hole, a broken build), `major` (a requirement of the plan not
 met, a real bug on a likely path), `minor` (a real but unlikely or cosmetic defect), `nit` (style). Only `blocker` and

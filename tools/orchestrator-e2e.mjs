@@ -261,6 +261,8 @@ async function agent(prompt, opts = {}) {
   if (type === 'orch-gate') return stubGate(t, opts, nnn)
   if (['orch-check-plan', 'orch-check-bugs', 'orch-check-rules', 'orch-security'].includes(type)) return stubFinder(type, opts, nnn)
   if (type === 'orch-verify') return stubVerify(t, opts)
+  // Plan 041: the triage asks about everything (the code's hard rules still apply to any verdict).
+  if (type === 'orch-triage') return { ...base('orch-triage', opts), items: json(t.DECISIONS).map((d) => ({ id: d.id, verdict: 'ask', kind: 'stub', recommendation: 'stub', why: 'stub', confidence: 80 })) }
   if (type === 'orch-ui' && t.CARDS) {
     // The browser look: an "Error" card shows other wording (plan drift); the rest pass.
     const cards = json(t.CARDS).map((c, i) => ({ card: c.card, page: c.page, status: /Error/.test(c.card) ? 'plan-drift' : 'pass', screenshots: [`screens/${nnn}-browser-${i + 1}.png`] }))

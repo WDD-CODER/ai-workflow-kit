@@ -21,6 +21,10 @@
  *   node scripts/orch-state.mjs handoff    --run <name> --plan <NNN> --step s --check c --tail t --tried x
  *                                          the hand-off file a fresh judgment-tier builder reads
  *   node scripts/orch-state.mjs note       --run <name> [--plan <NNN>] --text "<decision>"
+ *   node scripts/orch-state.mjs decision   --run <name> --plan <NNN> --id D<n> --text "<line>" [--verdict v --kind k --confidence n
+ *                                          --rec "<text>" --why "<text>" --forced f]   record one decision (upsert by id), or
+ *                                          --plan <NNN> --dup-of D<n> --text "<line>" --role r --round n   a duplicate of one
+ *   node scripts/orch-state.mjs brain-commit --run <name>                   commit docs/brain in the merge folder, push the run branch
  *   node scripts/orch-state.mjs stop       --run <name> --reason "<why the run stopped>"   (gives every held slot back)
  *   node scripts/orch-state.mjs watch      --run <name> [--stale-min <n>]   one line: RUNNING, FINISHED, STOPPED: <why>
  *                                          or STUCK: plan <NNN> · <state> · no progress for <n> min · last: <note>
@@ -49,7 +53,8 @@ import { planNumber, planTitle, mergeSubjectRe } from './lib/plan-deps.mjs'
 import { uiItems } from './lib/done-when.mjs'
 import { listSlots } from './lib/slot.mjs'
 import { ensureDeps, idleSlot, claimSlot, releaseSlot, releaseRunSlots } from './lib/orch-folders.mjs'
-import { runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine, logQueryArgs } from './lib/orch-run.mjs'
+import { agreementStats } from './decision-log.mjs'
+import { triageForce, triageView, decisionType, runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine, logQueryArgs } from './lib/orch-run.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const MAIN = '{{git.mainBranch}}'
@@ -64,6 +69,10 @@ const STALE_MIN = {{orchestrator.staleMin|json}}
 // The project's log query (commands.logQuery, optional): `finish` runs it once from the main folder for the report's
 // "App errors since the run started" section, with --since=plan-start replaced by the run's start time.
 const LOG_QUERY = {{commands.logQuery|json}}
+// The decision triage (docs/agent/decision-review.md §5): how the report shows the decisions, and when a kind collapses.
+const TRIAGE = {{orchestrator.triage|json}}
+const TRIAGE_MIN_AGREEMENT = {{orchestrator.triageMinAgreement|json}}
+const TRIAGE_MIN_GRADED = {{orchestrator.triageMinGraded|json}}
 // Minutes one `main-try` command may run before it is stopped (orchestrator.gateTimeoutMin, the gate's own limit).
 const GATE_TIMEOUT_MIN = {{orchestrator.gateTimeoutMin|json}}
 // Sensitive paths (the security reviewer runs on them): the same reading as ship-prep — a regex string replaces the
@@ -77,7 +86,7 @@ const SENSITIVE_CODE_RE = /auth|permission|password|jwt|session[_-]?id|tokens?\b
 // Every flag takes a value. The workflow passes `--key=value` (one token, so a value can never become a flag); a
 // human may write `--key value`, where a value starting with "-" is refused. An unknown flag (--root among them: the
 // folder is always this script's own project) or a second positional word stops the command.
-const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tier', 'sha', 'role', 'model', 'effort', 'roles', 'reason', 'card', 'card-status', 'page', 'shots', 'via', 'step', 'check', 'tail', 'tried', 'text', 'min', 'stale-min', 'files', 'cmd'])
+const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tier', 'sha', 'role', 'model', 'effort', 'roles', 'reason', 'card', 'card-status', 'page', 'shots', 'via', 'step', 'check', 'tail', 'tried', 'text', 'min', 'stale-min', 'files', 'cmd', 'id', 'verdict', 'kind', 'confidence', 'rec', 'why', 'forced', 'dup-of'])
 function parseArgs(argv) {
   const out = { _: [] }
   for (let i = 0; i < argv.length; i++) {
@@ -404,7 +413,7 @@ const commands = {
     writeStatus(run, status)
     // The final gate adds the kit manifest check (the PR's rules job) when the project has both the manifest and the script.
     const kitManifest = existsSync(join(mf, 'docs', 'workflow-kit', 'manifest.json')) && existsSync(join(mf, 'scripts', 'kit-manifest-check.mjs'))
-    emit({ ok: true, run, branch, mergeFolder: mf.replace(/\\/g, '/'), done: done.map((m) => m.nnn), mainSha: status.mainShaAtStart, attempt: status.attempts, startedAt: status.startedAt, kitManifest },
+    emit({ ok: true, run, branch, mergeFolder: mf.replace(/\\/g, '/'), done: done.map((m) => m.nnn), mainSha: status.mainShaAtStart, attempt: status.attempts, startedAt: status.startedAt, kitManifest, priorDecisions: status.decisions ?? [] },
       [...lines, `run ${run}: ${done.length} plan(s) already merged into ${branch}${done.length ? ` (${done.map((m) => m.nnn).join(', ')})` : ''}`])
   },
 
@@ -692,6 +701,64 @@ const commands = {
     emit({ ok: true, notes: status.notes.length })
   },
 
+  // One decision of the run, kept in status.json (not a note: notes are capped per plan, decisions never are). With --id
+  // it upserts the decision by id (a runner retry is safe) and applies the hard triage rules once more; with --dup-of it
+  // files a differently worded duplicate under the kept decision's alsoFrom.
+  decision() {
+    const run = runName()
+    const text = typeof args.text === 'string' ? args.text.trim() : ''
+    if (!text) fail('--text is empty')
+    const status = needStatus(run)
+    status.decisions ??= []
+    const plan = args.plan ? planNumber(args.plan) : undefined
+    if (args['dup-of']) {
+      const parent = status.decisions.find((d) => d.id === args['dup-of'])
+      if (!parent) fail(`no decision ${args['dup-of']} to attach a duplicate to`)
+      parent.alsoFrom ??= []
+      if (text !== parent.text && !parent.alsoFrom.some((a) => a.text === text)) parent.alsoFrom.push({ text, role: String(args.role ?? 'agent'), round: Number(args.round) || 0 })
+      writeStatus(run, status)
+      emit({ ok: true, id: parent.id, alsoFrom: parent.alsoFrom.length })
+    }
+    if (!/^D\d+$/.test(String(args.id ?? ''))) fail('--id must be D<number>')
+    const at = status.decisions.findIndex((d) => d.id === args.id)
+    const prev = at >= 0 ? status.decisions[at] : null
+    const next = { ...(prev ?? {}), id: args.id, plan: plan ?? prev?.plan, type: decisionType(text), text, alsoFrom: prev?.alsoFrom ?? [], attempt: prev?.attempt ?? status.attempts ?? 1 }
+    if (args.verdict !== undefined || !prev) {
+      const confidence = args.confidence === undefined || args.confidence === '' ? null : Number(args.confidence)
+      const forced = triageForce({ type: next.type, text, verdict: args.verdict, confidence })
+      next.verdict = forced.verdict
+      if (forced.forced) next.forced = forced.forced
+      else delete next.forced
+      next.kind = /^[a-z0-9][a-z0-9-]*$/.test(String(args.kind ?? '')) ? args.kind : '-'
+      next.confidence = Number.isFinite(confidence) && confidence >= 0 && confidence <= 100 ? confidence : null
+      next.rec = String(args.rec ?? '').slice(0, 160)
+      next.why = String(args.why ?? '').slice(0, 120)
+    }
+    if (at >= 0) status.decisions[at] = next
+    else status.decisions.push(next)
+    writeStatus(run, status)
+    emit({ ok: true, id: next.id, verdict: next.verdict, forced: next.forced ?? null, decisions: status.decisions.length })
+  },
+
+  // The run's brain files (docs/brain: grades, calibration, follow-ups, rules) are committed on the run branch in the
+  // merge folder, so the pull request carries them — main takes only plan and todo pushes.
+  'brain-commit'() {
+    const run = runName()
+    const branch = runBranch(run)
+    const mf = mergeFolder(run)
+    if (!existsSync(mf)) fail(`no merge folder ${mf}`)
+    if (!existsSync(join(mf, 'docs', 'brain'))) emit({ ok: true, committed: 0, branch }, ['BRAIN: nothing to commit'])
+    const add = git(mf, 'add', '--', 'docs/brain')
+    if (add.status !== 0) fail(`git add docs/brain in ${mf}: ${add.err}`)
+    const staged = git(mf, 'diff', '--cached', '--name-only', '--', 'docs/brain').out.split('\n').filter(Boolean)
+    if (!staged.length) emit({ ok: true, committed: 0, branch }, ['BRAIN: nothing to commit'])
+    const c = git(mf, 'commit', '--quiet', '-m', `orch(${run}): decision grades`, '--', 'docs/brain')
+    if (c.status !== 0) fail(`git commit docs/brain in ${mf}: ${(c.err || c.out).split('\n').pop()}`, { envFailure: true })
+    const p = git(mf, 'push', '--quiet', 'origin', branch)
+    if (p.status !== 0) fail(`git push origin ${branch}: ${p.err.split('\n').pop()} — the commit is in ${mf}`, { envFailure: true })
+    emit({ ok: true, committed: staged.length, branch }, [`BRAIN: committed ${staged.length} file(s) on ${branch}`])
+  },
+
   stop() {
     const run = runName()
     const status = needStatus(run)
@@ -758,13 +825,20 @@ const commands = {
     const changed = status.mainShaAtStart && status.mainShaAtStart !== mainShaNow ? git(root, 'diff', '--name-only', status.mainShaAtStart, mainShaNow) : null
     const mainChangedFiles = changed && changed.status === 0 ? changed.out.split('\n').map((l) => l.trim()).filter(Boolean) : null
     const appErrors = runLogQuery(status.startedAt)
-    const report = formatReport({ status, merged, mainShaNow, finishedAt: status.finishedAt, runBranch: branch, mainBranch: MAIN, mainChangedFiles, appErrors })
+    // The grade rows (docs/brain/decision-grades.jsonl) of the merge folder, else of the main folder: agreement per kind.
+    const gradeRows = readGradeRows([join(mf, 'docs', 'brain', 'decision-grades.jsonl'), join(root, 'docs', 'brain', 'decision-grades.jsonl')])
+    const triage = { mode: TRIAGE, stats: agreementStats(gradeRows), minAgreement: TRIAGE_MIN_AGREEMENT, minGraded: TRIAGE_MIN_GRADED }
+    const report = formatReport({ status, merged, mainShaNow, finishedAt: status.finishedAt, runBranch: branch, mainBranch: MAIN, mainChangedFiles, appErrors, decisions: status.decisions ?? [], triage })
+    // What the command prints: this launch's decisions only (the earlier launch's were graded when it ended).
+    const view = triageView({ decisions: (status.decisions ?? []).filter((d) => (d.attempt ?? 1) === (status.attempts ?? 1)), ...triage })
+    const ids = (list) => list.map((d) => d.id)
+    const triageOut = { mode: TRIAGE, line: view.line, ask: ids(view.ask), askMore: ids(view.askMore), accepted: ids(view.accepted), followUps: ids(view.followUps), noise: ids(view.noise), none: ids(view.none), collapsed: ids(view.collapsed) }
     const local = join(runsDir(), `${run}.md`)
     mkdirSync(runsDir(), { recursive: true })
     writeFileSync(local, report)
     const parked = Object.values(status.plans).filter((x) => x.state === 'parked' || x.state === 'left-run').map((x) => x.nnn)
     const rel = `docs/orchestrator/runs/${run}`
-    const base = { report: `${rel}/report.md`, local: local.replace(/\\/g, '/'), merged: merged.map((m) => m.nnn), parked, phase: status.phase, slots: slots.lines }
+    const base = { triage: triageOut, report: `${rel}/report.md`, local: local.replace(/\\/g, '/'), merged: merged.map((m) => m.nnn), parked, phase: status.phase, slots: slots.lines }
     const notCommitted = (error, extra = {}) => emit({ ok: false, ...base, reportCommitted: false, error: `${error} — the report is in ${local}`, ...extra },
       [...slots.lines, `report: local copy ${local} (not committed to ${branch}: ${error})`])
     if (!existsSync(mf)) notCommitted(`no merge folder ${mf}`)
@@ -785,6 +859,19 @@ const commands = {
     emit({ ok: !left, ...base, reportCommitted: true, ...(left ? { error: `merge folder not clean: ${left}` } : {}) },
       [...slots.lines, `report: ${rel}/report.md on ${branch}; local copy ${local}`, `merged ${merged.length}: ${merged.map((m) => m.nnn).join(', ') || 'none'}; parked ${parked.length}: ${parked.join(', ') || 'none'}`])
   },
+}
+
+// The grade rows of the first file that exists (one JSON object per line); an unreadable line is skipped.
+function readGradeRows(files) {
+  const file = files.find((f) => existsSync(f))
+  if (!file) return []
+  return readFileSync(file, 'utf8').split(/\r?\n/).filter(Boolean).flatMap((l) => {
+    try {
+      return [JSON.parse(l)]
+    } catch {
+      return []
+    }
+  })
 }
 
 // The app errors logged since the run started, for the report: the project's commands.logQuery run once from the main

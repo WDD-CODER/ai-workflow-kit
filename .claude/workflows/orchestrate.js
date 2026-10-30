@@ -19,6 +19,9 @@ const MODELS = { build: "sonnet", judgment: "inherit" }
 const MAX_FIX_ROUNDS = 2
 const RUN_PREFIX = "orch/"
 const PILOT_SIZE = 3
+// The decision triage (docs/agent/decision-review.md §5): "off" = no call, "shadow" = one orch-triage call recommends
+// a verdict per decision and the Human still sees every decision, "filter" = a calibrated kind is shown on one line.
+const TRIAGE = "shadow"
 // A checking agent gets at most this many items (docs/agent/agent-roles.md rule 10): the UI validator's cards go in batches.
 const UI_BATCH = 5
 const PM = "npm" === 'pnpm' ? 'pnpm' : 'npm'
@@ -169,6 +172,11 @@ const SCHEMA = {
     properties: { ...COMMON, cards: { type: 'array', items: { type: 'object', properties: { card: str, page: str, status: { type: 'string', enum: ['pass', 'fail', 'plan-drift'] }, screenshots: strList }, required: ['card', 'status', 'screenshots'] } }, pass: { type: 'boolean' } },
     required: ['role', 'model', 'effort', 'cards'],
   },
+  triage: {
+    type: 'object',
+    properties: { ...COMMON, items: { type: 'array', items: { type: 'object', properties: { id: str, verdict: { type: 'string', enum: ['accept', 'ask', 'follow-up', 'noise'] }, kind: str, recommendation: str, why: str, confidence: { type: 'number' }, duplicateOf: str }, required: ['id', 'verdict'] } } },
+    required: ['role', 'model', 'effort', 'items'],
+  },
   merge: { type: 'object', properties: { ...COMMON, merged: { type: 'boolean' }, sha: str, reason: str, envFailure: { type: 'boolean' } }, required: ['role', 'model', 'effort', 'merged'] },
 }
 
@@ -284,6 +292,8 @@ async function note(text, nnn) {
 }
 
 let mergeFolder = null
+// The files of each plan's last checked diff, for the triage agent (no extra call).
+const CHANGED_FILES = {}
 // { <NNN>: [command] }: the main-folder commands `main-try` saw pass (exit 0, last 2 hours) for this run; read once in
 // run() when args.mainDelegated is set, null otherwise.
 let mainPassed = null
@@ -292,10 +302,33 @@ let mainPassed = null
 // They are numbered D1…Dn at the end of the run, grouped by plan, and the Human grades them in one reply
 // (docs/agent/decision-review.md). Anything else an agent put there (a confirmation, evidence — a run once had 11 of
 // 15) is dropped and only counted: each kept line is a run note (an agent call) and a line the Human grades.
+// Each kept decision is { plan, text, alsoFrom, id?, prior? }: a differently worded repeat of it (a builder's fix round, a
+// checker, a relaunch) is not a new decision but an `alsoFrom` line on the first. `prior` decisions come from an
+// earlier launch of the run (init.priorDecisions): they keep their id and are never numbered again.
 const DECISIONS = []
 const DROPPED = {}
 const DECISION_RE = /^(behaviour|seen):/i
-function take(nnn, ...results) {
+const DECISION_STOP = new Set('a an the and or of to in on for is it its with as at by be so that this not no'.split(' '))
+const FILE_LINE = /[\w./-]+\.\w{1,5}:\d+/g
+const decisionType = (text) => String(text).match(DECISION_RE)?.[1].toLowerCase()
+const decisionWords = (text) => new Set(String(text).toLowerCase().replace(DECISION_RE, ' ').replace(/\s*(?:—|-|\.)\s*reverse:.*$/, ' ').replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter((w) => w && !DECISION_STOP.has(w)))
+const decisionFiles = (text) => new Set((String(text).match(FILE_LINE) ?? []).map((x) => x.toLowerCase()))
+// The same decision worded twice: the same type, in the same plan (a `seen:` defect is the same defect in any plan), and
+// either the same file:line named, or 60 % of the words alike while no different file:line is named.
+function sameDecision(a, b) {
+  if (decisionType(a.text) !== decisionType(b.text)) return false
+  if (a.plan !== b.plan && decisionType(a.text) !== 'seen') return false
+  const fa = decisionFiles(a.text)
+  const fb = decisionFiles(b.text)
+  const shared = [...fa].some((x) => fb.has(x))
+  if (shared) return true
+  if (fa.size && fb.size) return false
+  const wa = decisionWords(a.text)
+  const wb = decisionWords(b.text)
+  const both = [...wa].filter((w) => wb.has(w)).length
+  return wa.size + wb.size - both > 0 && both / (wa.size + wb.size - both) >= 0.6
+}
+function take(nnn, round, ...results) {
   for (const r of results) {
     for (const d of Array.isArray(r?.decisions) ? r.decisions : []) {
       const text = String(d).replace(/\s+/g, ' ').trim()
@@ -304,15 +337,36 @@ function take(nnn, ...results) {
         DROPPED[nnn] = (DROPPED[nnn] ?? 0) + 1
         continue
       }
-      if (!DECISIONS.some((x) => x.plan === nnn && x.text === text)) DECISIONS.push({ plan: nnn, text })
+      const kept = DECISIONS.find((x) => sameDecision(x, { plan: nnn, text }))
+      if (!kept) DECISIONS.push({ plan: nnn, text, alsoFrom: [] })
+      else if (kept.text !== text && !kept.alsoFrom.some((a) => a.text === text)) kept.alsoFrom.push({ text, role: r.role ?? 'agent', round: round ?? 0, fresh: true })
     }
   }
 }
+// Numbers the new decisions D<first>…, grouped by plan with behaviour: first; a prior decision keeps its own id.
 function numberedDecisions(first) {
   const rank = (d) => (/^behaviour:/i.test(d.text) ? 0 : 1)
   const out = []
-  for (const plan of [...new Set(DECISIONS.map((d) => d.plan))].sort()) out.push(...DECISIONS.filter((d) => d.plan === plan).sort((a, b) => rank(a) - rank(b)))
-  return out.map((d, i) => ({ id: `D${first + i}`, plan: d.plan, text: d.text }))
+  const fresh = DECISIONS.filter((d) => !d.prior)
+  for (const plan of [...new Set(fresh.map((d) => d.plan))].sort()) out.push(...fresh.filter((d) => d.plan === plan).sort((a, b) => rank(a) - rank(b)))
+  return out.map((d, i) => { d.id = `D${first + i}`; return d })
+}
+const idNumber = (id) => Number(String(id).replace(/\D/g, '')) || 0
+
+// The hard triage rules, applied here before a verdict is recorded and again by `orch-state.mjs decision`. A mirror copy
+// of triageForce in scripts/lib/orch-run.mjs (a workflow script has no imports): change both, tools/test/orchestrator.test.mjs
+// checks they agree. The agent's verdict only orders and labels lines; these rules decide what the Human must see.
+const TRIAGE_SENSITIVE_RE = /\b(auth|authn|authz|authentication|authori[sz]\w*|login|password\w*|permission\w*|roles?|tokens?|sessions?|secur\w*|secrets?|encrypt\w*|schema\w*|migrat\w*|columns?|data shape|payments?|pay|prices?|pricing|money|billing|invoices?|currenc\w*|refunds?)\b/i
+function triageForce({ text, verdict, confidence }) {
+  if (!['accept', 'ask', 'follow-up', 'noise'].includes(verdict)) return { verdict: 'none', forced: null }
+  if (verdict === 'ask') return { verdict: 'ask', forced: null }
+  const t = String(text).match(/^\s*(behaviour|seen|removes):/i)?.[1].toLowerCase() ?? 'other'
+  if (t !== 'behaviour' && t !== 'seen') return { verdict: 'ask', forced: 'type' }
+  if (TRIAGE_SENSITIVE_RE.test(String(text))) return { verdict: 'ask', forced: 'keyword' }
+  if (verdict === 'accept' && t === 'seen') return { verdict: 'follow-up', forced: 'seen' }
+  const c = confidence === null || confidence === undefined || confidence === '' ? NaN : Number(confidence)
+  if (verdict === 'accept' && !(c >= 70)) return { verdict: 'ask', forced: 'confidence' }
+  return { verdict, forced: null }
 }
 
 // Merges are serialised: one merge into the run branch at a time.
@@ -475,6 +529,7 @@ async function gate(ctx) {
 
 async function checkers(ctx) {
   const diff = await state(['diff', '--run', RUN, '--plan', ctx.nnn], `diff ${ctx.nnn}`, ctx.nnn)
+  if (Array.isArray(diff.files)) CHANGED_FILES[ctx.nnn] = diff.files
   if (!diff.ok) return { env: !!diff.envFailure, fail: !diff.envFailure, why: `diff: ${diff.error}`, findings: [] }
   const roles = diff.sensitive ? [...FINDERS, 'orch-security'] : FINDERS
   const base = task({ PLAN: ctx.info.path, BRANCH: `origin/${ctx.info.branch}`, BASE: `origin/${RUN_BRANCH}`, FOLDER: ctx.wt.path, FILES: diff.files })
@@ -672,7 +727,7 @@ async function runPlan(nnn) {
     await setPlan(nnn, { state: 'checking', round: ctx.round }, results)
     const m = await merge(ctx)
     const res = m.r ? [m.r] : []
-    take(nnn, m.r)
+    take(nnn, ctx.round, m.r)
     if (m.merged) {
       await setPlan(nnn, { state: 'merged', round: ctx.round, tier: ctx.tier, sha: m.sha, reason: m.stopRun }, res)
       return { done: { nnn, state: 'merged', sha: m.sha, round: ctx.round, stopRun: m.stopRun } }
@@ -691,7 +746,7 @@ async function runPlan(nnn) {
     } else {
     await setPlan(nnn, { state: ctx.round ? 'fixing' : 'building', round: ctx.round, tier: ctx.tier })
     const b = await builder(ctx, mode, findings)
-    take(nnn, b)
+    take(nnn, ctx.round, b)
     results = [b]
     if (!b) failure = { why: 'the builder returned nothing', escalate: true }
     else if (b.envFailure) failure = { env: true, why: `builder: ${b.blocker ?? 'environment failure'}` }
@@ -704,13 +759,13 @@ async function runPlan(nnn) {
       results = []
       let g = await gate(ctx)
       results.push(g.r)
-      take(nnn, g.r)
+      take(nnn, ctx.round, g.r)
       if (!g.env && !g.fail && ctx.mainChecks.length) {
         // The [auto:main] checks, from the main folder (ROOT): its code is the main branch, so they prove the live side
         // effects of the plan's own checks (a log, a database), not the plan's code.
         g = await gate({ ...ctx, wt: { path: ROOT }, checks: ctx.mainChecks, main: true })
         results.push(g.r)
-        take(nnn, g.r)
+        take(nnn, ctx.round, g.r)
       }
       if (g.env || g.fail) failure = g
       else if (overLimit()) return park(limitReason())
@@ -719,13 +774,13 @@ async function runPlan(nnn) {
         results = []
         const c = await checkers(ctx)
         results.push(...(c.results ?? []))
-        take(nnn, ...(c.results ?? []))
+        take(nnn, ctx.round, ...(c.results ?? []))
         if (c.env || c.fail) failure = c
         else if (overLimit()) return park(limitReason())
         else {
           const u = await ui(ctx)
           results.push(...(u.results ?? []))
-          take(nnn, ...(u.results ?? []))
+          take(nnn, ctx.round, ...(u.results ?? []))
           if (u.blocked) {
             // A blocked UI environment stops before the browser agent and costs no fix round: the plan is parked with
             // the reason, for the Human to fix the environment and relaunch.
@@ -795,6 +850,10 @@ async function run() {
   const init = await state(['init', '--run', RUN], 'start run')
   if (!init.ok) return { mode: 'run', run: RUN, ok: false, stopped: 'init', problems: [init.error] }
   mergeFolder = init.mergeFolder
+  // A relaunch: the decisions the earlier launch recorded are kept, so a repeat of one is filed under it, not numbered.
+  for (const p of Array.isArray(init.priorDecisions) ? init.priorDecisions : []) {
+    if (p && /^D\d+$/.test(String(p.id)) && typeof p.text === 'string') DECISIONS.push({ plan: String(p.plan), text: p.text, id: p.id, prior: true, alsoFrom: Array.isArray(p.alsoFrom) ? p.alsoFrom : [] })
+  }
   if (A.mainDelegated === true && Object.values(A.mainChecks ?? {}).some((l) => Array.isArray(l) && l.length)) {
     const tries = await state(['main-tries', '--run', RUN], 'main tries')
     mainPassed = tries?.ok && tries.passed && typeof tries.passed === 'object' ? tries.passed : {}
@@ -908,10 +967,56 @@ async function run() {
       await state(['stop', '--run', RUN, '--reason', stopReason])
     }
   }
-  // The decisions, numbered D1…Dn: noted per plan (they appear in the report's "Decisions taken") and returned to the
-  // command, which prints them with the reply format.
-  const decisions = numberedDecisions(Number.isInteger(A.firstDecision) && A.firstDecision > 0 ? A.firstDecision : 1)
-  for (const d of decisions) await note(`${d.id} ${d.text}`.slice(0, 380), d.plan)
+  // The new decisions, numbered on from the highest earlier id (a relaunch needs no firstDecision), then one triage call
+  // for the whole list. A repeat of an earlier launch's decision is filed under it and gets no number.
+  const priorTop = Math.max(0, ...DECISIONS.filter((d) => d.prior).map((d) => idNumber(d.id)))
+  const decisions = numberedDecisions(Math.max(Number.isInteger(A.firstDecision) && A.firstDecision > 0 ? A.firstDecision : 1, priorTop + 1))
+  let triageNote = null
+  const verdicts = new Map()
+  if (TRIAGE !== 'off' && decisions.length) {
+    let t = null
+    try {
+      t = await ask([
+        `Decision triage for orchestrator run ${RUN}. Follow .claude/agents/orch-triage.md; return one item per decision in items.`,
+        task({
+          RUN, FOLDER: mergeFolder, PLANS: Object.fromEntries([...new Set(decisions.map((d) => d.plan))].map((p) => [p, order.plans?.[p]?.path ?? `plans/${p}`])),
+          FILES: Object.fromEntries([...new Set(decisions.map((d) => d.plan))].map((p) => [p, CHANGED_FILES[p] ?? []])),
+          DECISIONS: decisions.map((d) => ({ id: d.id, plan: d.plan, type: decisionType(d.text), text: d.text, alsoFrom: d.alsoFrom.length })),
+          // Decisions an earlier launch of the run recorded (already graded): a new decision may be a `duplicateOf` one of them.
+          PRIOR: DECISIONS.some((d) => d.prior) ? DECISIONS.filter((d) => d.prior).map((d) => ({ id: d.id, plan: d.plan, text: d.text })) : undefined,
+        }),
+      ].join('\n\n'), { agentType: 'orch-triage', schema: SCHEMA.triage, label: 'triage', phase: 'Report' })
+    } catch (e) {
+      log(`triage call failed: ${e?.message ?? e}`)
+    }
+    if (!t || typeof t !== 'object' || !Array.isArray(t.items)) triageNote = 'triage: no usable result — full list'
+    else {
+      const byId = new Map(decisions.map((d) => [d.id, d]))
+      const priorIds = new Set(DECISIONS.filter((d) => d.prior).map((d) => d.id))
+      for (const it of t.items) {
+        if (!it || !byId.has(it.id) || verdicts.has(it.id)) continue
+        const dup = typeof it.duplicateOf === 'string' && it.duplicateOf !== it.id && (byId.has(it.duplicateOf) || priorIds.has(it.duplicateOf))
+        verdicts.set(it.id, dup ? { verdict: 'noise', forced: null, kind: '-', confidence: null, rec: '', why: `duplicate of ${it.duplicateOf}` } : {
+          ...triageForce({ text: byId.get(it.id).text, verdict: it.verdict, confidence: it.confidence }),
+          kind: typeof it.kind === 'string' ? it.kind : '-', confidence: Number.isFinite(it.confidence) ? it.confidence : null,
+          rec: String(it.recommendation ?? '').slice(0, 160), why: String(it.why ?? '').slice(0, 120),
+        })
+      }
+    }
+  }
+  for (const d of decisions) Object.assign(d, verdicts.get(d.id) ?? { verdict: 'none', forced: null, kind: '-', confidence: null, rec: '', why: '' })
+  // Every decision is one record in status.json (never cut by maxNotesPerPlan: these calls count under "run"), then its
+  // differently worded repeats; a new repeat of an earlier launch's decision is filed under that one.
+  const fileDup = (d, a) => state(['decision', '--run', RUN, '--plan', d.plan, '--dup-of', d.id, '--text', a.text.slice(0, 380), '--role', a.role ?? 'agent', '--round', String(a.round ?? 0)], `decision ${d.id} also`)
+  for (const d of DECISIONS) {
+    if (d.prior) {
+      for (const a of d.alsoFrom.filter((x) => x.fresh)) await fileDup(d, a)
+      continue
+    }
+    await state(['decision', '--run', RUN, '--plan', d.plan, '--id', d.id, '--text', d.text.slice(0, 380), '--verdict', d.verdict, '--kind', d.kind, '--confidence', d.confidence === null ? '' : String(d.confidence), '--rec', d.rec, '--why', d.why], `decision ${d.id}`)
+    for (const a of d.alsoFrom) await fileDup(d, a)
+  }
+  if (triageNote) await note(triageNote)
   phase('Report')
   const fin = await state(['finish', '--run', RUN], 'report')
   // A run that ended on a limit or an error: the command prints this line first (STUCK), before the lists.
@@ -921,7 +1026,8 @@ async function run() {
     mode: 'run', run: RUN, ok: !!fin.ok, branch: RUN_BRANCH, stopReason, startedAt,
     merged: fin.merged ?? [], parked: fin.parked ?? [], report: fin.report, local: fin.local, reportCommitted: fin.reportCommitted ?? !!fin.ok, outcomes,
     pilot: pilotWaiting.length ? { size: PILOT_SIZE, waiting: pilotWaiting } : null,
-    finalGate, decisions, decisionsDropped: DROPPED,
+    finalGate, decisions: decisions.map(({ prior, ...d }) => ({ ...d, alsoFrom: d.alsoFrom.map(({ fresh, ...x }) => x) })), decisionsDropped: DROPPED,
+    mergeFolder, triage: { ...(fin.triage ?? { mode: TRIAGE }), ...(triageNote ? { note: triageNote } : {}) },
     stuck: stuckWhy ? `STUCK: ${stuckWhy}` : null,
     agentCalls: COUNT.calls, notes: COUNT.notes,
   }
