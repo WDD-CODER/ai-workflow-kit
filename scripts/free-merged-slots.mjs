@@ -5,6 +5,10 @@
  * after a Worker's branch merges. See plans/326-planner-worker-workflow.plan.md.
  * A slot a live orchestrator run holds (.claude/orchestrator-runs/<run>/status.json running, its slot path or plan
  * branch) is left alone whatever git says: the run gives it back itself (orch-state.mjs release, stop, finish).
+ * A slot that serves a branch for the Human's validation (.worktree-validating, slot-serve.mjs --ref) is left alone.
+ * Also removes the merge folder of a merged run (<repo>-orch-merge-<run>, a worktree on the run branch): when the run
+ * is not live, the folder has no uncommitted file and its run branch is merged into origin/main (or its
+ * upstream is gone after a squash merge). `git worktree remove` without --force; the local branch is kept.
  *
  * Usage:
  *   node scripts/free-merged-slots.mjs             # fetch first
@@ -69,17 +73,82 @@ function isClean(path) {
     .length === 0
 }
 
+// The runs a live orchestrator run still works on (by run name): its merge folder is never removed.
+function liveRunNames() {
+  const dir = join(repoRoot, '.claude', 'orchestrator-runs')
+  if (!existsSync(dir)) return new Set()
+  const out = new Set()
+  for (const name of readdirSync(dir)) {
+    try {
+      const s = JSON.parse(readFileSync(join(dir, name, 'status.json'), 'utf8'))
+      if (s.phase === 'running' && Date.now() - Date.parse(s.updatedAt ?? 0) <= LIVE_MS) out.add(name)
+    } catch { /* no status.json, or unreadable: not a live run */ }
+  }
+  return out
+}
+
+// <repo>-orch-merge-<run> worktrees (orch-state.mjs mergeFolder) of runs that merged: one line per folder.
+function freeMergeFolders() {
+  const repo = 'ai-workflow-kit' || repoRoot.split(/[\\/]/).pop()
+  const prefix = `${repo}-orch-merge-`
+  const folders = []
+  let cur = null
+  for (const line of git(['worktree', 'list', '--porcelain']).split('\n')) {
+    if (line.startsWith('worktree ')) {
+      if (cur) folders.push(cur)
+      cur = { path: line.slice('worktree '.length), branch: null }
+    } else if (cur && line.startsWith('branch ')) cur.branch = line.slice('branch '.length).replace('refs/heads/', '')
+  }
+  if (cur) folders.push(cur)
+  const mine = folders.filter((f) => norm(f.path).split('/').pop().startsWith(prefix) && norm(f.path) !== norm(repoRoot))
+  if (!mine.length) return
+  const live = liveRunNames()
+  for (const f of mine) {
+    const run = norm(f.path).split('/').pop().slice(prefix.length)
+    if (live.has(run)) {
+      console.log(`merge folder ${f.path}: left alone — run ${run} is live`)
+      continue
+    }
+    if (!f.branch) {
+      console.log(`merge folder ${f.path}: left alone — it is not on a run branch`)
+      continue
+    }
+    let clean = false
+    try {
+      clean = isClean(f.path)
+    } catch (e) {
+      console.log(`merge folder ${f.path}: left alone — cannot read its status (${String(e.message).split('\n')[0]})`)
+      continue
+    }
+    if (!clean) {
+      console.log(`merge folder ${f.path}: left alone — it has uncommitted files`)
+      continue
+    }
+    if (!isMergedIntoOriginMain(f.branch)) {
+      console.log(`merge folder ${f.path}: left alone — run branch ${f.branch} is not merged into origin/main`)
+      continue
+    }
+    try {
+      git(['worktree', 'remove', f.path])
+      console.log(`merge folder ${f.path}: removed (run branch ${f.branch} merged; local branch kept)`)
+    } catch (e) {
+      console.log(`merge folder ${f.path}: left alone — git worktree remove failed (${String(e.stderr || e.message).trim().split('\n').pop()}); a server or editor may still hold a file`)
+    }
+  }
+}
+
 function main() {
   if (!process.argv.includes('--no-fetch')) git(['fetch', 'origin', '--prune'])
 
   const slots = listSlots()
-  if (!slots.length) {
-    console.log('FREE_SLOTS: no wt-N worktrees found')
-    return
-  }
+  if (!slots.length) console.log('FREE_SLOTS: no wt-N worktrees found')
   const live = liveRunHolds()
 
   for (const s of slots) {
+    if (s.validating && !s.plan) {
+      console.log(`wt-${s.slot}: validating ${s.validating.branch} — left alone`)
+      continue
+    }
     if (s.detached || !s.branch) {
       console.log(`wt-${s.slot}: idle — left alone`)
       continue
@@ -113,6 +182,7 @@ function main() {
     if (existsSync(planFile)) rmSync(planFile)
     console.log(`wt-${s.slot}: freed (branch=${s.branch} merged) -> idle @ origin/main; servers stopped (${stopped.length} action(s))`)
   }
+  freeMergeFolders()
 }
 
 main()

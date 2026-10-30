@@ -69,10 +69,13 @@ export function ensureDeps({ mainRoot, dst, serverRoot = '', pm = 'npm' }) {
 // The slot's own runtime files (.worktree-root, -port, -plan) are not work, even where a project did not exclude them.
 const dirty = (path) => git(path, 'status', '--porcelain').out.split('\n').filter((l) => l && !/^\?\? \.worktree-/.test(l)).length > 0
 
-/** The first slot that is idle: detached, no .worktree-plan marker, nothing uncommitted. `slots` is listSlots() output. */
+/**
+ * The first slot that is idle: detached, no .worktree-plan marker, not validating a branch for the Human
+ * (.worktree-validating), nothing uncommitted. `slots` is listSlots() output.
+ */
 export function idleSlot(slots, skip = []) {
   for (const s of slots) {
-    if (skip.includes(s.path) || !s.detached || s.plan) continue
+    if (skip.includes(s.path) || !s.detached || s.plan || s.validating) continue
     if (dirty(s.path)) continue
     return s
   }

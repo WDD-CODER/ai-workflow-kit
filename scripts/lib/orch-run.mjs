@@ -269,6 +269,16 @@ function appErrorsSection(e) {
   return [...head, `Exit code: ${e.exit ?? '?'}`, '', '```text', ...(e.lines.length ? e.lines : ['(no output)']), ...(e.more ? [`… ${e.more} more line(s)`] : []), '```', '']
 }
 
+/** The report's flaky-check lines (a check that passed only on a rerun), or [] when status.json has none. */
+function flakySection(status, plans) {
+  const via = (f) => (f.via === 'same-commit' ? `passed on the next gate with no new commit${f.sha ? ` (${String(f.sha).slice(0, 7)})` : ''}` : "passed on the gate's rerun after env-fail")
+  const rows = [
+    ...plans.flatMap((p) => (p.flakes ?? []).map((f) => `- ${p.nnn}: \`${f.command}\` — round ${f.round ?? 0}, ${via(f)}`)),
+    ...(status.flakes ?? []).map((f) => `- final gate: \`${f.command}\` — ${via(f)}`),
+  ]
+  return rows.length ? ['## Flaky checks', '', ...rows, ''] : []
+}
+
 export function formatReport({ status, merged, mainShaNow, finishedAt, runBranch, mainBranch, mainChangedFiles = null, appErrors = null }) {
   const plans = Object.values(status.plans ?? {}).sort((a, b) => (a.nnn < b.nnn ? -1 : 1))
   const mergedSet = new Map(merged.map((m) => [m.nnn, m]))
@@ -293,6 +303,7 @@ export function formatReport({ status, merged, mainShaNow, finishedAt, runBranch
       return `| ${p.nnn} ${p.title ?? ''} | ${state} | ${p.round ?? 0} | ${p.tier ?? ''} | ${m ? m.sha.slice(0, 7) : ''} | ${(p.reason ?? '').replace(/\|/g, '/')} |`
     }),
     '',
+    ...flakySection(status, plans),
     ...appErrorsSection(appErrors),
     '## Decisions taken',
     '',
