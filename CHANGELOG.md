@@ -10,6 +10,13 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 ## [Unreleased]
 
 ### Added
+- **Workflow scout: a weekly page of what is new for your setup.** New `/scout` command collects Claude Code and
+  community news since its last run, keeps what fits the project's own files and opens one pull request with
+  `docs/scout/<date>.html`: top 5 to adopt, "native feature now replaces your custom part" callouts, community picks
+  with license, stars and last commit, and a "Which were useful?" checkbox list. New `scripts/scout/render.mjs`
+  (JSON report into a fixed page template; cursors in `docs/scout/state.json`; nothing new = no page) and
+  `scripts/scout/pr.mjs` (pull request through `gh api`, which cloud scheduled runs allow). Both refuse secrets,
+  machine paths and transcript text. New seed `docs/scout/sources.json` holds the sources and caps. Proposals only.
 - **The run report lists the app errors logged during the run.** When `commands.logQuery` is set, `orch-state.mjs
   finish` runs it once from the main folder with `--since=plan-start` replaced by the run's start time and adds an
   `App errors since the run started` section (command, exit code, first 20 lines).

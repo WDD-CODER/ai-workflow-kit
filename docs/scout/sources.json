@@ -1,0 +1,78 @@
+{
+  "caps": {
+    "maxSources": 10,
+    "maxItemsPerSource": 8,
+    "maxItems": 25,
+    "topN": 5
+  },
+  "sources": [
+    {
+      "id": "claude-code-changelog",
+      "name": "Claude Code CHANGELOG",
+      "type": "github-file",
+      "repo": "anthropics/claude-code",
+      "path": "CHANGELOG.md",
+      "cursor": "version",
+      "network": "github"
+    },
+    {
+      "id": "claude-code-docs",
+      "name": "Claude Code docs",
+      "type": "web",
+      "url": "https://code.claude.com/docs/en/overview",
+      "cursor": "date",
+      "network": "custom"
+    },
+    {
+      "id": "anthropic-engineering",
+      "name": "Anthropic engineering blog",
+      "type": "web",
+      "url": "https://www.anthropic.com/engineering",
+      "cursor": "date",
+      "network": "custom"
+    },
+    {
+      "id": "claude-plugins-official",
+      "name": "Official Claude Code plugins",
+      "type": "github-commits",
+      "repo": "anthropics/claude-plugins-official",
+      "cursor": "commit",
+      "network": "github"
+    },
+    {
+      "id": "claude-code-changelog-community",
+      "name": "Community Claude Code changelog",
+      "type": "github-commits",
+      "repo": "marckrenn/claude-code-changelog",
+      "cursor": "commit",
+      "network": "github",
+      "readOnly": true,
+      "note": "No license: read it, link to it, never copy its text."
+    },
+    {
+      "id": "awesome-claude-code",
+      "name": "awesome-claude-code",
+      "type": "github-file",
+      "repo": "hesreallyhim/awesome-claude-code",
+      "path": "README.md",
+      "cursor": "commit",
+      "network": "github"
+    },
+    {
+      "id": "superpowers",
+      "name": "superpowers releases",
+      "type": "github-releases",
+      "repo": "obra/superpowers",
+      "cursor": "tag",
+      "network": "github"
+    },
+    {
+      "id": "audit-setup",
+      "name": "audit-setup",
+      "type": "template-only",
+      "repo": "sam-illingworth/audit-setup",
+      "network": "github",
+      "note": "MIT. Used only as the Adopt / Improve / Remove / Security / Parked shape; not scanned for news."
+    }
+  ]
+}
