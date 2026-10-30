@@ -117,6 +117,16 @@ export function validateAgentResult(result) {
       if (!isStr(p?.plan)) errors.push(`plans[${i}].plan is required`)
       if (!['ready', 'questions', 'blocked'].includes(p?.state)) errors.push(`plans[${i}].state must be ready, questions or blocked`)
       for (const k of ['questions', 'envNeeds', 'commands']) if (!isArr(p?.[k])) errors.push(`plans[${i}].${k} must be a list`)
+      // claims (what the plan says about the code, checked against it): optional; a claim needs the claim and what was found.
+      if (p?.claims !== undefined) {
+        if (!isArr(p.claims)) errors.push(`plans[${i}].claims must be a list`)
+        else p.claims.forEach((c, j) => {
+          const at = `plans[${i}].claims[${j}]`
+          if (!isStr(c?.claim)) errors.push(`${at}.claim is required`)
+          if (!isStr(c?.found)) errors.push(`${at}.found is required`)
+          for (const k of ['question', 'default']) if (c?.[k] !== undefined && typeof c[k] !== 'string') errors.push(`${at}.${k} must be a string`)
+        })
+      }
     })
   } else if (role === 'orch-report') {
     if (!isStr(result.report)) errors.push('report is required')

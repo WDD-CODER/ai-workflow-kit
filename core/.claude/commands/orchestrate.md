@@ -25,7 +25,10 @@ every prompt from the plans and the state script.
    `{ "mode": "readiness", "run": "<run>", "plans": ["451", …], "root": "<absolute main folder path>" }`.
    It returns the waves, and per plan `state`, `questions`, `envNeeds`, `commands` and `mainCommands` (deny-listed
    ones removed and named in `denied`), plus the preflight result and `askHuman`.
-   - Print the waves and every plan's state in one table.
+   - Print the waves and every plan's state in one table, with a `claims` column per plan (`2 checked, 1 wrong`;
+     `8 checked, 3 not checked` when `claimsOver` is 3), one line per `mapped` entry (`npx eslint . → npm run lint`)
+     and, under `dropped npx checks:`, every `npxDropped` reason — an `npx` check no package.json script runs is shown,
+     never asked about, and never stops the run.
    - A command readiness dropped because its file does not exist in the project (and the plan does not create it) is
      in `denied` with the reason and in `missingFiles`: tell the Human, it needs a plan fix, not a builder.
    - `askHuman` false (every plan `ready`, no question, no environment need, no missing check file, no main-folder command,
@@ -38,6 +41,13 @@ every prompt from the plans and the state script.
      the run refuses to start without the approval (`stopped: main-approval`).
    - Write each answer into that plan's `## Execution Notes` as `Orchestrator readiness (<date>): <question> → <answer>`,
      commit the plan files on `{{git.mainBranch}}` (`plan(<run>): readiness answers`) and push.
+   - **A delegated reply** (`decide yourself`, `defaults`, `you choose`, or a bare `go` while a question is open):
+     answer each question with its `Default if unanswered:` and write `→ <default> (delegated)` as the answer in
+     Execution Notes. A widen-scope claim answered `leave them as follow-ups` lists the files in that Execution Notes
+     line (and in the follow-ups file, once the kit defines one). For each `mainApproval` line run
+     `node scripts/orch-state.mjs main-try --run <run> --plan <NNN> --cmd "<command>"` once from the main folder and print
+     its `MAIN_TRY: <command> exit <n>` line — never ask again. A bare `go` with only the main-folder block open is the
+     approval above, unchanged.
    - A plan whose question has no answer leaves the run; say which.
    - Wait for the Human's `go`. Anything else → STOP.
 
@@ -45,6 +55,9 @@ every prompt from the plans and the state script.
    `{ "mode": "run", "run": "<run>", "plans": [ … the plans still in the run … ],
    "root": "<absolute main folder path>", "checks": { "<NNN>": [ … readiness commands … ] },
    "mainChecks": { "<NNN>": [ … readiness mainCommands … ] }, "mainApproved": true, "ui": false }`
+   (after a delegated reply add `"mainDelegated": true`: the run then keeps only the main-folder commands `main-try`
+   saw pass and drops the others with a run note; add `"npxDropped": [ … the plans' npxDropped reasons … ]` when
+   readiness listed any, so the report shows them)
    (`ui: true` only when the project validates UI cards with `orch-ui`; no start time — `init` reads its own clock;
    `mainChecks` are the plans' `[auto:main]` commands, run from the main folder after each plan's gate — leave a plan
    out of it when it has none; `"mainApproved": true` only after the Human's `go` in step 2, and left out when there
@@ -104,5 +117,6 @@ every prompt from the plans and the state script.
 ## Never
 
 - Start a run on a dirty main folder or with an unanswered question for a plan still in the run.
+- Approve a main-folder command on a delegated reply without a `main-try` exit 0.
 - Merge, push or check out `{{git.mainBranch}}` for the run; use a deny-listed command; state a count you did not read
   from `status.json` or an anchored `git log` of the run branch.
