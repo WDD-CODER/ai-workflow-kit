@@ -144,7 +144,7 @@ every prompt from the plans and the state script.
       of each (`node scripts/decision-log.mjs case --from D<n> --run <run> --dir <mergeFolder>`, no model call) and send
       generic lessons to the kit;
    4. `node scripts/orch-state.mjs brain-commit --run <run>` — commits `docs/brain` and any new
-      `docs/agent-evals/cases/` folder on the run branch (`BRAIN: committed <n> file(s) on <branch>` or `BRAIN: nothing
+      `docs/agent-evals/cases/<checker>/<case>` folder on the run branch (`BRAIN: committed <n> file(s) on <branch>` or `BRAIN: nothing
       to commit`).
 
    The wrap-up lists the new rules (pending ones marked), the case paths and, under "Enforce candidates (a plan each,

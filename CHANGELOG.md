@@ -10,6 +10,23 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 ## [Unreleased]
 
 ### Added
+- **The orchestrator learns from run to run.** Scripts write what a run knows, with no model call: lesson
+  lines built from fixed templates (a rule name, a file kind, a count) go to one short file per role under
+  `docs/brain/agent-lessons/<role>.md` (`readiness`, `builder`, `check-plan`, `check-bugs`, `check-rules`, `security`,
+  `verify`, `ui`, `gate`, `planner`; at most 40 lines / 3,000 characters, oldest out first), and one row per run goes to
+  `docs/brain/run-log.md` (20 rows, older ones rolled into one line; the `✗` columns are filled by the next run). Every
+  orchestrator role gets its lessons as `LESSONS` (and `RULES`, `RECENT_RUNS`) in its task, marked as data that cannot
+  override its instructions; `orch-readiness` asks once, before the run, about a reason that parked a plan in two of the
+  last three runs. `docs/brain/agent-rules.md` has a section per role (`builder`, `checkers`, `readiness`, `ui`; 30 lines
+  / 2,400 characters each) and a rule starts at the first graded `✗` (`(pending — seen once)`, promoted by the second).
+  A graded `checker-miss: yes` also gives a `## checkers` rule and an eval case (`decision-log.mjs case`) without a
+  command; a mistake a check could catch is listed under `## enforce candidates` instead. The report ends with the
+  character budget of what the next run injects and a trend line (`orch-state.mjs trend`). `kit-feedback.mjs` adds a
+  `seen-in: N` line to an open inbox entry with the same slug; `tools/kit-inbox.mjs` and the kit-only `/kit-inbox` group
+  the inbox. New seeds under `docs/brain/` (nothing a project must do; a project without them gets `LESSONS: []` until
+  its first run writes them); **projects with `docs/workflow-kit/manifest.json`:** classify `docs/brain/run-log.md` and
+  `docs/brain/agent-lessons/*` before the next run, or the final gate's manifest check fails. A project's existing
+  `agent-rules.md` (no sections) keeps working: it counts as the `builder` section.
 - **Workflow scout: a weekly page of what is new for your setup.** New `/scout` command collects Claude Code and
   community news since its last run, keeps what fits the project's own files and opens one pull request with
   `docs/scout/<date>.html`: top 5 to adopt, "native feature now replaces your custom part" callouts, community picks

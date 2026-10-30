@@ -108,7 +108,7 @@ branch himself.
    an `App errors since the run started` section: the command, its exit code and its first 20 lines, never parsed.
    `{{git.mainBranch}} untouched` stays `yes` when the only files that changed on `{{git.mainBranch}}` during the run are
    plan files and `.claude/todo.md` (the Planner's own pushes); the line counts them.
-   **Learning** (plan 030, no model call): `finish` also appends the lesson lines of the run to
+   **Learning** (no model call): `finish` also appends the lesson lines of the run to
    `docs/brain/agent-lessons/<role>.md` and this run's row to `docs/brain/run-log.md` (and fills the `✗` columns of the
    earlier rows from `decision-log.md`), both in the merge folder and in the report's commit, and ends the report with
    `Context added by learning: 3.1k chars across 10 roles` and one trend line (`node scripts/orch-state.mjs trend`;
@@ -281,7 +281,7 @@ With the UI step off, a failed script is a finding for the builder, and a card n
   done set from those subjects and never redoes a merged plan.
 - `status.json` (`.claude/orchestrator-runs/<run>/status.json`) is written only by `orch-state.mjs`, after every step:
   per plan its state, round, builder tier, sha, reason, free disk and the model and effort each agent echoed.
-  **Lesson facts** (plan 030) — the workflow queues them in memory and they ride on the plan's next `set` call, so they
+  **Lesson facts**  — the workflow queues them in memory and they ride on the plan's next `set` call, so they
   cost no agent call; `orch-state.mjs lessons` (also run by `finish`) turns them into lesson lines with no model call:
 
   | Field (per plan) | Set by | Meaning |

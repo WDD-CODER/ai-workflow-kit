@@ -50,7 +50,7 @@ export const RULE_SECTIONS = ['builder', 'checkers', 'readiness', 'ui']
 export const PENDING = ' (pending — seen once)'
 export const LESSON_ROLES = ['readiness', 'builder', 'check-plan', 'check-bugs', 'check-rules', 'security', 'verify', 'ui', 'gate', 'planner']
 export const LESSON_LINES = 40
-export const LESSON_CHARS = 3000
+export const LESSON_CHARS = 3 * 1000
 const LESSONS_DIR = 'docs/brain/agent-lessons'
 const CHECKERS = ['orch-check-plan', 'orch-check-bugs', 'orch-check-rules']
 const CAL_LINES = 40
@@ -105,12 +105,12 @@ export function parseReply(reply, knownIds) {
   return { ok: false, items }
 }
 
-// ---- lessons: docs/brain/agent-lessons/<role>.md (plan 030) -------------------------------------------------------------
+// ---- lessons: docs/brain/agent-lessons/<role>.md  -------------------------------------------------------------
 const oneLine = (s) => String(s ?? '').replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim()
 
 /** The seed of a role's lessons file: a two-line header and nothing else. */
 export function lessonSeed(role) {
-  return [`# Lessons — ${role}`, `Facts from earlier runs of the ${role} role in this project, written by scripts (\`node scripts/orch-state.mjs lessons\`) and read by the role at launch. At most ${LESSON_LINES} lines / ${LESSON_CHARS} characters, newest last.`].join('\n') + '\n'
+  return [`# Lessons — ${role}`, `Facts from earlier runs of the ${role} role in this project, written by scripts (\`node scripts/orch-state.mjs lessons\`) and read by the role at launch. At most ${LESSON_LINES} lines / ${LESSON_CHARS.toLocaleString('en-US')} characters, newest last.`].join('\n') + '\n'
 }
 
 /** { header: first two lines, body: the non-blank lines after them }. */
@@ -143,7 +143,7 @@ export function addLesson(existing, role, { date, run, text, dedupe = null }) {
   return { text: `${[...header, ...next].join('\n')}\n`, added: true, dropped }
 }
 
-// ---- rules: docs/brain/agent-rules.md, one section per role (plan 030) ---------------------------------------------------
+// ---- rules: docs/brain/agent-rules.md, one section per role  ---------------------------------------------------
 function ruleLayout(text) {
   const lines = String(text ?? '').replace(/\r\n/g, '\n').split('\n')
   const heads = []
@@ -539,7 +539,7 @@ function main(argv) {
     for (const r of open) process.stdout.write(`FOLLOW_UP ${r.run} ${r.id} ${r.fileLine} — ${r.decision}\n`)
   }
 
-  // A graded checker miss becomes an eval case with no model call (plan 030): docs/agent-evals/cases/<checker>/<date>-<kind>/
+  // A graded checker miss becomes an eval case with no model call : docs/agent-evals/cases/<checker>/<date>-<kind>/
   // in the harness shape (docs/agent/agent-evals.md "Case shape"): input/plan.md, input/diff.patch (the hunk around the
   // decision's file:line), the touched file under input/, expected.json (one finding there, a `human-verdict <date>:`
   // note) and a README. The decision comes from the run's status.json (or --decisions), the Human's line from the log row

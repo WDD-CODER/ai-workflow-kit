@@ -398,14 +398,14 @@ export function formatReport({ status, merged, mainShaNow, finishedAt, runBranch
     `gh pr create --base ${mainBranch} --head ${runBranch} --title "Orchestrator run ${status.run}" --body-file .claude\\orchestrator-runs\\${status.run}.md`,
     '```',
     '',
-    // What the run taught the next one (plan 030): the character budget, then the trend line — always the last line.
+    // What the run taught the next one : the character budget, then the trend line — always the last line.
     ...(learning?.budget ? [learning.budget, ''] : []),
     ...(learning?.trend ? [learning.trend, ''] : []),
   ]
   return lines.filter((l, i) => !(l === '' && lines[i - 1] === '')).join('\n')
 }
 
-// ---- lessons, run log and trend (plan 030) ------------------------------------------------------------------------------
+// ---- lessons, run log and trend  ------------------------------------------------------------------------------
 // Everything here is derived from status.json and the Human's graded replies by code: no model call.
 
 /** The lesson roles of the orchestrator (docs/brain/agent-lessons/<role>.md); `planner` is read by /plan, not injected. */

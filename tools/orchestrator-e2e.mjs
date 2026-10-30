@@ -247,7 +247,7 @@ async function agent(prompt, opts = {}) {
   const type = opts.agentType ?? null
   const nnn = (/plan (\d{3})/.exec(prompt) ?? [])[1] ?? null
   const role = type ?? (/\.claude\/agents\/(orch-[\w-]+)\.md/.exec(prompt) ?? [])[1]
-  calls.push({ type, role, nnn, model: opts.model ?? null, label: opts.label, mode: t.MODE ?? null, tier: t.TIER ?? null, handoff: t.HANDOFF ?? null, findings: t.FINDINGS ? json(t.FINDINGS) : null, cards: t.CARDS ? json(t.CARDS) : null, pre: t.PRE_CHECKED ? json(t.PRE_CHECKED) : null, known: t.KNOWN_FINDINGS ? json(t.KNOWN_FINDINGS) : null, commands: t.COMMANDS ? json(t.COMMANDS) : null, checks: t.CHECKS ? json(t.CHECKS) : null, folder: t.FOLDER ?? null, plan: opts.plan ?? null })
+  calls.push({ type, role, nnn, model: opts.model ?? null, label: opts.label, mode: t.MODE ?? null, tier: t.TIER ?? null, handoff: t.HANDOFF ?? null, findings: t.FINDINGS ? json(t.FINDINGS) : null, cards: t.CARDS ? json(t.CARDS) : null, pre: t.PRE_CHECKED ? json(t.PRE_CHECKED) : null, known: t.KNOWN_FINDINGS ? json(t.KNOWN_FINDINGS) : null, commands: t.COMMANDS ? json(t.COMMANDS) : null, checks: t.CHECKS ? json(t.CHECKS) : null, folder: t.FOLDER ?? null, plan: opts.plan ?? null, lessons: t.LESSONS ?? null })
   if (dieOnce && type === dieOnce) {
     dieOnce = null
     return null
@@ -411,6 +411,14 @@ async function main() {
   check('alpha: the report is on the run branch and copied to the main folder', a?.ok === true && a.reportCommitted === true && git(proj, 'cat-file', '-e', 'origin/orch/alpha:docs/orchestrator/runs/alpha/report.md').status === 0 && existsSync(join(proj, '.claude', 'orchestrator-runs', 'alpha.md')) && /What only the Human can do/.test(readFileSync(join(proj, '.claude', 'orchestrator-runs', 'alpha.md'), 'utf8')), JSON.stringify(a))
   check('alpha: startedAt is init\'s own clock (an ISO time, no args value)', !!st && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(st.startedAt ?? '') && Date.now() - Date.parse(st.startedAt) < 60 * 60 * 1000 && a?.startedAt === st.startedAt, `${st?.startedAt} / ${a?.startedAt}`)
   check('alpha: the main folder stays clean (status and report copy are gitignored)', git(proj, 'status', '--porcelain').stdout.trim() === '', git(proj, 'status', '--porcelain').stdout)
+  // Plan 030: the seeds are empty in this scratch project, so every builder got `LESSONS: []`; finish wrote the run's lessons and
+  // its run-log row on the run branch (committed with the report), and the report ends with the budget and the trend line.
+  check('alpha (plan 030): every builder task carried LESSONS: [] (no seeds with lessons yet)', calls.filter((c) => c.role === 'orch-builder').length > 0 && calls.filter((c) => c.role === 'orch-builder').every((c) => c.lessons === '[]'), JSON.stringify(calls.filter((c) => c.role === 'orch-builder').map((c) => c.lessons)))
+  const runLogA = git(proj, 'show', 'origin/orch/alpha:docs/brain/run-log.md')
+  check('alpha (plan 030): finish committed this run\'s row in docs/brain/run-log.md on the run branch', runLogA.status === 0 && /^\| \d{4}-\d\d-\d\d \| alpha \| 101,102,103,104 \| 4 \| 0 \|/m.test(runLogA.stdout), runLogA.out.slice(-300))
+  const reportA = git(proj, 'show', 'origin/orch/alpha:docs/orchestrator/runs/alpha/report.md').stdout.trimEnd().split('\n')
+  check('alpha (plan 030): the report ends with the character budget and the trend line', reportA.at(-1) === 'Trend: first logged run' && /^Context added by learning: /.test(reportA.at(-3) ?? ''), reportA.slice(-4).join(' | '))
+  check('alpha (plan 030): the lessons of the run (a fix round of 102 and 104) are on the run branch, with no uncommitted file', git(proj, 'show', 'origin/orch/alpha:docs/brain/agent-lessons/builder.md').stdout.includes('fix round caused by:'), git(proj, 'show', 'origin/orch/alpha:docs/brain/agent-lessons/builder.md').out.slice(-300))
 
   // Run beta, first launch: fix rounds, escalation, the wave gate.
   const b1 = await runWorkflow({ mode: 'run', run: 'beta', plans: ['201', '202', '203', '204'], root: proj })
