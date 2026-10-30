@@ -6,7 +6,7 @@ import { existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { stateDir } from './log.mjs'
 
-export const git = (cwd, ...a) => execFileSync('git', a, { cwd, encoding: 'utf8' })
+export const git = (cwd, ...a) => execFileSync('git', a, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
 
 /** Create a fresh worktree + branch from origin/main. Returns { path, remove() }; remove() also drops the local branch. */
 export function createWorktree({ repoRoot, branch, name }) {

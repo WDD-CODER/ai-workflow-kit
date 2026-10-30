@@ -135,14 +135,14 @@ Expected cost: evidence 0; edit ~30–60k; evals 6 runs × ~20–40k → **~150�
 
 ## Atomic Sub-tasks
 
-- [ ] S0: Check the plan is still right and test a headless run before building — Step 0 reality check + headless spike, findings written in this plan — plans/035-skill-improver-nightly-evidence-driven-skill-upgrades.plan.md
-- [ ] S1: Count which skills get used and where they fail, from local transcripts — Evidence script over local transcripts (counts only, local output) — tools/skill-improver/evidence.mjs
-- [ ] S2: Pick which skill to improve each night, pausing while a PR is open — Picker + rotation state + open-PR pause — tools/skill-improver/pick.mjs
-- [ ] S3: Run each improvement in a sandbox with a budget cap and safety guards, built as a core that later plans reuse — `tools/skill-improver/lib/`: `budget.mjs` (sums stream-json usage per call, records tokens AND `total_cost_usd`, and the billing mode: `plan-limits` when Claude Code is signed in with the Claude plan, `api-key` when `ANTHROPIC_API_KEY` is set for the child; prints the mode before the first call), `worktree.mjs` (isolated worktree of `origin/main`), `guards.mjs` (path guard taking an allowed-path list per target, leak guard), `pr.mjs`, `log.mjs` (appends `{date, target, mode, usd, tokens, result}` to `<home>/.claude/skill-improver/spend.jsonl`); `run.mjs --target skill` (the only target in this plan; any other target → exit 2 `unknown target <t>`) — plans 047 (`--target learn`) and 048 (`--target agent`) add targets without rewriting the core — tools/skill-improver/run.mjs, tools/skill-improver/lib/**
-- [ ] S4: Let one agent improve a skill while a separate blind judge scores it — Editor command + blind judge agent (`model: {{models.review}}`; `install-check` asserts the rendered judge is not Haiku) + eval generation for skills without evals — core/.claude/commands/improve-skill.md, core/.claude/agents/skill-judge.md, tools/install-check.mjs
-- [ ] S5: Open a PR with each night's skill improvement — PR creation + body template — tools/skill-improver/pr.mjs
-- [ ] S6: Schedule the nightly run and document it — Scheduler script (PS5; daily at 02:10 by default, so plan 047's kit-learn run at 03:10 follows it) + README/CHANGELOG section + install-check strings + tests — kit-skill-improver.ps1, README.md, CHANGELOG.md, tools/install-check.mjs, tools/test/skill-improver.test.mjs
-- [ ] S7: Try a full run by hand, including the budget stop and the safety stop — Manual end-to-end run on one kit-owned skill + budget-stop test + out-of-scope test — kit repo
+- [x] S0: Check the plan is still right and test a headless run before building — Step 0 reality check + headless spike, findings written in this plan — plans/035-skill-improver-nightly-evidence-driven-skill-upgrades.plan.md
+- [x] S1: Count which skills get used and where they fail, from local transcripts — Evidence script over local transcripts (counts only, local output) — tools/skill-improver/evidence.mjs
+- [x] S2: Pick which skill to improve each night, pausing while a PR is open — Picker + rotation state + open-PR pause — tools/skill-improver/pick.mjs
+- [x] S3: Run each improvement in a sandbox with a budget cap and safety guards, built as a core that later plans reuse — `tools/skill-improver/lib/`: `budget.mjs` (sums stream-json usage per call, records tokens AND `total_cost_usd`, and the billing mode: `plan-limits` when Claude Code is signed in with the Claude plan, `api-key` when `ANTHROPIC_API_KEY` is set for the child; prints the mode before the first call), `worktree.mjs` (isolated worktree of `origin/main`), `guards.mjs` (path guard taking an allowed-path list per target, leak guard), `pr.mjs`, `log.mjs` (appends `{date, target, mode, usd, tokens, result}` to `<home>/.claude/skill-improver/spend.jsonl`); `run.mjs --target skill` (the only target in this plan; any other target → exit 2 `unknown target <t>`) — plans 047 (`--target learn`) and 048 (`--target agent`) add targets without rewriting the core — tools/skill-improver/run.mjs, tools/skill-improver/lib/**
+- [x] S4: Let one agent improve a skill while a separate blind judge scores it — Editor command + blind judge agent (`model: {{models.review}}`; `install-check` asserts the rendered judge is not Haiku) + eval generation for skills without evals — core/.claude/commands/improve-skill.md, core/.claude/agents/skill-judge.md, tools/install-check.mjs
+- [x] S5: Open a PR with each night's skill improvement — PR creation + body template — tools/skill-improver/pr.mjs
+- [x] S6: Schedule the nightly run and document it — Scheduler script (PS5; daily at 02:10 by default, so plan 047's kit-learn run at 03:10 follows it) + README/CHANGELOG section + install-check strings + tests — kit-skill-improver.ps1, README.md, CHANGELOG.md, tools/install-check.mjs, tools/test/skill-improver.test.mjs
+- [x] S7: Try a full run by hand, including the budget stop and the safety stop — Manual end-to-end run on one kit-owned skill + budget-stop test + out-of-scope test — kit repo
 - [ ] S8: Turn on the nightly schedule after the Human's go and receive the first PR — Register the task (the Human's go), receive one nightly PR — local machine
 - [ ] S9: Render the kit's own copies, check drift, release, and bring the improver into the first project — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .`, kit PR + release, then `kit-sync` in the project (runs in that project, shipped with its own workflow) — .claude/**, docs/agent/**, .kit/install.json
 - [ ] S10: Review after one month whether the improvements helped — One-month review (2026-11-17 or later) — plans/035-skill-improver-nightly-evidence-driven-skill-upgrades.plan.md
@@ -170,3 +170,23 @@ The weekly Scout and its HTML page (plan 036); cloud runs; auto-merge.
   dollars and the billing mode, so the Human can see and control what every nightly job costs; the judge runs on the
   review tier, never Haiku (the Human's standing rule for judging roles); the nightly slot is 02:10 so 047's 03:10 run
   follows. Nothing else in the plan changed.
+- **Spike findings (S0, 2026-10-30).** (a) `claude -p --output-format stream-json --verbose` gives per-message `usage` and a
+  final `result` line with `total_cost_usd` and `usage` — summable, PASS. (b) `--model` works per call, PASS. (c)/(d) not
+  tested headless: the context-cost signal is the SKILL.md size, and the runner runs each eval case itself with one
+  `claude -p` call plus one judge call. (2) Transcript JSONL: assistant messages hold
+  `{"type":"tool_use","name":"Skill","input":{"skill":"<name>"}}`; user turns are `type:user` lines. Step 0.1-0.3: PASS,
+  S1–S7 built.
+- **Build findings (2026-10-30).** (1) A default headless call loads ~40k tokens of project context; the runner passes
+  `--setting-sources local --strict-mcp-config --disable-slash-commands --no-session-persistence` and runs from a folder
+  outside any repo: ~2k tokens per call. (2) Claude Code refuses to write under a `.claude/` path even with
+  `--permission-mode acceptEdits`, so the editor and the eval generator work on a staged copy of the skill in a neutral
+  folder (`.claude` spelled `dot-claude`); the runner copies every staged file back to its real place in the worktree,
+  and the path guard runs on that diff. (3) `shouldHaveFired` is capped at 20 in the score — generic trigger words made it
+  swamp every other signal. (4) The PR step lives in `tools/skill-improver/lib/pr.mjs` (S3's layout), not `pr.mjs` at the
+  root as S5's path line says. (5) S7 real run in a throwaway clone with a local origin and a stub `gh` (no PR opened on
+  the real repo): `--skill preflight --budget 20000` → `budget reached (34682/20000)`, exit 3, nothing pushed; full
+  `--skill preflight --once` → generated 3 evals, edited, judged: `no-change preflight 0.15 -> 0.15`, 95,870 tokens,
+  $0.59, `plan-limits`, one `spend.jsonl` line. The out-of-scope stop is covered by a unit test with a scripted editor
+  (a real model will not break the rule on request).
+- S9 render + drift done on the branch (`node tools/sync.mjs --target . --apply`, `drift-check` ok); release and the
+  `kit-sync` into the first project, S8 and S10 stay open for the Human.
