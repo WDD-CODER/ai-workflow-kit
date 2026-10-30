@@ -356,3 +356,13 @@ only the Bash tool's command text triggers it.
 **Why the obvious fix is wrong:** Raising the runner's effort for every state call pays on every call for an event seen once; a file hand-off between `orch-state.mjs` and the workflow is out of reach (the workflow script cannot read files).
 
 **What to do instead:** The workflow retries a state command once when its copy does not parse (effort `medium`, not for `note` and `finish`), writes a run note `runner retry: … — first attempt: <error>`, and a second failure parks the plan with the parser's message, the first non-ASCII character and the raw line JSON-escaped (`docs/agent/orchestrator.md`, "A bad copy of a state line"). `kit-runner.md` says in so many words: run only the commands in the list, copy an asked-for line character for character.
+
+---
+
+## One parked plan stopped every later plan
+
+**What hurt:** In run-499-502, plan 500 parked at 22:55 on a slot-only check. The wave gate then skipped 501 and 502 (`not started: wave N parked 500 — later waves not started`) although neither needed anything from 500; in the second pass both built and merged with no change from the 500 fix. About an hour of overnight time was lost.
+
+**Why the obvious fix is wrong:** Letting every later plan run after a park is not safe either: a plan that depends on the parked one, or edits the same files, builds on what the park left behind. The workflow cannot tell which is which by wave order alone.
+
+**What to do instead:** `orchestrator.onPark` is `dependents` (default): `orch-state.mjs order` hands the workflow the unmet edges, and `blockedBy()` in `orchestrate.js` skips only the later plans reachable over `Depends-on:` edges (`depends on parked <NNN>`) or a scope-overlap edge (`shares files with parked <NNN>`); the rest still run. `all` is the old behaviour. A `stopRun` and a failed final gate still stop everything.

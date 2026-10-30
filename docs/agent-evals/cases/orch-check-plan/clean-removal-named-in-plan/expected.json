@@ -1,0 +1,4 @@
+{
+  "note": "clean: the same diff as planted-unlogged-removal, but the plan itself names the removal (the date chip's keys and numeric entry go, on purpose), so nothing is unlogged. Any finding is a false alarm.",
+  "findings": []
+}

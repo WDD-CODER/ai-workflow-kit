@@ -119,6 +119,10 @@ export function orchestratorProblems(vals) {
   if (pilot !== undefined && !(Number.isInteger(pilot) && pilot >= 0 && pilot <= 10)) {
     out.push(`orchestrator.pilotSize is ${JSON.stringify(pilot)} — it must be a whole number from 0 to 10 (0 = no pilot)`)
   }
+  const onPark = vals['orchestrator.onPark']
+  if (onPark !== undefined && !['dependents', 'all'].includes(onPark)) {
+    out.push(`orchestrator.onPark is ${JSON.stringify(onPark)} — it must be "dependents" (a park skips only its dependents and the plans that share its files) or "all" (a park stops every later plan)`)
+  }
   const gate = vals['orchestrator.gateTimeoutMin']
   if (gate !== undefined && !(Number.isInteger(gate) && gate >= 1 && gate <= 120)) {
     out.push(`orchestrator.gateTimeoutMin is ${JSON.stringify(gate)} — it must be a whole number of minutes from 1 to 120`)

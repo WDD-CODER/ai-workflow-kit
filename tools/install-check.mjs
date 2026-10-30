@@ -356,6 +356,14 @@ for (const fx of fixtures) {
   const review = read(dir, '.claude/commands/review-it.md')
   const logs = fx.name === 'angular-express-cursor'
   if (logs !== review.includes(`   - **Logs**: Run \`${WORDING.logQuery}\`. Any entry not explained by the plan fails the review.`) || logs !== review.includes(`| Logs | PASS/FAIL | ${WORDING.logQuery} |`) || (!logs && review.includes('Logs'))) fail(`${fx.name}: /review-it must have the Logs check only with commands.logQuery`)
+  // orch-check-plan's removal signals (plan 042): the generic ones everywhere, a stack's own only from its pack.
+  if (all.includes('.claude/agents/orch-check-plan.md')) {
+    const checkPlan = read(dir, '.claude/agents/orch-check-plan.md')
+    const argv = fx.args.join(' ')
+    if (!checkPlan.includes('unlogged removal') || !checkPlan.includes("`addEventListener('key`")) fail(`${fx.name}: orch-check-plan.md lost the generic removal signals`)
+    if (argv.includes('angular') !== checkPlan.includes("@HostListener('keydown")) fail(`${fx.name}: orch-check-plan.md carries the angular removal signals only with the angular pack`)
+    if (argv.includes('react-vite') !== checkPlan.includes('`onKeyDown=`')) fail(`${fx.name}: orch-check-plan.md carries the react-vite removal signals only with the react-vite pack`)
+  }
   if (fx.name === 'angular-cursor') {
     if (!agents.includes('Signals only')) fail(`${fx.name}: AGENTS.md is missing the angular pack's hard rules`)
     if (!agents.includes('angularComponentStructure')) fail(`${fx.name}: AGENTS.md is missing the angular skill triggers`)
@@ -940,6 +948,7 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     // Plan 032: the light merge step, main-folder checks, decisions only, no pause when there is nothing to ask.
     const doc0 = (d) => read(d, 'docs/agent/orchestrator.md')
     if (!wf.includes('const MERGE_CHECKS_MODE = "build"')) fail('orchestrator: orchestrate.js does not render mergeChecks "build"')
+    if (!wf.includes('const ON_PARK = "dependents"') || !doc0(od).includes('| `onPark` | `dependents` |')) fail('orchestrator: orchestrate.js / orchestrator.md do not render onPark "dependents"')
     for (const [f, bad, why] of [['.claude/agents/orch-gate.md', /say in `decisions`/, 'still asks for a decisions confirmation'], ['.claude/agents/orch-ui.md', /of `decisions`/, 'still asks for a decisions confirmation']]) {
       if (bad.test(read(od, f))) fail(`decisions: ${f} ${why}`)
     }

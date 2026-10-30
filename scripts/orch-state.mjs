@@ -433,7 +433,7 @@ const commands = {
       fail(`plan-order exit ${r.status}: ${(r.stderr || r.stdout).trim().split('\n').pop()}`)
     }
     if (r.status !== 0) fail(`plan-order exit ${r.status}: ${(r.stderr || '').trim().split('\n').join(' | ')}`, { order: j })
-    emit({ ok: true, waves: j.waves, waveLocks: j.waveLocks, plans: j.plans, skipped: j.skipped, done: Object.keys(j.done ?? {}) },
+    emit({ ok: true, waves: j.waves, waveLocks: j.waveLocks, edges: (j.edges ?? []).filter((e) => !e.met), plans: j.plans, skipped: j.skipped, done: Object.keys(j.done ?? {}) },
       j.waves.map((w, i) => `WAVE ${i + 1}: ${w.join(', ')}`))
   },
 

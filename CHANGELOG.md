@@ -10,6 +10,14 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 ## [Unreleased]
 
 ### Added
+- **A parked plan stops only the plans that need it.** New `orchestrator.onPark` (`dependents`, default; `all` is the
+  old behaviour): a park skips only the later plans that depend on it (`depends on parked <NNN>`) or share its files
+  (`shares files with parked <NNN>`), with the reason in the report; every other plan still runs. `orch-state.mjs order`
+  now returns the unmet `edges`. A `stopRun`, a failed final gate and the pilot still stop the run.
+- **`removes:` is a third decision type, listed first.** A builder that removes or narrows user-facing behaviour the plan
+  does not name logs `removes: <what users lose> — reverse: <how>`; the run report lists it first and adds a card under
+  "What only the Human can do". `orch-check-plan` reports an unlogged removed handler or input as `major`
+  (stack-specific signals in the angular and react-vite packs).
 - **Workflow scout: a weekly page of what is new for your setup.** New `/scout` command collects Claude Code and
   community news since its last run, keeps what fits the project's own files and opens one pull request with
   `docs/scout/<date>.html`: top 5 to adopt, "native feature now replaces your custom part" callouts, community picks
