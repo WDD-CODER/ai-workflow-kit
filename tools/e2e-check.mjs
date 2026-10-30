@@ -183,6 +183,9 @@ function main() {
   // The orchestrator: its pure rules against the installed scripts, then a whole run with stub role agents.
   const ot = spawnSync(process.execPath, ['--test', '--test-reporter=tap', join(kit, 'tools', 'test', 'orchestrator.test.mjs')], { cwd: proj, env: { ...env, ORCH_ROOT: proj }, encoding: 'utf8' })
   check('orchestrator tests pass against the installed scripts (node --test tools/test/orchestrator.test.mjs)', ot.status === 0 && /# fail 0/.test(`${ot.stdout}`), tail(`${ot.stdout}${ot.stderr}`))
+  // Plan 044: the folder, slot, plan-close and merge-folder scripts, on scratch repositories built from the installed scripts/.
+  const oft = spawnSync(process.execPath, ['--test', '--test-reporter=tap', join(kit, 'tools', 'test', 'orchestrator-folders.test.mjs')], { cwd: proj, env: { ...env, ORCH_ROOT: proj }, encoding: 'utf8' })
+  check('orchestrator folder tests pass against the installed scripts (node --test tools/test/orchestrator-folders.test.mjs)', oft.status === 0 && /# fail 0/.test(`${oft.stdout}`), tail(`${oft.stdout}${oft.stderr}`))
   const ut = spawnSync(process.execPath, ['--test', '--test-reporter=tap', join(kit, 'tools', 'test', 'ui-tier.test.mjs')], { cwd: proj, env: { ...env, UI_TIER_ROOT: proj }, encoding: 'utf8' })
   check('[ui] tier tests pass against the installed scripts (node --test tools/test/ui-tier.test.mjs)', ut.status === 0 && /# fail 0/.test(`${ut.stdout}`), tail(`${ut.stdout}${ut.stderr}`))
   const oe = node(kit, join(kit, 'tools', 'orchestrator-e2e.mjs'), '--deps-from', join(proj, 'scripts', 'node_modules'))

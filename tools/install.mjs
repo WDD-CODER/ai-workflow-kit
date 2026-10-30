@@ -44,7 +44,7 @@ import { resolve, join, dirname } from 'path'
 import { resolveSource } from './lib/source.mjs'
 import {
   KIT_ROOT, REQUIRED, isEmpty, readJson, sha256, resolveConfig, planFiles, parseArgs, unflatten, NOT_SET, readOverrides, isHook,
-  markHooksExecutable, commandProblems, ownsAgents, ignoredPaths, AGENTS_WORKFLOW, frontendNote, presentAlternative, backendNote,
+  markHooksExecutable, commandProblems, ownsAgents, ignoredPaths, AGENTS_WORKFLOW, frontendNote, presentAlternative, backendNote, ciMirrorNotes,
   detectStack, splitList, withUpstream, projectConfigPath, configLabel, requiredByDest,
 } from './lib/kit.mjs'
 
@@ -329,6 +329,7 @@ const feNote = frontendNote(vals)
 if (feNote) log(feNote)
 const beNote = backendNote(vals, target)
 if (beNote) log(beNote)
+for (const n of ciMirrorNotes(vals, target)) log(n)
 if (agentsWorkflow) {
   const claude = join(target, 'CLAUDE.md')
   const imports = existsSync(claude) && readFileSync(claude, 'utf8').includes(`@${AGENTS_WORKFLOW}`)

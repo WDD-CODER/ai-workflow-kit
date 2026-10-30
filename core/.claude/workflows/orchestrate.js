@@ -37,6 +37,9 @@ const MAX_NOTES = {{orchestrator.maxNotesPerPlan|json}}
 const MAX_CALLS = {{orchestrator.maxAgentCallsPerPlan|json}}
 const COUNT = { notes: {}, calls: {} }
 const PROJECT_CHECKS = [{{commands.build|json}}, {{commands.lint|json}}, TEST_SCRIPT].filter((s) => typeof s === 'string' && s !== '').map((s) => `${PM} run ${s}`)
+// CI commands the Human listed (orchestrator.ciMirror): the final gate runs them after PROJECT_CHECKS and the kit
+// manifest check, so a green run is a green PR. Each one passes checkProblem; a bad one is dropped with a run note.
+const CI_MIRROR = {{orchestrator.ciMirror|json}}
 // The merge step's checks (orchestrator.mergeChecks): "build" = the project build plus the plan's own scope check
 // (seconds), lint and tests having passed in the plan's gate and running once more at the final gate on the run branch;
 // "full" = the plan's whole check list on every merge (a merge once cost three full test passes per plan).
@@ -391,13 +394,15 @@ async function gate(ctx) {
   // merge or the final gate); their reasons say so, so a fix round and the report name the right place.
   const kind = ctx.main ? 'gate (main folder)' : 'gate'
   const r = await gateAgent(ctx, ctx.checks, ctx.main ? `gate ${ctx.nnn} main` : `gate ${ctx.nnn}`)
-  if (!r) return { r, env: true, why: `the ${kind} agent returned nothing` }
+  if (!r) return { r, env: true, gate: true, flaky: [], failedCmds: [], why: `the ${kind} agent returned nothing` }
   // Exactly one result per command in ctx.checks, matched by the command string: a check with no result, with two, or a
   // result for a command that was not asked for is a fail (a gate cannot pass by leaving a check out).
   let known = r.results.filter((x) => ctx.checks.includes(x.command))
   const unknown = r.results.filter((x) => !ctx.checks.includes(x.command)).map((x) => ({ command: x.command, status: 'fail', tail: 'the gate returned a result for a command it was not given' }))
   const twice = ctx.checks.filter((c) => known.filter((x) => x.command === c).length > 1).map((c) => ({ command: c, status: 'fail', tail: 'the gate returned more than one result for this check' }))
   let missingCmds = ctx.checks.filter((c) => !known.some((x) => x.command === c))
+  // A check that passed on the gate's own rerun after an env-fail (orch-gate.md): a flake, recorded by the caller.
+  const flakyOf = () => known.filter((x) => x.status === 'pass' && /^rerun after env-fail:/.test(String(x.tail ?? '').trim())).map((x) => x.command)
   // Results the gate lost (a run got 1 of 8 back): only the missing commands run again, once. A command still missing
   // after that is an environment failure, not a code failure — no fix round and no builder for it.
   if (missingCmds.length && !unknown.length && !twice.length) {
@@ -406,22 +411,22 @@ async function gate(ctx) {
     const more = (again?.results ?? []).filter((x) => missingCmds.includes(x.command) && !known.some((k) => k.command === x.command))
     known = [...known, ...more.filter((x, i) => more.findIndex((y) => y.command === x.command) === i)]
     missingCmds = ctx.checks.filter((c) => !known.some((x) => x.command === c))
-    if (missingCmds.length) return { r, env: true, why: `${kind} returned no result, twice, for: ${missingCmds.join(', ')}` }
+    if (missingCmds.length) return { r, env: true, gate: true, flaky: flakyOf(), failedCmds: missingCmds, why: `${kind} returned no result, twice, for: ${missingCmds.join(', ')}` }
   }
   const missing = missingCmds.map((c) => ({ command: c, status: 'fail', tail: 'the gate returned no result for this check' }))
   const env = known.filter((x) => x.status === 'env-fail')
   const failed = [...known.filter((x) => x.status !== 'pass' && x.status !== 'env-fail'), ...missing, ...twice, ...unknown]
-  if (env.length && !missing.length && !unknown.length && !twice.length) return { r, env: true, why: `${kind} env-fail: ${env.map((x) => x.command).join(', ')}` }
+  if (env.length && !missing.length && !unknown.length && !twice.length) return { r, env: true, gate: true, flaky: flakyOf(), failedCmds: env.map((x) => x.command), why: `${kind} env-fail: ${env.map((x) => x.command).join(', ')}` }
   // pass is computed from the results, never read from the agent
   if (failed.length || !ctx.checks.length) {
     // fingerprint: the reason plus the first failure's last output line — "the same reason twice" compares it, so a
     // gate that fails on the same command with a new error is not a loop.
     const why = `${kind}: ${failed.map((x) => x.command).join(', ') || 'no check ran'}`
     const last = String(failed[0]?.tail ?? '').trim().split('\n').pop() ?? ''
-    return { r, fail: true, why, fingerprint: `${why} :: ${last}`, check: failed[0]?.command, tail: failed[0]?.tail,
+    return { r, fail: true, gate: true, flaky: flakyOf(), failedCmds: failed.map((x) => x.command), why, fingerprint: `${why} :: ${last}`, check: failed[0]?.command, tail: failed[0]?.tail,
       findings: failed.map((x, i) => ({ id: `gate-${i + 1}`, file: x.command, line: 1, rule: 'check fails', reasoning: x.tail ?? '', severity: 'blocker' })) }
   }
-  return { r }
+  return { r, flaky: flakyOf(), failedCmds: [] }
 }
 
 async function checkers(ctx) {
@@ -596,6 +601,26 @@ async function runPlan(nnn) {
   }
   // The agent-call limit (orchestrator.maxAgentCallsPerPlan): checked before each stage, so a plan that keeps calling
   // agents without reaching a merge is parked instead of running for hours.
+  // Flakes (docs/agent/orchestrator.md): a check that passed only on the gate's own rerun after an env-fail ("rerun"), or
+  // that failed in a gate and passed in the next gate on the very same commit ("same-commit"). Recorded in status.json by
+  // `orch-state.mjs flake`; the run goes on. ctx.lastGateFail is the last gate failure, kept only while the next step is
+  // the same plan's next gate.
+  const recordFlakes = async (g, sha, where) => {
+    const seen = new Set()
+    const flake = async (command, round, via) => {
+      if (seen.has(command)) return
+      seen.add(command)
+      log(`flake: ${command} (plan ${nnn}, round ${round})`)
+      await state(['flake', '--run', RUN, '--plan', nnn, '--command', command, '--round', round, '--via', via, '--where', where, ...(sha ? ['--sha', sha] : [])], `flake ${nnn}`, nnn)
+    }
+    for (const command of g.flaky ?? []) await flake(command, ctx.round, 'rerun')
+    const last = ctx.lastGateFail
+    if (!g.env && !g.fail && last && sha && last.sha === sha && last.kind === where) {
+      for (const command of last.cmds) if ((g.checksRun ?? ctx.checks).includes(command)) await flake(command, last.round, 'same-commit')
+    }
+    if (g.env || g.fail) ctx.lastGateFail = { sha, cmds: g.failedCmds ?? [], round: ctx.round, kind: where }
+    else if (last && last.kind === where) ctx.lastGateFail = null
+  }
   const overLimit = () => callsOf(nnn) >= MAX_CALLS
   const limitReason = () => `agent-call limit: ${callsOf(nnn)} of ${MAX_CALLS} agent calls used (orchestrator.maxAgentCallsPerPlan)`
   let wt = await state(['worktree', '--run', RUN, '--plan', nnn], `worktree ${nnn}`, nnn)
@@ -651,12 +676,14 @@ async function runPlan(nnn) {
       let g = await gate(ctx)
       results.push(g.r)
       take(nnn, g.r)
+      await recordFlakes(g, b.headSha, 'gate')
       if (!g.env && !g.fail && ctx.mainChecks.length) {
         // The [auto:main] checks, from the main folder (ROOT): its code is the main branch, so they prove the live side
         // effects of the plan's own checks (a log, a database), not the plan's code.
         g = await gate({ ...ctx, wt: { path: ROOT }, checks: ctx.mainChecks, main: true })
         results.push(g.r)
         take(nnn, g.r)
+        await recordFlakes({ ...g, checksRun: ctx.mainChecks }, b.headSha, 'main')
       }
       if (g.env || g.fail) failure = g
       else if (overLimit()) return park(limitReason())
@@ -690,6 +717,7 @@ async function runPlan(nnn) {
       }
     }
     }
+    if (!failure.gate) ctx.lastGateFail = null // a checker, ui, merge or builder failure: the next gate is not a plain rerun
     if (results.length) await setPlan(nnn, { round: ctx.round }, results)
     if (failure.env) {
       // An environment failure never costs a fix round: pause, check the environment, retry once, else stop. At the
@@ -741,7 +769,13 @@ async function run() {
   mergeFolder = init.mergeFolder
   // The PR's rules job runs the kit manifest check; the final gate runs it too when the project has a manifest, so a
   // new file a builder forgot to classify fails the run, not the PR.
-  const finalChecks = [...PROJECT_CHECKS, ...(init.kitManifest === true ? ['node scripts/kit-manifest-check.mjs'] : [])]
+  // Then the Human's orchestrator.ciMirror commands (deduplicated; one that fails checkProblem is dropped with a note).
+  const mirrorList = Array.isArray(CI_MIRROR) ? CI_MIRROR : []
+  const mirrorScripts = Array.isArray(init.npmScripts) ? init.npmScripts : null
+  const mirrorDropped = mirrorList.map((c) => checkProblem(c, mirrorScripts)).filter(Boolean)
+  const mirrorOk = mirrorList.filter((c) => !checkProblem(c, mirrorScripts)).map((c) => String(c).trim())
+  const finalChecks = [...new Set([...PROJECT_CHECKS, ...(init.kitManifest === true ? ['node scripts/kit-manifest-check.mjs'] : []), ...mirrorOk])]
+  for (const why of mirrorDropped) await note(`ci-mirror check dropped, not run: ${why}`)
   const startedAt = init.startedAt ?? null
   const order = await state(['order', '--run', RUN, '--plans', PLANS.join(',')], 'plan order')
   if (!order.ok) {
@@ -837,6 +871,10 @@ async function run() {
         await state(['stop', '--run', RUN, '--reason', stopReason])
       }
     } else finalGate = { ok: true }
+    for (const command of g.flaky ?? []) {
+      log(`flake: ${command} (final gate)`)
+      await state(['flake', '--run', RUN, '--command', command, '--via', 'rerun', '--where', 'final'], 'flake final')
+    }
   }
   } catch (e) {
     const why = `run stopped with an error: ${String(e?.message ?? e).slice(0, 300)}`

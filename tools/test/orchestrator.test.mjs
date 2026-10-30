@@ -8,7 +8,7 @@ import { spawnSync, spawn } from 'child_process'
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, cpSync, utimesSync, readdirSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
 import { pathToFileURL, fileURLToPath } from 'url'
-import { orchestratorProblems, commandProblems } from '../lib/kit.mjs'
+import { orchestratorProblems, commandProblems, ciCommandProblem } from '../lib/kit.mjs'
 import { SILENT_PLAN, COVERED_PLAN, PARTLY_PLAN, STYLE_PLAN, BACKEND_PLAN, behaviourGaps } from '../fixtures/orchestrator/readiness.mjs'
 
 const kit = resolve(fileURLToPath(new URL('../..', import.meta.url)))
@@ -176,7 +176,9 @@ async function runFlow(args, hooks = {}) {
       if (hooks.gateDrop?.(n)) return { ...base, results: cmds.slice(0, 1).map((c) => ({ command: c, status: 'pass' })) }
       const failing = hooks.gateFails?.(t.FOLDER, cmds)
       const tail = hooks.gateTail?.(n) ?? 'FAIL v2-types.spec: 2 required fields'
-      return { ...base, results: cmds.map((c, i) => (failing && i === 0 ? { command: c, status: 'fail', tail } : { command: c, status: 'pass' })) }
+      // passTail(folder, n): the tail the gate puts on its first command when it passed (orch-gate.md: "rerun after env-fail: …").
+      const passTail = hooks.passTail?.(t.FOLDER, n)
+      return { ...base, results: cmds.map((c, i) => (failing && i === 0 ? { command: c, status: 'fail', tail } : { command: c, status: 'pass', ...(passTail && i === 0 ? { tail: passTail } : {}) })) }
     }
     if (['orch-check-plan', 'orch-check-bugs', 'orch-check-rules', 'orch-security'].includes(type)) return { ...base, problems: [] }
     if (type === 'orch-merge') {
@@ -704,5 +706,123 @@ test('runner: a bad copy of ORCH_JSON is retried once at medium with a note, twi
     const r = await runFlow({ plans: ['101'], pilot: false }, { runner: (cmd, n, output) => (isWt(cmd) ? wrap(output) : undefined) })
     assert.equal(r.commands.filter(isWt).length, 1, `${why}: no retry`)
     assert.equal(r.result.outcomes[0].state, 'merged', why)
+  }
+})
+
+// ---- plan 044: the final gate runs the CI mirror, a check that passed only on a rerun is a recorded flake -----------
+const withMirror = (list) => (s) => {
+  assert.match(s, /const CI_MIRROR = \[[^\]]*\]/, 'orchestrate.js renders orchestrator.ciMirror as CI_MIRROR')
+  return s.replace(/const CI_MIRROR = \[[^\]]*\]/, 'const CI_MIRROR = ' + JSON.stringify(list))
+}
+const finalCommands = (calls) => JSON.parse(calls.find((c) => c.type === 'orch-gate' && c.label === 'gate final').task.COMMANDS)
+const flakeCommands = (commands) => commands.filter((c) => /orch-state\.mjs flake /.test(c))
+
+test('final gate: PROJECT_CHECKS, then the manifest check, then orchestrator.ciMirror (deduplicated, bad shapes dropped with a note)', async () => {
+  const base = finalCommands((await runFlow({ plans: ['101'], pilot: false }, { init: { kitManifest: true } })).calls)
+  assert.ok(base.includes('node scripts/kit-manifest-check.mjs'))
+  const scripts = base.map((c) => /^(?:npm|pnpm) run ([\w:-]+)$/.exec(c)?.[1]).filter(Boolean)
+  const mirror = ['node tools/ci-extra.mjs', base[0], 'node tools/ci-extra.mjs', 'git push origin main', 'node tools/x.mjs --apply', PM_RUN + ' run no-such-script']
+  const r = await runFlow({ plans: ['101'], pilot: false }, { init: { kitManifest: true, npmScripts: scripts }, source: withMirror(mirror) })
+  assert.deepEqual(finalCommands(r.calls), [...base, 'node tools/ci-extra.mjs'], 'project checks, manifest check, then the mirror, no duplicate')
+  const dropped = r.notes.filter((n) => /ci-mirror check dropped, not run/.test(n))
+  assert.equal(dropped.length, 3, dropped.join('\n'))
+  assert.ok(dropped.some((n) => /git push origin main: not an allowed check/.test(n)))
+  assert.ok(dropped.some((n) => /node tools\/x\.mjs --apply: --apply writes files/.test(n)))
+  assert.ok(dropped.some((n) => /no script no-such-script in package\.json/.test(n)))
+  // Never in a plan's own gate or the merge step.
+  assert.ok(!JSON.parse(r.calls.find((c) => c.type === 'orch-gate' && c.label === 'gate 101').task.COMMANDS).includes('node tools/ci-extra.mjs'))
+  // An empty mirror changes nothing.
+  assert.deepEqual(finalCommands((await runFlow({ plans: ['101'], pilot: false }, { init: { kitManifest: true } })).calls), base)
+})
+
+test('ciMirror: the workflow checkProblem and the config check ciCommandProblem refuse the same samples', () => {
+  const from = wfSource.indexOf('const DENY =')
+  const to = wfSource.indexOf('// The project files a check command names')
+  assert.ok(from > 0 && to > from, 'the workflow source has the check rules')
+  const checkProblem = new Function('PM', wfSource.slice(from, to) + '\nreturn checkProblem')('npm')
+  for (const c of ['npm run lint', 'pnpm run test:ci', 'node scripts/a.mjs', 'node tools/b.mjs --flag', 'node scripts/take-plan.mjs', 'node scripts/sync.mjs', 'node tools/Install.mjs',
+    'node tools/x.mjs --apply', 'node tools/x.mjs --fix=1', 'node tools/x.mjs --write', 'node ../x.mjs', 'node scripts/../x.mjs', 'rm -rf x', 'git push --force', 'npx foo', 'npm run bad name', 'node tools/a.mjs $(x)']) {
+    assert.equal(ciCommandProblem(c) === null, checkProblem(c, null) === null, c)
+  }
+})
+
+test('config: orchestrator.ciMirror must be a list of allowed check commands', () => {
+  assert.deepEqual(orchestratorProblems({}), [])
+  assert.deepEqual(orchestratorProblems({ 'orchestrator.ciMirror': [] }), [])
+  assert.deepEqual(orchestratorProblems({ 'orchestrator.ciMirror': ['npm run lint', 'node scripts/kit-manifest-check.mjs', 'node tools/leak-check.mjs --root packs'] }), [])
+  assert.match(orchestratorProblems({ 'orchestrator.ciMirror': 'npm run lint' })[0], /^orchestrator\.ciMirror is "npm run lint" — it must be a list of check commands/)
+  assert.match(orchestratorProblems({ 'orchestrator.ciMirror': ['npm run lint', 'git push', 'node tools/x.mjs --apply', 3] }).join('\n'), /orchestrator\.ciMirror item "git push" — git push: not an allowed check[\s\S]*item "node tools\/x\.mjs --apply" — .*--apply writes files[\s\S]*item 3 — 3 is not a string/)
+  assert.equal(orchestratorProblems({ 'orchestrator.ciMirror': ['node scripts/take-plan.mjs'] }).length, 1)
+})
+
+test('flakes: a gate pass whose tail starts "rerun after env-fail:" is recorded, per plan and for the final gate', async () => {
+  const tail = (folder) => (folder === '/wt/101' || folder === '/merge' ? 'rerun after env-fail: EBUSY mongodb-memory-server lock' : undefined)
+  const r = await runFlow({ plans: ['101'], pilot: false }, { passTail: tail })
+  assert.equal(r.result.outcomes[0].state, 'merged', 'a flake never stops the run')
+  assert.deepEqual(r.result.finalGate, { ok: true })
+  const flakes = flakeCommands(r.commands)
+  assert.equal(flakes.length, 2, flakes.join('\n'))
+  const plan = flakes.find((c) => /--plan=101/.test(c))
+  assert.ok(/--via=rerun/.test(plan) && /--where=gate/.test(plan) && /--round=0/.test(plan), plan)
+  const final = flakes.find((c) => !/--plan=/.test(c))
+  assert.ok(/--via=rerun/.test(final) && /--where=final/.test(final) && !/--round=/.test(final), final)
+  assert.equal(flakeCommands((await runFlow({ plans: ['101'], pilot: false })).commands).length, 0, 'no rerun tail, no flake')
+  // A tail that only mentions the words is not a rerun record.
+  assert.equal(flakeCommands((await runFlow({ plans: ['101'], pilot: false }, { passTail: () => 'note: rerun after env-fail: no' })).commands).length, 0)
+})
+
+test('flakes: a gate fail followed by a passing gate on the same headSha is a flake; a new headSha is a fix, not a flake', async () => {
+  let gates = 0
+  const failOnce = (folder) => folder === '/wt/101' && ++gates === 1
+  const same = await runFlow({ plans: ['101'], pilot: false }, { gateFails: failOnce })
+  assert.equal(same.result.outcomes[0].state, 'merged')
+  const flakes = flakeCommands(same.commands)
+  assert.equal(flakes.length, 1, flakes.join('\n'))
+  assert.ok(/--plan=101/.test(flakes[0]) && /--via=same-commit/.test(flakes[0]) && /--where=gate/.test(flakes[0]) && /--round=0/.test(flakes[0]) && /--sha=abc1234/.test(flakes[0]), flakes[0])
+  gates = 0
+  let builds = 0
+  const fixed = await runFlow({ plans: ['101'], pilot: false }, { gateFails: failOnce, builder: () => ({ headSha: 'sha' + ++builds + 'xxxx' }) })
+  assert.equal(fixed.result.outcomes[0].state, 'merged')
+  assert.equal(flakeCommands(fixed.commands).length, 0, 'the builder committed: a real fix round')
+  // A checker failure between the two gates clears the memory: the next gate is not a plain rerun of the failed one.
+  assert.match(wfSource, /ctx\.lastGateFail = null/)
+})
+
+test('the report: ## Flaky checks only when status.json has flakes', () => {
+  const status = { run: 'r1', startedAt: 'T0', mainShaAtStart: 'a', plans: { '101': { nnn: '101', title: 'One', state: 'merged', round: 1, models: {}, flakes: [
+    { command: 'npm run test', round: 0, via: 'rerun', where: 'gate', at: 'T', text: 'flake: npm run test (plan 101, round 0)' },
+    { command: 'npm run lint', round: 1, via: 'same-commit', where: 'gate', sha: 'abc1234def', at: 'T', text: 'x' }] } }, notes: [], flakes: [{ command: 'npm run build', via: 'rerun', where: 'final', at: 'T', text: 'flake: npm run build (final gate)' }] }
+  const report = (s) => lib.formatReport({ status: s, merged: [], mainShaNow: 'a', finishedAt: 'T1', runBranch: 'orch/r1', mainBranch: 'main' })
+  const r = report(status)
+  assert.ok(r.includes('## Flaky checks\n\n- 101: `npm run test` — round 0, passed on the gate\'s rerun after env-fail\n- 101: `npm run lint` — round 1, passed on the next gate with no new commit (abc1234)\n- final gate: `npm run build` — passed on the gate\'s rerun after env-fail\n'), r)
+  assert.ok(r.indexOf('## Flaky checks') > r.indexOf('## Plans') && r.indexOf('## Flaky checks') < r.indexOf('## Decisions taken'))
+  assert.ok(!report({ ...status, plans: { '101': { ...status.plans['101'], flakes: [] } }, flakes: [] }).includes('Flaky checks'), 'no flakes, no section')
+})
+
+test('orch-state flake: records into plans[NNN].flakes[] and the run-level flakes[]; the same command and round is one entry', () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'orch-flake-')))
+  try {
+    cpSync(join(root, 'scripts'), join(dir, 'scripts'), { recursive: true })
+    const sh = (...a) => spawnSync('git', a, { cwd: dir, encoding: 'utf8' })
+    sh('init', '-q', '-b', 'main')
+    const run = (...a) => spawnSync(process.execPath, [join(dir, 'scripts', 'orch-state.mjs'), ...a], { cwd: dir, encoding: 'utf8' })
+    const statusDir = join(dir, '.claude', 'orchestrator-runs', 'r1')
+    mkdirSync(statusDir, { recursive: true })
+    writeFileSync(join(statusDir, 'status.json'), JSON.stringify({ run: 'r1', phase: 'running', plans: { '101': { nnn: '101', round: 0, models: {}, state: 'gate' } }, notes: [] }))
+    const a = run('flake', '--run=r1', '--plan=101', '--command=npm run test', '--round=1', '--via=rerun', '--where=gate', '--sha=abc1234')
+    assert.equal(a.status, 0, a.stdout + a.stderr)
+    assert.match(a.stdout, /flake: npm run test \(plan 101, round 1\)/)
+    assert.equal(run('flake', '--run=r1', '--plan=101', '--command=npm run test', '--round=1', '--via=rerun', '--where=gate').status, 0)
+    assert.equal(run('flake', '--run=r1', '--command=npm run build', '--via=rerun', '--where=final').status, 0)
+    assert.match(run('flake', '--run=r1', '--command=npm run build', '--via=sometimes', '--where=final').stdout + '', /allowed: rerun, same-commit/)
+    assert.notEqual(run('flake', '--run=r1', '--plan=101', '--command=npm run test', '--via=rerun', '--where=gate').status, 0, '--round is needed with --plan')
+    const st = JSON.parse(readFileSync(join(statusDir, 'status.json'), 'utf8'))
+    assert.equal(st.plans['101'].flakes.length, 1, 'same command and round: one entry')
+    assert.equal(st.plans['101'].flakes[0].text, 'flake: npm run test (plan 101, round 1)')
+    assert.equal(st.plans['101'].flakes[0].sha, 'abc1234')
+    assert.equal(st.flakes.length, 1)
+    assert.equal(st.flakes[0].text, 'flake: npm run build (final gate)')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
   }
 })
