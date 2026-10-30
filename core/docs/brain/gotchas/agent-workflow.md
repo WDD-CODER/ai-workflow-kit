@@ -329,6 +329,16 @@ only the Bash tool's command text triggers it.
 
 ---
 
+## A slot-only check cannot run from the main folder in an orchestrator run
+
+**What hurt:** A project's plans carried `log-query --since=plan-start --level=error → no entries` as an `[auto]` item. Readiness listed it as an `[auto:main]` command, the Planner approved it on a delegated "decide yourself", and the run ran it from the main folder: `plan-start` reads `.claude/.slot-plan-start`, which only `take-plan` writes in a slot, so it failed every time. The builder spent three fix rounds on it, the plan parked, the later plans never started, and the run needed a restart (about an hour).
+
+**Why the obvious fix is wrong:** Writing a plan-start stamp into the main folder, or rewriting `plan-start` to a time, makes the command pass but proves nothing: the main folder's servers run `origin/<main>`, not the plan's branch, and its log also holds errors the plan never caused.
+
+**What to do instead:** A run drops a main-folder check that reads `plan-start` at launch, with a note, and readiness leaves it out of `mainCommands`. The question it asked — did the app log errors? — is answered once for the whole run: `finish` runs `commands.logQuery` from the main folder with `plan-start` replaced by the run's start time and puts the output in the report. In a slot, the check keeps working as before.
+
+---
+
 ## A state call can fail on the copy, not the command
 
 **What hurt:** A run parked a plan at its first step, `worktree: unreadable ORCH_JSON from: node scripts/orch-state.mjs worktree …`. The command had exited 0 and printed a well-formed line; the `kit-runner` agent's copy of that line is what the workflow reads (it has no file access), and the copy did not parse. The error named neither the line nor the parser's message, so the cause could only be dug out of the workflow journal by hand — and stayed unconfirmed. The same runner had also run `git checkout main && git pull` in the main folder on its own before the command.

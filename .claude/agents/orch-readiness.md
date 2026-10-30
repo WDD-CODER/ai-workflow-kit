@@ -23,7 +23,9 @@ your job is to find, before it starts, what would stop a builder. Follow the sha
 3. The commands the plan's `[auto]` items and checks will run → `commands`. Flag any that is on the deny list. The
    command of an `[auto:main]` item (a check that reads the live environment — `.env`, a database, a log — and so
    runs from the main folder, not in a worktree) → `mainCommands`, never `commands`; only `node scripts/…` or
-   `node tools/…` is allowed there.
+   `node tools/…` is allowed there. A command that reads a slot's plan-start stamp (`--since=plan-start`,
+   `.slot-plan-start`) is slot-only: the main folder has no stamp and serves main's code, not the plan's — leave it out
+   of `mainCommands` (the run report lists the app errors since the run started instead).
 4. **Product questions.** A plan that adds or changes interactive behaviour (a form, an editable screen, a dialog, a
    button, navigation) must say what happens **on edit, on leave, on cancel and on error** — a "what happens when"
    line or section. For each of those the plan leaves out, add a `questions` entry (`<plan>: what should happen on

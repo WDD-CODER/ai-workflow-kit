@@ -79,6 +79,8 @@ every prompt from the plans and the state script.
      **not** hand the run branch over as clean; no pull-request lines until the Human has seen it;
    - the report path on the run branch (`docs/orchestrator/runs/<run>/report.md`) and the local copy
      `.claude\orchestrator-runs\<run>.md`;
+   - when the report has an `App errors since the run started` section: its command and its lines as the report shows
+     them (the project's own output — a line such as `no entries` means none); never run the log command again;
    - the **decisions** the workflow returned, numbered `D1…Dn`, grouped by plan, `behaviour:` first, one line each
      (`D3 · plan <NNN> · behaviour: …`), then the reply format: `decisions: ok` or `D<n> ✗ <what I'd choose>` (several on
      one line, comma-separated). When the result's `decisionsDropped` counts are not all zero, add one line
