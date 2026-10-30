@@ -52,7 +52,7 @@ import { resolveSource } from './lib/source.mjs'
 import {
   KIT_ROOT, readJson, sha256, resolveConfig, planFiles, parseArgs, readOverrides, isHook, markHooksExecutable, commandProblems,
   ownsAgents, ignoredPaths, AGENTS_WORKFLOW, frontendNote, presentAlternative, backendNote, withUpstream, splitList,
-  projectConfigPath, configLabel,
+  projectConfigPath, configLabel, requiredByDest,
 } from './lib/kit.mjs'
 
 let args
@@ -230,10 +230,10 @@ if (args.apply) {
   if (hookNote) console.log(hookNote)
   const kitVersion = readJson(join(kitRoot, 'kit.json')).version
   const sorted = Object.fromEntries(Object.entries(record).sort(([a], [b]) => (a < b ? -1 : 1)))
-  const { kit: _kit, source: _source, ref: _ref, commit: _commit, files: _files, ...rest } = inst
+  const { kit: _kit, source: _source, ref: _ref, commit: _commit, files: _files, required: _required, ...rest } = inst
   // The stack as synced (--packs / --layers may have changed it); `layers` only once a project has one.
   const stack = { packs, ...(layers.length || 'layers' in inst ? { layers } : {}) }
-  writeFileSync(installFile, JSON.stringify({ kit: { version: kitVersion }, ...origin, ...rest, ...stack, files: sorted }, null, 2) + '\n', 'utf8')
+  writeFileSync(installFile, JSON.stringify({ kit: { version: kitVersion }, ...origin, ...rest, ...stack, files: sorted, required: requiredByDest(plan.files) }, null, 2) + '\n', 'utf8')
   // A stack changed with --packs / --layers goes into kit.config.json too: install reads stack.packs / stack.layers
   // first, and stops while they disagree with the record.
   if ((args.packs != null || args.layers != null) && existsSync(cfgFile)) {

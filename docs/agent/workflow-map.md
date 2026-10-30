@@ -141,6 +141,10 @@ has no PreToolUse hook of its own.
 | `pre-commit` | `lint-staged`, secret-scan, `plan-ledger-check.mjs` (+ stack-pack checks) |
 | `pre-push` | On a push whose remote ref is `refs/heads/main`: diffs the pushed range and exits 1 unless every file matches `plans/<name>.plan.md` or `.claude/todo.md` — the Planner's admin-bypass shape. Other branches pass untouched. Human-only override: `git push --no-verify`. |
 
+`scripts/override-check.mjs` (CI `lint` step **Kit override check**, and `/ship` Phase 1) reads `kit.config.json` `overrides` and
+`.kit/install.json` `required` and fails by name when an overridden workflow lacks a step the kit marks `# KIT:required`;
+`--list` prints the steps an override must keep. Read-only.
+
 Claude Code backs this up in `.claude/settings.json`: `permissions.deny` refuses the hook bypasses (`--no-verify`,
 `commit -n`, `core.hooksPath`) and force pushes, and `permissions.ask` puts `git reset --hard`, `git clean` and
 `rm -rf` on absolute, home or `.git` paths in front of the Human. The Human runs those with the `!` prefix.

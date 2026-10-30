@@ -85,6 +85,7 @@ jobs:
 # KIT:end
       # The workflow scripts' own dependencies (scripts/package.json) are kit-managed: a kit release fixes
       # them, not the project, so their audit is reported (job summary + warning) and never fails the job.
+# KIT:required — a project override must keep this step
       - name: npm audit (workflow scripts, report only)
         if: hashFiles('scripts/package-lock.json') != ''
         shell: bash
@@ -104,6 +105,7 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           exit 0
+# KIT:required — a project override must keep this step
       - name: Semgrep OWASP Top Ten
         uses: semgrep/semgrep-action@v1
         with:

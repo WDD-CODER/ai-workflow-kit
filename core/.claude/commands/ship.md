@@ -34,16 +34,17 @@ Run `node scripts/ship-prep.mjs` (`--mode regular` for `/ship regular`) and act 
 
 ## Phase 1 — Build gate (UNCONDITIONAL hard stop)
 
-Hand both commands to the `kit-runner` agent (`.claude/agents/kit-runner.md`), the ledger check marked `[capture]` (its
+Hand the three commands to the `kit-runner` agent (`.claude/agents/kit-runner.md`), the ledger check marked `[capture]` (its
 advisory warnings exit 0), and act on its `RUN` / `OUTPUT` / `FAILED` blocks. In Cursor (no sub-agents) run them inline.
 
 ```bash
 npm run {{commands.build}}
 node scripts/plan-ledger-check.mjs   # [capture]
+node scripts/override-check.mjs
 ```
 
-- **Fail** (either command, a `FAILED` block) → stop. Do not commit. Fix from the error lines it copied, then re-run `/ship`.
-- `ESCALATE`, or no `RUN` line for a command, or no `OUTPUT` block for the ledger check → run the two commands inline yourself; a build result you did not see is not a pass.
+- **Fail** (any command, a `FAILED` block) → stop. Do not commit. Fix from the error lines it copied, then re-run `/ship`. An `OVERRIDE_CHECK: FAIL` line names the step an overridden workflow lost: add it back from the kit's template.
+- `ESCALATE`, or no `RUN` line for a command, or no `OUTPUT` block for the ledger check → run the three commands inline yourself; a build result you did not see is not a pass.
 - Never conditional. Ledger exit 1 (missing plan refs) blocks like a failed build; duplicate-NNN / stray-name warnings are advisory only.
 
 ---

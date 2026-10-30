@@ -3,7 +3,7 @@
     "version": "1.12.0"
   },
   "source": "local:.",
-  "commit": "4afb23a3eaa67cdc4d690a7b417d1270a233079f",
+  "commit": "9b842f156c0df144ce04f8cc204fe96eadea6fa4",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -175,7 +175,7 @@
       "source": "core/.claude/commands/security.md"
     },
     ".claude/commands/ship.md": {
-      "sha256": "f901b2018d2f7d96b7860dc560b7991e4c0f5c1cda7e657ea97753c03e9f0460",
+      "sha256": "d45fc50964b7ac07c6cbc3962b9c29d2c680ece61df3ce92f56ef218ae92e7fb",
       "kind": "managed",
       "source": "core/.claude/commands/ship.md"
     },
@@ -350,7 +350,7 @@
       "source": "core/docs/agent/orchestrator.md"
     },
     "docs/agent/pr-check-fix-loop.md": {
-      "sha256": "96fa9983d9521be22ada6925876e9a1ed9e6a87a4218376bc2d4f75e7add9916",
+      "sha256": "2668d446239de44e741fed6fe03c104cdc9c85d98e1d6a60fd25a59ff902da27",
       "kind": "managed",
       "source": "core/docs/agent/pr-check-fix-loop.md"
     },
@@ -375,7 +375,7 @@
       "source": "core/docs/agent/standards-security.md"
     },
     "docs/agent/workflow-map.md": {
-      "sha256": "e511151e6cdb01413fbf71f1b9e23edeaa0c4e858ee82e04dce36763e5b8a0b7",
+      "sha256": "c5e21bde5c200a09d47c8dc52cd8d52ec024e2bfb7b7fc28cdc25ba4e86cd84f",
       "kind": "managed",
       "source": "core/docs/agent/workflow-map.md"
     },
@@ -589,6 +589,11 @@
       "kind": "managed",
       "source": "core/scripts/lib/orch-run.mjs"
     },
+    "scripts/lib/override-steps.mjs": {
+      "sha256": "6681a86349a331646480f26c11e195eb0479eb0ebb149a8a6b69b8cc3ccc0fcf",
+      "kind": "managed",
+      "source": "core/scripts/lib/override-steps.mjs"
+    },
     "scripts/lib/plan-deps.mjs": {
       "sha256": "b534e3fd9dd125048b9e130406bb54dc298af10090185e40f15432a7473889ad",
       "kind": "managed",
@@ -648,6 +653,11 @@
       "sha256": "b8ff6bcf2cdf9b2b2f797cf8767c071cf72a779abc721a5dce7fece0623288d7",
       "kind": "managed",
       "source": "core/scripts/orphan-sweep.mjs"
+    },
+    "scripts/override-check.mjs": {
+      "sha256": "6e9f88234410f809337a034c96ba9690b30b8fe7012422355b36e18c98a9b5e6",
+      "kind": "managed",
+      "source": "core/scripts/override-check.mjs"
     },
     "scripts/package.json": {
       "sha256": "c7de218d6660669ab396602b24d7633042597fa3b8a96a07d444f049a8484787",
@@ -774,5 +784,18 @@
       "kind": "managed",
       "source": "core/scripts/todo-query.mjs"
     }
+  },
+  "required": {
+    ".github/workflows/ci.yml": [
+      "Install workflow script dependencies",
+      "Kit override check",
+      "Workflow script tests",
+      "Secret scan (gitleaks)",
+      "Require quality gates"
+    ],
+    ".github/workflows/security.yml": [
+      "npm audit (workflow scripts, report only)",
+      "Semgrep OWASP Top Ten"
+    ]
   }
 }

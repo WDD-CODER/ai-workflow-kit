@@ -67,7 +67,9 @@ A bug in a managed file found while working in a project goes back to the kit fi
    copies drifted apart.
 
 A change that only fits one project is not a kit change: list the path under `overrides` in that project's
-`kit.config.json` with the reason, and keep the project's own copy.
+`kit.config.json` with the reason, and keep the project's own copy. Then run `node scripts/override-check.mjs`:
+the kit marks the load-bearing steps of its workflows (`# KIT:required`), and an override that lacks one fails by name
+there, in CI, and as `override-missing-step` in `kit-drift`.
 
 ## 5. Bring an existing project under kit-sync
 

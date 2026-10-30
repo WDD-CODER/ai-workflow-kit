@@ -16,6 +16,10 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 - **The final gate runs the kit manifest check.** A project with `docs/workflow-kit/manifest.json` gets
   `node scripts/kit-manifest-check.mjs` in the run's final gate, so a file no manifest entry classifies fails the
   run, not the pull request's rules job.
+- **An override cannot drop a step the kit requires.** The kit's `ci.yml` and `security.yml` mark load-bearing steps
+  with `# KIT:required`; `.kit/install.json` records them (`required`). New `scripts/override-check.mjs` (CI `lint` step
+  **Kit override check**, `/ship` Phase 1, `--list`) and `kit-drift` (`override-missing-step`) fail by name when an
+  overridden workflow lacks one. The kit's own checkout is skipped.
 - **A slot merge deletes the branch only when the repo does not.** New `scripts/branch-autodelete-check.mjs` reads
   GitHub's `delete_branch_on_merge` setting and the pull-request workflows and prints `auto`, `manual` or `unknown`;
   on `auto` the merge skips `git push origin --delete`, and a branch that is already gone is never reported as open.
