@@ -26,8 +26,11 @@ next to it; a kind collapses only after measured agreement (shadow mode until th
 `docs/brain/decision-grades.jsonl`; graded `seen:` items in `docs/brain/follow-ups.md`. A collapsed item stays gradeable.
 
 - [auto] `node --test tools/test/orchestrator.test.mjs` passes, with new tests: the run-499-502 fixture (pass 1, then a
-  relaunch) collapses exactly D20 into D19, D21 into D11, D22 into D17, D23 into D19 and D31 into D18, keeps D7–D10
-  as four items, and lists 33 decisions; a relaunch numbers on from the highest earlier id without `firstDecision`; one
+  relaunch) shows that code merges nothing but near-identical repeats — all 38 real decisions stay (D7/D8 included: two
+  items), and one synthetic exact repeat of a line across the two launches (marked synthetic in the fixture) is
+  merged and gets no number — and that a stub triage returning the five hand-found pairs as `duplicateOf` (D20 and D23
+  of D19, D21 of D11, D22 of D17, D31 of D18) turns each into `noise` with `why: duplicate of D<n>` while the shadow
+  report still lists all 38 in full; a relaunch numbers on from the highest earlier id without `firstDecision`; one
   `orch-triage` call per run, none when `orchestrator.triage` is `off` or nothing new was decided; a null or invalid
   triage result gives today's full list with `triage: no usable result — full list` and the report is still written;
   the code rules turn an agent `accept` into `ask` for a non-behaviour/seen type, for an auth/security/data/money word,
@@ -43,7 +46,8 @@ next to it; a kind collapses only after measured agreement (shadow mode until th
 - [auto] `node tools/sync.mjs --target . --apply` then `node tools/drift-check.mjs --target .` reports no drift.
 - [human] The next FoodVibe run (after a kit sync) prints `triage: shadow · …`, an `ask` block with recommendations
   and every other decision on one line, and after the reply `docs/brain/decision-grades.jsonl` and
-  `docs/brain/follow-ups.md` on the run branch hold the run's rows.
+  `docs/brain/follow-ups.md` on the run branch hold the run's rows. Note which of the triage's `duplicateOf` marks were
+  right; the grades record it (a `noise` item the Human grades `✗` was a wrong mark).
 
 ## Execution Mode
 - Parallel: no
@@ -120,7 +124,7 @@ with product names and paths replaced by neutral words; keep every other word. C
 ## Functional Requirements
 
 ### Must Have (P0)
-- [ ] Duplicates are merged in code, within and across launches of one run; the merged lines stay in the record.
+- [x] Duplicates are merged in code, within and across launches of one run; the merged lines stay in the record.
 - [x] Every graded item is one JSON line in `docs/brain/decision-grades.jsonl`, `ok` items included.
 - [x] Shadow mode: one `orch-triage` call per run; the Human still sees every decision.
 
@@ -159,7 +163,7 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 - [x] A12: Print and grade it the new way — step 3: a relaunch no longer needs `firstDecision`; step 4: the §5.9 layout in UI/UX Notes from the result's `decisions` and `triage`, `off` or `none` → today's list; step 5: write the result's `decisions` to `.claude/sessions/decisions-<run>.json`, then with `--dir <mergeFolder>`: `grade`, `stats --write`, `learn` (and on a `✗` the existing `add` / `repeats` / `rules`), then `orch-state.mjs brain-commit --run <run>` — core/.claude/commands/orchestrate.md
 - [x] A13: Add the three config keys — `orchestrator.triage` (`"shadow"`; `off|shadow|filter`), `orchestrator.triageMinAgreement` (`0.9`; a number 0.5–1), `orchestrator.triageMinGraded` (`20`; an integer 5–500) in the scaffold and its `$comment`; `orchestratorProblems` refuses others with `orchestrator.triage is "x" — it must be "off", "shadow" or "filter"`, `… — it must be a number from 0.5 to 1`, `… — it must be a whole number from 5 to 500`; rendered as `const TRIAGE = {{orchestrator.triage|json}}` in the workflow and as constants in `orch-state.mjs` — kit.config.json, tools/lib/kit.mjs, core/.claude/workflows/orchestrate.js, core/scripts/orch-state.mjs
 - [x] C1: Document it — `decision-review.md` new §5 (dedupe, triage, shadow/filter, grades file, calibration, follow-ups, the agreement rule); `orchestrator.md` settings rows and report section; `model-routing.md` and `workflow-map.md` rows for `orch-triage` (review); `agent-roles.md` schema row and a rule 10 line: `orch-triage` sorts the whole list in one call, it does not prove each item; seed `follow-ups.md` (header + empty table) and one `index.md` line naming it and the grades file; Unreleased entry naming the manifest step for projects with one — core/docs/agent/*.md (scope), templates/docs/brain/follow-ups.md, templates/docs/brain/index.md, CHANGELOG.md
-- [ ] T1 (partly done — fixture written, existing tests updated; the real-duplicate assertions are a `todo` test, see Execution Notes): Prove dedupe and the relaunch with the real duplicates — fixture `decisions-499-502.mjs` (Step 0 wording; pass 1 plans 499/500, pass 2 plans 500/501/502); the counts in the first Done-when item; update the two existing tests that count decision notes (decisions are now `decision` records) — tools/fixtures/orchestrator/decisions-499-502.mjs, tools/test/orchestrator.test.mjs
+- [x] T1: Prove what code dedupe does and does not merge, on the real run — fixture `decisions-499-502.mjs` (the real wording; pass 1 plans 499/500, pass 2 plans 500/501/502, plus one synthetic exact repeat of D11 marked `synthetic`, no real line reworded); the cases in the first Done-when item (D7/D8 and every real pair stay separate in code; the synthetic repeat merges across launches; a stub triage turns the five hand-found pairs into noise with `duplicate of D<n>`, and the shadow report lists all 38); update the two existing tests that count decision notes (decisions are now `decision` records) — tools/fixtures/orchestrator/decisions-499-502.mjs, tools/test/orchestrator.test.mjs
 - [x] T2: Prove the triage call, its fallback and the hard rules — `runFlow` gets an `orch-triage` stub hook and an `init` hook; cases from the first Done-when item; `triageForce` table test incl. `removes`, `author` (no match) and `price` (match); `triageView` and `formatReport` shadow/filter cases — tools/test/orchestrator.test.mjs, tools/orchestrator-e2e.mjs
 - [x] T3: Prove grades, stats and follow-ups — the Done-when cases for `grade`, `stats`, `follow-ups --open`; `brain-commit` on a temp repo (commit present, second call `nothing to commit`) — tools/test/decision-log.test.mjs, tools/test/orchestrator-folders.test.mjs
 - [x] T4: Prove the config keys — rendered defaults and the three refusal messages in install and sync; `orch-triage.md` in `ORCH_DEFAULTS` as `sonnet` — tools/install-check.mjs
@@ -220,13 +224,14 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
   042 (`DECISION_RE`, ranking), 045 (sends grade rows), 046–048 (read grades).
 
 ### Build notes (feat/041-decision-triage)
-- **Step 0 STOP — the duplicate rule does not collapse the real wording.** With the word rule as written (Jaccard ≥ 0.6),
-  the real run-499-502 pairs score D19/D20 0.19, D19/D23 0.19, D20/D23 0.24, D11/D21 0.26, D17/D22 0.21, D18/D31 0.32; the
-  highest distinct pair is D7/D8 at 0.48. D17 (`seen:`) and D22 (`behaviour:`) are also different types, and D18/D31 sit
-  in different plans with a `file:line` on one side only. The fixture keeps the real words (D20 came from the run's
-  `decisions-run-499-502.json`, the other 37 from `status.json`). The first Done-when item's collapse counts therefore
-  cannot pass; the T1 test that states them is a `todo` test. The Planner decides the rule (a lower threshold cannot
-  separate D7/D8 at 0.48 from the real pairs; a different signal is needed). Everything else in A1–A3 follows the plan.
+- **The Human's decision (2026-10-30), after Step 0: option 1 — code merges only near-identical repeats; meaning-level
+  duplicates are the triage's job.** Step 0 scored the real run-499-502 pairs with the rule as written (Jaccard ≥ 0.6):
+  D19/D20 0.19, D19/D23 0.19, D20/D23 0.24, D11/D21 0.26, D17/D22 0.21, D18/D31 0.32 (pairs 0.19–0.32), and the
+  closest pair that is not a duplicate, D7/D8, 0.48. D17 (`seen:`) and D22 (`behaviour:`) are also different types.
+  So A1's rule stays as written: no lower threshold, no token signal. The five hand-found pairs are expected from the
+  triage's `duplicateOf`; a `duplicateOf` may name a decision of the earlier launch (the triage gets a `PRIOR` list on a
+  relaunch). The fixture keeps the real words (D20 came from the run's `decisions-run-499-502.json`, the other 37 from
+  `status.json`) plus one synthetic exact repeat, marked as such.
 - Plan 030 (Depends-on) is not built on main; this plan was applied to the current text of the symbols (Step 0 reality
   check: `take`, `numberedDecisions`, `formatReport`, `finish`, `init`, `add`, `learn`, step 5 all present).
 - `agreementStats` lives in `decision-log.mjs` (not `orch-run.mjs`): the decision-log tests load that script without

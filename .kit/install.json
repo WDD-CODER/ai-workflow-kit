@@ -3,7 +3,7 @@
     "version": "1.12.0"
   },
   "source": "local:.",
-  "commit": "0569a9364b7230031bf2641fbcf2bf3172172362",
+  "commit": "8ee680cb5974b85009c4e669af88f9e03584f0c3",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -340,7 +340,7 @@
       "source": "core/docs/agent/brain-capture.md"
     },
     "docs/agent/decision-review.md": {
-      "sha256": "615b125d90877e05c4b38806770c25dd07ae065f3bbaa8223fefd9ff06fbf29c",
+      "sha256": "e616ab01f5014cb7bc8313b34d7551c17f372bf84cadce65054894b9c08867ee",
       "kind": "managed",
       "source": "core/docs/agent/decision-review.md"
     },

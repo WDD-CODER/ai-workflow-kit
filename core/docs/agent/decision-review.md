@@ -62,7 +62,7 @@ runs no command.
 
 - **One line per decision.** The workflow merges a differently worded repeat in code: the same type, in the same plan
   (a `seen:` defect in any plan), and either the same `file:line` named or 60 % of the words alike with no different
-  `file:line`. The first wording is kept; the repeats stay under it as `also:` lines. Decisions live in `status.json`
+  `file:line`. The first wording is kept; the repeats stay under it as `also:` lines. Code merges only near-identical wordings; the same decision in other words is the triage's `duplicateOf` (it may name a decision of the earlier launch), shown as `noise` with the reason. Decisions live in `status.json`
   (`decisions[]`), so a relaunch numbers on from the highest earlier id and files a repeat of an earlier decision under it.
 - **Triage.** `orchestrator.triage` is `off`, `shadow` (default) or `filter`. Unless `off`, one `orch-triage` call per run
   recommends `accept`, `ask`, `follow-up` or `noise` for each new decision, with a `kind`, a recommendation, a reason and a
