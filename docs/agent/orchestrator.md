@@ -25,7 +25,7 @@ branch himself.
 | `maxFixRounds` | `2` | How many times problems go back to a builder before the plan is parked |
 | `minFreeDiskGb` | `5` | Free disk the environment check asks for, before the run and before a retry |
 | `pilotSize` | `3` | A run with more plans than this builds the first `pilotSize` plans in wave order, stops with the report and the numbered decisions, and starts the rest on the Human's `continue`; 0 = off |
-| `onPark` | `dependents` | What a parked plan stops: `dependents` = only the later plans that depend on it or share its files (each is `skipped` with the reason), `all` = every later plan, as before plan 042 |
+| `onPark` | `dependents` | What a parked plan stops: `dependents` = only the later plans that depend on it or share its files (each is `skipped` with the reason), `all` = every later plan, the earlier behaviour |
 | `fallbackModel` | `opus` | The model a dead agent (one that returned nothing: a terminal API error, a blocked model) is retried on, once; `inherit` = no retry. Never Haiku: the retry may be a review agent |
 | `staleMin` | `10` | Minutes without a `status.json` update after which `orch-state.mjs watch` prints `STUCK` |
 | `maxNotesPerPlan` | `12` | Run notes one plan may write (every note is one runner agent call); the last one says `notes capped` |

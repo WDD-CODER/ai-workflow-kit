@@ -361,7 +361,7 @@ only the Bash tool's command text triggers it.
 
 ## One parked plan stopped every later plan
 
-**What hurt:** In run-499-502, plan 500 parked at 22:55 on a slot-only check. The wave gate then skipped 501 and 502 (`not started: wave N parked 500 — later waves not started`) although neither needed anything from 500; in the second pass both built and merged with no change from the 500 fix. About an hour of overnight time was lost.
+**What hurt:** In one run, a plan parked at 22:55 on a slot-only check. The wave gate then skipped the two later plans (`not started: wave N parked <NNN> — later waves not started`) although neither needed anything from it; in the second pass both built and merged with no change from the fix. About an hour of overnight time was lost.
 
 **Why the obvious fix is wrong:** Letting every later plan run after a park is not safe either: a plan that depends on the parked one, or edits the same files, builds on what the park left behind. The workflow cannot tell which is which by wave order alone.
 
