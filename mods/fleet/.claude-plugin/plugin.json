@@ -1,7 +1,7 @@
 {
   "name": "fleet",
-  "version": "0.4.0",
-  "description": "Session registry across worktree slots (/fleet), slot lock, port janitor (/ports), session health with cache/context/limits and when each limit window resets (with a notice when the 5-hour window refreshes) and a handoff-and-restart button (/health), a Pull main button, and a [ ⏎ ] button inline after each reply the answer marks with ⏎ (fills the prompt box, unsent).",
+  "version": "0.5.0",
+  "description": "Session registry across worktree slots (/fleet), slot lock, port janitor (/ports), session health with cache/context/limits and when each limit window resets (with a notice when the 5-hour window refreshes) and a handoff-and-restart button (/health), a Pull main button, an orchestrator run chip with a % that opens one line per plan, and a [ ⏎ ] button inline after each reply the answer marks with ⏎ (fills the prompt box, unsent).",
   "types": "./types/index.d.ts",
   "userConfig": {
     "pushUrl": {

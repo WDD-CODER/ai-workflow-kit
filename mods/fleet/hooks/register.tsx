@@ -3,6 +3,7 @@ import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { FleetHealth, FleetSession } from '../types'
 import { registerQuickReply } from './quick-reply'
+import { readRuns, refreshRuns, registerRunProgress, runChips, runPanel } from './run-progress'
 
 // ---------------------------------------------------------------------------
 // fleet: one registry of live sessions across the wt-N worktree slots, a slot
@@ -554,6 +555,7 @@ const drawDock = (ui: DockUi, mine: unknown, below: unknown) => {
 
 export const register: Register = (on, rawOptions) => {
   registerQuickReply(on, {})
+  registerRunProgress(on, {})
   options = { ...options, ...(rawOptions as Partial<Opts>) }
   ttlMs = Math.max(1, Number(options.cacheTtlMinutes) || 60) * 60000
   warnAt = Number(options.contextWarnPercent) || 70
@@ -600,6 +602,7 @@ export const register: Register = (on, rawOptions) => {
     await saveMe($)
     await writeLock($, cwd, true)
     await refreshHealth($)
+    void refreshRuns($, cwd)
     void logEvent($, 'session.start', { slot, branch: facts.branch, plan, dirty: facts.dirty })
 
     heartbeat?.cancel()
@@ -689,6 +692,7 @@ export const register: Register = (on, rawOptions) => {
     // Fresh git facts at the end of each answer, so the clean / ship badge is never a heartbeat behind.
     if (me) me = { ...me, ...(await gitFacts($, me.cwd)) }
     await refreshHealth($)
+    void refreshRuns($, me?.cwd ?? (await $.session.cwd()))
     return next(e)
   })
 
@@ -803,14 +807,20 @@ export const register: Register = (on, rawOptions) => {
       : <Button key="pull-main" label="Pull main" hotkey="u" onPress={() => void pressPullMain($)} />
     // The button is drawn once: in the collapsed chip when calm, in the full row on an alert (a key may appear once).
     const calm = [ship, <Text dimColor>ctx {hs.ctxPercent}% · {cache}{busy} </Text>]
-    if (e.props.isWorking || dismissed || !(cold || hot)) return drawDock(ui, dockEntry(ui, 'fleet', false, [...calm, pull], calm), below)
+    // Live /orchestrate runs: a chip each (hotkey r on the collapsed one) and, when open, a panel under the dock.
+    const rs = await readRuns($)
+    const runChip = runChips(ui, $, rs, 'run-chip', 'r')
+    const runRow = runChips(ui, $, rs, 'run-row')
+    const panel = rs.panelOpen && rs.list.length ? runPanel(ui, rs) : null
+    const mine = (entry: unknown) => (panel ? [entry, panel] : entry)
+    if (e.props.isWorking || dismissed || !(cold || hot)) return drawDock(ui, mine(dockEntry(ui, 'fleet', false, [...calm, pull, ...runChip], [...calm, ...runRow])), below)
     const why = [
       hs.ctxPercent >= warnAt ? `context ${hs.ctxPercent}%` : null,
       cold ? (left > 0 ? `cache lapses in ${minutes(left)}m` : 'cache cold') : null,
       (hs.fiveHour ?? 0) >= 80 ? `5h ${Math.round(hs.fiveHour ?? 0)}%${resetShort(hs.fiveHourResetsAt, now)}` : null,
       (hs.sevenDay ?? 0) >= 80 ? `week ${Math.round(hs.sevenDay ?? 0)}%${resetShort(hs.sevenDayResetsAt, now)}` : null,
     ].filter(Boolean).join(' · ')
-    const chip = [ship, <Text color="cyan">{why}</Text>]
+    const chip = [ship, <Text color="cyan">{why}</Text>, ...runChip]
     const row = [
       <Text>{why}{busy}</Text>,
       <Box>
@@ -841,6 +851,6 @@ export const register: Register = (on, rawOptions) => {
           />
       </Box>,
     ]
-    return drawDock(ui, dockEntry(ui, 'fleet', true, chip, [ship, ...row]), below)
+    return drawDock(ui, mine(dockEntry(ui, 'fleet', true, chip, [ship, ...row, ...(runRow.length ? [<Box>{runRow}</Box>] : [])])), below)
   })
 }

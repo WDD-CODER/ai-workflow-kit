@@ -13,6 +13,10 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 - **A slot merge deletes the branch only when the repo does not.** New `scripts/branch-autodelete-check.mjs` reads
   GitHub's `delete_branch_on_merge` setting and the pull-request workflows and prints `auto`, `manual` or `unknown`;
   on `auto` the merge skips `git push origin --delete`, and a branch that is already gone is never reported as open.
+- **Fleet shows orchestrator run progress in the dock** (fleet 0.5.0). While an `/orchestrate` run is live in the
+  checkout, the dock shows `run <name> NN%`; pressing it (or `r`) opens one plain line per plan (stage, time in it,
+  what the current agent is doing, from the workflow journal) and the run's `orch-state.mjs watch` line, in the
+  warning colour on `STUCK`. Read-only and token-free: it reads `status.json` and the journal and runs `watch`.
 
 ### Fixed
 - **A plan number counts the plan files on every branch.** `next-plan-number.mjs` read plan files only in the

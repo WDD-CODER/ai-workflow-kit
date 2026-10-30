@@ -59,6 +59,7 @@ mods/fleet/tests/run-progress.test.ts
 mods/fleet/tests/fleet.test.ts
 mods/fleet/.claude-plugin/plugin.json
 mods/README.md
+mods/SECURITY.md
 CHANGELOG.md
 plans/039-*.plan.md
 ```
@@ -124,11 +125,11 @@ run run-506-506 · 55% · RUNNING
 
 ## Atomic Sub-tasks
 
-- [ ] A1: Find the live orchestrator runs in this checkout and turn each plan's state into plain words — status.json scan, live filter, stage words, % maths — mods/fleet/hooks/run-progress.tsx
-- [ ] A2: Show a run chip with a % in the dock that opens a panel of one line per plan — chip, hotkey o, panel under the dock, watch line, STUCK colour — mods/fleet/hooks/run-progress.tsx, mods/fleet/hooks/register.tsx, mods/fleet/types/index.d.ts
-- [ ] A3: Say what the current agent is doing, from the workflow journal — newest journal naming the run, open agent label + transcript age, guarded reads — mods/fleet/hooks/run-progress.tsx
-- [ ] A4: Keep the panel fresh while a run is live and idle otherwise — refresh at answer end + ≤30 s timer only while live — mods/fleet/hooks/run-progress.tsx, mods/fleet/hooks/register.tsx
-- [ ] A5: Test it, document it and bump fleet's version — run-progress tests, README paragraph, changelog, plugin.json version — mods/fleet/tests/run-progress.test.ts, mods/fleet/tests/fleet.test.ts, mods/README.md, CHANGELOG.md, mods/fleet/.claude-plugin/plugin.json
+- [x] A1: Find the live orchestrator runs in this checkout and turn each plan's state into plain words — status.json scan, live filter, stage words, % maths — mods/fleet/hooks/run-progress.tsx
+- [x] A2: Show a run chip with a % in the dock that opens a panel of one line per plan — chip, hotkey o, panel under the dock, watch line, STUCK colour — mods/fleet/hooks/run-progress.tsx, mods/fleet/hooks/register.tsx, mods/fleet/types/index.d.ts
+- [x] A3: Say what the current agent is doing, from the workflow journal — newest journal naming the run, open agent label + transcript age, guarded reads — mods/fleet/hooks/run-progress.tsx
+- [x] A4: Keep the panel fresh while a run is live and idle otherwise — refresh at answer end + ≤30 s timer only while live — mods/fleet/hooks/run-progress.tsx, mods/fleet/hooks/register.tsx
+- [x] A5: Test it, document it and bump fleet's version — run-progress tests, README paragraph, changelog, plugin.json version — mods/fleet/tests/run-progress.test.ts, mods/fleet/tests/fleet.test.ts, mods/README.md, CHANGELOG.md, mods/fleet/.claude-plugin/plugin.json
 
 ## Technical Considerations
 
@@ -156,3 +157,14 @@ All [auto] items above pass, and the [human] item is checked during a real run.
 
 - 2026-10-29 Planner (from a project session): asked by the Human during a one-plan orchestrator run ("can my mods
   track the workflow agents… see the progress by clicking on the %").
+- 2026-10-30 Build (worktree `ai-workflow-kit-039-build`, branch `feat/039-fleet-run-progress`, in parallel with plan
+  040 — shared file: `CHANGELOG.md` Unreleased only). Step 0: no drift on the read files; the journal's `result`
+  outputs name the run (`--run=run-NNN-NNN`), transcripts sit beside it as `agent-<agentId>.jsonl`. Deviations:
+  - Hotkey is `r`, not `o`: ship-pilot's alert row already uses `o` (open-pr-only); a key may appear once.
+  - Plan lines are in plan-number order: status.json keeps no wave order.
+  - After a Workflow tool call fleet also looks for a new run for 10 min, so a run that starts after the answer
+    ended still shows up; outside that and outside a live run no timer runs.
+  - The workflow folder is found from `$.plugin.root` (…/<config>/plugins/…) + the checkout's project slug: this
+    session first, then the 6 newest sessions of the project. A plugin loaded from elsewhere shows no agent detail.
+  - A run whose status.json is a day old counts as crashed, not live.
+  - Fixed the pre-existing failing fleet test (refresh notice): `turn.complete` event shape and a 30 s timeout.

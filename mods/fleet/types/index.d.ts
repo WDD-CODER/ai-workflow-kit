@@ -37,8 +37,32 @@ export type FleetHealth = {
   busy: 'idle' | 'handoff' | 'compact' | 'pulling main'
 }
 
+/** One live /orchestrate run of this checkout, as the dock chip and panel draw it. */
+export type FleetRunView = {
+  /** The run's folder name under .claude/orchestrator-runs. */
+  name: string
+  /** (sum of each plan's stage weight) / plan count, 0..100. */
+  percent: number
+  /** The watch line starts with STUCK. */
+  stuck: boolean
+  /** One plain line per plan: `506 · checks (gate 506 · 20 s ago) · 3 min`. */
+  plans: string[]
+  /** The current agent when its label names no plan of the run (`now: preflight · 5 s ago`). */
+  agent: string | null
+  /** The latest `orch-state.mjs watch` line; '' when it could not run. */
+  watch: string
+}
+
+/** The live runs and whether their panel is open. */
+export type FleetRuns = {
+  list: FleetRunView[]
+  panelOpen: boolean
+  /** $.clock.now() until which fleet keeps looking for a run a Workflow call may have started. */
+  watchingUntil: number
+}
+
 declare module 'claude-code' {
   interface PluginState {
-    fleet: { health: FleetHealth }
+    fleet: { health: FleetHealth; runs: FleetRuns }
   }
 }
