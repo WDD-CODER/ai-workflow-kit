@@ -1023,9 +1023,9 @@ async function run() {
       for (let k = w + 1; k < waves.length; k++) waves[k] = waves[k].filter((nnn) => !blocked.has(nnn))
       const goOn = waves.slice(w + 1).flat().length
       if (blocked.size) await note(`wave ${w + 1} parked ${hit.join(', ')} — skipped ${[...blocked].map(([nnn, reason]) => `${nnn} (${reason})`).join(', ')}; ${goOn} later plan(s) go on`)
-      continue
-    }
-    if (!stop && parked.length && ON_PARK === 'dependents') await note('onPark dependents: the plan order has no edges — later waves not started, as onPark "all"')
+      // Nothing left to run after the park: the run ends stopped on it, as before.
+      if (goOn || waiting.length) continue
+    } else if (!stop && parked.length && ON_PARK === 'dependents') await note('onPark dependents: the plan order has no edges — later waves not started, as onPark "all"')
     if (stop || parked.length) {
       stopReason = stop ? stop.stopRun : `wave ${w + 1} parked ${parked.map((p) => p.nnn).join(', ')} — later waves not started`
       const later = [...waves.slice(w + 1).flat(), ...waiting]
