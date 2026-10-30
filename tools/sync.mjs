@@ -51,7 +51,7 @@ import { resolve, join, dirname, relative, isAbsolute, sep } from 'path'
 import { resolveSource } from './lib/source.mjs'
 import {
   KIT_ROOT, readJson, sha256, resolveConfig, planFiles, parseArgs, readOverrides, isHook, markHooksExecutable, commandProblems,
-  ownsAgents, ignoredPaths, AGENTS_WORKFLOW, frontendNote, presentAlternative, backendNote, withUpstream, splitList,
+  ownsAgents, ignoredPaths, AGENTS_WORKFLOW, frontendNote, presentAlternative, backendNote, ciMirrorNotes, withUpstream, splitList,
   projectConfigPath, configLabel, requiredByDest,
 } from './lib/kit.mjs'
 
@@ -81,6 +81,7 @@ const layers = args.layers != null ? splitList(args.layers) : inst.layers ?? []
 let plan
 let feNote
 let beNote
+let ciNotes = []
 let overrides
 let explicitOverrides
 let kitRoot
@@ -106,6 +107,7 @@ try {
   }
   feNote = frontendNote(vals)
   beNote = backendNote(vals, target)
+  ciNotes = ciMirrorNotes(vals, target)
   const agentsWorkflow = ownsAgents({ target, overrides, recorded: inst.files ?? {} })
   plan = planFiles({ kitRoot, packs, layers, cursor: inst.cursor, yesChef: inst.yesChef, vals, agentsWorkflow })
   // Recorded paths too: a file the kit stopped shipping that is upstream-owned is never pruned.
@@ -216,6 +218,7 @@ for (const n of pruneNotes) console.log(n)
 for (const p of unknownOverrides) console.log(`NOTE override ${p} is not a file this kit ships — remove it from ${cfgName}`)
 if (feNote) console.log(feNote)
 if (beNote) console.log(beNote)
+for (const n of ciNotes) console.log(n)
 if (inst.kit?.version !== readJson(join(kitRoot, 'kit.json')).version) {
   console.log(`NOTE installed from kit ${inst.kit?.version}, this kit is ${readJson(join(kitRoot, 'kit.json')).version}`)
 }

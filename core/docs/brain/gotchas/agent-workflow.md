@@ -366,3 +366,10 @@ only the Bash tool's command text triggers it.
 **Why the obvious fix is wrong:** Letting every later plan run after a park is not safe either: a plan that depends on the parked one, or edits the same files, builds on what the park left behind. The workflow cannot tell which is which by wave order alone.
 
 **What to do instead:** `orchestrator.onPark` is `dependents` (default): `orch-state.mjs order` hands the workflow the unmet edges, and `blockedBy()` in `orchestrate.js` skips only the later plans reachable over `Depends-on:` edges (`depends on parked <NNN>`) or a scope-overlap edge (`shares files with parked <NNN>`); the rest still run. `all` is the old behaviour. A `stopRun` and a failed final gate still stop everything.
+## A green run, a red pull request
+
+**What hurt:** On 2026-10-29 an orchestrator run finished green and its pull request failed on the CI `rules` job (`KIT_MANIFEST: FAIL — 3 unclassified`); another plan hit the same failure the day before. About ten minutes each. The final gate ran only the project build, lint and test commands, and nothing said which other CI commands it skipped.
+
+**Why the obvious fix is wrong:** Adding one more hard-coded check to the gate fixes that one job and leaves the next CI-only job to repeat it. Rerunning CI until it passes hides a real failure behind a flake.
+
+**What to do instead:** List the cheap CI commands in `orchestrator.ciMirror` (kit.config.json): the final gate runs them after the project checks and the kit manifest check. Install and sync print a `NOTE ci-mirror:` line for each workflow command the gate does not run. A check that passes only on a rerun is recorded as a flake in `status.json` and the report (`## Flaky checks`), so it can be fixed instead of paid for in fix rounds.

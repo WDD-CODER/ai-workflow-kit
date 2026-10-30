@@ -25,6 +25,14 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
   (JSON report into a fixed page template; cursors in `docs/scout/state.json`; nothing new = no page) and
   `scripts/scout/pr.mjs` (pull request through `gh api`, which cloud scheduled runs allow). Both refuse secrets,
   machine paths and transcript text. New seed `docs/scout/sources.json` holds the sources and caps. Proposals only.
+- **A run ends clean.** `orchestrator.ciMirror` (list, default `[]`) names CI commands the final gate runs after the
+  project checks and the kit manifest check; install and sync validate it and print a `NOTE ci-mirror:` line for each
+  workflow command the gate does not run. A check that passed only on a rerun (the gate's env-fail rerun, or the next
+  gate on the same commit) is recorded as a flake (`orch-state.mjs flake`, `plans[NNN].flakes[]`, `flakes[]`) and shown in
+  the report as `## Flaky checks`. `plan-close.mjs` closes a fully ticked plan that never had a todo section and skips one
+  the todo-sync bot already closed on `origin/<main>`. `free-merged-slots.mjs` removes the clean merge folder of a merged
+  run. `slot-serve.mjs --ref <branch>` serves a branch in an idle slot for validation (`.worktree-validating`); the slot
+  views show `validating`, `idleSlot` and `take-plan` skip it and `slot-stop.mjs` ends it.
 - **Decision triage.** A run lists each decision once: a repeat in other words (a fix round, a checker, a relaunch) is
   merged in code and shown as `also:`. Decisions are records in `status.json` (no longer notes, so never cut by
   `maxNotesPerPlan`), and a relaunch numbers on without `firstDecision`. One `orch-triage` call per run (new agent,

@@ -34,6 +34,7 @@ branch himself.
 | `triageMinAgreement` | `0.9` | Agreement with the Human a kind needs before `filter` collapses it (0.5–1) |
 | `triageMinGraded` | `20` | Graded decisions of that kind it needs first (5–500) |
 | `mergeChecks` | `build` | What the merge step runs on the merged tree: `build` = the project build plus the plan's scope check (lint and tests passed in the plan's gate and run once more at the final gate), `full` = the plan's whole check list on every merge |
+| `ciMirror` | `[]` | CI commands (`npm run <script>`, `pnpm run <script>`, `node scripts/…` or `node tools/…`, no write flag) the final gate runs after the project checks and the kit manifest check, so a green run is a green pull request. Install and sync print a `NOTE ci-mirror:` line for each workflow command the final gate does not run; they never write the list |
 
 ## The run
 
@@ -100,7 +101,9 @@ branch himself.
    **Final gate.** After the last wave, one `orch-gate` runs the project's build, lint and test commands on the run
    branch (the merge folder) once, plus `node scripts/kit-manifest-check.mjs` when the project has a kit manifest
    (the manifest.json under docs/workflow-kit; the pull request's rules job runs the check; a run once finished green and its pull
-   request failed on three test fixtures no manifest entry classified). A failure is a finding in the report
+   request failed on three test fixtures no manifest entry classified), plus every command in `orchestrator.ciMirror`
+   (`[]`; deduplicated, in that order; a command that fails the plan-check allowlist is dropped
+   with the run note `ci-mirror check dropped, not run: <why>`). A failure is a finding in the report
    (`Stopped: final gate failed: <command> — <output tail>`, and the command's output) and the run branch is not handed
    over as clean; a merge can break a test no plan's own checks cover.
 5. **Report.** `orch-state.mjs finish` runs every time the workflow ends — after the last wave, when every plan parked,
@@ -227,6 +230,14 @@ two sessions apart:
   `status.json` says `running` and was updated in the last two hours.
 - The Planner's `free-merged-slots` (session start, `/plan` step 2) leaves alone every slot a live run holds (by slot
   path or plan branch in `status.json`); the run gives its slots back itself.
+- After the Human merges the run branch, `free-merged-slots` also removes the run's merge folder
+  (`<repo>-orch-merge-<run>`): only when the run is not live, the folder has no uncommitted file and the run branch is
+  merged into `origin/main` (or its remote branch is gone). It never forces the removal and keeps the local
+  branch; a folder it cannot remove (a server still running in it) is reported as `left alone — <why>`.
+- To validate a run branch in an idle slot, run `node scripts/slot-serve.mjs --ref <branch>` there: the slot is
+  checked out detached at `origin/<branch>` and marked `.worktree-validating`, `scripts/lib/slot.mjs --list` shows
+  `detached validating <branch> since <time>`, and neither a run nor `take-plan` claims it. `node scripts/slot-stop.mjs`
+  ends it (the SessionEnd hook does too).
 
 ## The [ui] cards
 
@@ -307,6 +318,11 @@ run notes under `## Run notes`; the
 models each agent ran on; what only the Human can do — one
 validation list, numbers running on: first a card per `removes:` decision of a merged plan (`### Removed behaviour — check
 before merging the PR`), then a **screenshot grid per page** (one row per `[ui]` card of a merged plan: title,
+models each agent ran on; **Flaky checks** (only when `status.json` has any: a check that passed only on the gate's own
+rerun after an env-fail, or on the next gate with no new commit — recorded by `orch-state.mjs flake` in
+`plans[NNN].flakes[]`, the final gate's in `flakes[]`; the run goes on and the fix round it cost stays spent, the record is
+what lets the Human fix the test); what only the Human can do — one
+validation list, numbers running on: a **screenshot grid per page** (one row per `[ui]` card of a merged plan: title,
 verdict with who checked it — script or browser — and the round, and a thumbnail link to each screenshot; kept in
 `status.json` as `uiCards`), then **plan drift** in its own section (no severity, not a bug: update the card or the
 plan), then the `[ui]` cards no one could check and every `[human]` item of the merged plans, which name no page, per

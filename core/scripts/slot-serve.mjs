@@ -7,6 +7,7 @@
  * Usage:
  *   node scripts/slot-serve.mjs            # start what is not running, keep what is
  *   node scripts/slot-serve.mjs --restart  # stop this slot's servers first, then start both
+ *   node scripts/slot-serve.mjs --ref <branch>  # idle slot only: check out origin/<branch> detached, mark it validating, then serve
  *
  * Steps: npm install when a lockfile changed or a folder's packages are missing (running servers are restarted on the new dependencies), then
  * each server is kept when this slot already runs it (a watcher that is restarting its app counts), refused
@@ -18,7 +19,7 @@
 import { readFileSync, existsSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { join } from 'path'
-import { isSlot, slotNumber, ports, activePlanPath } from './lib/slot.mjs'
+import { isSlot, slotNumber, ports, activePlanPath, startValidating } from './lib/slot.mjs'
 import {
   repoRoot, portState, processTable, listeners, devChains, killTree, readSlotPids, writeSlotPids,
   stopSlotServers, waitForPort, waitForPortFree, startServer, npmInstallIfChanged, generateEnvironmentSlot,
@@ -38,6 +39,18 @@ function fail(message) {
 if (!isSlot()) fail('not a slot - the main folder\'s dev servers are the Human\'s; start them by hand')
 
 const n = slotNumber()
+// --ref <branch>: serve a branch (a run branch, a plan branch) for the Human's validation in this idle slot. The slot
+// is checked out detached at origin/<branch> and marked .worktree-validating, so every status view says "validating"
+// and no run or take-plan claims it; node scripts/slot-stop.mjs ends it.
+const refAt = process.argv.findIndex((a) => a === '--ref' || a.startsWith('--ref='))
+if (refAt !== -1) {
+  const given = process.argv[refAt]
+  const ref = given.includes('=') ? given.slice(given.indexOf('=') + 1) : process.argv[refAt + 1]
+  if (!ref) fail('--ref needs a branch (--ref <branch>)')
+  const v = startValidating({ path: repoRoot, branch: ref })
+  if (!v.ok) fail(v.error)
+  console.log(`SLOT_SERVE: wt-${n} validating ${ref} @ ${v.sha.slice(0, 7)}`)
+}
 const { fe: fePort, be: bePort } = ports()
 const hasServer = existsSync(join(repoRoot, 'server', 'package.json'))
 // The frontend comes from kit.config.json: commands.dev + slots.fe* (lib/slot-procs.mjs; a stack pack fills them).

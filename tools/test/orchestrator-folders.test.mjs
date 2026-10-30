@@ -357,6 +357,196 @@ test('orch-state worktree twice for the same plan returns the same path and make
   assert.equal(trees.length, 1, trees.join('\n'))
 })
 
+// ---- plan 044: a plan closes once by script, merged runs leave no merge folder, a slot can serve a branch ------------
+const planClose = await import(pathToFileURL(join(root, 'scripts', 'plan-close.mjs')).href)
+const doneWhen = await import(pathToFileURL(join(root, 'scripts', 'lib', 'done-when.mjs')).href)
+const slotLib = await import(pathToFileURL(join(root, 'scripts', 'lib', 'slot.mjs')).href)
+const copyScripts = (dir) => cpSync(join(root, 'scripts'), join(dir, 'scripts'), { recursive: true, dereference: true, filter: (src) => !/node_modules/.test(src) })
+// GITHUB_ACTIONS is cleared: in CI plan-close.mjs skips its origin check by design, and these tests exercise that check.
+const node = (cwd, script, ...a) => spawnSync(process.execPath, [join(cwd, 'scripts', script), ...a], { cwd, encoding: 'utf8', env: { ...process.env, GITHUB_ACTIONS: '' } })
+const PLAN_DONE = '# Plan 001 — x\n\nStatus: active\n\n## Goals & Success Criteria\n- [x] [auto] node x.mjs exits 0\n- [human] open the page\n\n## Atomic Sub-tasks\n- [x] A1: do it\n'
+
+test('plan-close: a fully ticked plan with no todo section closes when no [auto] Done-when item is open; an open todo section still blocks', () => {
+  assert.deepEqual(doneWhen.openAutoItems('## Goals & Success Criteria\n- [ ] [auto] a\n- [ ] [auto:main] b\n- [x] [auto] c\n- [auto] no box\n- [ ] [human] h\n\n## Notes\n- [ ] [auto] not a Done-when item\n'), ['a', 'b'])
+  const texts = {
+    'plans/001-a.plan.md': PLAN_DONE,
+    'plans/002-b.plan.md': PLAN_DONE.replace('- [x] [auto]', '- [ ] [auto]'),
+    'plans/003-c.plan.md': PLAN_DONE.replace('- [x] [auto]', '- [auto]'),
+    'plans/004-d.plan.md': PLAN_DONE.replace('- [x] A1', '- [ ] A1'),
+    'plans/005-e.plan.md': PLAN_DONE,
+    'plans/006-f.plan.md': PLAN_DONE.replace('- [x] [auto]', '- [ ] [auto]'),
+  }
+  const found = planClose.findClosable({ files: Object.keys(texts), openNums: new Set(['005']), archivedNums: new Set(['006']), readPlan: (f) => texts[f] })
+  assert.deepEqual(found.map((x) => x.nnn), ['001', '003', '006'], 'no todo section: 001 and 003 (a box-less item has no state); archived 006 closes as before; open section 005 and open sub-task 004 and open [auto] 002 do not')
+})
+
+test('plan-close: a plan already gone from origin/<main> is skipped with the sha that closed it; the CLI fetches first and a failed fetch closes nothing', () => {
+  const lines = (closedOnOrigin) => {
+    const dir = tmp()
+    mkdirSync(join(dir, 'plans'))
+    writeFileSync(join(dir, 'plans', '001-x.plan.md'), PLAN_DONE)
+    return { dir, out: planClose.closePlans(dir, { closedOnOrigin }) }
+  }
+  const skipped = lines((f) => (f === 'plans/001-x.plan.md' ? 'abc1234' : null))
+  assert.deepEqual(skipped.out, ['PLAN_CLOSE: skipped plans/001-x.plan.md — already closed on origin/main by abc1234'])
+  assert.equal(existsSync(join(skipped.dir, 'plans', '001-x.plan.md')), true, 'the file stays where it is')
+  const closed = lines(() => null)
+  assert.match(closed.out[0], /^PLAN_CLOSE: closed plans\/001-x\.plan\.md → plans\/1-100\/001-x\.plan\.md$/)
+  // The CLI, in a scratch repository with a bare origin: the "bot" clone closes the plan on origin, this clone has not pulled.
+  const dir = tmp()
+  const origin = join(tmp(), 'origin.git')
+  sh(dir, 'init', '-q', '--bare', '-b', 'main', origin)
+  sh(dir, 'init', '-q', '-b', 'main')
+  sh(dir, 'config', 'user.email', 't@t')
+  sh(dir, 'config', 'user.name', 't')
+  copyScripts(dir)
+  mkdirSync(join(dir, 'plans'))
+  writeFileSync(join(dir, 'plans', '001-x.plan.md'), PLAN_DONE)
+  sh(dir, 'add', '-A')
+  sh(dir, 'commit', '-q', '-m', 'first')
+  sh(dir, 'remote', 'add', 'origin', origin)
+  sh(dir, 'push', '-q', '-u', 'origin', 'main')
+  const bot = join(tmp(), 'bot')
+  sh(tmp(), 'clone', '-q', origin, bot)
+  sh(bot, 'config', 'user.email', 't@t')
+  sh(bot, 'config', 'user.name', 'bot')
+  mkdirSync(join(bot, 'plans', '1-100'), { recursive: true })
+  sh(bot, 'mv', 'plans/001-x.plan.md', 'plans/1-100/001-x.plan.md')
+  sh(bot, 'commit', '-q', '-m', 'plan(001): close')
+  sh(bot, 'push', '-q', 'origin', 'main')
+  const closer = sh(bot, 'rev-parse', '--short=7', 'HEAD')
+  const withFetch = node(dir, 'plan-close.mjs')
+  assert.equal(withFetch.status, 0, withFetch.stdout + withFetch.stderr)
+  assert.equal(withFetch.stdout.trim(), 'PLAN_CLOSE: skipped plans/001-x.plan.md — already closed on origin/main by ' + closer.slice(0, 7))
+  assert.equal(existsSync(join(dir, 'plans', '001-x.plan.md')), true)
+  // A plan that was never pushed (no history on origin/<main>) is not "closed on origin".
+  writeFileSync(join(dir, 'plans', '002-y.plan.md'), PLAN_DONE.replace('Plan 001', 'Plan 002'))
+  assert.match(node(dir, 'plan-close.mjs', '--dry-run').stdout, /^PLAN_CLOSE: would close plans\/002-y\.plan\.md → plans\/1-100\/002-y\.plan\.md$/m)
+  // The fetch fails: nothing is closed, exit 0.
+  sh(dir, 'remote', 'set-url', 'origin', join(tmp(), 'no-such-origin.git'))
+  const broken = node(dir, 'plan-close.mjs')
+  assert.equal(broken.status, 0)
+  assert.match(broken.stdout, /^PLAN_CLOSE: could not fetch origin\/main \(.+\) — nothing closed$/m)
+  assert.equal(existsSync(join(dir, 'plans', '002-y.plan.md')), true)
+  // --no-fetch is the old behaviour: the local plan closes.
+  assert.match(node(dir, 'plan-close.mjs', '--no-fetch').stdout, /^PLAN_CLOSE: closed plans\/001-x\.plan\.md/m)
+})
+
+test('free-merged-slots removes the clean merge folder of a merged run; a live, dirty or unmerged one stays, with the reason', () => {
+  const repoName = /const repo = '([^']*)'/.exec(readFileSync(join(root, 'scripts', 'free-merged-slots.mjs'), 'utf8'))?.[1] || 'proj'
+  const parent = tmp()
+  const dir = join(parent, repoName)
+  mkdirSync(dir)
+  const origin = join(tmp(), 'origin.git')
+  sh(dir, 'init', '-q', '--bare', '-b', 'main', origin)
+  sh(dir, 'init', '-q', '-b', 'main')
+  sh(dir, 'config', 'user.email', 't@t')
+  sh(dir, 'config', 'user.name', 't')
+  copyScripts(dir)
+  writeFileSync(join(dir, '.git', 'info', 'exclude'), 'scripts/\n.claude/\n.worktree-*\n')
+  writeFileSync(join(dir, 'a.txt'), 'a\n')
+  sh(dir, 'add', '-A')
+  sh(dir, 'commit', '-q', '-m', 'first')
+  sh(dir, 'remote', 'add', 'origin', origin)
+  sh(dir, 'push', '-q', '-u', 'origin', 'main')
+  const folderOf = (run) => join(parent, repoName + '-orch-merge-' + run)
+  const makeRun = (run, { merged }) => {
+    sh(dir, 'branch', '--no-track', 'orch/' + run, 'main')
+    sh(dir, 'worktree', 'add', '-q', folderOf(run), 'orch/' + run)
+    sh(folderOf(run), 'config', 'user.email', 't@t')
+    sh(folderOf(run), 'config', 'user.name', 't')
+    writeFileSync(join(folderOf(run), run + '.txt'), run + '\n')
+    sh(folderOf(run), 'add', '-A')
+    sh(folderOf(run), 'commit', '-q', '-m', 'orch(' + run + '): work')
+    if (merged) {
+      sh(dir, 'merge', '-q', '--no-ff', '-m', 'merge ' + run, 'orch/' + run)
+      sh(dir, 'push', '-q', 'origin', 'main')
+    }
+  }
+  makeRun('done', { merged: true })
+  makeRun('live', { merged: true })
+  makeRun('dirty', { merged: true })
+  makeRun('open', { merged: false })
+  writeFileSync(join(folderOf('dirty'), 'scratch.txt'), 'uncommitted\n')
+  const runs = join(dir, '.claude', 'orchestrator-runs', 'live')
+  mkdirSync(runs, { recursive: true })
+  writeFileSync(join(runs, 'status.json'), JSON.stringify({ run: 'live', phase: 'running', updatedAt: new Date().toISOString(), plans: {}, notes: [] }) + '\n')
+  const r = node(dir, 'free-merged-slots.mjs')
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+  const at = (run) => r.stdout.split(/\r?\n/).find((l) => l.startsWith('merge folder ' + folderOf(run)) || l.replace(/\\/g, '/').startsWith('merge folder ' + folderOf(run).replace(/\\/g, '/')))
+  assert.match(at('done'), /: removed \(run branch orch\/done merged; local branch kept\)$/)
+  assert.equal(existsSync(folderOf('done')), false, 'the merged run\'s folder is gone')
+  assert.equal(sh(dir, 'branch', '--list', 'orch/done').includes('orch/done'), true, 'the local branch is kept')
+  assert.match(at('live'), /: left alone — run live is live$/)
+  assert.match(at('dirty'), /: left alone — it has uncommitted files$/)
+  assert.match(at('open'), /: left alone — run branch orch\/open is not merged into origin\/main$/)
+  for (const run of ['live', 'dirty', 'open']) assert.equal(existsSync(folderOf(run)), true, run + ' stays')
+  assert.ok(!/orch-merge/.test(r.stdout.split(/\r?\n/).filter((l) => /done/.test(l) && /left alone/.test(l)).join('')), 'the removed folder is not also reported as left alone')
+})
+
+test('slot-serve --ref: an idle slot checks out the branch detached and is marked validating; every view and claimer respects it; slot-stop ends it', () => {
+  const parent = tmp()
+  const dir = join(parent, 'main')
+  mkdirSync(dir)
+  const origin = join(tmp(), 'origin.git')
+  sh(dir, 'init', '-q', '--bare', '-b', 'main', origin)
+  sh(dir, 'init', '-q', '-b', 'main')
+  sh(dir, 'config', 'user.email', 't@t')
+  sh(dir, 'config', 'user.name', 't')
+  copyScripts(dir)
+  writeFileSync(join(dir, '.git', 'info', 'exclude'), '.worktree-*\n.claude/\n')
+  writeFileSync(join(dir, 'a.txt'), 'a\n')
+  sh(dir, 'add', '-A')
+  sh(dir, 'commit', '-q', '-m', 'first')
+  sh(dir, 'remote', 'add', 'origin', origin)
+  sh(dir, 'push', '-q', '-u', 'origin', 'main')
+  sh(dir, 'switch', '-q', '-c', 'orch/r1')
+  writeFileSync(join(dir, 'b.txt'), 'b\n')
+  sh(dir, 'add', '-A')
+  sh(dir, 'commit', '-q', '-m', 'run work')
+  sh(dir, 'push', '-q', 'origin', 'orch/r1')
+  const tip = sh(dir, 'rev-parse', 'HEAD')
+  sh(dir, 'switch', '-q', 'main')
+  const slot = join(parent, 'proj-wt-1')
+  sh(dir, 'worktree', 'add', '-q', '--detach', slot, 'main')
+  writeFileSync(join(slot, '.worktree-port'), '1\n')
+  const marker = join(slot, '.worktree-validating')
+  // refused: a bad branch name, a busy slot, a dirty slot
+  assert.match(node(slot, 'slot-serve.mjs', '--ref=--evil').stderr, /SLOT_SERVE: branch "--evil" must match/)
+  writeFileSync(join(slot, '.worktree-plan'), 'plans/001-x.plan.md\n')
+  assert.match(node(slot, 'slot-serve.mjs', '--ref', 'orch/r1').stderr, /SLOT_SERVE: this slot is busy/)
+  rmSync(join(slot, '.worktree-plan'))
+  writeFileSync(join(slot, 'dirty.txt'), 'x\n')
+  assert.match(node(slot, 'slot-serve.mjs', '--ref', 'orch/r1').stderr, /SLOT_SERVE: this slot has uncommitted files/)
+  rmSync(join(slot, 'dirty.txt'))
+  assert.equal(existsSync(marker), false, 'a refusal writes no marker')
+  // the serve: checkout + marker + the line (the scratch project has no dev servers, so the serve itself ends there)
+  const served = node(slot, 'slot-serve.mjs', '--ref', 'orch/r1')
+  assert.match(served.stdout, new RegExp('^SLOT_SERVE: wt-1 validating orch/r1 @ ' + tip.slice(0, 7) + '$', 'm'), served.stdout + served.stderr)
+  assert.equal(sh(slot, 'rev-parse', 'HEAD'), tip)
+  assert.equal(sh(slot, 'branch', '--show-current'), '', 'detached')
+  const [branch, at, sha] = readFileSync(marker, 'utf8').trim().split(/\r?\n/)
+  assert.equal(branch, 'orch/r1')
+  assert.ok(!Number.isNaN(Date.parse(at)), at)
+  assert.equal(sha, tip)
+  const listed = node(slot, 'lib/slot.mjs', '--list')
+  assert.match(listed.stdout, new RegExp('^wt-1: detached validating orch/r1 since ' + at.replace(/[.+]/g, '\\$&') + '$', 'm'), listed.stdout + listed.stderr)
+  // idleSlot never returns it; the same slot without the marker is idle
+  const plain = { slot: 1, path: slot, branch: null, detached: true, plan: null, validating: null }
+  assert.equal(folders.idleSlot([plain]), plain)
+  assert.equal(folders.idleSlot([{ ...plain, validating: { branch: 'orch/r1', at } }]), null)
+  assert.deepEqual(slotLib.readValidating(slot), { branch: 'orch/r1', at, sha: tip })
+  // free-merged-slots leaves it alone; take-plan refuses it
+  assert.match(node(dir, 'free-merged-slots.mjs', '--no-fetch').stdout, /^wt-1: validating orch\/r1 — left alone$/m)
+  cpSync(join(root, 'scripts', 'node_modules'), join(slot, 'scripts', 'node_modules'), { recursive: true, dereference: true }) // take-plan imports picomatch
+  assert.match(node(slot, 'take-plan.mjs', '001').stderr, /slot wt-1 is validating orch\/r1 - run node scripts\/slot-stop\.mjs first/)
+  // slot-stop ends it
+  const stopped = node(slot, 'slot-stop.mjs')
+  assert.match(stopped.stdout, /^SLOT_STOP: validating orch\/r1 ended$/m, stopped.stdout + stopped.stderr)
+  assert.equal(existsSync(marker), false)
+  assert.match(node(slot, 'lib/slot.mjs', '--list').stdout, /^wt-1: detached idle$/m)
+})
+
 test('orch-state brain-commit commits docs/brain in the merge folder and pushes the run branch; a second call has nothing to commit; init returns the recorded decisions', () => {
   const parent = tmp()
   const dir = join(parent, 'main')

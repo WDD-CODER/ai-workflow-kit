@@ -95,6 +95,29 @@ export function commandProblems(vals) {
   return out
 }
 
+// The shapes a CI-mirror command may take (orchestrator.ciMirror). The workflow script repeats these rules in its
+// checkProblem (placeholders, so it cannot import this file); a test asserts both refuse the same samples.
+const CI_DENY = /\brm\s+-[a-z]*[rf]|reset\s+--hard|push\s+(?:[^\n]*\s)?(?:--force|-f\b|--force-with-lease)|git\s+clean|branch\s+-D|stash\s+clear|filter-branch/
+const CI_SAFE_ARG = /^[A-Za-z0-9_./=:,@+-]+$/
+const CI_NOT_A_CHECK = new Set([
+  'kit-feedback', 'orch-state', 'decision-log', 'take-plan', 'slot-serve', 'slot-stop', 'todo-query',
+  'todo-archive', 'plan-close', 'free-merged-slots', 'orphan-sweep', 'local-excludes', 'brain-capture-comment', 'sync', 'install', 'kit-sync',
+])
+/** Why a command may not be a CI-mirror check (shape, deny list, state-changing kit script, write flag), or null. */
+export function ciCommandProblem(cmd) {
+  const c = String(cmd ?? '').trim()
+  if (CI_DENY.test(c)) return `${c}: on the deny list`
+  if (/^(?:npm|pnpm) run [A-Za-z0-9:_-]+$/.test(c)) return null
+  const w = c.split(/ +/)
+  if (w[0] === 'node' && /^(tools|scripts)\/[A-Za-z0-9_./-]+\.m?js$/.test(w[1] ?? '') && w.slice(1).every((x) => CI_SAFE_ARG.test(x) && !x.includes('..'))) {
+    const name = w[1].split('/').pop().toLowerCase().replace(/\.m?js$/, '')
+    if (CI_NOT_A_CHECK.has(name)) return `${c}: ${name} changes state or pushes, it is not a check`
+    const writes = w.slice(2).find((x) => /^--(write|apply|fix|update)(=.*)?$/.test(x))
+    return writes ? `${c}: ${writes.split('=')[0]} writes files, it is not a check` : null
+  }
+  return `${c}: not an allowed check (npm run <script>, pnpm run <script>, node scripts/<file>.mjs or node tools/<file>.mjs)`
+}
+
 /**
  * orchestrator.* (the opt-in run, docs/agent/orchestrator.md): the run-branch prefix becomes part of a git branch
  * name and a merge-subject regex, the two numbers bound the fix loop and the disk check. Unset keys take the
@@ -163,6 +186,17 @@ export function orchestratorProblems(vals) {
   if (mc !== undefined && !['build', 'full'].includes(mc)) {
     out.push(`orchestrator.mergeChecks is ${JSON.stringify(mc)} — it must be "build" (the project build plus the plan's scope check) or "full" (the plan's whole check list)`)
   }
+  // CI commands the final gate also runs (orchestrator.ciMirror): a list of check commands with the plan-check shape.
+  const mirror = vals['orchestrator.ciMirror']
+  if (mirror !== undefined) {
+    if (!Array.isArray(mirror)) out.push(`orchestrator.ciMirror is ${JSON.stringify(mirror)} — it must be a list of check commands (npm run <script>, pnpm run <script>, node scripts/… or node tools/…)`)
+    else {
+      for (const item of mirror) {
+        const why = typeof item === 'string' ? ciCommandProblem(item) : `${JSON.stringify(item)} is not a string`
+        if (why) out.push(`orchestrator.ciMirror item ${JSON.stringify(item)} — ${why}`)
+      }
+    }
+  }
   // The decision triage (docs/agent/decision-review.md §5): off, shadow (recommend, show everything) or filter
   // (collapse a kind once its graded agreement is high enough).
   const triage = vals['orchestrator.triage']
@@ -205,6 +239,54 @@ export function backendNote(vals, target) {
   if (!isEmpty(vals['paths.serverRoot']) || !existsSync(join(target, 'server', 'package.json'))) return null
   return 'NOTE server/package.json exists but paths.serverRoot is empty: ci.yml and security.yml render no server tests, install or audit. ' +
     'Set paths.serverRoot to "server/" if that is the project backend.'
+}
+
+/**
+ * NOTE ci-mirror lines: the CI commands (single-line `run: <cmd>` and every line of a `run: |` block of the given
+ * workflow files) that are exactly an allowed check shape (ciCommandProblem) and not in `covered`. Suggestion only,
+ * never written to the config. workflows: [{ file, text }].
+ */
+export function ciMirrorHints({ workflows, covered }) {
+  const skip = new Set((covered ?? []).map((c) => String(c).trim()))
+  const out = []
+  const seen = new Set()
+  for (const { file, text } of workflows ?? []) {
+    const lines = String(text ?? '').split(/\r?\n/)
+    const cmds = []
+    for (let i = 0; i < lines.length; i++) {
+      const m = /^(\s*)(?:-\s+)?run:\s*(.*?)\s*$/.exec(lines[i])
+      if (!m) continue
+      const rest = m[2].replace(/^(["'])(.*)\1$/, '$2')
+      if (/^[|>][+-]?$/.test(rest)) {
+        const indent = m[1].length
+        for (let j = i + 1; j < lines.length; j++) {
+          if (lines[j].trim() === '') continue
+          if (lines[j].length - lines[j].trimStart().length <= indent) break
+          cmds.push(lines[j].trim())
+          i = j
+        }
+      } else if (rest) cmds.push(rest)
+    }
+    for (const cmd of cmds) {
+      if (ciCommandProblem(cmd) !== null || skip.has(cmd) || seen.has(`${file}\n${cmd}`)) continue
+      seen.add(`${file}\n${cmd}`)
+      out.push(`NOTE ci-mirror: ${file} runs "${cmd}" — the run's final gate does not; add it to orchestrator.ciMirror in kit.config.json to run it there`)
+    }
+  }
+  return out
+}
+
+/** The hints for a target project: reads its .github/workflows/*.yml|yaml; `covered` is what the final gate already runs. */
+export function ciMirrorNotes(vals, target) {
+  const dir = join(target, '.github', 'workflows')
+  if (!existsSync(dir)) return []
+  const pm = vals['project.packageManager'] === 'pnpm' ? 'pnpm' : 'npm'
+  const test = !isEmpty(vals['commands.testCi']) ? vals['commands.testCi'] : vals['commands.test']
+  const covered = [vals['commands.build'], vals['commands.lint'], test].filter((s) => typeof s === 'string' && s !== '').map((s) => `${pm} run ${s}`)
+  if (existsSync(join(target, 'docs', 'workflow-kit', 'manifest.json'))) covered.push('node scripts/kit-manifest-check.mjs')
+  if (Array.isArray(vals['orchestrator.ciMirror'])) covered.push(...vals['orchestrator.ciMirror'])
+  const workflows = readdirSync(dir).filter((f) => /\.ya?ml$/.test(f)).sort().map((f) => ({ file: `.github/workflows/${f}`, text: readFileSync(join(dir, f), 'utf8') }))
+  return ciMirrorHints({ workflows, covered })
 }
 
 /**
