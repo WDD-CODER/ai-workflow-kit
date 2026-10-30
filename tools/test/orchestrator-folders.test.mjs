@@ -362,7 +362,8 @@ const planClose = await import(pathToFileURL(join(root, 'scripts', 'plan-close.m
 const doneWhen = await import(pathToFileURL(join(root, 'scripts', 'lib', 'done-when.mjs')).href)
 const slotLib = await import(pathToFileURL(join(root, 'scripts', 'lib', 'slot.mjs')).href)
 const copyScripts = (dir) => cpSync(join(root, 'scripts'), join(dir, 'scripts'), { recursive: true, dereference: true, filter: (src) => !/node_modules/.test(src) })
-const node = (cwd, script, ...a) => spawnSync(process.execPath, [join(cwd, 'scripts', script), ...a], { cwd, encoding: 'utf8' })
+// GITHUB_ACTIONS is cleared: in CI plan-close.mjs skips its origin check by design, and these tests exercise that check.
+const node = (cwd, script, ...a) => spawnSync(process.execPath, [join(cwd, 'scripts', script), ...a], { cwd, encoding: 'utf8', env: { ...process.env, GITHUB_ACTIONS: '' } })
 const PLAN_DONE = '# Plan 001 — x\n\nStatus: active\n\n## Goals & Success Criteria\n- [x] [auto] node x.mjs exits 0\n- [human] open the page\n\n## Atomic Sub-tasks\n- [x] A1: do it\n'
 
 test('plan-close: a fully ticked plan with no todo section closes when no [auto] Done-when item is open; an open todo section still blocks', () => {

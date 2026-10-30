@@ -770,9 +770,10 @@ test('main-try, the workflow and the CI-mirror check hold the same NOT_A_CHECK n
   const inWorkflow = names(wfSource, 'NOT_A_CHECK')
   assert.ok(inWorkflow.length > 10)
   assert.deepEqual(inState, inWorkflow)
-  // The CI-mirror list in tools/lib/kit.mjs (install and sync refuse a bad ciMirror item) is the third copy.
-  const kitSrc = readFileSync(join(root, 'tools', 'lib', 'kit.mjs'), 'utf8')
-  assert.deepEqual(names(kitSrc, 'CI_NOT_A_CHECK'), inWorkflow)
+  // The CI-mirror list in tools/lib/kit.mjs (install and sync refuse a bad ciMirror item) is the third copy. A project
+  // that only has the installed scripts (the e2e fresh project) has no tools/ folder: the kit repo itself checks it.
+  const kitFile = join(root, 'tools', 'lib', 'kit.mjs')
+  if (existsSync(kitFile)) assert.deepEqual(names(readFileSync(kitFile, 'utf8'), 'CI_NOT_A_CHECK'), inWorkflow)
   // The workflow side: a slot-only main command is dropped with the plan-start reason, never kept.
   const slotOnly = 'node scripts/log-query.mjs --since=plan-start --level=error'
   const flow = await runFlow({ mode: 'readiness', plans: ['101'] }, { readiness: () => ({ mainCommands: [slotOnly] }) })
