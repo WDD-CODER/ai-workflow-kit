@@ -3,7 +3,7 @@
     "version": "1.12.0"
   },
   "source": "local:.",
-  "commit": "a363b42b13fb390fccd3c93f08157aa54738085d",
+  "commit": "4afb23a3eaa67cdc4d690a7b417d1270a233079f",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -79,6 +79,11 @@
       "kind": "managed",
       "source": "core/.claude/agents/orch-verify.md"
     },
+    ".claude/agents/skill-judge.md": {
+      "sha256": "130fb5fa2f3043a3546fee6bed18dc95d759b71a81a88140614f50bb33e86d1b",
+      "kind": "managed",
+      "source": "core/.claude/agents/skill-judge.md"
+    },
     ".claude/commands/auto-solve.md": {
       "sha256": "88900c3ed22ef3a2ae670e942b5303959017dfb82d6de61d341da4b5c4f1e49e",
       "kind": "managed",
@@ -128,6 +133,11 @@
       "sha256": "393e41e55e37154ef324992358870a77471eafcd2ff9a2596c7cb84ea3830e16",
       "kind": "managed",
       "source": "core/.claude/commands/fix.md"
+    },
+    ".claude/commands/improve-skill.md": {
+      "sha256": "817f36bc78102b66fa985abb4d91ceb8734c50c9c78b411bf4839120fd62579c",
+      "kind": "managed",
+      "source": "core/.claude/commands/improve-skill.md"
     },
     ".claude/commands/kit-feedback.md": {
       "sha256": "e3caa30bbca281dea3d63af307959769062d37d8d0b909c298100fd7476105b9",

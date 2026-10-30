@@ -150,6 +150,33 @@ each mod does and its options: `mods/README.md`.
 - The mods read the project's hotspots and port bases from the files the kit rendered (`scripts/scope-check.mjs`,
   `scripts/lib/slot.mjs`), so they match the kit's own checks; their own `/config` options override those.
 
+## Skill improver (nightly, local)
+
+`tools/skill-improver/run.mjs` improves one skill a night from real evidence. It scans local session transcripts
+(counts only, nothing copied), picks the skill with the worst evidence, edits it in a throwaway worktree of
+`origin/main`, and has a separate blind judge (the `models.review` tier, never Haiku) score the old and new version
+against the skill's `evals/evals.json`. A kit PR `chore/skill-improve-<skill>-<date>` opens **only when the new
+version scores higher**; otherwise `no-change <skill> <before> <after> <reason>` goes to the local log
+(`~/.claude/skill-improver/log.txt`).
+
+```text
+node tools/skill-improver/run.mjs --once            # one skill now
+node tools/skill-improver/run.mjs --dry-run         # evidence + pick only, 0 tokens
+node tools/skill-improver/run.mjs --budget 20000    # stops with "SKILL_IMPROVER: budget reached (N/20000)"
+.\kit-skill-improver.ps1 -Register -PrintOnly       # show the daily task (02:10); drop -PrintOnly to register
+```
+
+Guards: hard cap 400000 tokens per run (a 2nd skill only when the 1st finished under 200000); a candidate that
+touches anything outside the skill folder, its rendered `.claude/skills/<skill>/` copy and `.kit/install.json` aborts with `SKILL_IMPROVER: out-of-scope <path>`; `leak-check`
+runs on the diff and the PR body before every push; the run pauses while 3 improver PRs are open. The task runs on AC
+power only and does not catch up after a missed night.
+
+Cost: every run prints `SKILL_IMPROVER: billing plan-limits` (signed in with the Claude plan) or
+`SKILL_IMPROVER: billing api-key` (`ANTHROPIC_API_KEY` set) before its first model call, and appends
+`{date, target, mode, usd, tokens, result}` to `~/.claude/skill-improver/spend.jsonl`. The runner is a small core
+(`tools/skill-improver/lib/`) with a `--target` switch; only `skill` exists today, any other target exits 2 with
+`unknown target <t>`. Editor command: `/improve-skill`; grader: the `skill-judge` agent.
+
 ## Sync (see what a newer kit changes)
 
 ```powershell
