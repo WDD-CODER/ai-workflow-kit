@@ -88,8 +88,13 @@ function checkFilesOf(cmd) {
 // A main-folder check (a plan's [auto:main] item: it reads the live environment — .env, a database, a log — that a
 // worktree and the merge folder never have) runs in the Human's main folder, so only a project script is allowed
 // there: no package.json script, no node --test (those run in the plan's worktree).
+// A check that reads a slot's plan-start stamp (`--since=plan-start`, `.slot-plan-start`, written by take-plan in a
+// wt-N slot) can never pass from the main folder, which has no stamp and serves main's code, not the plan's: it is
+// dropped at launch instead of costing fix rounds; the report lists the app errors since the run started instead.
+const SLOT_ONLY_RE = /--since=plan-start\b|\.slot-plan-start/
 function mainCheckProblem(cmd) {
   const c = String(cmd ?? '').trim()
+  if (SLOT_ONLY_RE.test(c)) return `${c}: --since=plan-start needs a slot's plan-start stamp; the main folder has none — the report lists app errors since the run started instead`
   return checkProblem(c, null) ?? (/^node (tools|scripts)\//.test(c) ? null : `${c}: only node scripts/… or node tools/… run from the main folder`)
 }
 // The plan branch shape (lib/orch-run.mjs PLAN_BRANCH_RE): it reaches git commands the agents run.
@@ -734,6 +739,9 @@ async function run() {
   const init = await state(['init', '--run', RUN], 'start run')
   if (!init.ok) return { mode: 'run', run: RUN, ok: false, stopped: 'init', problems: [init.error] }
   mergeFolder = init.mergeFolder
+  // The PR's rules job runs the kit manifest check; the final gate runs it too when the project has a manifest, so a
+  // new file a builder forgot to classify fails the run, not the PR.
+  const finalChecks = [...PROJECT_CHECKS, ...(init.kitManifest === true ? ['node scripts/kit-manifest-check.mjs'] : [])]
   const startedAt = init.startedAt ?? null
   const order = await state(['order', '--run', RUN, '--plans', PLANS.join(',')], 'plan order')
   if (!order.ok) {
@@ -818,8 +826,8 @@ async function run() {
   // The final integration gate: the project's full build and test once on the run branch after the last merge, so a
   // merge that breaks a test outside every plan is a finding, not a clean hand-over.
   const anyMerged = outcomes.some((o) => o.state === 'merged') || (order.skipped?.length ?? 0) > 0
-  if (anyMerged && mergeFolder && PROJECT_CHECKS.length) {
-    const g = await gate({ nnn: 'final', wt: { path: mergeFolder }, checks: PROJECT_CHECKS })
+  if (anyMerged && mergeFolder && finalChecks.length) {
+    const g = await gate({ nnn: 'final', wt: { path: mergeFolder }, checks: finalChecks })
     if (g.fail || g.env) {
       const why = g.fail ? `final gate failed: ${g.check} — ${String(g.tail ?? '').split('\n').slice(-5).join(' / ')}` : `final gate could not run: ${g.why}`
       finalGate = { ok: false, command: g.check, tail: g.tail, why }

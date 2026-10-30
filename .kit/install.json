@@ -3,7 +3,7 @@
     "version": "1.12.0"
   },
   "source": "local:.",
-  "commit": "12bcccb9c9c70659332bba8916e7e7ee4fccfbb4",
+  "commit": "4afb23a3eaa67cdc4d690a7b417d1270a233079f",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -55,7 +55,7 @@
       "source": "core/.claude/agents/orch-merge.md"
     },
     ".claude/agents/orch-readiness.md": {
-      "sha256": "6c1cf67c2fbc3362cc5fcdd355ef6136b52f4785ef7e6ea454c28839e2ccc26c",
+      "sha256": "0c56ee99aa3d3848391c9441a1d6bba449d571f83bc0f47f3801e1692878353e",
       "kind": "managed",
       "source": "core/.claude/agents/orch-readiness.md"
     },
@@ -145,7 +145,7 @@
       "source": "core/.claude/commands/kit-feedback.md"
     },
     ".claude/commands/orchestrate.md": {
-      "sha256": "68ca8bdba94e91d06b463e3cdc154e0329bbfa377f599655d5e80d0026a5e02c",
+      "sha256": "ac1e5450354c014d83f8e8caf623bf0dfc4b7640120f31b4819a97ea55ae112f",
       "kind": "managed",
       "source": "core/.claude/commands/orchestrate.md"
     },
@@ -265,7 +265,7 @@
       "source": "core/.claude/skills/worktree-setup/SKILL.md"
     },
     ".claude/workflows/orchestrate.js": {
-      "sha256": "daa25eaf2e9b10602980db9e6f46001361262176a9d8a08fd6aba6d5494d6f50",
+      "sha256": "9528415397ec1d74929c5d5c7df909e9eb736d4257561d79b30268c73be47f47",
       "kind": "managed",
       "source": "core/.claude/workflows/orchestrate.js"
     },
@@ -345,7 +345,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "a43f8fa65fc83c53b4da3e319a71cd3f2537e9de97a5c177024e4a79ce0d6dfe",
+      "sha256": "e4162e5749bd4b716894fcb1ffb3473e08c63a06198c27b9c65e710d4b580f6d",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -585,7 +585,7 @@
       "source": "core/scripts/lib/orch-folders.mjs"
     },
     "scripts/lib/orch-run.mjs": {
-      "sha256": "05ee020ae8ee72ad3d06905cd898e9115489db9052708bef90dc90e3780b635b",
+      "sha256": "79bef224f2799d0848e637d140f1a4d674a95a5dc55f8a9026ba5650e7aeff4f",
       "kind": "managed",
       "source": "core/scripts/lib/orch-run.mjs"
     },
@@ -640,7 +640,7 @@
       "source": "core/scripts/orch-preflight.mjs"
     },
     "scripts/orch-state.mjs": {
-      "sha256": "49c2f72358d3f4361d6e402dcb3212f8132b6ec207b95260f6b570525ca0d987",
+      "sha256": "9a3d40dab3bd618fbf8e38abf3fde1625ca9f8732c612159769cc2ed6f8523bc",
       "kind": "managed",
       "source": "core/scripts/orch-state.mjs"
     },

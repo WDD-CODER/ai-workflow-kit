@@ -133,7 +133,7 @@ async function runFlow(args, hooks = {}) {
   const state = (w) => {
     const cmd = w[2]
     const f = Object.fromEntries(w.slice(3).map((x) => /^--([\w-]+)=(.*)$/.exec(x)).filter(Boolean).map((m) => [m[1], m[2]]))
-    if (cmd === 'init') return { ok: true, mergeFolder: '/merge', startedAt: '2026-01-01T00:00:00.000Z' }
+    if (cmd === 'init') return { ok: true, mergeFolder: '/merge', startedAt: '2026-01-01T00:00:00.000Z', ...(hooks.init ?? {}) }
     if (cmd === 'order') {
       const todo = plansIn.filter((p) => !(hooks.merged ?? []).includes(p))
       return { ok: true, waves: hooks.waves ?? [todo], waveLocks: [], skipped: hooks.merged ?? [], plans: Object.fromEntries(plansIn.map((p) => [p, { path: `plans/${p}-x.plan.md` }])) }
@@ -556,6 +556,56 @@ test('main-folder checks: a failing main check is a real failure named "gate (ma
   assert.match(result.outcomes[0].reason, /^same reason twice: gate \(main folder\): node scripts\/log-query\.mjs --since=15m/)
   const fix = calls.filter((c) => c.type === 'orch-builder')[1]
   assert.match(fix.task.FINDINGS, /log-query\.mjs --since=15m/, 'the builder gets the failing main check as a finding')
+})
+
+// ---- plan 040: slot-only checks, app errors in the report, the manifest check at the final gate, main untouched ----
+
+test('main-folder checks: a check that reads the slot plan-start stamp is dropped at launch with a note and never runs', async () => {
+  const slotOnly = 'node scripts/log-query.mjs --since=plan-start --level=error'
+  const { calls, notes, result } = await runFlow({ plans: ['101'], pilot: false, mainChecks: { 101: [slotOnly] }, mainApproved: true })
+  assert.equal(calls.filter((c) => c.type === 'orch-gate' && c.task.FOLDER === '/main').length, 0, 'no main-folder gate')
+  assert.equal(calls.filter((c) => c.type === 'orch-builder').length, 1, 'no fix round')
+  assert.ok(notes.some((n) => /main-folder check dropped, not run: node scripts\/log-query\.mjs --since=plan-start --level=error: --since=plan-start needs a slot's plan-start stamp/.test(n)), notes.join('\n'))
+  assert.equal(result.outcomes[0].state, 'merged')
+  // A plain time window still runs from the main folder.
+  const kept = await runFlow({ plans: ['101'], pilot: false, mainChecks: { 101: ['node scripts/log-query.mjs --since=15m'] }, mainApproved: true })
+  assert.equal(kept.calls.filter((c) => c.type === 'orch-gate' && c.task.FOLDER === '/main').length, 1)
+})
+
+test('final gate: runs the kit manifest check when init reports a manifest, and not otherwise', async () => {
+  const finalOf = (calls) => JSON.parse(calls.find((c) => c.type === 'orch-gate' && c.label === 'gate final').task.COMMANDS)
+  const withManifest = await runFlow({ plans: ['101'], pilot: false }, { init: { kitManifest: true } })
+  assert.ok(finalOf(withManifest.calls).includes('node scripts/kit-manifest-check.mjs'))
+  const without = await runFlow({ plans: ['101'], pilot: false })
+  assert.ok(!finalOf(without.calls).includes('node scripts/kit-manifest-check.mjs'))
+  // Never in a plan's own gate or the merge step.
+  const planGate = JSON.parse(withManifest.calls.find((c) => c.type === 'orch-gate' && c.label === 'gate 101').task.COMMANDS)
+  assert.ok(!planGate.includes('node scripts/kit-manifest-check.mjs'))
+})
+
+test('the report: main stays untouched when only plan files and the todo list changed there', () => {
+  const status = { run: 'r1', startedAt: 'T0', mainShaAtStart: 'aaaaaaa1', plans: {}, notes: [] }
+  const at = (files) => lib.formatReport({ status, merged: [], mainShaNow: 'ccccccc3', finishedAt: 'T1', runBranch: 'orch/r1', mainBranch: 'main', mainChangedFiles: files })
+  assert.match(at(['plans/500-x.plan.md', '.claude/todo.md']), /`main` untouched: yes \(2 plan\/todo file\(s\) changed on main\) — origin\/main is ccccccc/)
+  assert.match(at(['plans/500-x.plan.md', 'src/app.ts']), /`main` untouched: NO — origin\/main is ccccccc/)
+  assert.match(at(null), /`main` untouched: NO/, 'unknown changed files keep the old answer')
+  assert.deepEqual(lib.mainUntouched('a', 'a', null), { untouched: true, adminFiles: 0 })
+})
+
+test('the report: app errors since the run started — the log query with plan-start replaced, shown as is', () => {
+  assert.equal(lib.logQueryArgs('', 'T0'), null)
+  assert.deepEqual(lib.logQueryArgs('node scripts/log-query.mjs --since=plan-start --level=error', '2026-10-29T22:02:00.000Z'), {
+    args: ['scripts/log-query.mjs', '--since=2026-10-29T22:02:00.000Z', '--level=error'],
+    command: 'node scripts/log-query.mjs --since=2026-10-29T22:02:00.000Z --level=error',
+  })
+  assert.match(lib.logQueryArgs('npx something', 'T0').error, /not node scripts/)
+  assert.match(lib.logQueryArgs('node ../x.mjs', 'T0').error, /not node scripts/)
+  const status = { run: 'r1', startedAt: 'T0', mainShaAtStart: 'a', plans: {}, notes: [] }
+  const r = lib.formatReport({ status, merged: [], mainShaNow: 'a', finishedAt: 'T1', runBranch: 'orch/r1', mainBranch: 'main', appErrors: { command: 'node scripts/log-query.mjs --since=T0', exit: 0, lines: ['no entries'], more: 0 } })
+  assert.ok(r.includes('## App errors since the run started\n\nCommand (from the main folder): `node scripts/log-query.mjs --since=T0`\nExit code: 0\n\n```text\nno entries\n```'), r)
+  const failed = lib.formatReport({ status, merged: [], mainShaNow: 'a', finishedAt: 'T1', runBranch: 'orch/r1', mainBranch: 'main', appErrors: { command: 'npx x', error: 'commands.logQuery is not node scripts/… or node tools/…, not run' } })
+  assert.match(failed, /Could not run: commands\.logQuery is not node scripts/)
+  assert.ok(!lib.formatReport({ status, merged: [], mainShaNow: 'a', finishedAt: 'T1', runBranch: 'orch/r1', mainBranch: 'main' }).includes('App errors'), 'unset → no section')
 })
 
 test('decisions: only behaviour: and seen: entries are kept; confirmations are dropped and counted, with no run note', async () => {
