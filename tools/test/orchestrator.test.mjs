@@ -755,6 +755,31 @@ test('run: a delegated answer keeps only the main-folder commands main-try saw p
   assert.equal(refused.result.stopped, 'main-approval')
 })
 
+// main-try copies mainCheckProblem's rules by design (orch-state.mjs cannot import the workflow): this fails the day a
+// name is added to one list and not the other, or one side stops refusing a slot-only check.
+test('main-try and the workflow hold the same NOT_A_CHECK names and both refuse --since=plan-start', async () => {
+  const names = (src, constName) => {
+    const m = new RegExp(`const ${constName} = new Set\\(\\[([\\s\\S]*?)\\]\\)`).exec(src)
+    assert.ok(m, `${constName} not found`)
+    return [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]).sort()
+  }
+  const stateSrc = readFileSync(join(root, 'scripts', 'orch-state.mjs'), 'utf8')
+  const inState = names(stateSrc, 'MAIN_TRY_NOT_A_CHECK')
+  const inWorkflow = names(wfSource, 'NOT_A_CHECK')
+  assert.ok(inWorkflow.length > 10)
+  assert.deepEqual(inState, inWorkflow)
+  // The workflow side: a slot-only main command is dropped with the plan-start reason, never kept.
+  const slotOnly = 'node scripts/log-query.mjs --since=plan-start --level=error'
+  const flow = await runFlow({ mode: 'readiness', plans: ['101'] }, { readiness: () => ({ mainCommands: [slotOnly] }) })
+  assert.deepEqual(flow.result.plans[0].mainCommands, [])
+  assert.match(flow.result.plans[0].deniedWhy[0], /--since=plan-start needs a slot's plan-start stamp/)
+  // The main-try side: refused before anything runs or is written.
+  const r = spawnSync(process.execPath, [join(root, 'scripts', 'orch-state.mjs'), 'main-try', '--run=same-rules', '--plan=001', `--cmd=${slotOnly}`], { cwd: root, encoding: 'utf8' })
+  assert.equal(r.status, 1)
+  assert.match(r.stdout, /main-try: node scripts\/log-query\.mjs --since=plan-start --level=error: needs a slot plan-start stamp/)
+  assert.ok(!existsSync(join(root, '.claude', 'orchestrator-runs', 'same-rules')), 'a refused command leaves no run state')
+})
+
 test('run: a main-folder command the run would drop (slot-only) never stops it on main-approval', async () => {
   const slotOnly = 'node scripts/log-query.mjs --since=plan-start --level=error'
   const r = await runFlow({ plans: ['101'], pilot: false, mainChecks: { 101: [slotOnly] } })
