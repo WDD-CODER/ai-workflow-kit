@@ -40,6 +40,7 @@ once, by script; a merged run leaves no merge folder; a slot serving a branch fo
   `free-merged-slots.mjs` removes a clean merge folder of a merged run and leaves a live, dirty or unmerged one;
   `slot-serve --ref` checks out and writes `.worktree-validating`, `slot.mjs --list` prints `validating <branch>`,
   `slot-stop` clears it, and `idleSlot` never returns a validating slot.
+- [auto] `node --test tools/test/guards.test.mjs` passes, and its timing asserts use the fastest of 3 runs per guard.
 - [auto] `npm run build` and `npm test` pass (install-check renders `const CI_MIRROR = []` and refuses a bad value).
 - [auto] `node tools/sync.mjs --target . --apply` then `node tools/drift-check.mjs --target .` reports no drift.
 - [human] After a kit sync, FoodVibe's `kit sync` prints a `NOTE ci-mirror:` line for each uncovered CI command, and
@@ -80,6 +81,7 @@ tools/install.mjs
 tools/sync.mjs
 tools/install-check.mjs
 tools/e2e-check.mjs
+tools/test/guards.test.mjs
 tools/test/orchestrator.test.mjs
 tools/test/orchestrator-folders.test.mjs
 tools/test/agent-contracts.test.mjs
@@ -163,6 +165,7 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 - [ ] T1: Prove the run changes with tests that fail on today's code — the cases in the first Done-when item, with the `runFlow` stub (`gateTail` returning `rerun after env-fail: …` on a pass; a builder hook returning the same `headSha`) — tools/test/orchestrator.test.mjs, tools/test/agent-contracts.test.mjs
 - [ ] T2: Prove the script changes in scratch repositories — the cases in the second Done-when item (bare origin like the existing `free-merged-slots` test) — tools/test/orchestrator-folders.test.mjs
 - [ ] T3: Run the folder tests in CI — `tools/e2e-check.mjs` runs `tools/test/orchestrator-folders.test.mjs` with `ORCH_ROOT` = the project, like `orchestrator.test.mjs` — tools/e2e-check.mjs
+- [ ] T4: Make the guard timing test steady on a loaded machine — in `tools/test/guards.test.mjs`, time each guard 3 times and assert `LIMIT_MS` on the fastest run, not on one run: a small helper (`fastest(n, run)` returning the run with the lowest `ms`) used by the three `r.ms`/`p.ms`/`f.ms` asserts in the no-op test (branch-guard, scope-guard, plan-write-guard; the branch-guard-on-a-plan and scope-guard-in-a-no-plan-folder cases too); the decision and `GUARD_GIT_CALLS` asserts stay on the traced run. Why: Git Bash start-up alone pushed `plan-write-guard.sh` to 2048 ms on a loaded Windows machine (2026-10-30, plan 036 build; passed on rerun) — tools/test/guards.test.mjs
 - [ ] R1: Render the kit's own installed copies and check drift — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .` — scripts/, .claude/, docs/agent/, docs/brain/, .kit/install.json
 
 ## Technical Considerations
