@@ -193,6 +193,20 @@ export function orchestratorProblems(vals) {
       }
     }
   }
+  // The decision triage (docs/agent/decision-review.md §5): off, shadow (recommend, show everything) or filter
+  // (collapse a kind once its graded agreement is high enough).
+  const triage = vals['orchestrator.triage']
+  if (triage !== undefined && !['off', 'shadow', 'filter'].includes(triage)) {
+    out.push(`orchestrator.triage is ${JSON.stringify(triage)} — it must be "off", "shadow" or "filter"`)
+  }
+  const minAgree = vals['orchestrator.triageMinAgreement']
+  if (minAgree !== undefined && !(typeof minAgree === 'number' && Number.isFinite(minAgree) && minAgree >= 0.5 && minAgree <= 1)) {
+    out.push(`orchestrator.triageMinAgreement is ${JSON.stringify(minAgree)} — it must be a number from 0.5 to 1`)
+  }
+  const minGraded = vals['orchestrator.triageMinGraded']
+  if (minGraded !== undefined && !(Number.isInteger(minGraded) && minGraded >= 5 && minGraded <= 500)) {
+    out.push(`orchestrator.triageMinGraded is ${JSON.stringify(minGraded)} — it must be a whole number from 5 to 500`)
+  }
   return out
 }
 

@@ -183,6 +183,11 @@ function main() {
   // The orchestrator: its pure rules against the installed scripts, then a whole run with stub role agents.
   const ot = spawnSync(process.execPath, ['--test', '--test-reporter=tap', join(kit, 'tools', 'test', 'orchestrator.test.mjs')], { cwd: proj, env: { ...env, ORCH_ROOT: proj }, encoding: 'utf8' })
   check('orchestrator tests pass against the installed scripts (node --test tools/test/orchestrator.test.mjs)', ot.status === 0 && /# fail 0/.test(`${ot.stdout}`), tail(`${ot.stdout}${ot.stderr}`))
+  // A test that skips itself in an installed project is listed (SKIP line, with its reason), never left silent; the
+  // CI-mirror list comparison needs tools/lib/kit.mjs, which an installed project does not have, so it must be among them.
+  const skipped = [...`${ot.stdout}`.matchAll(/^\s*ok \d+ - (.+?) # SKIP\S* ?(.*)$/gm)].map((m) => ({ name: m[1], reason: m[2] }))
+  for (const s of skipped) skip(`orchestrator test: ${s.name}`, s.reason || 'skipped')
+  check('the CI-mirror NOT_A_CHECK comparison skips visibly in an installed project, with its reason', skipped.some((s) => /CI-mirror check/.test(s.name) && s.reason === 'tools/lib/kit.mjs not present in an installed project'), tail(`${ot.stdout}`))
   // Plan 044: the folder, slot, plan-close and merge-folder scripts, on scratch repositories built from the installed scripts/.
   const oft = spawnSync(process.execPath, ['--test', '--test-reporter=tap', join(kit, 'tools', 'test', 'orchestrator-folders.test.mjs')], { cwd: proj, env: { ...env, ORCH_ROOT: proj }, encoding: 'utf8' })
   check('orchestrator folder tests pass against the installed scripts (node --test tools/test/orchestrator-folders.test.mjs)', oft.status === 0 && /# fail 0/.test(`${oft.stdout}`), tail(`${oft.stdout}${oft.stderr}`))

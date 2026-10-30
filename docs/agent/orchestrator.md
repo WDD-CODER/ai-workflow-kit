@@ -29,6 +29,9 @@ branch himself.
 | `staleMin` | `10` | Minutes without a `status.json` update after which `orch-state.mjs watch` prints `STUCK` |
 | `maxNotesPerPlan` | `12` | Run notes one plan may write (every note is one runner agent call); the last one says `notes capped` |
 | `maxAgentCallsPerPlan` | `60` | Agent calls one plan may make before it is parked (`agent-call limit`) |
+| `triage` | `shadow` | How a run sorts the decisions agents took: `off` = no triage call, `shadow` = one `orch-triage` call recommends a verdict per decision and the Human still sees every decision, `filter` = a kind with enough graded agreement is listed on one line only (`docs/agent/decision-review.md` §5) |
+| `triageMinAgreement` | `0.9` | Agreement with the Human a kind needs before `filter` collapses it (0.5–1) |
+| `triageMinGraded` | `20` | Graded decisions of that kind it needs first (5–500) |
 | `mergeChecks` | `build` | What the merge step runs on the merged tree: `build` = the project build plus the plan's scope check (lint and tests passed in the plan's gate and run once more at the final gate), `full` = the plan's whole check list on every merge |
 | `ciMirror` | `[]` | CI commands (`npm run <script>`, `pnpm run <script>`, `node scripts/…` or `node tools/…`, no write flag) the final gate runs after the project checks and the kit manifest check, so a green run is a green pull request. Install and sync print a `NOTE ci-mirror:` line for each workflow command the final gate does not run; they never write the list |
 
@@ -298,10 +301,13 @@ With the UI step off, a failed script is a finding for the builder, and a card n
 
 ## The report
 
-Merged, parked and why; the decisions agents took, numbered `D1…Dn` and grouped by plan with the `behaviour:` ones
-first (every `seen:` defect an agent noticed is among them — those two kinds are the only ones kept: a confirmation
-or evidence line an agent put in `decisions` is dropped and counted, `dropped <n> confirmation line(s)`), and the reply
+Merged, parked and why; the decisions agents took, each listed once (a repeat in other words is an `also:` line) and
+numbered `D1…Dn` — under `## Decisions`: `### To grade`, `### Accepted by triage`, `### Follow-ups`, `### Noise` and
+`### Not triaged`, after the line `triage: <mode> · agreement (last 50): <n>% · collapsed: <n> · ask: <n> · follow-ups: <n>`
+(every `seen:` defect an agent noticed is among them — those two kinds are the only ones kept: a confirmation or
+evidence line an agent put in `decisions` is dropped and counted, `dropped <n> confirmation line(s)`), and the reply
 format `decisions: ok` | `D<n> ✗ <what I'd choose>` for the Human to grade (`docs/agent/decision-review.md`); the
+run notes under `## Run notes`; the
 models each agent ran on; **Flaky checks** (only when `status.json` has any: a check that passed only on the gate's own
 rerun after an env-fail, or on the next gate with no new commit — recorded by `orch-state.mjs flake` in
 `plans[NNN].flakes[]`, the final gate's in `flakes[]`; the run goes on and the fix round it cost stays spent, the record is

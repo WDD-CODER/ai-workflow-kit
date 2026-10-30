@@ -932,6 +932,11 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     if (!wf.includes('const MAX_FIX_ROUNDS = 2') || !wf.includes('const RUN_PREFIX = "orch/"') || !wf.includes('const PILOT_SIZE = 3')) fail('orchestrator: orchestrate.js does not render maxFixRounds 2 / runBranchPrefix "orch/" / pilotSize 3')
     if (!wf.includes('const FALLBACK_MODEL = "opus"') || !wf.includes('const MAX_NOTES = 12') || !wf.includes('const MAX_CALLS = 60')) fail('orchestrator: orchestrate.js does not render fallbackModel "opus" / maxNotesPerPlan 12 / maxAgentCallsPerPlan 60')
     if (!read(od, 'scripts/orch-state.mjs').includes('const STALE_MIN = 10')) fail('orchestrator: orch-state.mjs does not render staleMin 10')
+    // Plan 041: the decision triage keys render into the workflow and orch-state.mjs, and the triage agent is installed.
+    const orchState = read(od, 'scripts/orch-state.mjs')
+    if (!wf.includes('const TRIAGE = "shadow"')) fail('orchestrator: orchestrate.js does not render triage "shadow"')
+    if (!orchState.includes('const TRIAGE = "shadow"') || !orchState.includes('const TRIAGE_MIN_AGREEMENT = 0.9') || !orchState.includes('const TRIAGE_MIN_GRADED = 20')) fail('orchestrator: orch-state.mjs does not render triage "shadow" / triageMinAgreement 0.9 / triageMinGraded 20')
+    if (!/^model: sonnet$/m.test(read(od, '.claude/agents/orch-triage.md'))) fail('orchestrator: orch-triage.md does not render model: sonnet')
     // Plan 032: the light merge step, main-folder checks, decisions only, no pause when there is nothing to ask.
     const doc0 = (d) => read(d, 'docs/agent/orchestrator.md')
     if (!wf.includes('const MERGE_CHECKS_MODE = "build"')) fail('orchestrator: orchestrate.js does not render mergeChecks "build"')
@@ -957,6 +962,7 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     const doc = read(od, 'docs/agent/orchestrator.md')
     if (!doc.includes('| `runBranchPrefix` | `orch/` |') || !doc.includes('| `maxFixRounds` | `2` |') || !doc.includes('| `minFreeDiskGb` | `5` |') || !doc.includes('| `pilotSize` | `3` |')) fail('orchestrator: orchestrator.md does not name the default settings')
     if (!doc.includes('| `fallbackModel` | `opus` |') || !doc.includes('| `staleMin` | `10` |') || !doc.includes('| `maxNotesPerPlan` | `12` |') || !doc.includes('| `maxAgentCallsPerPlan` | `60` |')) fail('orchestrator: orchestrator.md does not name the plan 029 defaults (fallbackModel, staleMin, maxNotesPerPlan, maxAgentCallsPerPlan)')
+    if (!doc.includes('| `triage` | `shadow` |') || !doc.includes('| `triageMinAgreement` | `0.9` |') || !doc.includes('| `triageMinGraded` | `20` |')) fail('orchestrator: orchestrator.md does not name the triage settings')
     if (!doc.includes('| `mergeChecks` | `build` |') || !doc.includes('## Checks that run from the main folder')) fail('orchestrator: orchestrator.md does not name mergeChecks "build" and the main-folder checks section')
     const cmd = read(od, '.claude/commands/orchestrate.md')
     if (!cmd.includes('node scripts/orch-state.mjs watch --run <run>') || cmd.includes('startedAt')) fail('orchestrator: orchestrate.md must name the watch line and pass no startedAt')
@@ -1007,6 +1013,11 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     [{ staleMin: 0 }, 'orchestrator.staleMin is 0 — it must be a whole number of minutes from 1 to 240'],
     [{ maxNotesPerPlan: 101 }, 'orchestrator.maxNotesPerPlan is 101 — it must be a whole number of notes from 1 to 100'],
     [{ mergeChecks: 'tests' }, 'orchestrator.mergeChecks is "tests" — it must be "build" (the project build plus the plan\'s scope check) or "full" (the plan\'s whole check list)'],
+    [{ triage: 'loud' }, 'orchestrator.triage is "loud" — it must be "off", "shadow" or "filter"'],
+    [{ triageMinAgreement: 0.4 }, 'orchestrator.triageMinAgreement is 0.4 — it must be a number from 0.5 to 1'],
+    [{ triageMinAgreement: '0.9' }, 'orchestrator.triageMinAgreement is "0.9" — it must be a number from 0.5 to 1'],
+    [{ triageMinGraded: 4 }, 'orchestrator.triageMinGraded is 4 — it must be a whole number from 5 to 500'],
+    [{ triageMinGraded: 20.5 }, 'orchestrator.triageMinGraded is 20.5 — it must be a whole number from 5 to 500'],
     [{ maxAgentCallsPerPlan: 5 }, 'orchestrator.maxAgentCallsPerPlan is 5 — it must be a whole number of agent calls from 10 to 500'],
     [{ ciMirror: 'npm run lint' }, 'orchestrator.ciMirror is "npm run lint" — it must be a list of check commands'],
     [{ ciMirror: ['git push'] }, 'orchestrator.ciMirror item "git push" — git push: not an allowed check'],
@@ -1071,7 +1082,7 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     '.claude/agents/orch-builder.md': 'sonnet', '.claude/agents/orch-readiness.md': 'inherit',
     '.claude/agents/orch-gate.md': 'haiku', '.claude/agents/orch-report.md': 'haiku',
     '.claude/agents/orch-check-plan.md': 'sonnet', '.claude/agents/orch-check-bugs.md': 'sonnet', '.claude/agents/orch-check-rules.md': 'sonnet',
-    '.claude/agents/orch-verify.md': 'sonnet', '.claude/agents/orch-security.md': 'sonnet', '.claude/agents/orch-ui.md': 'sonnet',
+    '.claude/agents/orch-verify.md': 'sonnet', '.claude/agents/orch-security.md': 'sonnet', '.claude/agents/orch-ui.md': 'sonnet', '.claude/agents/orch-triage.md': 'sonnet',
     '.claude/agents/orch-merge.md': 'sonnet', '.claude/agents/skill-judge.md': 'sonnet',
   }
   // Every agent file pins model: and effort: and has no empty tools:; the builder cannot start agents or message
@@ -1169,7 +1180,7 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   else {
     expect(ma, 'models.analysis haiku keeps validators on review', {
       '.claude/agents/orch-check-plan.md': 'sonnet', '.claude/agents/orch-check-bugs.md': 'sonnet', '.claude/agents/orch-check-rules.md': 'sonnet',
-      '.claude/agents/orch-verify.md': 'sonnet', '.claude/agents/orch-security.md': 'sonnet', '.claude/agents/orch-ui.md': 'sonnet', '.claude/agents/skill-judge.md': 'sonnet',
+      '.claude/agents/orch-verify.md': 'sonnet', '.claude/agents/orch-security.md': 'sonnet', '.claude/agents/orch-ui.md': 'sonnet', '.claude/agents/orch-triage.md': 'sonnet', '.claude/agents/skill-judge.md': 'sonnet',
       '.claude/agents/orch-merge.md': 'haiku', '.claude/agents/kit-prevalidate.md': 'haiku',
     })
     if (!/^omitClaudeMd: true$/m.test(read(ma, '.claude/agents/git-agent.md'))) fail('git-agent.md does not set omitClaudeMd: true')
@@ -1183,7 +1194,7 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   if (o.status !== 0) fail(`install with models.analysis opus: exit ${o.status}`)
   else expect(mo, 'models.analysis opus keeps validators on opus', {
     '.claude/agents/orch-check-plan.md': 'opus', '.claude/agents/orch-check-bugs.md': 'opus', '.claude/agents/orch-check-rules.md': 'opus',
-    '.claude/agents/orch-verify.md': 'opus', '.claude/agents/orch-security.md': 'opus', '.claude/agents/orch-ui.md': 'opus', '.claude/agents/skill-judge.md': 'opus',
+    '.claude/agents/orch-verify.md': 'opus', '.claude/agents/orch-security.md': 'opus', '.claude/agents/orch-ui.md': 'opus', '.claude/agents/orch-triage.md': 'opus', '.claude/agents/skill-judge.md': 'opus',
   })
   rmSync(mo, { recursive: true, force: true })
   const mos = tmp('models-analysis-opus-review-sonnet')

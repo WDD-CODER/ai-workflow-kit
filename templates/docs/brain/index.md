@@ -13,6 +13,7 @@ Distilled project knowledge: history and reasoning, not current state. **Current
 5. `gotchas.md` — index into `gotchas/` (what hurt before, and what to do instead), split by domain
 6. `glossary.md` — domain vocabulary
 7. `agent-rules.md` — short rules builders read, learned from decisions graded wrong (the log behind them: `decision-log.md`)
+8. `follow-ups.md` — defects agents saw outside their job; every graded orchestrator decision is a line in `decision-grades.jsonl` (written by `decision-log.mjs grade`, never read by builders)
 
 ## When to read what
 
