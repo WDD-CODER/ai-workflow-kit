@@ -1,7 +1,7 @@
 # Plan 045 — The kit brain: every run sends its facts to a private MongoDB store, with no model call and no write access to the kit
 
 Status: draft
-Depends-on: 030, 041
+Depends-on: 030, 041, 049
 Snapshot: a363b42
 
 ## Problem Statement
