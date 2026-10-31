@@ -21,9 +21,7 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
   / 2,400 characters each) and a rule starts at the first graded `✗` (`(pending — seen once)`, promoted by the second).
   A graded `checker-miss: yes` also gives a `## checkers` rule and an eval case (`decision-log.mjs case`) without a
   command; a mistake a check could catch is listed under `## enforce candidates` instead. The report ends with the
-  character budget of what the next run injects and a trend line (`orch-state.mjs trend`). `kit-feedback.mjs` adds a
-  `seen-in: N` line to an open inbox entry with the same slug; `tools/kit-inbox.mjs` and the kit-only `/kit-inbox` group
-  the inbox. New seeds under `docs/brain/` (nothing a project must do; a project without them gets `LESSONS: []` until
+  character budget of what the next run injects and a trend line (`orch-state.mjs trend`). New seeds under `docs/brain/` (nothing a project must do; a project without them gets `LESSONS: []` until
   its first run writes them); **projects with `docs/workflow-kit/manifest.json`:** classify `docs/brain/run-log.md` and
   `docs/brain/agent-lessons/*` before the next run, or the final gate's manifest check fails. A project's existing
   `agent-rules.md` (no sections) keeps working: it counts as the `builder` section.

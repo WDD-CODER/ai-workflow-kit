@@ -928,11 +928,10 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
       '.claude/commands/scout.md', 'scripts/scout/render.mjs', 'scripts/scout/pr.mjs', 'scripts/scout/page-template.html', 'docs/scout/sources.json']) {
       if (!existsSync(join(od, f))) fail(`orchestrator: install did not copy ${f}`)
     }
-    // Plan 030: the lessons and run-log seeds are installed; /kit-inbox and its tool are the kit's own, never installed.
+    // Plan 030: the lessons and run-log seeds are installed.
     for (const f of ['docs/brain/run-log.md', ...['readiness', 'builder', 'check-plan', 'check-bugs', 'check-rules', 'security', 'verify', 'ui', 'gate', 'planner'].map((r) => `docs/brain/agent-lessons/${r}.md`)]) {
       if (!existsSync(join(od, f))) fail(`lessons: install did not copy the seed ${f}`)
     }
-    for (const f of ['.claude/commands/kit-inbox.md', 'tools/kit-inbox.mjs']) if (existsSync(join(od, f))) fail(`kit-inbox: a fresh install has ${f} (kit-only, never installed)`)
     if (!/^## checkers$/m.test(read(od, 'docs/brain/agent-rules.md'))) fail('lessons: the agent-rules.md seed has no per-role sections')
     const wf = read(od, '.claude/workflows/orchestrate.js')
     if (!wf.includes('const MAX_FIX_ROUNDS = 2') || !wf.includes('const RUN_PREFIX = "orch/"') || !wf.includes('const PILOT_SIZE = 3')) fail('orchestrator: orchestrate.js does not render maxFixRounds 2 / runBranchPrefix "orch/" / pilotSize 3')

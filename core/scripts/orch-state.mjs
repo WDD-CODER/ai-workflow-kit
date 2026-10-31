@@ -366,8 +366,9 @@ const readIf = (file) => {
     return null
   }
 }
-// The folder the learning files are read from and written to: the run's merge folder (the run branch) when it exists,
-// else this folder.
+// The folder the learning files are READ from (`context`, `trend`): the run's merge folder (the run branch) when it
+// exists, else this folder (before `init` there is no merge folder yet). Nothing is ever written here: `lessons` and
+// `finish` write in the merge folder only.
 const learnBase = (run) => (run && existsSync(mergeFolder(run)) ? mergeFolder(run) : root)
 const LESSONS_REL = (role) => `docs/brain/agent-lessons/${role}.md`
 const RUN_LOG_REL = 'docs/brain/run-log.md'
@@ -920,11 +921,13 @@ const commands = {
   },
 
   // The lesson lines of the run, derived from status.json by code (no model call), appended to docs/brain/agent-lessons/
-  // (the run branch's merge folder when it exists, else this folder). `finish` does the same and adds the run-log row.
+  // (the run branch's merge folder). `finish` does the same and adds the run-log row. A merge folder that is gone (the run
+  // was merged and `free-merged-slots` removed it) is an error: the lessons are never written into the main checkout.
   lessons() {
     const run = runName()
     const status = needStatus(run)
-    const base = learnBase(run)
+    if (!existsSync(mergeFolder(run))) fail(`the merge folder ${mergeFolder(run)} of run ${run} is gone (a merged run's folder is removed) — lessons are written on the run branch, never in the main checkout`)
+    const base = mergeFolder(run)
     const merged = mergedPlans(run)
     const learned = learnRun(run, status, base, { merged, finalGate: 'none' })
     writeLearned(base, learned.files)

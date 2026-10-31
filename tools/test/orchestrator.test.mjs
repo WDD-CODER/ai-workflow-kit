@@ -3,7 +3,7 @@
 // The end-to-end run is tools/orchestrator-e2e.mjs.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { join, resolve, basename } from 'path'
+import { join, resolve, basename, dirname } from 'path'
 import { spawnSync, spawn } from 'child_process'
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, cpSync, utimesSync, readdirSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
@@ -961,6 +961,13 @@ test('the report: a run with decisions, run notes and a flake prints ## Decision
   for (const h of ['## Decisions', '## Run notes', '## Flaky checks']) assert.equal(r.split('\n').filter((l) => l === h).length, 1, `${h} once`)
   assert.ok(r.includes('- 101: a run note') && r.includes('- 101: `npm run test` — round 0'), r)
   assert.ok(r.indexOf('## Flaky checks') < r.indexOf('## Decisions') && r.indexOf('## Decisions') < r.indexOf('## Run notes'))
+  // plan 030: the learning output (character budget, then the trend line last) drops none of the three sections
+  const learning = { budget: 'Context added by learning: 3.1k chars across 10 roles', trend: 'Trend (last 3 runs): ✗ per plan 0.6 → 0.3 → 0.2 · fix rounds per plan 0.8 → 0.5 → 0.4 · parked 2 → 1 → 0' }
+  const withLearning = lib.formatReport({ status, merged: [], mainShaNow: 'a', finishedAt: 'T1', runBranch: 'orch/r1', mainBranch: 'main', learning })
+  for (const h of ['## Decisions', '## Run notes', '## Flaky checks']) assert.equal(withLearning.split('\n').filter((l) => l === h).length, 1, `${h} once, with the learning lines`)
+  assert.ok(withLearning.includes('- 101: a run note') && withLearning.includes('- 101: `npm run test` — round 0'))
+  assert.deepEqual(withLearning.trimEnd().split('\n').slice(-3), [learning.budget, '', learning.trend], 'budget, then the trend line as the last line')
+  assert.ok(withLearning.indexOf('## Run notes') < withLearning.indexOf(learning.budget))
 })
 
 test('the report: ## Flaky checks only when status.json has flakes', () => {
@@ -1265,19 +1272,27 @@ const { STATUS: LESSON_STATUS, EXPECTED: LESSON_LINES } = await import('../fixtu
 const ROLE_FILES = ['readiness', 'builder', 'gate', 'check-plan', 'check-bugs', 'check-rules', 'security', 'verify', 'ui']
 
 // A scratch project: the installed scripts, a run's status.json, no git.
-function learnDir(status = LESSON_STATUS) {
+// `merge: true` (default) gives the run its merge folder, a sibling folder the lessons are written in (docs/brain there);
+// without it the run's merge folder is gone, as after free-merged-slots removed a merged run's.
+function learnDir(status = LESSON_STATUS, { merge = true } = {}) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'orch-learn-')))
   cpSync(join(root, 'scripts'), join(dir, 'scripts'), { recursive: true, dereference: true })
   const runs = join(dir, '.claude', 'orchestrator-runs', status.run)
   mkdirSync(runs, { recursive: true })
   writeFileSync(join(runs, 'status.json'), `${JSON.stringify(status, null, 2)}\n`)
+  const repo = /const REPO = '([^']*)'/.exec(readFileSync(join(dir, 'scripts', 'orch-state.mjs'), 'utf8'))?.[1] || basename(dir)
+  const mf = join(dirname(dir), `${repo}-orch-merge-${status.run}`)
+  if (merge) mkdirSync(mf, { recursive: true })
+  const base = merge ? mf : dir
   const orch = (c, ...a) => spawnSync(process.execPath, [join(dir, 'scripts', 'orch-state.mjs'), c, `--run=${status.run}`, ...a], { cwd: dir, encoding: 'utf8' })
   return {
-    dir, orch,
+    dir, mf, base, orch,
     status: () => JSON.parse(readFileSync(join(runs, 'status.json'), 'utf8')),
-    lessons: (role) => { const f = join(dir, 'docs', 'brain', 'agent-lessons', `${role}.md`); return existsSync(f) ? readFileSync(f, 'utf8').split('\n').slice(2).filter(Boolean) : [] },
-    write: (rel, text) => { mkdirSync(join(dir, rel, '..'), { recursive: true }); writeFileSync(join(dir, rel), text) },
-    clean: () => rmSync(dir, { recursive: true, force: true }),
+    lessons: (role) => { const f = join(base, 'docs', 'brain', 'agent-lessons', `${role}.md`); return existsSync(f) ? readFileSync(f, 'utf8').split('\n').slice(2).filter(Boolean) : [] },
+    // write(rel, text): into the folder the learning files live in; writeRoot: into the project folder itself (plans/)
+    write: (rel, text) => { mkdirSync(join(base, rel, '..'), { recursive: true }); writeFileSync(join(base, rel), text) },
+    writeRoot: (rel, text) => { mkdirSync(join(dir, rel, '..'), { recursive: true }); writeFileSync(join(dir, rel), text) },
+    clean: () => { rmSync(dir, { recursive: true, force: true }); rmSync(mf, { recursive: true, force: true }) },
   }
 }
 const lessonText = (line) => line.replace(/^- \S+ \S+?: /, '')
@@ -1300,7 +1315,7 @@ test('orch-state lessons: the lines land in docs/brain/agent-lessons/<role>.md, 
       assert.deepEqual(got.map(lessonText), lines, role)
       assert.ok(got.every((l) => /^- \d{4}-\d{2}-\d{2} fix-run: /.test(l)), `${role}: "- <date> <run>: <lesson>"`)
     }
-    const head = readFileSync(join(t.dir, 'docs', 'brain', 'agent-lessons', 'check-bugs.md'), 'utf8').split('\n')
+    const head = readFileSync(join(t.base, 'docs', 'brain', 'agent-lessons', 'check-bugs.md'), 'utf8').split('\n')
     assert.deepEqual([head[0], /^Facts from earlier runs/.test(head[1])], ['# Lessons — check-bugs', true])
     const total = Object.values(LESSON_LINES).flat().length
     assert.match(r.stdout, new RegExp(`lessons: ${total} line\\(s\\) added`))
@@ -1319,6 +1334,19 @@ test('orch-state lessons: the lines land in docs/brain/agent-lessons/<role>.md, 
   } finally { t.clean() }
 })
 
+test('orch-state lessons: a merge folder that is gone (a merged run\'s was removed) is an error — nothing is written in the main checkout', () => {
+  const t = learnDir(LESSON_STATUS, { merge: false })
+  try {
+    const r = t.orch('lessons')
+    assert.equal(r.status, 1, r.stdout + r.stderr)
+    assert.match(r.stdout, /merge folder .* is gone .* never in the main checkout/)
+    assert.equal(existsSync(join(t.dir, 'docs')), false, 'no docs/brain in the project folder')
+    // reading is still fine without a merge folder (before init there is none): context falls back to this folder
+    assert.equal(t.orch('context').status, 0)
+    assert.equal(existsSync(join(t.dir, 'docs')), false, 'context writes nothing')
+  } finally { t.clean() }
+})
+
 test('orch-state lessons: a full file drops its oldest lines; a run with no fact writes no file', () => {
   const t = learnDir({ run: 'big', plans: { 1: { nnn: '1', state: 'merged', round: 0, models: {}, gateEvents: Array.from({ length: 45 }, (_, i) => `timed out: npm run c${i}`) } } })
   const quiet = learnDir({ run: 'quiet', plans: { 1: { nnn: '1', state: 'merged', round: 0, models: {} } } })
@@ -1329,7 +1357,7 @@ test('orch-state lessons: a full file drops its oldest lines; a run with no fact
     assert.match(got[0], /npm run c5$/)
     assert.match(got.at(-1), /npm run c44$/)
     assert.equal(quiet.orch('lessons').status, 0)
-    assert.equal(existsSync(join(quiet.dir, 'docs', 'brain', 'agent-lessons')), false)
+    assert.equal(existsSync(join(quiet.base, 'docs', 'brain', 'agent-lessons')), false)
   } finally { t.clean(); quiet.clean() }
 })
 
@@ -1360,7 +1388,7 @@ test('orch-state set: the verifier\'s totals, misses, round causes, gate events,
 test('orch-state handoff: the escalation (step and failing check) is recorded for the builder lessons', () => {
   const t = learnDir({ run: 'fix-run', plans: { 101: { nnn: '101', state: 'fixing', round: 2, models: {} } } })
   try {
-    t.write('plans/101-save-form.plan.md', '# Plan 101 — save form\n')
+    t.writeRoot('plans/101-save-form.plan.md', '# Plan 101 — save form\n')
     const h = () => t.orch('handoff', '--plan=101', '--step=round 2', '--check=npm run test', '--tail=boom', '--tried=build builder')
     assert.equal(h().status, 0)
     assert.equal(h().status, 0)

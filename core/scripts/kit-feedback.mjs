@@ -8,9 +8,7 @@
  * `feedback/<date>-<slug>` as `feedback/inbox/<date>-<slug>.md`, and a pull request is opened with `gh`; nothing goes to
  * the kit's main branch. The text is refused (exit 2, nothing pushed) when it names this project or its repository,
  * holds a path under paths.srcRoot / paths.serverRoot, or contains a code fence — a lesson that travels to every
- * project must not carry one project's code or name. When an open inbox file with the same slug exists on the kit
- * (`gh api` on feedback/inbox/), the pull request adds a `seen-in: N` line to that file instead of a new file; --dry-run
- * prints which path it would take. --text-file reads only a scratch file (under the OS temp folder
+ * project must not carry one project's code or name. --text-file reads only a scratch file (under the OS temp folder
  * or .claude/sessions/, never a dotfile or a ".." path), so no secret file can reach the entry. --dry-run prints the entry and the gh calls and pushes nothing.
  *
  * Needs `gh` signed in. Node built-ins only. Exit 0 = sent (or dry run), 2 = refused or bad input, 1 = gh failed.
@@ -68,20 +66,6 @@ export function repoOf(source) {
   return m ? m[1] : null
 }
 
-/** The inbox file name (`<date>-<slug>.md`) among `names` that holds this slug, or null. */
-export function inboxMatch(names, slug) {
-  const re = new RegExp(`^\\d{4}-\\d{2}-\\d{2}-${slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.md$`)
-  return names.map((n) => n.trim()).find((n) => re.test(n)) ?? null
-}
-
-/** An inbox entry with its `seen-in: N` line raised by one (a first repeat makes it `seen-in: 2`): { text, n }. */
-export function bumpSeen(content) {
-  const m = /^seen-in:[ \t]*(\d+)[ \t]*$/m.exec(content)
-  if (m) return { n: Number(m[1]) + 1, text: content.replace(m[0], `seen-in: ${Number(m[1]) + 1}`) }
-  const lines = content.replace(/\r\n/g, '\n').split('\n')
-  return { n: 2, text: [lines[0], '', 'seen-in: 2', ...lines.slice(1)].join('\n') }
-}
-
 export function entryFile(date, slug, title, text) {
   return [`# ${title}`, '', `Sent ${date} from a project using the kit. One lesson, written in general terms.`, '', text.trim(), ''].join('\n')
 }
@@ -121,37 +105,17 @@ function main(argv) {
     ['api', '-X', 'PUT', `repos/${repo}/contents/${path}`, '-f', `message=feedback: ${title}`, '-f', `branch=${branch}`, '-f', 'content=<base64 of the entry>'],
     ['pr', 'create', '--repo', repo, '--head', branch, '--base', '<default>', '--title', `feedback: ${title}`, '--body', `One lesson from a project using the kit: ${path}`],
   ]
-  // The same lesson from another project: an open inbox file with this slug gets a `seen-in: N` line (a priority for the
-  // kit's Planner) in a pull request, instead of a second file. KIT_FEEDBACK_GH (a node script) replaces `gh` — for tests only.
-  const run = (args) => (process.env.KIT_FEEDBACK_GH ? spawnSync(process.execPath, [process.env.KIT_FEEDBACK_GH, ...args], { encoding: 'utf8' }) : spawnSync('gh', args, { encoding: 'utf8' }))
-  const listing = run(['api', `repos/${repo}/contents/feedback/inbox`, '--jq', '.[].name'])
-  const existing = listing.status === 0 ? inboxMatch(listing.stdout.split('\n'), slug) : null
   if (flags['dry-run']) {
-    const chosen = existing ? `seen-in: feedback/inbox/${existing} gets a seen-in line (no new file)` : listing.status === 0 ? 'new file' : 'new file (the inbox could not be listed)'
-    process.stdout.write(`KIT_FEEDBACK: dry run — nothing pushed\nrepository: ${repo}\npath: ${chosen}\nbranch: ${branch}\nfile: ${path}\n--- entry ---\n${body}--- gh calls ---\n${calls.map((c) => `gh ${c.join(' ')}`).join('\n')}\n`)
+    process.stdout.write(`KIT_FEEDBACK: dry run — nothing pushed\nrepository: ${repo}\nbranch: ${branch}\nfile: ${path}\n--- entry ---\n${body}--- gh calls ---\n${calls.map((c) => `gh ${c.join(' ')}`).join('\n')}\n`)
     return
   }
   const gh = (args) => {
-    const r = run(args)
+    const r = spawnSync('gh', args, { encoding: 'utf8' })
     if (r.status !== 0) {
       process.stderr.write(`KIT_FEEDBACK: gh ${args.slice(0, 3).join(' ')} failed — ${(r.stderr || r.stdout || r.error?.message || '').trim().split('\n').pop()}\n`)
       process.exit(1)
     }
     return r.stdout.trim()
-  }
-  if (existing) {
-    const file = `feedback/inbox/${existing}`
-    const baseBranch = gh(calls[0])
-    const sha = gh(['api', `repos/${repo}/git/ref/heads/${baseBranch}`, '--jq', '.object.sha'])
-    const fileSha = gh(['api', `repos/${repo}/contents/${file}?ref=${baseBranch}`, '--jq', '.sha'])
-    const current = Buffer.from(gh(['api', `repos/${repo}/contents/${file}?ref=${baseBranch}`, '--jq', '.content']).replace(/\s/g, ''), 'base64').toString('utf8')
-    const bumped = bumpSeen(current)
-    const seenBranch = `${branch}-seen`
-    gh(['api', '-X', 'POST', `repos/${repo}/git/refs`, '-f', `ref=refs/heads/${seenBranch}`, '-f', `sha=${sha}`])
-    gh(['api', '-X', 'PUT', `repos/${repo}/contents/${file}`, '-f', `message=feedback: seen again — ${title}`, '-f', `branch=${seenBranch}`, '-f', `sha=${fileSha}`, '-f', `content=${Buffer.from(bumped.text).toString('base64')}`])
-    const url = gh(['pr', 'create', '--repo', repo, '--head', seenBranch, '--base', baseBranch, '--title', `feedback: seen again (seen-in: ${bumped.n}) — ${title}`, '--body', `The same lesson came from another project: ${file} now says seen-in: ${bumped.n}.`])
-    process.stdout.write(`KIT_FEEDBACK: sent — ${url} (seen-in: ${bumped.n} on ${file})\n`)
-    return
   }
   const base = gh(calls[0])
   const sha = gh(['api', `repos/${repo}/git/ref/heads/${base}`, '--jq', '.object.sha'])

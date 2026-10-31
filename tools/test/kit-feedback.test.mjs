@@ -5,7 +5,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -98,80 +98,6 @@ test('--text-file reads only a scratch file: a dotfile, a ".." path and a file e
     const ok = send(dir, ['--title', 'A lesson', '--text-file', join(scratch, 'lesson.md'), '--dry-run'])
     assert.equal(ok.status, 0, `${ok.stdout}${ok.stderr}`)
     assert.match(ok.stdout, /general lesson about confirmations/)
-  } finally {
-    rmSync(dir, { recursive: true, force: true })
-    rmSync(scratch, { recursive: true, force: true })
-  }
-})
-
-// ---- plan 030: the same lesson from a second project is a seen-in line, not a second file (gh stubbed) ----------------------
-const { inboxMatch, bumpSeen } = await import(pathToFileURL(script).href)
-
-// A stand-in for `gh` (a node script, KIT_FEEDBACK_GH): the kit's inbox holds one entry; every call is logged.
-function stubGh(scratch, inbox, content = '# Ask before inventing a leave dialog\n\nSent 2026-10-01 from a project using the kit.\n') {
-  const log = join(scratch, 'gh.log')
-  const file = join(scratch, 'gh-stub.mjs')
-  writeFileSync(file, `import { appendFileSync } from 'node:fs'
-const a = process.argv.slice(2)
-appendFileSync(${JSON.stringify(log)}, JSON.stringify(a) + '\\n')
-const j = a.join(' ')
-if (/contents\\/feedback\\/inbox --jq/.test(j)) console.log(${JSON.stringify(inbox.join('\n'))})
-else if (/--jq \\.default_branch/.test(j)) console.log('main')
-else if (/--jq \\.object\\.sha/.test(j)) console.log('basesha')
-else if (/--jq \\.sha/.test(j)) console.log('filesha')
-else if (/--jq \\.content/.test(j)) console.log(${JSON.stringify(Buffer.from(content).toString('base64'))})
-else if (a[0] === 'pr') console.log('https://github.com/acme/ai-workflow-kit/pull/9')
-`)
-  return { file, calls: () => readFileSync(log, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) }
-}
-const sendWith = (dir, gh, args) => spawnSync(process.execPath, [script, '--root', dir, ...args], { encoding: 'utf8', env: { ...process.env, KIT_FEEDBACK_GH: gh } })
-const LESSON = ['--title', 'Ask before inventing a leave dialog', '--text', 'A builder added a confirmation on leaving a screen that no plan described.']
-
-test('inboxMatch and bumpSeen: the slug picks the open file; the seen-in line starts at 2 and counts up', () => {
-  assert.equal(inboxMatch(['2026-10-01-other.md', '2026-10-01-ask-before-inventing-a-leave-dialog.md'], 'ask-before-inventing-a-leave-dialog'), '2026-10-01-ask-before-inventing-a-leave-dialog.md')
-  assert.equal(inboxMatch(['2026-10-01-ask-before-inventing-a-leave-dialog-too.md', 'README.md'], 'ask-before-inventing-a-leave-dialog'), null)
-  assert.deepEqual(bumpSeen('# T\n\nbody\n'), { n: 2, text: '# T\n\nseen-in: 2\n\nbody\n' })
-  assert.equal(bumpSeen('# T\n\nseen-in: 2\n\nbody\n').text, '# T\n\nseen-in: 3\n\nbody\n')
-})
-
-test('a matching open inbox file gets a seen-in line in a pull request, not a new file; --dry-run names the path', () => {
-  const dir = project()
-  const scratch = mkdtempSync(join(tmpdir(), 'kitfb-gh-'))
-  try {
-    const gh = stubGh(scratch, ['README.md', '2026-10-01-ask-before-inventing-a-leave-dialog.md'])
-    const dry = sendWith(dir, gh.file, [...LESSON, '--dry-run'])
-    assert.equal(dry.status, 0, dry.stderr)
-    assert.match(dry.stdout, /^path: seen-in: feedback\/inbox\/2026-10-01-ask-before-inventing-a-leave-dialog\.md gets a seen-in line \(no new file\)$/m)
-    assert.ok(gh.calls().every((c) => c[0] === 'api' && !c.includes('-X')), 'a dry run only lists the inbox')
-    const real = sendWith(dir, gh.file, LESSON)
-    assert.equal(real.status, 0, real.stdout + real.stderr)
-    assert.match(real.stdout, /seen-in: 2 on feedback\/inbox\/2026-10-01-ask-before-inventing-a-leave-dialog\.md/)
-    const put = gh.calls().find((c) => c.includes('PUT'))
-    assert.ok(put.some((x) => x.endsWith('contents/feedback/inbox/2026-10-01-ask-before-inventing-a-leave-dialog.md')), 'the existing file is updated')
-    assert.ok(put.includes('sha=filesha'))
-    const content = Buffer.from(put.find((x) => x.startsWith('content=')).slice('content='.length), 'base64').toString('utf8')
-    assert.match(content, /^seen-in: 2$/m)
-    assert.equal(gh.calls().filter((c) => c.includes('PUT')).length, 1, 'one file, no second entry')
-    assert.ok(gh.calls().some((c) => c[0] === 'pr' && c.some((x) => /seen-in: 2/.test(x))))
-  } finally {
-    rmSync(dir, { recursive: true, force: true })
-    rmSync(scratch, { recursive: true, force: true })
-  }
-})
-
-test('no matching inbox file (or an inbox that cannot be listed): the new-file path, as before', () => {
-  const dir = project()
-  const scratch = mkdtempSync(join(tmpdir(), 'kitfb-gh-'))
-  try {
-    const gh = stubGh(scratch, ['README.md', '2026-10-01-something-else.md'])
-    const dry = sendWith(dir, gh.file, [...LESSON, '--dry-run'])
-    assert.match(dry.stdout, /^path: new file$/m)
-    const real = sendWith(dir, gh.file, LESSON)
-    assert.equal(real.status, 0, real.stdout + real.stderr)
-    const put = gh.calls().find((c) => c.includes('PUT'))
-    assert.ok(put.some((x) => /contents\/feedback\/inbox\/\d{4}-\d{2}-\d{2}-ask-before-inventing-a-leave-dialog\.md$/.test(x)))
-    assert.ok(!put.some((x) => x.startsWith('sha=')), 'a new file has no sha')
-    assert.match(send(dir, [...LESSON, '--dry-run']).stdout, /^path: new file \(the inbox could not be listed\)$/m)
   } finally {
     rmSync(dir, { recursive: true, force: true })
     rmSync(scratch, { recursive: true, force: true })
