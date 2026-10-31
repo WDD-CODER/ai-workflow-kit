@@ -21,6 +21,8 @@
  *                                          facts for the lessons: [--candidates m --refuted n --refuted-rules "a|b" --verify-by "role=m/n/a|b;…"
  *                                          --late-low "a|b" --reappeared "a|b"] [--miss "<what>"] [--round-cause "round 2: <why>"]
  *                                          [--gate-event "<text>"] [--asked "q1 || q2" --ready yes|no]
+ *   node scripts/orch-state.mjs flake     --run <name> [--plan <NNN>] --command "<cmd>" [--round n] --via rerun|same-commit --where gate|main|final [--sha x]
+ *                                          records a check that passed only on a rerun (plans[NNN].flakes[], run-level flakes[])
  *   node scripts/orch-state.mjs handoff    --run <name> --plan <NNN> --step s --check c --tail t --tried x
  *                                          the hand-off file a fresh judgment-tier builder reads (the escalation is recorded)
  *   node scripts/orch-state.mjs context    [--run <name>]                   LESSONS / RULES / RECENT_RUNS for the roles (read-only) and their size
@@ -92,7 +94,7 @@ const SENSITIVE_CODE_RE = /auth|permission|password|jwt|session[_-]?id|tokens?\b
 // Every flag takes a value. The workflow passes `--key=value` (one token, so a value can never become a flag); a
 // human may write `--key value`, where a value starting with "-" is refused. An unknown flag (--root among them: the
 // folder is always this script's own project) or a second positional word stops the command.
-const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tier', 'sha', 'role', 'model', 'effort', 'roles', 'reason', 'card', 'card-status', 'page', 'shots', 'via', 'step', 'check', 'tail', 'tried', 'text', 'min', 'stale-min', 'files', 'cmd', 'id', 'verdict', 'kind', 'confidence', 'rec', 'why', 'forced', 'dup-of',
+const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tier', 'sha', 'role', 'model', 'effort', 'roles', 'reason', 'card', 'card-status', 'page', 'shots', 'via', 'step', 'check', 'tail', 'tried', 'text', 'min', 'stale-min', 'files', 'cmd', 'id', 'verdict', 'kind', 'confidence', 'rec', 'why', 'forced', 'dup-of', 'command', 'where',
   // facts the workflow records for the lessons (docs/agent/orchestrator.md "status.json"), and `trend` / `finish` options
   'candidates', 'refuted', 'refuted-rules', 'verify-by', 'late-low', 'reappeared', 'miss', 'round-cause', 'gate-event', 'asked', 'ready', 'final-gate', 'last'])
 function parseArgs(argv) {
@@ -485,7 +487,7 @@ const commands = {
     writeStatus(run, status)
     // The final gate adds the kit manifest check (the PR's rules job) when the project has both the manifest and the script.
     const kitManifest = existsSync(join(mf, 'docs', 'workflow-kit', 'manifest.json')) && existsSync(join(mf, 'scripts', 'kit-manifest-check.mjs'))
-    emit({ ok: true, run, branch, mergeFolder: mf.replace(/\\/g, '/'), done: done.map((m) => m.nnn), mainSha: status.mainShaAtStart, attempt: status.attempts, startedAt: status.startedAt, kitManifest, priorDecisions: status.decisions ?? [] },
+    emit({ ok: true, run, branch, mergeFolder: mf.replace(/\\/g, '/'), done: done.map((m) => m.nnn), mainSha: status.mainShaAtStart, attempt: status.attempts, startedAt: status.startedAt, kitManifest, npmScripts: npmScripts(), priorDecisions: status.decisions ?? [] },
       [...lines, `run ${run}: ${done.length} plan(s) already merged into ${branch}${done.length ? ` (${done.map((m) => m.nnn).join(', ')})` : ''}`])
   },
 
@@ -775,6 +777,33 @@ const commands = {
     p.history.push({ at: nowIso(), state: p.state, round: p.round })
     writeStatus(run, status)
     emit({ ok: true, plan: nnn, state: p.state, round: p.round }, [`${nnn}: ${p.state}, round ${p.round}`])
+  },
+
+  // A check that passed only on a rerun (the gate's env-fail rerun, or the next gate on the same commit): one entry in
+  // plans[NNN].flakes[] (no --plan: the run-level flakes[], the final gate's). The same command and round is one entry.
+  flake() {
+    const run = runName()
+    const command = args.command && args.command !== true ? String(args.command).trim() : ''
+    if (!command || /[\r\n]/.test(command) || command.length > 300) fail('--command takes one check command (one line, at most 300 characters)')
+    const via = String(args.via ?? '')
+    if (!['rerun', 'same-commit'].includes(via)) fail(`--via "${via}" — allowed: rerun, same-commit`)
+    const where = String(args.where ?? '')
+    if (!['gate', 'main', 'final'].includes(where)) fail(`--where "${where}" — allowed: gate, main, final`)
+    if (args.round !== undefined && !/^\d+$/.test(String(args.round))) fail('--round takes a whole number')
+    const round = args.round !== undefined ? Number(args.round) : undefined
+    const nnn = args.plan !== undefined ? planNumber(String(args.plan)) : null
+    if (args.plan !== undefined && !nnn) fail('--plan takes a plan number')
+    if (nnn && round === undefined) fail('--round is needed with --plan')
+    const status = needStatus(run)
+    const holder = nnn ? (status.plans[nnn] ??= { nnn, round: 0, models: {}, state: 'queued' }) : status
+    holder.flakes ??= []
+    const text = nnn ? `flake: ${command} (plan ${nnn}, round ${round})` : `flake: ${command} (final gate)`
+    const dup = holder.flakes.some((x) => x.command === command && x.round === round)
+    if (!dup) {
+      holder.flakes.push({ command, ...(round !== undefined ? { round } : {}), via, where, ...(args.sha && args.sha !== true ? { sha: String(args.sha) } : {}), at: nowIso(), text })
+      writeStatus(run, status)
+    }
+    emit({ ok: true, recorded: !dup, flakes: holder.flakes.length }, [dup ? `${text} (already recorded)` : text])
   },
 
   // The hand-off file a fresh builder reads (docs/agent/model-routing.md rule 5), written from the failure facts.

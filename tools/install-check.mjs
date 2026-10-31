@@ -1025,6 +1025,9 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     [{ triageMinGraded: 4 }, 'orchestrator.triageMinGraded is 4 — it must be a whole number from 5 to 500'],
     [{ triageMinGraded: 20.5 }, 'orchestrator.triageMinGraded is 20.5 — it must be a whole number from 5 to 500'],
     [{ maxAgentCallsPerPlan: 5 }, 'orchestrator.maxAgentCallsPerPlan is 5 — it must be a whole number of agent calls from 10 to 500'],
+    [{ ciMirror: 'npm run lint' }, 'orchestrator.ciMirror is "npm run lint" — it must be a list of check commands'],
+    [{ ciMirror: ['git push'] }, 'orchestrator.ciMirror item "git push" — git push: not an allowed check'],
+    [{ ciMirror: ['node tools/x.mjs --apply'] }, 'orchestrator.ciMirror item "node tools/x.mjs --apply" — node tools/x.mjs --apply: --apply writes files'],
   ]
   for (const [orch, msg] of bad) {
     const ob = tmp('orch-bad')
@@ -1044,6 +1047,28 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   const s2 = run('sync.mjs', ['--target', os, '--apply'])
   if (s2.status !== 2 || !s2.stderr.includes('orchestrator.fallbackModel is "haiku"') || !s2.stderr.includes('orchestrator.staleMin is 0')) fail(`sync with orchestrator.fallbackModel haiku / staleMin 0: exit ${s2.status}, ${s2.stderr.trim().split('\n')[0]}`)
   rmSync(os, { recursive: true, force: true })
+
+  // Plan 044: orchestrator.ciMirror is rendered into the final gate, and sync suggests (never writes) the CI commands the gate does not run.
+  const cm = tmp('orch-mirror')
+  writeFileSync(join(cm, 'kit.config.json'), JSON.stringify(CORE_CFG))
+  const cmInstall = run('install.mjs', ['--target', cm])
+  if (cmInstall.status !== 0) fail(`install for ciMirror: exit ${cmInstall.status}, ${(cmInstall.stdout + cmInstall.stderr).trim().split('\n').pop()}`)
+  else if (!read(cm, '.claude/workflows/orchestrate.js').includes('const CI_MIRROR = []')) fail('orchestrator: orchestrate.js does not render ciMirror [] as const CI_MIRROR = []')
+  else if (!read(cm, 'docs/agent/orchestrator.md').includes('| `ciMirror` | `[]` |')) fail('orchestrator: orchestrator.md does not name the ciMirror default')
+  else {
+    mkdirSync(join(cm, '.github', 'workflows'), { recursive: true })
+    writeFileSync(join(cm, '.github', 'workflows', 'extra.yml'), 'name: extra\njobs:\n  rules:\n    steps:\n      - run: node tools/extra-check.mjs\n      - run: |\n          node scripts/other-check.mjs --strict\n          echo hello\n          npm ci\n')
+    const hint = run('sync.mjs', ['--target', cm])
+    for (const cmd of ['node tools/extra-check.mjs', 'node scripts/other-check.mjs --strict']) {
+      if (!hint.stdout.includes(`NOTE ci-mirror: .github/workflows/extra.yml runs "${cmd}" — the run's final gate does not; add it to orchestrator.ciMirror in kit.config.json to run it there`)) fail(`sync: no NOTE ci-mirror line for ${cmd}: ${hint.stdout.trim().split('\n').slice(-3).join(' | ')}`)
+    }
+    if (/NOTE ci-mirror: .*(echo hello|npm ci)/.test(hint.stdout)) fail('sync: a NOTE ci-mirror line for a command that is not an allowed check shape')
+    writeFileSync(join(cm, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, orchestrator: { ciMirror: ['node tools/extra-check.mjs'] } }))
+    const covered = run('sync.mjs', ['--target', cm, '--apply'])
+    if (covered.status !== 0 || covered.stdout.includes('runs "node tools/extra-check.mjs"') || !covered.stdout.includes('runs "node scripts/other-check.mjs --strict"')) fail(`sync with ciMirror set: exit ${covered.status}, a covered command is still hinted or the other is not`)
+    else if (!read(cm, '.claude/workflows/orchestrate.js').includes('const CI_MIRROR = ["node tools/extra-check.mjs"]')) fail('orchestrator: orchestrate.js does not render the project ciMirror')
+  }
+  rmSync(cm, { recursive: true, force: true })
 }
 
 // models.* (docs/agent/model-routing.md): the tiers render into the agent and forked-skill frontmatter; no inline

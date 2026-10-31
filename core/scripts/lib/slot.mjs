@@ -10,7 +10,7 @@
  *   node scripts/lib/slot.mjs --list
  *   node scripts/lib/slot.mjs --scoped-plan   the plan whose scope governs this folder (empty line: none)
  */
-import { readFileSync, existsSync } from 'fs'
+import { readFileSync, existsSync, writeFileSync, unlinkSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { resolve, dirname, join, basename } from 'path'
 import { fileURLToPath } from 'url'
@@ -83,7 +83,66 @@ export function scopedPlanPath(branch = git(['branch', '--show-current'])) {
   return branchPlanPath(branch)
 }
 
-/** Every {{slots.nameFormat}} worktree: { slot, path, branch (null if detached), detached, plan }. */
+/**
+ * The "validating" marker of a slot folder (.worktree-validating: branch, ISO time, sha — one per line), or null.
+ * A slot that serves a branch for the Human's validation is detached and has no .worktree-plan; the marker is what tells
+ * every status view and every claimer that it is not idle.
+ */
+export function readValidating(path) {
+  const file = join(path, '.worktree-validating')
+  if (!existsSync(file)) return null
+  const [branch, at, sha] = readFileSync(file, 'utf8').split(/\r?\n/).map((l) => l.trim())
+  return branch ? { branch, at: at || null, sha: sha || null } : null
+}
+
+/** A branch name the validating state accepts: no leading dash, no "..", only safe characters (it reaches git). */
+export function refProblem(branch) {
+  const b = String(branch ?? '')
+  if (!/^[A-Za-z0-9._/-]+$/.test(b) || b.startsWith('-') || b.includes('..')) return `branch "${b}" must match [A-Za-z0-9._/-]+, not start with "-" and not contain ".."`
+  return null
+}
+
+/**
+ * Serves a branch in an idle slot: fetch origin/<branch>, check it out detached, write .worktree-validating. Refuses a
+ * busy slot (.worktree-plan), a slot that already validates, and a dirty one (`.worktree-*` files do not count).
+ * Returns { ok, sha } or { ok: false, error }. `now` is the ISO time to record.
+ */
+export function startValidating({ path, branch, now = new Date().toISOString() }) {
+  const bad = refProblem(branch)
+  if (bad) return { ok: false, error: bad }
+  const run = (...a) => {
+    try {
+      return { ok: true, out: execFileSync('git', a, { cwd: path, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).replace(/\r?\n+$/, '') }
+    } catch (e) {
+      return { ok: false, out: String(e.stderr || e.message).trim().split('\n').pop() }
+    }
+  }
+  if (existsSync(join(path, '.worktree-plan'))) return { ok: false, error: 'this slot is busy (.worktree-plan) - free it first, or use an idle slot' }
+  const held = readValidating(path)
+  if (held && held.branch !== branch) return { ok: false, error: `this slot is already validating ${held.branch} - run node scripts/slot-stop.mjs first` }
+  const dirty = run('status', '--porcelain')
+  if (!dirty.ok) return { ok: false, error: `git status: ${dirty.out}` }
+  if (dirty.out.split('\n').filter((l) => l && !/^\?\? \.worktree-/.test(l) && !/^\?\? \.claude\/[^/]+\.log$/.test(l)).length) return { ok: false, error: 'this slot has uncommitted files - not touching it' }
+  const f = run('fetch', '--quiet', 'origin', branch)
+  if (!f.ok) return { ok: false, error: `git fetch origin ${branch}: ${f.out}` }
+  const c = run('checkout', '--quiet', '--detach', `origin/${branch}`)
+  if (!c.ok) return { ok: false, error: `git checkout --detach origin/${branch}: ${c.out}` }
+  const sha = run('rev-parse', 'HEAD').out
+  writeFileSync(join(path, '.worktree-validating'), `${branch}\n${now}\n${sha}\n`)
+  return { ok: true, sha }
+}
+
+/** Ends validating: removes the marker. Returns the branch it named, or null when the slot was not validating. */
+export function endValidating(path) {
+  const held = readValidating(path)
+  if (!held) return null
+  try {
+    unlinkSync(join(path, '.worktree-validating'))
+  } catch { /* already gone */ }
+  return held.branch
+}
+
+/** Every {{slots.nameFormat}} worktree: { slot, path, branch (null if detached), detached, plan, validating: { branch, at } | null }. */
 export function listSlots() {
   const out = git(['worktree', 'list', '--porcelain'])
   const entries = []
@@ -106,7 +165,8 @@ export function listSlots() {
       if (!m) return null
       const planFile = join(e.path, '.worktree-plan')
       const plan = existsSync(planFile) ? readFileSync(planFile, 'utf8').replace(/\r?\n+$/, '').trim() || null : null
-      return { slot: Number(m[1]), path: e.path, branch: e.detached ? null : e.branch, detached: e.detached, plan }
+      const v = readValidating(e.path)
+      return { slot: Number(m[1]), path: e.path, branch: e.detached ? null : e.branch, detached: e.detached, plan, validating: v ? { branch: v.branch, at: v.at } : null }
     })
     .filter(Boolean)
     .sort((a, b) => a.slot - b.slot)
@@ -131,6 +191,10 @@ function list() {
     const where = s.detached ? 'detached' : `branch=${s.branch}`
     const fromBranch = s.plan && branchPlanPath(s.branch, s.path)
     const mismatch = fromBranch && fromBranch !== s.plan ? ` (branch works on ${fromBranch} - that plan is used)` : ''
+    if (s.validating && !s.plan) {
+      console.log(`wt-${s.slot}: detached validating ${s.validating.branch} since ${s.validating.at ?? '?'}`)
+      continue
+    }
     console.log(`wt-${s.slot}: ${where}${s.plan ? ` plan=${s.plan}${mismatch}` : ' idle'}`)
   }
 }

@@ -94,6 +94,9 @@ every prompt from the plans and the state script.
      say the report exists only as the local copy and why the run branch did not get it;
    - the final gate: `finalGate.ok` false → say so first (`final gate failed: <command>` and its output tail) and do
      **not** hand the run branch over as clean; no pull-request lines until the Human has seen it;
+   - flaky checks: one line `flaky checks: <n> (see the report)`, where `<n>` is the number of entries in every
+     `plans[NNN].flakes[]` plus the run-level `flakes[]` of `status.json` (read from the file, never from memory);
+     print it only when `<n>` is above 0;
    - the report path on the run branch (`docs/orchestrator/runs/<run>/report.md`) and the local copy
      `.claude\orchestrator-runs\<run>.md`;
    - the result's `learning` (lesson lines added, `budget`, `trend`) as two lines — `Context added by learning: …` and
