@@ -25,6 +25,7 @@ branch himself.
 | `maxFixRounds` | `2` | How many times problems go back to a builder before the plan is parked |
 | `minFreeDiskGb` | `5` | Free disk the environment check asks for, before the run and before a retry |
 | `pilotSize` | `3` | A run with more plans than this builds the first `pilotSize` plans in wave order, stops with the report and the numbered decisions, and starts the rest on the Human's `continue`; 0 = off |
+| `onPark` | `dependents` | What a parked plan stops: `dependents` = only the later plans that depend on it or share its files (each is `skipped` with the reason), `all` = every later plan, the earlier behaviour |
 | `fallbackModel` | `opus` | The model a dead agent (one that returned nothing: a terminal API error, a blocked model) is retried on, once; `inherit` = no retry. Never Haiku: the retry may be a review agent |
 | `staleMin` | `10` | Minutes without a `status.json` update after which `orch-state.mjs watch` prints `STUCK` |
 | `maxNotesPerPlan` | `12` | Run notes one plan may write (every note is one runner agent call); the last one says `notes capped` |
@@ -86,7 +87,13 @@ branch himself.
      tests passed in the gate and run once more at the final gate; `full` runs the plan's whole list), then the commit
      `Merge <plan branch> into orch/<run> (plan NNN)` and the push. A conflict or a failing check aborts the
      merge (`git merge --abort`) and goes back to the builder as a problem.
-4. **Wave gate.** A wave with a parked plan is the last one: later waves are not started (`skipped`).
+4. **Wave gate.** With `onPark` = `dependents`: a parked plan skips only the later plans that depend on it
+   (directly or through a chain; reason `depends on parked <NNN>`, naming the parked plan the chain starts from) or share
+   its files (a scope-overlap edge of the plan order; reason `shares files with parked <NNN>`, and what depends on those);
+   every other plan still runs, and a run note says how many go on. Inside one wave, a lock-group member after a parked
+   member is skipped the same way. With `onPark` = `all`, or when the plan order carries no `edges`, a wave with a parked
+   plan is the last one: later waves are not started (`skipped`). A `stopRun` (the merge folder is not clean) and a
+   failed final gate stop the run in both modes, and the pilot still stops it after `pilotSize` plans.
    **Pilot.** With `pilotSize` set and more plans than it, only the first `pilotSize` plans (wave order) run; the rest
    are `skipped` with the reason "pilot", the run stops, and the report and the numbered decisions go to the Human.
    `continue` relaunches the same run with `pilot: false`: merged plans are skipped from git, the rest are built with
@@ -283,7 +290,7 @@ With the UI step off, a failed script is a finding for the builder, and a card n
 - **Environment failures cost no round.** A builder, gate or merger that reports an environment failure (disk, network,
   a database that is down, a temp folder in use) pauses the plan (`env-paused`), runs `orch-preflight.mjs --env-only`,
   and retries once when it passes. A failing check or a second environment failure parks the plan with the reason,
-  and the wave gate stops the run.
+  and the wave gate skips what depends on it (the whole run with `onPark` = `all`).
 
 ## State rules
 
@@ -329,10 +336,13 @@ With the UI step off, a failed script is a finding for the builder, and a card n
 Merged, parked and why; the decisions agents took, each listed once (a repeat in other words is an `also:` line) and
 numbered `D1…Dn` — under `## Decisions`: `### To grade`, `### Accepted by triage`, `### Follow-ups`, `### Noise` and
 `### Not triaged`, after the line `triage: <mode> · agreement (last 50): <n>% · collapsed: <n> · ask: <n> · follow-ups: <n>`
-(every `seen:` defect an agent noticed is among them — those two kinds are the only ones kept: a confirmation or
+(every `seen:` defect an agent noticed is among them, and every `removes:` line — a user-facing behaviour a builder took away — comes first of all; those three kinds are the only ones kept: a confirmation or
 evidence line an agent put in `decisions` is dropped and counted, `dropped <n> confirmation line(s)`), and the reply
 format `decisions: ok` | `D<n> ✗ <what I'd choose>` for the Human to grade (`docs/agent/decision-review.md`); the
 run notes under `## Run notes`; the
+models each agent ran on; what only the Human can do — one
+validation list, numbers running on: first a card per `removes:` decision of a merged plan (`### Removed behaviour — check
+before merging the PR`), then a **screenshot grid per page** (one row per `[ui]` card of a merged plan: title,
 models each agent ran on; **Flaky checks** (only when `status.json` has any: a check that passed only on the gate's own
 rerun after an env-fail, or on the next gate with no new commit — recorded by `orch-state.mjs flake` in
 `plans[NNN].flakes[]`, the final gate's in `flakes[]`; the run goes on and the fix round it cost stays spent, the record is

@@ -29,6 +29,9 @@ rules in `docs/agent/agent-roles.md` (non-interactive, evidence, deny list, sche
    `decisions` entry that starts with `behaviour:`, says what you chose and ends with one line on how to reverse it.
    A defect you notice outside your job is not fixed: report it as a `decisions` entry that starts with `seen:` and
    names `file:line` (or the page and the steps).
+   **Removing is a decision:** removing or narrowing existing user-facing behaviour the plan does not name (a key
+   handler, an input mode, a field, a screen, a shortcut) gets a `decisions` entry `removes: <what users lose> — reverse:
+   <how>`; when the plan cannot be done without that removal, return `ESCALATE` instead.
 4. Write real tests for the plan's `[auto]` Done-when items. Run the project checks and every `[auto]` command; all
    must pass before you return `built`. A check that fails for an environment reason (network, a temp folder in use)
    is rerun once, and you say so.

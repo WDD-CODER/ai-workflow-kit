@@ -54,6 +54,9 @@ Triggers: "execute plan NNN", "take plan NNN" (only meaningful inside a {{slots.
    error; a new dialog, a new confirmation, an automatic action — gets the simplest option (nothing extra). Log each
    one in the plan's `## Execution Notes` as `- decision: behaviour: <what you chose> — reverse: <one line>`, and a
    defect you noticed but are not fixing as `- decision: seen: <file:line or page + steps> — <what is wrong>`.
+   **Removing is a decision.** Removing or narrowing existing user-facing behaviour the plan does not name (a key
+   handler, an input mode, a field, a screen, a shortcut) is logged as `- decision: removes: <what users lose> —
+   reverse: <how>`; when the plan cannot be done without it, stop and ask the Human instead.
    `/ship` shows these as `D1…Dn` for the Human to grade (`docs/agent/decision-review.md`).
 
 4. **Open with the plan brief, before any work.** Right after reading the plan, print a

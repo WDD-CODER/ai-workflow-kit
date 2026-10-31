@@ -190,10 +190,11 @@ const shotCell = (c) => ((c.screenshots ?? []).length
  * The validation list of the merged plans, numbers running on across groups:
  * - a screenshot grid per page (plan order): one row per checked `[ui]` card — title, verdict (who checked it: the
  *   card's script or the browser agent, and the round) and a thumbnail link to each screenshot;
+ * - first, one card per `removes:` decision of a merged plan (`removals`: { id, plan, text }), numbered before the rest;
  * - PLAN-DRIFT in its own section (the plan says X, the app has Y — no severity, not a bug);
  * - the `[ui]` cards no one checked and the plans' `[human]` items, which name no page, per plan.
  */
-export function validationList(mergedPlans) {
+export function validationList(mergedPlans, removals = []) {
   const pages = new Map()
   const drift = []
   const unchecked = []
@@ -210,9 +211,14 @@ export function validationList(mergedPlans) {
     }
   }
   const human = mergedPlans.filter((p) => (p.humanItems ?? []).length)
-  if (!pages.size && !drift.length && !unchecked.length && !human.length) return ['- nothing to validate', '']
+  if (!pages.size && !drift.length && !unchecked.length && !human.length && !removals.length) return ['- nothing to validate', '']
   let n = 0
   const out = []
+  if (removals.length) {
+    out.push('### Removed behaviour — check before merging the PR', '')
+    for (const r of removals) out.push(`${++n}. ${r.plan}: ${r.id} ${cell(r.text)} — open the screen; accept: decisions: ok · keep it: ${r.id} ✗ restore`)
+    out.push('')
+  }
   for (const [page, cards] of pages) {
     out.push(`### ${page}`, '', '| # | Card | Verdict | Screenshot |', '| --- | --- | --- | --- |')
     for (const c of cards) out.push(`| ${++n} | ${c.nnn}: ${cell(c.card)} | ${c.status} — ${c.via ?? 'browser'}, round ${c.round ?? 0} | ${shotCell(c)} |`)
@@ -363,6 +369,14 @@ function decisionsSection(decisions, triage) {
   ]
 }
 
+// The `removes:` decisions of the merged plans, in id order: a card each at the top of the Human's list. They come from the
+// decision records (one store); a removal that triage filed as a repeat of another decision (`noise`) is not shown twice.
+function removalsOf(decisions, mergedSet) {
+  return (Array.isArray(decisions) ? decisions : [])
+    .filter((d) => decisionType(d.text) === 'removes' && mergedSet.has(d.plan) && !/^duplicate of /.test(String(d.why ?? '')))
+    .sort((a, b) => idNum(a) - idNum(b))
+}
+
 export function formatReport({ status, merged, mainShaNow, finishedAt, runBranch, mainBranch, mainChangedFiles = null, appErrors = null, decisions = null, triage = {}, learning = null }) {
   const plans = Object.values(status.plans ?? {}).sort((a, b) => (a.nnn < b.nnn ? -1 : 1))
   const mergedSet = new Map(merged.map((m) => [m.nnn, m]))
@@ -400,7 +414,7 @@ export function formatReport({ status, merged, mainShaNow, finishedAt, runBranch
     '',
     '## What only the Human can do',
     '',
-    ...validationList(plans.filter((p) => mergedSet.has(p.nnn))),
+    ...validationList(plans.filter((p) => mergedSet.has(p.nnn)), removalsOf(decisions ?? status.decisions, mergedSet)),
     ...parked.map((p) => `- Decide on ${p.nnn}: ${p.reason ?? p.state}`),
     `- Review and merge the run branch (PowerShell, one line each):`,
     '',

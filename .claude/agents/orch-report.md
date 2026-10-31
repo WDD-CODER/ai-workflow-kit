@@ -19,7 +19,7 @@ The report, in this order:
 2. What waits on the Human: every `[human]` Done-when item and every item that needs another project, verbatim.
 3. Kept findings (file:line, severity) that were not fixed.
 4. Decisions agents took on their own (`decisions` lists, `seen:` defects included), numbered `D1…Dn` across the run,
-   grouped by plan, the `behaviour:` ones first in each group, one line each with the plan number. Keep a number the
+   the `removes:` ones first of all, then grouped by plan, the `behaviour:` ones first in each group, one line each with the plan number. Keep a number the
    run already gave a decision. When the run's `decisionsDropped` counts are not all zero, add one line
    `dropped <n> confirmation line(s) (not decisions)` with the total. End this part with the reply format, verbatim:
    `Reply: decisions: ok  |  D<n> ✗ <what I'd choose>  (several on one line, comma-separated)`.

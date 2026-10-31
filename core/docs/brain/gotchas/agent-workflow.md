@@ -359,6 +359,13 @@ only the Bash tool's command text triggers it.
 
 ---
 
+## One parked plan stopped every later plan
+
+**What hurt:** In one run, a plan parked at 22:55 on a slot-only check. The wave gate then skipped the two later plans (`not started: wave N parked <NNN> — later waves not started`) although neither needed anything from it; in the second pass both built and merged with no change from the fix. About an hour of overnight time was lost.
+
+**Why the obvious fix is wrong:** Letting every later plan run after a park is not safe either: a plan that depends on the parked one, or edits the same files, builds on what the park left behind. The workflow cannot tell which is which by wave order alone.
+
+**What to do instead:** `orchestrator.onPark` is `dependents` (default): `orch-state.mjs order` hands the workflow the unmet edges, and `blockedBy()` in `orchestrate.js` skips only the later plans reachable over `Depends-on:` edges (`depends on parked <NNN>`) or a scope-overlap edge (`shares files with parked <NNN>`); the rest still run. `all` is the old behaviour. A `stopRun` and a failed final gate still stop everything.
 ## A green run, a red pull request
 
 **What hurt:** On 2026-10-29 an orchestrator run finished green and its pull request failed on the CI `rules` job (`KIT_MANIFEST: FAIL — 3 unclassified`); another plan hit the same failure the day before. About ten minutes each. The final gate ran only the project build, lint and test commands, and nothing said which other CI commands it skipped.

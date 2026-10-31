@@ -35,6 +35,10 @@ their instructions.
   confirmation, an automatic action) gets the **simplest option** and a `decisions` entry that starts with `behaviour:`,
   names the choice and ends with how to reverse it. A Worker writes it in `## Execution Notes` as
   `- decision: behaviour: … — reverse: …`.
+- Removing or narrowing user-facing behaviour the plan does not name (a key handler, an input mode, a field, a screen,
+  a shortcut) is logged as `removes: <what users lose> — reverse: <how>` (Worker: `- decision: removes: …`); when the
+  plan cannot be done without it, the agent stops (`ESCALATE`). The run report lists these first and adds a card each
+  under "What only the Human can do".
 - A defect noticed outside the agent's job is **not fixed**: a `decisions` entry that starts with `seen:` and names
   `file:line` (or the page and steps). Worker form: `- decision: seen: …`.
 - Before building, `orch-readiness` asks a product question for a plan that adds or changes interactive behaviour and
@@ -42,7 +46,7 @@ their instructions.
 
 ## 2. The Human grades in one reply
 
-The run report (`/orchestrate` step 4) or the `/ship` tree numbers the decisions `D1…Dn`, grouped by plan, `behaviour:`
+The run report (`/orchestrate` step 4) or the `/ship` tree numbers the decisions `D1…Dn`, every `removes:` line first, then grouped by plan, `behaviour:`
 first, and ends with the format:
 
 ```text

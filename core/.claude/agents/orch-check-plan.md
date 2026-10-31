@@ -26,6 +26,12 @@ confirm a claim; never edit, commit or install.
 - A change outside the plan's `## Read-Write Scope` with no `scope extended:` note.
 - A claim in `## Execution Notes` (a command passed, a file exists) that the code or a rerun contradicts.
 - Behavior the plan's Out of Scope excludes.
+- A removal nobody logged: in `git diff BASE...BRANCH`, a deleted key or pointer handler, input, form control, screen or
+  shortcut whose behaviour is not re-added elsewhere in the diff, is not named by the plan and is not in `REMOVES` (the
+  plan's own `removes:` decisions, when the task has them) → problem `rule: "unlogged removal: <what users lose>"`,
+  severity `major`, file and line in BASE. Signals: a deleted `addEventListener('key`, `<input`, `<select`,
+  `<textarea`, a deleted route or menu entry.
+<!-- PACK:removal-signals -->
 
 Do not report what the do-not-report list in `docs/agent/agent-roles.md` excludes.
 

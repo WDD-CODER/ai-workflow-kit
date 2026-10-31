@@ -27,3 +27,7 @@ Not installed itself. Placeholders render as in any kit file.
 | `react-component-structure` | creating or reviewing a page, component or hook under `src/` | `docs/agent/conventions.md`, `docs/agent/standards-react.md` | — |
 | `cssLayer` | styling, the global stylesheet, `tailwind.config.*` (tokens, `cn()`, logical classes) | `docs/agent/standards-react.md` | — |
 | `auth-and-logging` | auth, roles, server-function access, logging | `docs/agent/standards-security.md` | — |
+
+## removal-signals
+
+- Also a removal in this stack: a deleted `onKeyDown=`, `onKeyUp=`, or `onChange=` on an input that is removed.
