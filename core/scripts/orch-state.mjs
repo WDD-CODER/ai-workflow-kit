@@ -18,10 +18,16 @@
  *   node scripts/orch-state.mjs set        --run <name> --plan <NNN> [--state s] [--round n] [--tier t] [--sha x]
  *                                          [--role r --model m --effort e | --roles r=m/e,r2=m2/e2] [--reason "<text>"]
  *                                          [--card "<title>" --card-status s --page <url> --shots a.png,b.png --via script|browser]
- *   node scripts/orch-state.mjs flake      --run <name> [--plan <NNN>] --command "<cmd>" [--round n] --via rerun|same-commit --where gate|main|final [--sha x]
+ *                                          facts for the lessons: [--candidates m --refuted n --refuted-rules "a|b" --verify-by "role=m/n/a|b;…"
+ *                                          --late-low "a|b" --reappeared "a|b"] [--miss "<what>"] [--round-cause "round 2: <why>"]
+ *                                          [--gate-event "<text>"] [--asked "q1 || q2" --ready yes|no]
+ *   node scripts/orch-state.mjs flake     --run <name> [--plan <NNN>] --command "<cmd>" [--round n] --via rerun|same-commit --where gate|main|final [--sha x]
  *                                          records a check that passed only on a rerun (plans[NNN].flakes[], run-level flakes[])
  *   node scripts/orch-state.mjs handoff    --run <name> --plan <NNN> --step s --check c --tail t --tried x
- *                                          the hand-off file a fresh judgment-tier builder reads
+ *                                          the hand-off file a fresh judgment-tier builder reads (the escalation is recorded)
+ *   node scripts/orch-state.mjs context    [--run <name>]                   LESSONS / RULES / RECENT_RUNS for the roles (read-only) and their size
+ *   node scripts/orch-state.mjs lessons    --run <name>                     lesson lines from status.json into docs/brain/agent-lessons/ (no model call)
+ *   node scripts/orch-state.mjs trend      [--run <name>] [--last n]        ✗ / fix rounds per plan and parked per run from docs/brain/run-log.md
  *   node scripts/orch-state.mjs note       --run <name> [--plan <NNN>] --text "<decision>"
  *   node scripts/orch-state.mjs decision   --run <name> --plan <NNN> --id D<n> --text "<line>" [--verdict v --kind k --confidence n
  *                                          --rec "<text>" --why "<text>" --forced f]   record one decision (upsert by id), or
@@ -55,8 +61,8 @@ import { planNumber, planTitle, mergeSubjectRe } from './lib/plan-deps.mjs'
 import { uiItems } from './lib/done-when.mjs'
 import { listSlots } from './lib/slot.mjs'
 import { ensureDeps, idleSlot, claimSlot, releaseSlot, releaseRunSlots } from './lib/orch-folders.mjs'
-import { agreementStats } from './decision-log.mjs'
-import { triageForce, triageView, decisionType, runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine, logQueryArgs } from './lib/orch-run.mjs'
+import { agreementStats, addLesson, lessonParts, ruleLines, LESSON_ROLES } from './decision-log.mjs'
+import { triageForce, triageView, decisionType, runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine, logQueryArgs, lessonFacts, runLogRow, updateRunLog, parseRunLog, parseDecisionRows, trendOf, contextBudget, INJECTED_ROLES } from './lib/orch-run.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const MAIN = '{{git.mainBranch}}'
@@ -88,7 +94,9 @@ const SENSITIVE_CODE_RE = /auth|permission|password|jwt|session[_-]?id|tokens?\b
 // Every flag takes a value. The workflow passes `--key=value` (one token, so a value can never become a flag); a
 // human may write `--key value`, where a value starting with "-" is refused. An unknown flag (--root among them: the
 // folder is always this script's own project) or a second positional word stops the command.
-const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tier', 'sha', 'role', 'model', 'effort', 'roles', 'reason', 'card', 'card-status', 'page', 'shots', 'via', 'step', 'check', 'tail', 'tried', 'text', 'min', 'stale-min', 'files', 'cmd', 'id', 'verdict', 'kind', 'confidence', 'rec', 'why', 'forced', 'dup-of', 'command', 'where'])
+const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tier', 'sha', 'role', 'model', 'effort', 'roles', 'reason', 'card', 'card-status', 'page', 'shots', 'via', 'step', 'check', 'tail', 'tried', 'text', 'min', 'stale-min', 'files', 'cmd', 'id', 'verdict', 'kind', 'confidence', 'rec', 'why', 'forced', 'dup-of', 'command', 'where',
+  // facts the workflow records for the lessons (docs/agent/orchestrator.md "status.json"), and `trend` / `finish` options
+  'candidates', 'refuted', 'refuted-rules', 'verify-by', 'late-low', 'reappeared', 'miss', 'round-cause', 'gate-event', 'asked', 'ready', 'final-gate', 'last'])
 function parseArgs(argv) {
   const out = { _: [] }
   for (let i = 0; i < argv.length; i++) {
@@ -349,6 +357,71 @@ function fetchOrigin() {
   const f = git(root, 'fetch', '--quiet', 'origin')
   if (f.status !== 0) fail(`git fetch origin failed: ${f.err.split('\n').pop()}`, { envFailure: true })
 }
+
+// ---- what the run learns (docs/agent/decision-review.md §0; no model call) ---------------------------------------------------
+const readIf = (file) => {
+  try {
+    return readFileSync(file, 'utf8')
+  } catch {
+    return null
+  }
+}
+// The folder the learning files are READ from (`context`, `trend`): the run's merge folder (the run branch) when it
+// exists, else this folder (before `init` there is no merge folder yet). Nothing is ever written here: `lessons` and
+// `finish` write in the merge folder only.
+const learnBase = (run) => (run && existsSync(mergeFolder(run)) ? mergeFolder(run) : root)
+const LESSONS_REL = (role) => `docs/brain/agent-lessons/${role}.md`
+const RUN_LOG_REL = 'docs/brain/run-log.md'
+
+/** The lesson lines of every role: the files under `base`, a path in `files` (not written yet) taking precedence. */
+function lessonsIn(base, files = new Map()) {
+  const out = {}
+  for (const role of LESSON_ROLES) {
+    const text = files.get(LESSONS_REL(role)) ?? readIf(join(base, LESSONS_REL(role)))
+    out[role] = text ? lessonParts(text).body.map((l) => l.replace(/^-\s+/, '')) : []
+  }
+  return out
+}
+const rulesIn = (base) => {
+  const t = readIf(join(base, 'docs', 'brain', 'agent-rules.md')) ?? ''
+  return { checkers: ruleLines(t, 'checkers'), readiness: ruleLines(t, 'readiness'), ui: ruleLines(t, 'ui') }
+}
+/** The last three run-log rows as one line each, with their parked reasons: what `orch-readiness` reads as RECENT_RUNS. */
+const recentRunsOf = (rows) => rows.slice(-3).map((r) => `${r.date} ${r.run}: ${String(r.plans).split(',').filter(Boolean).length} plans, ${r.merged} merged, ${r.parked} parked (${r.reasons}), fix rounds ${r.fixRounds}, escalations ${r.escalations}, gate fails ${r.gateFails}, final gate ${r.finalGate}`)
+
+/**
+ * The lesson lines (and, with `runLog`, the run-log row) a run adds, computed in memory: { files: Map(path -> text),
+ * added, dropped, budget, trend }. Nothing is written here; the caller writes `files` under `base`.
+ */
+function learnRun(run, status, base, { merged = [], finalGate = 'none', finishedAt = null, runLog = false } = {}) {
+  const files = new Map()
+  const date = String(finishedAt ?? nowIso()).slice(0, 10)
+  const added = []
+  const dropped = []
+  for (const f of lessonFacts(status)) {
+    const rel = LESSONS_REL(f.role)
+    const r = addLesson(files.get(rel) ?? readIf(join(base, rel)) ?? '', f.role, { date, run, text: f.text, dedupe: f.has ?? null })
+    if (!r.added) continue
+    files.set(rel, r.text)
+    added.push({ role: f.role, text: f.text })
+    dropped.push(...r.dropped.map((line) => ({ role: f.role, line })))
+  }
+  let rows = parseRunLog(readIf(join(base, RUN_LOG_REL)) ?? '').rows
+  if (runLog) {
+    const text = updateRunLog(readIf(join(base, RUN_LOG_REL)) ?? '', runLogRow({ status, merged, finalGate, date }), parseDecisionRows(readIf(join(base, 'docs', 'brain', 'decision-log.md'))))
+    files.set(RUN_LOG_REL, text)
+    rows = parseRunLog(text).rows
+  }
+  const budget = contextBudget({ lessons: lessonsIn(base, files), rules: rulesIn(base), recent: recentRunsOf(rows) })
+  return { files, added, dropped, budget, trend: trendOf(rows) }
+}
+function writeLearned(base, files) {
+  for (const [rel, text] of files) {
+    mkdirSync(dirname(join(base, rel)), { recursive: true })
+    writeFileSync(join(base, rel), text)
+  }
+}
+const budgetLines = (b) => [...b.blocks.map((x) => `CONTEXT ${x.name}: ${x.chars} chars`), `CONTEXT ${b.line}`]
 
 const commands = {
   init() {
@@ -660,7 +733,44 @@ const commands = {
       const via = args.via && args.via !== true ? String(args.via) : 'browser'
       if (!['script', 'browser', 'none'].includes(via)) fail(`--via "${via}" — allowed: script, browser, none`)
       const card = { card: String(args.card), status, via, page: args.page && args.page !== true ? String(args.page) : '', screenshots: args.shots && args.shots !== true ? String(args.shots).split(',').filter(Boolean) : [], round: p.round }
+      // A card that passed earlier and fails now is marked: the `ui` lesson ("card failed after it had passed").
+      const before = (p.uiCards ?? []).find((c) => c.card === card.card)
+      if ((before?.status === 'pass' && status === 'fail') || before?.regressed) card.regressed = true
       p.uiCards = [...(p.uiCards ?? []).filter((c) => c.card !== card.card), card]
+    }
+    // Facts the lessons are written from (lessonFacts in lib/orch-run.mjs). `--candidates/--refuted/--refuted-rules/
+    // --verify-by/--late-low/--reappeared` are the verifier's totals so far for this plan (a later call replaces them);
+    // `--miss`, `--round-cause` and `--gate-event` add one line each (the same line twice is kept once); `--asked`
+    // ("q1 || q2") and `--ready yes|no` come from the readiness result.
+    const text = (k) => (args[k] !== undefined && args[k] !== true ? String(args[k]).trim() : '')
+    const list = (v) => String(v).split('|').map((x) => x.trim()).filter(Boolean)
+    const count = (k) => {
+      if (!/^\d+$/.test(text(k))) fail(`--${k} takes a whole number`)
+      return Number(text(k))
+    }
+    if (['candidates', 'refuted', 'refuted-rules', 'verify-by', 'late-low', 'reappeared'].some((k) => args[k] !== undefined)) {
+      const v = (p.verify ??= { candidates: 0, refuted: 0, refutedRules: [], byRole: {}, lateLow: [], reappeared: [] })
+      if (args.candidates !== undefined) v.candidates = count('candidates')
+      if (args.refuted !== undefined) v.refuted = count('refuted')
+      if (args['refuted-rules'] !== undefined) v.refutedRules = list(text('refuted-rules'))
+      if (args['late-low'] !== undefined) v.lateLow = list(text('late-low'))
+      if (args.reappeared !== undefined) v.reappeared = list(text('reappeared'))
+      if (args['verify-by'] !== undefined) {
+        v.byRole = {}
+        // role=candidates/refuted/rule a|rule b;role2=… — an entry the 400-character argument cut short is skipped.
+        for (const item of text('verify-by').split(';')) {
+          const m = /^([\w-]+)=(\d+)\/(\d+)\/(.*)$/.exec(item.trim())
+          if (m) v.byRole[m[1]] = { candidates: Number(m[2]), refuted: Number(m[3]), rules: list(m[4]) }
+        }
+      }
+    }
+    for (const [flag, field] of [['miss', 'misses'], ['round-cause', 'roundCauses'], ['gate-event', 'gateEvents']]) {
+      if (text(flag)) p[field] = [...new Set([...(p[field] ?? []), ...text(flag).split(' || ').map((x) => x.trim().slice(0, 300)).filter(Boolean)])]
+    }
+    if (args.asked !== undefined) p.asked = text('asked').split(' || ').map((x) => x.trim()).filter(Boolean).slice(0, 5)
+    if (args.ready !== undefined) {
+      if (!['yes', 'no'].includes(text('ready'))) fail('--ready takes yes or no')
+      p.ready = text('ready') === 'yes'
     }
     p.freeDiskGb = diskGb()
     status.freeDiskGb = p.freeDiskGb
@@ -717,6 +827,13 @@ const commands = {
       'Suspected cause: (a guess) see the output tail; rerun the failing check first',
       '',
     ].join('\n'))
+    // The escalation is a fact the builder lessons are written from (lessonFacts): its step and the failing check.
+    const st = readStatus(run)
+    if (st?.plans?.[nnn]) {
+      const e = { step: val('step'), check: val('check').slice(0, 200) }
+      st.plans[nnn].escalations = [...(st.plans[nnn].escalations ?? []).filter((x) => x.step !== e.step || x.check !== e.check), e]
+      writeStatus(run, st)
+    }
     emit({ ok: true, path: rel }, [`hand-off file ${rel}`])
   },
 
@@ -777,15 +894,57 @@ const commands = {
     const mf = mergeFolder(run)
     if (!existsSync(mf)) fail(`no merge folder ${mf}`)
     if (!existsSync(join(mf, 'docs', 'brain'))) emit({ ok: true, committed: 0, branch }, ['BRAIN: nothing to commit'])
-    const add = git(mf, 'add', '--', 'docs/brain')
-    if (add.status !== 0) fail(`git add docs/brain in ${mf}: ${add.err}`)
-    const staged = git(mf, 'diff', '--cached', '--name-only', '--', 'docs/brain').out.split('\n').filter(Boolean)
+    // docs/brain, and the eval cases the learning step scaffolds from a graded checker miss (`decision-log.mjs case`).
+    const paths = ['docs/brain', ...(existsSync(join(mf, 'docs', 'agent-evals', 'cases')) ? ['docs/agent-evals/cases'] : [])]
+    const add = git(mf, 'add', '--', ...paths)
+    if (add.status !== 0) fail(`git add ${paths.join(' ')} in ${mf}: ${add.err}`)
+    const staged = git(mf, 'diff', '--cached', '--name-only', '--', ...paths).out.split('\n').filter(Boolean)
     if (!staged.length) emit({ ok: true, committed: 0, branch }, ['BRAIN: nothing to commit'])
-    const c = git(mf, 'commit', '--quiet', '-m', `orch(${run}): decision grades`, '--', 'docs/brain')
+    const c = git(mf, 'commit', '--quiet', '-m', `orch(${run}): decision grades`, '--', ...paths)
     if (c.status !== 0) fail(`git commit docs/brain in ${mf}: ${(c.err || c.out).split('\n').pop()}`, { envFailure: true })
     const p = git(mf, 'push', '--quiet', 'origin', branch)
     if (p.status !== 0) fail(`git push origin ${branch}: ${p.err.split('\n').pop()} — the commit is in ${mf}`, { envFailure: true })
     emit({ ok: true, committed: staged.length, branch }, [`BRAIN: committed ${staged.length} file(s) on ${branch}`])
+  },
+
+  // What the workflow hands each role at launch (LESSONS, RULES, RECENT_RUNS): read-only, from the run's merge folder when
+  // it exists, else this folder. A missing file is an empty list — a project without the seeds starts with none.
+  context() {
+    const run = args.run !== undefined ? runName() : null
+    const base = learnBase(run)
+    const all = lessonsIn(base)
+    const lessons = Object.fromEntries(INJECTED_ROLES.filter((r) => all[r].length).map((r) => [r, all[r]]))
+    const rules = rulesIn(base)
+    const recent = recentRunsOf(parseRunLog(readIf(join(base, RUN_LOG_REL)) ?? '').rows)
+    const budget = contextBudget({ lessons: all, rules, recent })
+    emit({ ok: true, lessons, rules, recent, chars: budget.total, line: budget.line }, budgetLines(budget))
+  },
+
+  // The lesson lines of the run, derived from status.json by code (no model call), appended to docs/brain/agent-lessons/
+  // (the run branch's merge folder). `finish` does the same and adds the run-log row. A merge folder that is gone (the run
+  // was merged and `free-merged-slots` removed it) is an error: the lessons are never written into the main checkout.
+  lessons() {
+    const run = runName()
+    const status = needStatus(run)
+    if (!existsSync(mergeFolder(run))) fail(`the merge folder ${mergeFolder(run)} of run ${run} is gone (a merged run's folder is removed) — lessons are written on the run branch, never in the main checkout`)
+    const base = mergeFolder(run)
+    const merged = mergedPlans(run)
+    const learned = learnRun(run, status, base, { merged, finalGate: 'none' })
+    writeLearned(base, learned.files)
+    emit({ ok: true, base: base.replace(/\\/g, '/'), added: learned.added, dropped: learned.dropped.length, chars: learned.budget.total, line: learned.budget.line },
+      [...learned.added.map((a) => `LESSON ${a.role}: ${a.text}`), ...learned.dropped.map((d) => `DROPPED ${d.role}: ${d.line}`), `lessons: ${learned.added.length} line(s) added`, ...budgetLines(learned.budget)])
+  },
+
+  // The last runs of docs/brain/run-log.md: ✗ per plan, fix rounds per plan and parked plans per run, and the one line the
+  // run report ends with.
+  trend() {
+    const base = learnBase(args.run !== undefined ? runName() : null)
+    const rows = parseRunLog(readIf(join(base, RUN_LOG_REL)) ?? '').rows
+    const last = args.last !== undefined ? Number(args.last) : 3
+    if (!(Number.isInteger(last) && last >= 2)) fail('--last takes a whole number of at least 2')
+    const t = trendOf(rows.slice(-10), { last })
+    emit({ ok: true, runs: t.points, line: t.line },
+      [...t.points.map((p) => `RUN ${p.run}: ✗ per plan ${p.x ?? '-'} · fix rounds per plan ${p.fix ?? '-'} · parked ${p.parked}`), t.line])
   },
 
   stop() {
@@ -857,7 +1016,17 @@ const commands = {
     // The grade rows (docs/brain/decision-grades.jsonl) of the merge folder, else of the main folder: agreement per kind.
     const gradeRows = readGradeRows([join(mf, 'docs', 'brain', 'decision-grades.jsonl'), join(root, 'docs', 'brain', 'decision-grades.jsonl')])
     const triage = { mode: TRIAGE, stats: agreementStats(gradeRows), minAgreement: TRIAGE_MIN_AGREEMENT, minGraded: TRIAGE_MIN_GRADED }
-    const report = formatReport({ status, merged, mainShaNow, finishedAt: status.finishedAt, runBranch: branch, mainBranch: MAIN, mainChangedFiles, appErrors, decisions: status.decisions ?? [], triage })
+    // What the run teaches the next one: lesson lines from status.json, this run's row of the run log, and the trend line and
+    // character budget the report ends with. Computed here in memory (a failure never stops the report); the files are
+    // written and committed below, with the report, in the merge folder.
+    let learned = null
+    let learnError = null
+    try {
+      learned = learnRun(run, status, existsSync(mf) ? mf : root, { merged, finalGate: String(args['final-gate'] ?? 'none'), finishedAt: status.finishedAt, runLog: true })
+    } catch (e) {
+      learnError = e.message
+    }
+    const report = formatReport({ status, merged, mainShaNow, finishedAt: status.finishedAt, runBranch: branch, mainBranch: MAIN, mainChangedFiles, appErrors, decisions: status.decisions ?? [], triage, learning: learned ? { budget: learned.budget.line, trend: learned.trend.line } : null })
     // What the command prints: this launch's decisions only (the earlier launch's were graded when it ended).
     const view = triageView({ decisions: (status.decisions ?? []).filter((d) => (d.attempt ?? 1) === (status.attempts ?? 1)), ...triage })
     const ids = (list) => list.map((d) => d.id)
@@ -867,9 +1036,11 @@ const commands = {
     writeFileSync(local, report)
     const parked = Object.values(status.plans).filter((x) => x.state === 'parked' || x.state === 'left-run').map((x) => x.nnn)
     const rel = `docs/orchestrator/runs/${run}`
-    const base = { triage: triageOut, report: `${rel}/report.md`, local: local.replace(/\\/g, '/'), merged: merged.map((m) => m.nnn), parked, phase: status.phase, slots: slots.lines }
+    const learningOut = learned ? { lessonsAdded: learned.added.length, lessonsDropped: learned.dropped.length, budget: learned.budget.line, chars: learned.budget.total, trend: learned.trend.line } : { error: learnError }
+    const learningLines = learned ? [`lessons: ${learned.added.length} line(s) added, ${learned.dropped.length} dropped`, ...budgetLines(learned.budget), learned.trend.line] : [`lessons: not written (${learnError})`]
+    const base = { triage: triageOut, report: `${rel}/report.md`, local: local.replace(/\\/g, '/'), merged: merged.map((m) => m.nnn), parked, phase: status.phase, slots: slots.lines, learning: learningOut }
     const notCommitted = (error, extra = {}) => emit({ ok: false, ...base, reportCommitted: false, error: `${error} — the report is in ${local}`, ...extra },
-      [...slots.lines, `report: local copy ${local} (not committed to ${branch}: ${error})`])
+      [...slots.lines, `report: local copy ${local} (not committed to ${branch}: ${error})`, ...learningLines])
     if (!existsSync(mf)) notCommitted(`no merge folder ${mf}`)
     const dirty = git(mf, 'status', '--porcelain').out
     if (dirty) notCommitted(`the merge folder ${mf} has uncommitted files: ${dirty.split('\n').map((l) => l.slice(3)).join(', ')}`)
@@ -878,7 +1049,8 @@ const commands = {
     mkdirSync(join(mf, rel), { recursive: true })
     writeFileSync(join(mf, rel, 'report.md'), report)
     writeFileSync(join(mf, rel, 'status.json'), `${JSON.stringify(status, null, 2)}\n`)
-    const add = git(mf, 'add', '--', `${rel}/report.md`, `${rel}/status.json`)
+    if (learned) writeLearned(mf, learned.files)
+    const add = git(mf, 'add', '--', `${rel}/report.md`, `${rel}/status.json`, ...(learned ? [...learned.files.keys()] : []))
     if (add.status !== 0) notCommitted(`git add the report: ${add.err}`)
     const c = git(mf, 'commit', '--quiet', '-m', `orch(${run}): run report`)
     if (c.status !== 0 && !/nothing to commit/.test(c.out + c.err)) notCommitted(`git commit the report: ${(c.err || c.out).split('\n').pop()}`)
@@ -886,7 +1058,7 @@ const commands = {
     if (p.status !== 0) notCommitted(`git push origin ${branch}: ${p.err.split('\n').pop()}`, { envFailure: true })
     const left = git(mf, 'status', '--porcelain').out
     emit({ ok: !left, ...base, reportCommitted: true, ...(left ? { error: `merge folder not clean: ${left}` } : {}) },
-      [...slots.lines, `report: ${rel}/report.md on ${branch}; local copy ${local}`, `merged ${merged.length}: ${merged.map((m) => m.nnn).join(', ') || 'none'}; parked ${parked.length}: ${parked.join(', ') || 'none'}`])
+      [...slots.lines, `report: ${rel}/report.md on ${branch}; local copy ${local}`, `merged ${merged.length}: ${merged.map((m) => m.nnn).join(', ') || 'none'}; parked ${parked.length}: ${parked.join(', ') || 'none'}`, ...learningLines])
   },
 }
 

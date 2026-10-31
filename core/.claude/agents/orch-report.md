@@ -24,6 +24,9 @@ The report, in this order:
    `dropped <n> confirmation line(s) (not decisions)` with the total. End this part with the reply format, verbatim:
    `Reply: decisions: ok  |  D<n> ✗ <what I'd choose>  (several on one line, comma-separated)`.
 5. Models used: role → `model` / `effort` as the results echo them.
+6. End with the trend line, as `node scripts/orch-state.mjs trend` prints it, copied unchanged (read from
+   `docs/brain/run-log.md`): `Trend (last 3 runs): ✗ per plan 0.6 → 0.3 → 0.2 · fix rounds per plan 0.8 → 0.5 → 0.4 ·
+   parked 2 → 1 → 0`, or `Trend: first logged run` with fewer than two rows. It is always the last line of the report.
 
 ## Output (the only thing you return)
 

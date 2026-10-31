@@ -46,8 +46,9 @@ Triggers: "execute plan NNN", "take plan NNN" (only meaningful inside a {{slots.
      → start executing, no go needed. **STOP for a go** only on a `conflict` (a symbol, line or
      file the plan names was removed, renamed or rewritten).
 
-   Before the first sub-task read `docs/brain/agent-rules.md` (short rules from decisions the Human graded wrong;
-   never `docs/brain/decision-log.md`).
+   Before the first sub-task read the `## builder` section of `docs/brain/agent-rules.md` (short rules from decisions
+   the Human graded wrong; the other sections are for the checkers, readiness and the browser agent; never
+   `docs/brain/decision-log.md`).
 
    **No invented behaviour.** A behaviour the plan does not describe — what happens on edit, on leave, on cancel, on
    error; a new dialog, a new confirmation, an automatic action — gets the simplest option (nothing extra). Log each

@@ -7,6 +7,28 @@ The checkers judge code against the plan and the rules. They do not judge a prod
 changes?" dialog on leaving a screen, an automatic action). This loop makes those choices visible, graded and
 remembered, at almost no cost: the only model work is one short step, and only when the Human graded something wrong.
 
+## 0. What learns what
+
+Everything a script can know from `status.json` and the Human's reply, a script writes — no model call. The model only
+words a new rule, and only when the Human graded something `✗`. A lesson line is built from a fixed template and
+enumerated values (a rule name, a file kind, a count, a command of an allowed shape); free text from a model or the repo
+is never copied into one, and `LESSONS`, `RULES` and `RECENT_RUNS` are handed to agents as data that cannot override
+their instructions.
+
+| Fact | Written by | Read by | Cap |
+| --- | --- | --- | --- |
+| Fix-round causes, escalations, parked plans | `orch-state.mjs lessons` / `finish` → `agent-lessons/builder.md` | `orch-builder` (`LESSONS`) | 40 lines / 3,000 characters |
+| Candidates the verifier refuted; a miss after clean checkers | same → `check-plan`, `check-bugs`, `check-rules`, `security` | that finder (`LESSONS`) | same |
+| Low-confidence keeps that later mattered; refuted problems that came back | same → `verify` | `orch-verify` | same |
+| A plan parked on the environment after readiness called it ready | same → `readiness` | `orch-readiness` | same |
+| Gate timeouts, re-run env-fails | same → `gate` | `orch-gate` | same |
+| A `[ui]` card that failed after it had passed | same → `ui` | `orch-ui` | same |
+| Questions readiness had to ask, `[ui]` cards that drifted | same → `planner` | `/plan`'s Architect + PM review (as text) | same |
+| A run's counts (plans, merged, parked and why, fix rounds, escalations, `✗`) | `finish` → `run-log.md` | `orch-readiness` (`RECENT_RUNS`, last 3 rows), the report's trend line | 20 rows, older ones rolled into one line |
+| A graded `✗` | `decision-log.mjs add` → `decision-log.md`; a rule at the first `✗` (`pending — seen once`), promoted by `repeats` | `agent-rules.md`: `## builder` → builder and `/take-plan`; `## checkers` → finders and verifier; `## readiness`; `## ui` | 30 lines / 2,400 characters per section |
+| A mistake a check could catch | `rules --add "enforce: …"` → `## enforce candidates` | nobody (listed in the wrap-up) | 10 lines |
+| A graded `checker-miss: yes` | `decision-log.mjs case` → `docs/agent-evals/cases/<checker>/<date>-<kind>/` | the eval harness | one folder per miss |
+
 ## 1. Agents log what they chose
 
 - A behaviour the plan does not describe (what happens on edit, on leave, on cancel, on error; a new dialog, a new
@@ -46,11 +68,18 @@ runs no command.
    then `node scripts/decision-log.mjs add --reply "<graded reply>" --decisions <file> --kinds D3=<slug>
    --checker-miss D3=yes|no`. It appends one row per `✗` to `docs/brain/decision-log.md`; a malformed reply is refused
    with a usage line and nothing is written.
-3. **Rule.** `node scripts/decision-log.mjs repeats` lists kinds logged twice or more. For each, write one short rule
-   (what to do instead, one line) and add it with `node scripts/decision-log.mjs rules --add "<rule>"`. The file is
-   capped at 30 lines / 2,400 characters (`rules --check`): when full, merge or drop an older rule first. The rule is
-   written on the same reply as the brain entry and shown in the wrap-up; `no rule` in the reply skips it. Builders read
-   `docs/brain/agent-rules.md`, never `decision-log.md`.
+3. **Rule — from the first `✗`.** `add` prints a `RULE_PROPOSAL <id> <kind> pending` line for a `✗` whose kind has no
+   earlier row. In the same model step that classifies the kind, answer one of two things per such line: whether a
+   check, a hook or a test could catch the mistake instead of a rule — then `rules --add "enforce: <what would catch
+   it, one line>"`, which files it under `## enforce candidates` (cap 10 lines; no agent reads it) — or
+   `rules --add "<rule, one line>" --pending --kind <kind>`, which writes the rule marked ` (pending — seen once)`.
+   `node scripts/decision-log.mjs repeats` lists kinds logged twice or more and promotes their pending rules (drops the
+   mark); a kind that repeats with no pending rule gets one written now, as before. A `checker-miss: yes` also gets a
+   rule for `## checkers` (`--section checkers`, same step; `no rule` skips it) and its eval case (item 5). Each section
+   is capped at 30 lines / 2,400 characters (`rules --check` names the one that is over; pending lines count): when
+   full, merge or drop an older rule first. The rules are shown in the wrap-up, with the enforce candidates under
+   "Enforce candidates (a plan each, when you want them)" (`rules --enforce`); a plan from one is a normal `/plan`.
+   `docs/brain/agent-rules.md` has one section per role; builders read `## builder`, never `decision-log.md`.
 4. **Kit feedback.** A lesson that is true for any project — not tied to this product's screens, names or code —
    goes to the kit: `node scripts/kit-feedback.mjs --title "<title>" --text "<the lesson, general terms>"`. It opens a
    pull request on the kit repository (`.kit/install.json` `source`) with one file under `feedback/inbox/`, and
@@ -58,9 +87,14 @@ runs no command.
    `paths.serverRoot`, or holds a code fence. Rewrite the lesson without them, or keep it project-local. `--text-file`
    reads only a scratch file under the OS temp folder or `.claude/sessions/` (never a dotfile or a `..` path). The kit's
    Planner turns inbox entries into plans and deletes them when done.
-5. **Eval cases.** A graded decision can become a checker eval case (`docs/agent/agent-evals.md`, label
-   `human-verdict <date>:`). Such a case holds project code, so it stays in the project's own case set;
-   only a generic one goes to the kit.
+5. **Eval cases — automatic for a checker miss.** A `✗` graded `checker-miss: yes` becomes an eval case with no model
+   call and no command from the Human: `node scripts/decision-log.mjs case --from D<n> --run <name> [--checker
+   orch-check-bugs] [--dir <folder>]` writes `docs/agent-evals/cases/<checker>/<date>-<kind>/` in the harness shape
+   (`docs/agent/agent-evals.md` "Case shape"): `input/plan.md`, `input/diff.patch` (the hunk around the decision's
+   `file:line`), the touched file under `input/`, `expected.json` (one finding there; the note starts
+   `human-verdict <date>: <the Human's line>`) and a `README.md` naming the finder that ran. Such a case holds project
+   code, so it stays in the project's own case set; only a generic one goes to the kit. The wrap-up prints the path;
+   `orch-state.mjs brain-commit` commits it on the run branch.
 
 ## 5. Triage, grades and follow-ups (orchestrator)
 

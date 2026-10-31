@@ -261,3 +261,216 @@ test('the follow-ups seed has its table header and an empty table', () => {
   assert.match(t, /\| Date \| Run \| Plan \| Id \| File:line \| Decision \| Human \|/)
   assert.equal(t.split('\n').filter((l) => /^\| 2/.test(l)).length, 0)
 })
+
+// ---- plan 030: lessons files, rules per role, pending rules, eval-case scaffold ----------------------------------------
+const lessonsFile = (s, role) => join(s.dir, 'docs', 'brain', 'agent-lessons', `${role}.md`)
+const addLesson = (s, role, text, more = []) => run(['lessons', '--add', '--role', role, '--text', text, '--dir', s.dir, '--date', '2026-10-30', '--run', 'r1', ...more])
+
+test('lessons --add: a two-line header, then "- <date> <run>: <lesson>" lines, newest last; the same lesson twice adds nothing', () => {
+  const s = scratch()
+  try {
+    assert.match(run(['lessons', '--check', '--dir', s.dir]).stdout, /no files yet/)
+    assert.equal(addLesson(s, 'check-bugs', 'missed: src/a.ts:12 off by one').status, 0)
+    assert.equal(addLesson(s, 'check-bugs', 'second lesson', ['--date', '2026-10-31']).status, 0)
+    const text = readFileSync(lessonsFile(s, 'check-bugs'), 'utf8')
+    const lines = text.split('\n')
+    assert.equal(lines[0], '# Lessons — check-bugs')
+    assert.match(lines[1], /^Facts from earlier runs/)
+    assert.deepEqual(lines.slice(2).filter(Boolean), ['- 2026-10-30 r1: missed: src/a.ts:12 off by one', '- 2026-10-31 r1: second lesson'])
+    assert.match(addLesson(s, 'check-bugs', 'second lesson').stdout, /already in/)
+    assert.equal(readFileSync(lessonsFile(s, 'check-bugs'), 'utf8'), text, 'a repeat writes nothing')
+    assert.equal(run(['lessons', '--add', '--role', 'nobody', '--text', 'x', '--dir', s.dir]).status, 2, 'unknown role')
+    assert.equal(run(['lessons', '--add', '--role', 'ui', '--dir', s.dir]).status, 2, 'text is required')
+    assert.equal(run(['lessons', '--dir', s.dir]).status, 2, '--check or --add is required')
+  } finally { rmSync(s.dir, { recursive: true, force: true }) }
+})
+
+test('lessons --add: past 40 lines or 3,000 characters the oldest lines go first and are printed; --check fails a file over the cap', () => {
+  const s = scratch()
+  try {
+    for (let i = 1; i <= 40; i++) assert.equal(addLesson(s, 'builder', `lesson number ${i}`).status, 0)
+    assert.equal(run(['lessons', '--check', '--dir', s.dir]).status, 0)
+    const r = addLesson(s, 'builder', 'lesson number 41')
+    assert.match(r.stdout, /dropped the oldest 1 line\(s\)/)
+    assert.match(r.stdout, /lesson number 1$/m)
+    const body = readFileSync(lessonsFile(s, 'builder'), 'utf8').split('\n').slice(2).filter(Boolean)
+    assert.equal(body.length, 40)
+    assert.match(body[0], /lesson number 2$/)
+    assert.match(body.at(-1), /lesson number 41$/)
+    // characters: lines of ~300 characters fit 3,000 only for about 10 of them
+    for (let i = 1; i <= 12; i++) addLesson(s, 'gate', `${i} ${'x'.repeat(280)}`)
+    const gate = readFileSync(lessonsFile(s, 'gate'), 'utf8').split('\n').slice(2).filter(Boolean)
+    assert.ok(gate.length < 12 && gate.join('\n').length + 1 <= 3000, `${gate.length} lines`)
+    assert.match(gate.at(-1), /12 x{280}$/)
+    writeFileSync(lessonsFile(s, 'ui'), `# Lessons — ui\nheader\n${Array.from({ length: 41 }, (_, i) => `- 2026-10-30 r1: l${i}`).join('\n')}\n`)
+    const bad = run(['lessons', '--check', '--dir', s.dir])
+    assert.equal(bad.status, 1)
+    assert.match(bad.stderr, /agent-lessons\/ui\.md is 41 lines/)
+  } finally { rmSync(s.dir, { recursive: true, force: true }) }
+})
+
+test('the shipped seeds: ten lessons files with a two-line header and no lesson, passing --check; a run-log table; the rules seed with its sections', () => {
+  const brain = join(kit, 'templates', 'docs', 'brain')
+  const roles = ['readiness', 'builder', 'check-plan', 'check-bugs', 'check-rules', 'security', 'verify', 'ui', 'gate', 'planner']
+  const dir = mkdtempSync(join(tmpdir(), 'lessons-seed-'))
+  try {
+    mkdirSync(join(dir, 'docs', 'brain', 'agent-lessons'), { recursive: true })
+    for (const role of roles) {
+      const t = readFileSync(join(brain, 'agent-lessons', `${role}.md`), 'utf8')
+      assert.equal(t.split('\n').filter(Boolean).length, 2, `${role}: two header lines`)
+      assert.match(t, new RegExp(`^# Lessons — ${role}\\n`))
+      writeFileSync(join(dir, 'docs', 'brain', 'agent-lessons', `${role}.md`), t)
+    }
+    assert.equal(run(['lessons', '--check', '--dir', dir]).status, 0)
+    // a lesson added to a seed lands under its header and keeps the seed's two lines
+    assert.equal(run(['lessons', '--add', '--role', 'planner', '--text', 'plan 41 had to be asked: x', '--dir', dir, '--run', 'r1']).status, 0)
+    assert.equal(readFileSync(join(dir, 'docs', 'brain', 'agent-lessons', 'planner.md'), 'utf8').split('\n').slice(0, 2).join('\n'), readFileSync(join(brain, 'agent-lessons', 'planner.md'), 'utf8').trimEnd())
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+  const runLog = readFileSync(join(brain, 'run-log.md'), 'utf8')
+  assert.match(runLog, /\| Date \| Run \| Plans \| Merged \| Parked \| Parked reasons \| Fix rounds \| Escalations \| Gate fails \| Final gate \| ✗ \| Checker misses \| ✗ per plan \|/)
+  const rules = readFileSync(join(brain, 'agent-rules.md'), 'utf8')
+  for (const h of ['## builder', '## checkers', '## readiness', '## ui', '## enforce candidates']) assert.ok(rules.includes(`\n${h}\n`), h)
+  assert.match(readFileSync(join(brain, 'index.md'), 'utf8'), /agent-lessons\//)
+})
+
+test('rules: the cap is per section (30 lines / 2,400 characters); --check names the section; --add --section; a v1.7.0 file without sections counts as builder', () => {
+  const s = scratch()
+  try {
+    const seed = readFileSync(join(kit, 'templates', 'docs', 'brain', 'agent-rules.md'), 'utf8')
+    writeFileSync(s.rules, seed)
+    assert.equal(run(['rules', '--check', '--dir', s.dir]).status, 0)
+    // 30 rules in checkers fit; the 31st is refused and names the section; builder is untouched by it
+    for (let i = 0; i < 30; i++) assert.equal(run(['rules', '--add', `checker rule ${i}`, '--section', 'checkers', '--dir', s.dir]).status, 0, `rule ${i}`)
+    const full = run(['rules', '--add', 'one more', '--section', 'checkers', '--dir', s.dir])
+    assert.equal(full.status, 1)
+    assert.match(full.stderr, /section "checkers" would be 31 lines/)
+    assert.equal(run(['rules', '--add', 'a builder rule', '--dir', s.dir]).status, 0, 'builder has its own room')
+    assert.equal(run(['rules', '--add', 'x', '--section', 'nobody', '--dir', s.dir]).status, 2, 'unknown section')
+    const text = readFileSync(s.rules, 'utf8')
+    assert.match(text, /## checkers\n\n- checker rule 0\n/)
+    assert.match(text, /- a builder rule\n\n## checkers/)
+    // edited by hand past the cap: --check reports the section
+    writeFileSync(s.rules, text.replace('## readiness\n', `## readiness\n\n${Array.from({ length: 31 }, (_, i) => `- r${i}`).join('\n')}\n`))
+    const bad = run(['rules', '--check', '--dir', s.dir])
+    assert.equal(bad.status, 1)
+    assert.match(bad.stderr, /section "readiness" would be 31 lines/)
+    // a file with no sections: the whole file is the builder's, and a rule for another section opens that section
+    writeFileSync(s.rules, '# Agent rules\n\n- first\n')
+    assert.equal(run(['rules', '--add', 'for the checkers', '--section', 'checkers', '--dir', s.dir]).status, 0)
+    assert.equal(readFileSync(s.rules, 'utf8'), '# Agent rules\n\n- first\n\n## checkers\n\n- for the checkers\n')
+    assert.equal(run(['rules', '--check', '--dir', s.dir]).status, 0)
+  } finally { rmSync(s.dir, { recursive: true, force: true }) }
+})
+
+test('rules: an enforce: line goes to "## enforce candidates" (cap 10 lines), is listed by --enforce, and is not a section any role reads', () => {
+  const s = scratch()
+  try {
+    writeFileSync(s.rules, readFileSync(join(kit, 'templates', 'docs', 'brain', 'agent-rules.md'), 'utf8'))
+    assert.match(run(['rules', '--enforce', '--dir', s.dir]).stdout, /ENFORCE: none/)
+    assert.equal(run(['rules', '--add', 'enforce: a lint rule that bans window.confirm', '--dir', s.dir]).status, 0)
+    const text = readFileSync(s.rules, 'utf8')
+    assert.match(text, /## enforce candidates\n\n- a lint rule that bans window\.confirm\n$/)
+    assert.doesNotMatch(text.split('## enforce candidates')[0], /window\.confirm/, 'not under any role')
+    assert.match(run(['rules', '--enforce', '--dir', s.dir]).stdout, /^ENFORCE a lint rule that bans window\.confirm$/m)
+    for (let i = 1; i < 10; i++) assert.equal(run(['rules', '--add', `enforce: candidate ${i}`, '--dir', s.dir]).status, 0)
+    const full = run(['rules', '--add', 'enforce: the eleventh', '--dir', s.dir])
+    assert.equal(full.status, 1)
+    assert.match(full.stderr, /section "enforce candidates" would be 11 lines.*cap is 10 lines/)
+  } finally { rmSync(s.dir, { recursive: true, force: true }) }
+})
+
+test('a rule starts at the first ✗ of a kind (pending — seen once); the second ✗ of that kind promotes it; --check counts both', () => {
+  const s = scratch()
+  try {
+    writeFileSync(s.rules, readFileSync(join(kit, 'templates', 'docs', 'brain', 'agent-rules.md'), 'utf8'))
+    const first = add(s, 'D1 ✗ no dialog', ['--kinds', 'D1=confirm-dialog-on-leave', '--checker-miss', 'D1=yes'])
+    assert.equal(first.status, 0, first.stderr)
+    assert.match(first.stdout, /RULE_PROPOSAL D1 confirm-dialog-on-leave pending/)
+    const json = JSON.parse(/DECISION_LOG_JSON (.*)/.exec(first.stdout)[1])
+    assert.deepEqual([json[0].ruleState, json[0].sections], ['pending', ['builder', 'checkers']])
+    assert.equal(run(['rules', '--add', 'Never ask before leaving a screen.', '--pending', '--kind', 'confirm-dialog-on-leave', '--dir', s.dir]).status, 0)
+    assert.equal(run(['rules', '--add', 'Do not accept a dialog the plan does not describe.', '--section', 'checkers', '--pending', '--kind', 'confirm-dialog-on-leave', '--dir', s.dir]).status, 0)
+    assert.equal(run(['rules', '--add', 'x', '--pending', '--dir', s.dir]).status, 2, '--pending needs --kind')
+    let text = readFileSync(s.rules, 'utf8')
+    assert.match(text, /- \[confirm-dialog-on-leave\] Never ask before leaving a screen\. \(pending — seen once\)/)
+    assert.match(run(['rules', '--check', '--dir', s.dir]).stdout, /builder 2/, 'a pending line counts toward the cap')
+    assert.match(run(['repeats', '--dir', s.dir]).stdout, /REPEATS: none/, 'one row: nothing repeats, nothing is promoted')
+    assert.match(readFileSync(s.rules, 'utf8'), /pending — seen once/)
+    // an unrelated ✗ of another kind leaves it alone; the second ✗ of the kind promotes both lines
+    const other = add(s, 'D2 ✗ nan', ['--kinds', 'D2=nan-at-100'])
+    assert.match(other.stdout, /RULE_PROPOSAL D2 nan-at-100 pending/)
+    const second = add(s, 'D3 ✗ same again', ['--kinds', 'D3=confirm-dialog-on-leave'])
+    assert.equal(JSON.parse(/DECISION_LOG_JSON (.*)/.exec(second.stdout)[1])[0].ruleState, 'repeat')
+    assert.doesNotMatch(second.stdout, /RULE_PROPOSAL/)
+    const rep = run(['repeats', '--dir', s.dir])
+    assert.match(rep.stdout, /REPEAT confirm-dialog-on-leave x2/)
+    assert.match(rep.stdout, /promoted 2 pending rule/)
+    text = readFileSync(s.rules, 'utf8')
+    assert.match(text, /\n- Never ask before leaving a screen\.\n/)
+    assert.match(text, /\n- Do not accept a dialog the plan does not describe\.\n/)
+    assert.doesNotMatch(text.split('\n').filter((l) => l.startsWith('- ')).join('\n'), /pending|\[confirm-dialog-on-leave\]/)
+  } finally { rmSync(s.dir, { recursive: true, force: true }) }
+})
+
+// The case scaffold: a scratch git repository with a merged plan 451 whose change has a hunk at src/a.ts:12.
+function caseRepo() {
+  const s = scratch()
+  const git = (...a) => {
+    const r = spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: s.dir, encoding: 'utf8' })
+    assert.equal(r.status, 0, `${a.join(' ')}: ${r.stderr}`)
+    return r.stdout.trim()
+  }
+  git('init', '-q', '-b', 'main')
+  mkdirSync(join(s.dir, 'src'), { recursive: true })
+  mkdirSync(join(s.dir, 'plans'), { recursive: true })
+  const before = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`)
+  writeFileSync(join(s.dir, 'src', 'a.ts'), `${before.join('\n')}\n`)
+  writeFileSync(join(s.dir, 'plans', '451-save-form.plan.md'), '# Plan 451 — save form\n\nGoal: save.\n')
+  git('add', '-A')
+  git('commit', '-q', '-m', 'base')
+  git('switch', '-q', '-c', 'feat/451-save-form')
+  before[11] = 'if (!form.dirty) return // changed by the plan'
+  writeFileSync(join(s.dir, 'src', 'a.ts'), `${before.join('\n')}\n`)
+  git('commit', '-qam', 'plan 451')
+  git('switch', '-q', 'main')
+  git('merge', '-q', '--no-ff', '-m', 'Merge feat/451-save-form into orch/r1 (plan 451)', 'feat/451-save-form')
+  git('branch', '-q', '-D', 'feat/451-save-form')
+  const status = join(s.dir, '.claude', 'orchestrator-runs', 'r1')
+  mkdirSync(status, { recursive: true })
+  writeFileSync(join(status, 'status.json'), JSON.stringify({ decisions: [{ id: 'D3', plan: '451', text: 'seen: src/a.ts:12 — a form that is not dirty returns without saving' }] }))
+  return { ...s, git }
+}
+
+test('case: a checker miss becomes an eval case in the harness shape with no model call', async () => {
+  const s = caseRepo()
+  try {
+    const decisions = join(s.dir, 'list.json')
+    writeFileSync(decisions, JSON.stringify([{ id: 'D3', plan: '451', text: 'seen: src/a.ts:12 — a form that is not dirty returns without saving' }]))
+    assert.equal(run(['add', '--dir', s.dir, '--reply', 'D3 ✗ the checker should have caught this', '--decisions', decisions, '--date', '2026-10-30', '--kinds', 'D3=silent-return', '--checker-miss', 'D3=yes']).status, 0)
+    const r = run(['case', '--from', 'D3', '--run', 'r1', '--dir', s.dir])
+    assert.equal(r.status, 0, r.stdout + r.stderr)
+    assert.match(r.stdout, /case written — docs\/agent-evals\/cases\/orch-check-bugs\/2026-10-30-silent-return/)
+    const dir = join(s.dir, 'docs', 'agent-evals', 'cases', 'orch-check-bugs', '2026-10-30-silent-return')
+    const expected = JSON.parse(readFileSync(join(dir, 'expected.json'), 'utf8'))
+    assert.match(expected.note, /^human-verdict 2026-10-30: the checker should have caught this$/)
+    assert.deepEqual(expected.findings.map((f) => [f.file, f.line, f.severity]), [['src/a.ts', 12, 'major']])
+    assert.ok(expected.findings[0].rule.includes('silent-return'))
+    assert.match(readFileSync(join(dir, 'input', 'plan.md'), 'utf8'), /Plan 451/)
+    const patch = readFileSync(join(dir, 'input', 'diff.patch'), 'utf8')
+    assert.match(patch, /^diff --git a\/src\/a\.ts b\/src\/a\.ts/m)
+    assert.match(patch, /\+if \(!form\.dirty\) return/)
+    assert.match(readFileSync(join(dir, 'input', 'src', 'a.ts'), 'utf8'), /form\.dirty/)
+    assert.match(readFileSync(join(dir, 'README.md'), 'utf8'), /orch-check-bugs/)
+    // the harness accepts it: findCases lists it and it is a findings case
+    const { findCases } = await import(pathToFileURL(join(kit, 'tools', 'lib', 'agent-eval', 'run.mjs')).href)
+    const { caseKind } = await import(pathToFileURL(join(kit, 'tools', 'lib', 'agent-eval', 'compare.mjs')).href)
+    const cases = findCases(join(s.dir, 'docs', 'agent-evals', 'cases'), 'orch-check-bugs')
+    assert.deepEqual(cases.map((c) => c.name), ['2026-10-30-silent-return'])
+    assert.equal(caseKind(cases[0].expected), 'findings')
+    assert.match(run(['case', '--from', 'D3', '--run', 'r1', '--dir', s.dir]).stdout, /case exists/, 'a second call writes nothing')
+    // refusals: an unknown decision, a bad checker, a missing decision id
+    assert.equal(run(['case', '--from', 'D9', '--run', 'r1', '--dir', s.dir]).status, 1)
+    assert.equal(run(['case', '--from', 'D3', '--run', 'r1', '--checker', 'orch-gate', '--dir', s.dir]).status, 2)
+    assert.equal(run(['case', '--run', 'r1', '--dir', s.dir]).status, 2)
+  } finally { rmSync(s.dir, { recursive: true, force: true }) }
+})

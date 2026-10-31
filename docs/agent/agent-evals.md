@@ -104,6 +104,9 @@ agent's result is compared; an expected failure is one item to find.
    Every `note` starts with where the label comes from: `fixed by <sha>`, `clean:`, `planted:` or, for a decision the
    Human graded wrong, `human-verdict <YYYY-MM-DD>:` (`docs/agent/decision-review.md`). A `human-verdict` case holds
    project code, so it stays in the project's own case set (beside its baseline); only a generic case goes to the kit.
+   A checker miss graded `checker-miss: yes` gets its case scaffolded by `node scripts/decision-log.mjs case --from
+   D<n> --run <name>` in the learning step (no model call): `<date>-<kind>/` under the finder's folder, with
+   `input/plan.md`, `input/diff.patch`, the touched file, `expected.json` and a `README.md`.
 4. Run every candidate model with `--runs 2` or more and record the table in a baseline file next to
    the project's cases (for example a BASELINE.md in its agent-evals docs folder) with the date, the agent file's commit and the model ids.
 5. After that, a prompt edit or a model change reruns the set with `--min-recall` / `--min-precision` set from the

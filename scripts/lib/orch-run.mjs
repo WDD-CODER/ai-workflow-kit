@@ -377,7 +377,7 @@ function removalsOf(decisions, mergedSet) {
     .sort((a, b) => idNum(a) - idNum(b))
 }
 
-export function formatReport({ status, merged, mainShaNow, finishedAt, runBranch, mainBranch, mainChangedFiles = null, appErrors = null, decisions = null, triage = {} }) {
+export function formatReport({ status, merged, mainShaNow, finishedAt, runBranch, mainBranch, mainChangedFiles = null, appErrors = null, decisions = null, triage = {}, learning = null }) {
   const plans = Object.values(status.plans ?? {}).sort((a, b) => (a.nnn < b.nnn ? -1 : 1))
   const mergedSet = new Map(merged.map((m) => [m.nnn, m]))
   const parked = plans.filter((p) => !mergedSet.has(p.nnn) && ['parked', 'left-run', 'skipped'].includes(p.state))
@@ -423,6 +423,266 @@ export function formatReport({ status, merged, mainShaNow, finishedAt, runBranch
     `gh pr create --base ${mainBranch} --head ${runBranch} --title "Orchestrator run ${status.run}" --body-file .claude\\orchestrator-runs\\${status.run}.md`,
     '```',
     '',
+    // What the run taught the next one : the character budget, then the trend line — always the last line.
+    ...(learning?.budget ? [learning.budget, ''] : []),
+    ...(learning?.trend ? [learning.trend, ''] : []),
   ]
   return lines.filter((l, i) => !(l === '' && lines[i - 1] === '')).join('\n')
+}
+
+// ---- lessons, run log and trend  ------------------------------------------------------------------------------
+// Everything here is derived from status.json and the Human's graded replies by code: no model call.
+
+/** The lesson roles of the orchestrator (docs/brain/agent-lessons/<role>.md); `planner` is read by /plan, not injected. */
+export const INJECTED_ROLES = ['readiness', 'builder', 'gate', 'check-plan', 'check-bugs', 'check-rules', 'security', 'verify', 'ui']
+const FINDER_ROLES = ['check-plan', 'check-bugs', 'check-rules', 'security']
+/** The `agent-rules.md` section each role reads (the builder reads its own file). */
+export const RULES_GROUP = { readiness: 'readiness', ui: 'ui', 'check-plan': 'checkers', 'check-bugs': 'checkers', 'check-rules': 'checkers', verify: 'checkers' }
+
+/** What kind of reason parked a plan: environment, agent-call-limit, same-reason-twice, fix-rounds, plan-info, error, not-started, other. */
+export function reasonKind(reason) {
+  const r = String(reason ?? '').trim()
+  if (/^(environment|UI environment blocked|worktree)/i.test(r)) return 'environment'
+  if (/^agent-call limit/i.test(r)) return 'agent-call-limit'
+  if (/^same reason twice/i.test(r)) return 'same-reason-twice'
+  if (/\(fix rounds used/i.test(r)) return 'fix-rounds'
+  if (/^plan-info/i.test(r)) return 'plan-info'
+  if (/^the plan pipeline stopped/i.test(r)) return 'error'
+  if (/^not started|^pilot/i.test(r)) return 'not-started'
+  return 'other'
+}
+
+const fileKind = (file) => {
+  const f = String(file)
+  if (/\.(test|spec)\.\w+$|(^|\/)(tests?|__tests__)\//i.test(f)) return 'test file'
+  const m = /\.(\w{1,6})$/.exec(f)
+  return m ? `${m[1]} file` : 'file'
+}
+const esc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const clip = (s, n) => (String(s).length > n ? `${String(s).slice(0, n - 1)}…` : String(s))
+
+// Lesson lines are built from fixed templates and enumerated values (a rule name, a file kind, a count, a command of an
+// allowed shape). Free text that a model or the repo produced (a finding's reasoning, a question, a card title, a park
+// reason, a tail) is never copied into a line the next run's agents read: a lesson is data, not an instruction.
+/** A rule name as a short tag: only letters, digits and `. : / _ -`, 40 characters at most; anything else is dropped. */
+export function ruleTag(s) {
+  const t = String(s ?? '').replace(/[^A-Za-z0-9 ._:/-]/g, ' ').replace(/\s+/g, ' ').trim()
+  // a category of up to three words, optionally `: ` and up to four more — a rule name, never a sentence
+  return t.length <= 40 && /^[\w./-]+(?: [\w./-]+){0,2}(?:: [\w./-]+(?: [\w./-]+){0,3})?$/.test(t) ? t : 'other rule'
+}
+/** A check command of an allowed shape (`npm run <script>`, `node tools|scripts/<file> <safe args>`), else a generic name. */
+export function commandTag(s) {
+  const c = String(s ?? '').trim()
+  return /^(?:npm|pnpm) run [\w:-]{1,40}$/.test(c) || /^node (?:tools|scripts)\/[\w./-]{1,60}(?: [\w./=:,@+-]{1,40}){0,3}$/.test(c) ? c : 'a check command'
+}
+const stepTag = (s) => (/^round \d{1,2}$/.test(String(s ?? '').trim()) ? String(s).trim() : 'a step')
+
+// One fix round's cause (`round 2: checker: major src/x.ts:12 <rule>`) as lesson lines for the builder: the rule name
+// (as a tag) and the kind of file, or which stage failed.
+function causeLessons(cause) {
+  const m = /^round \d+:\s*(.*)$/.exec(String(cause))
+  const why = (m ? m[1] : String(cause)).trim()
+  if (/^checker:/.test(why)) {
+    const items = why.replace(/^checker:\s*/, '').split(/;\s+(?=(?:blocker|major|minor|nit)\s)/).map((item) => {
+      const x = /^(?:blocker|major|minor|nit)\s+(\S+?):(\d+)\s+(.+)$/.exec(item.trim())
+      return x ? `fix round caused by: ${ruleTag(x[3])} (${fileKind(x[1])})` : 'fix round caused by: a checker finding'
+    })
+    return [...new Set(items)]
+  }
+  if (/^gate/.test(why)) return [`fix round caused by: a gate check failed (${commandTag(why.replace(/^gate[^:]*:\s*/, '').split(', ')[0])})`]
+  if (/^ui/.test(why)) return ['fix round caused by: a [ui] card failed']
+  if (/^merge/.test(why)) return ['fix round caused by: the merge into the run branch']
+  return ['fix round caused by: another failure']
+}
+// A miss is one of two enumerated kinds (a [ui] card, the final gate); a gate event one of two kinds with a command tag.
+const missTag = (s) => (/^ui:/.test(String(s)) ? 'a [ui] card failed after the checkers passed' : /^final gate/.test(String(s)) ? 'the final gate failed after the checkers passed' : 'a later check failed after the checkers passed')
+const gateEventTag = (s) => {
+  const m = /^(timed out|env-fail rerun):\s*(.*)$/.exec(String(s))
+  return m ? `${m[1]}: ${commandTag(m[2])}` : null
+}
+// A readiness question is filed under the kind of gap it asks about, never by its words.
+const askedKind = (q) => {
+  const t = String(q)
+  if (/\b(cancel|leave|edit|error)\b/i.test(t)) return 'behaviour on edit, leave, cancel or error'
+  if (/\bclaim\b/i.test(t)) return 'a claim about the code'
+  if (/\b(depends?|prerequisite|plan \d+)\b/i.test(t)) return 'a prerequisite plan'
+  return 'an open question'
+}
+
+/**
+ * The lesson lines a run's status.json gives, one per fact: [{ role, text, has? }]. `role` is a lesson role
+ * (docs/brain/agent-lessons/<role>.md); `has` (a RegExp) is the dedupe key when the text carries counts. Facts:
+ * fix-round causes, escalations and parked plans (builder); candidates the verifier refuted and misses the final gate or
+ * a UI card found after clean checkers (every finder that ran on the plan); low-confidence keeps that later mattered and
+ * refuted problems that came back (verify); plans parked on the environment after readiness called them ready
+ * (readiness); gate timeouts and re-run env-fails (gate); cards that failed after they had passed (ui); questions
+ * readiness had to ask and cards that drifted from the app (planner).
+ */
+export function lessonFacts(status) {
+  const out = []
+  const add = (role, text, has) => out.push({ role, text, ...(has ? { has } : {}) })
+  const plans = Object.values(status?.plans ?? {}).sort((a, b) => (String(a.nnn) < String(b.nnn) ? -1 : 1))
+  for (const p of plans) {
+    for (const c of p.roundCauses ?? []) for (const t of causeLessons(c)) add('builder', t)
+    for (const e of p.escalations ?? []) add('builder', `escalated to the judgment tier at ${stepTag(e.step)}: ${commandTag(e.check)}`)
+    if (['parked', 'left-run'].includes(p.state) && p.reason) add('builder', `parked: ${reasonKind(p.reason)}`)
+    if (p.ready === true && p.state === 'parked' && reasonKind(p.reason) === 'environment') add('readiness', 'parked on environment after ready')
+    for (const [role, v] of Object.entries(p.verify?.byRole ?? {})) {
+      const rules = (v.rules ?? []).filter(Boolean).map(ruleTag)
+      if (FINDER_ROLES.includes(role) && v.refuted > 0 && rules.length) add(role, `${v.refuted} of ${v.candidates} candidates refuted: ${rules.join(', ')}`, new RegExp(`^\\d+ of \\d+ candidates refuted: ${esc(rules.join(', '))}$`))
+    }
+    const ran = FINDER_ROLES.filter((r) => Object.keys(p.models ?? {}).includes(`orch-${r}`))
+    for (const what of [...new Set((p.misses ?? []).map(missTag))]) for (const r of ran) add(r, `missed: ${what}`)
+    if ((p.verify?.lateLow ?? []).length) add('verify', `kept with a confidence below the keep threshold, then caused a fix round: ${p.verify.lateLow.map(ruleTag).join(', ')}`)
+    if ((p.verify?.reappeared ?? []).length) add('verify', `refuted, but the problem reappeared in a later round: ${p.verify.reappeared.map(ruleTag).join(', ')}`)
+    for (const ev of p.gateEvents ?? []) {
+      const t = gateEventTag(ev)
+      if (t) add('gate', t)
+    }
+    if ((p.uiCards ?? []).some((c) => c.regressed)) add('ui', 'a [ui] card failed after it had passed')
+    for (const k of [...new Set((p.asked ?? []).map(askedKind))]) add('planner', `plan ${p.nnn} had to be asked about: ${k}`)
+    if ((p.uiCards ?? []).some((c) => c.status === 'plan-drift')) add('planner', `plan ${p.nnn} drifted from its [ui] card`)
+  }
+  return out
+}
+
+// ---- the run log (docs/brain/run-log.md) -----------------------------------------------------------------------------------
+export const RUN_LOG_COLUMNS = ['Date', 'Run', 'Plans', 'Merged', 'Parked', 'Parked reasons', 'Fix rounds', 'Escalations', 'Gate fails', 'Final gate', '✗', 'Checker misses', '✗ per plan']
+export const RUN_LOG_KEEP = 20
+const ROW_KEYS = ['date', 'run', 'plans', 'merged', 'parked', 'reasons', 'fixRounds', 'escalations', 'gateFails', 'finalGate', 'x', 'misses', 'perPlan']
+export const RUN_LOG_INTRO = [
+  '# Run log', '',
+  'One row per orchestrator run, written by `node scripts/orch-state.mjs finish` from the run\'s `status.json` — never by hand. `orch-readiness` reads the last three rows, and the run report ends with a trend line from them (`node scripts/orch-state.mjs trend`). The `✗` columns of a run are filled by the next `finish`, from `decision-log.md`; the newest run\'s stay `-` until then. The table keeps the 20 newest rows; older ones are rolled into one `Earlier (N runs): …` line above it.',
+]
+
+const planList = (s) => String(s ?? '').split(',').map((x) => x.trim()).filter((x) => /^\d+$/.test(x)).map(Number)
+const num = (s) => (/^-?\d+(\.\d+)?$/.test(String(s).trim()) ? Number(s) : null)
+const rate = (n, d) => (d > 0 ? Number((n / d).toFixed(2)) : null)
+
+/** One run-log row from status.json: counts only, the `✗` columns are `-` until a later `finish` fills them. */
+export function runLogRow({ status, merged = [], finalGate = 'none', date }) {
+  const plans = Object.values(status?.plans ?? {})
+  const mergedSet = new Set(merged.map((m) => String(m.nnn)))
+  const parked = plans.filter((p) => !mergedSet.has(String(p.nnn)) && ['parked', 'left-run'].includes(p.state))
+  const kinds = [...new Set(parked.map((p) => reasonKind(p.reason)))]
+  const sum = (f) => plans.reduce((a, p) => a + f(p), 0)
+  return {
+    date, run: status.run, plans: plans.map((p) => String(p.nnn)).sort().join(','), merged: String(mergedSet.size), parked: String(parked.length), reasons: kinds.join(',') || '-',
+    fixRounds: String(sum((p) => p.round ?? 0)), escalations: String(sum((p) => (p.escalations ?? []).length)),
+    gateFails: String(sum((p) => (p.roundCauses ?? []).filter((c) => /^round \d+:\s*gate/.test(c)).length)),
+    finalGate: finalGate === 'ok' || finalGate === 'failed' ? finalGate : '-', x: '-', misses: '-', perPlan: '-',
+  }
+}
+
+/** { pre: the lines above the table (the `Earlier` line excluded), earlier: that line or null, rows } from a run-log.md text. */
+export function parseRunLog(text) {
+  const lines = String(text ?? '').replace(/\r\n/g, '\n').split('\n')
+  const head = lines.findIndex((l) => /^\|\s*Date\s*\|/.test(l))
+  const above = head < 0 ? lines : lines.slice(0, head)
+  const earlier = above.find((l) => /^Earlier \(\d+ runs?\):/.test(l)) ?? null
+  const rows = (head < 0 ? [] : lines.slice(head + 2)).filter((l) => /^\|/.test(l)).map((l) => l.split('|').slice(1, -1).map((c) => c.trim())).filter((c) => c.length >= ROW_KEYS.length)
+    .map((c) => Object.fromEntries(ROW_KEYS.map((k, i) => [k, c[i]])))
+  return { pre: above.filter((l) => l !== earlier), earlier, rows }
+}
+
+const SUM_LABELS = [['plans', 'plans'], ['merged', 'merged'], ['parked', 'parked'], ['fixRounds', 'fix rounds'], ['escalations', 'escalations'], ['gateFails', 'gate fails'], ['x', '✗'], ['misses', 'checker misses']]
+function earlierTotals(line) {
+  const t = { runs: 0, plans: 0, merged: 0, parked: 0, fixRounds: 0, escalations: 0, gateFails: 0, x: 0, misses: 0 }
+  if (!line) return t
+  t.runs = Number(/^Earlier \((\d+) runs?\)/.exec(line)?.[1] ?? 0)
+  const totals = line.split(' — ')[0]
+  for (const [k, label] of SUM_LABELS) t[k] = Number(new RegExp(`(?:^|· |: )${esc(label)} (\\d+)`).exec(totals)?.[1] ?? 0)
+  return t
+}
+
+/** The `Earlier (N runs): …` line after folding `rolled` rows into the totals of the previous line (null with nothing to say). */
+export function earlierLine(previous, rolled) {
+  const t = earlierTotals(previous)
+  for (const r of rolled) {
+    t.runs += 1
+    t.plans += planList(r.plans).length
+    for (const k of ['merged', 'parked', 'fixRounds', 'escalations', 'gateFails', 'x', 'misses']) t[k] += num(r[k]) ?? 0
+  }
+  if (!t.runs) return null
+  const avg = (v) => Number((v / t.runs).toFixed(2))
+  return `Earlier (${t.runs} runs): ${SUM_LABELS.map(([k, label]) => `${label} ${t[k]}`).join(' · ')} — per run: plans ${avg(t.plans)} · parked ${avg(t.parked)} · fix rounds ${avg(t.fixRounds)} · ✗ per plan ${t.plans ? Number((t.x / t.plans).toFixed(2)) : '-'}`
+}
+
+/** A decision-log.md table as rows { date, plan, miss }. */
+export function parseDecisionRows(text) {
+  return String(text ?? '').split(/\r?\n/).filter((l) => /^\|/.test(l) && !/^\|\s*(Date|-)/.test(l)).map((l) => l.split('|').slice(1, -1).map((c) => c.trim()))
+    .filter((c) => c.length >= 7 && c[3] === '✗').map((c) => ({ date: c[0], plan: c[1], miss: c[6] }))
+}
+
+/**
+ * Fills the `✗`, `Checker misses` and `✗ per plan` columns of every row except `keep` (the run just logged) from the
+ * decision log: a log row belongs to the latest run row, dated no later than the log row, whose plan list holds its plan.
+ */
+export function fillGrades(rows, decisionRows, { keep = null } = {}) {
+  const owner = new Map()
+  for (const d of decisionRows) {
+    const n = Number(String(d.plan).replace(/\D/g, ''))
+    let best = -1
+    rows.forEach((r, i) => {
+      if (r.run !== keep && planList(r.plans).includes(n) && String(r.date) <= String(d.date) && (best < 0 || String(r.date) >= String(rows[best].date))) best = i
+    })
+    if (best >= 0) owner.set(d, best)
+  }
+  return rows.map((r, i) => {
+    if (r.run === keep) return r
+    const mine = decisionRows.filter((d) => owner.get(d) === i)
+    const n = planList(r.plans).length
+    return { ...r, x: String(mine.length), misses: String(mine.filter((d) => d.miss === 'yes').length), perPlan: n ? String(rate(mine.length, n)) : '-' }
+  })
+}
+
+/** The run-log text after adding `row` (a run logged twice is replaced), filling earlier rows' grades and rolling past 20 rows. */
+export function updateRunLog(text, row, decisionRows) {
+  const { pre, earlier, rows } = parseRunLog(text)
+  const next = [...rows.filter((r) => r.run !== row.run), row]
+  const filled = fillGrades(next, decisionRows, { keep: row.run })
+  const rolled = filled.slice(0, Math.max(0, filled.length - RUN_LOG_KEEP))
+  const kept = filled.slice(rolled.length)
+  const earlierText = earlierLine(earlier, rolled)
+  const intro = pre.some((l) => l.trim()) ? pre.join('\n').replace(/\s+$/, '') : RUN_LOG_INTRO.join('\n')
+  return `${[intro, '', ...(earlierText ? [earlierText, ''] : []), `| ${RUN_LOG_COLUMNS.join(' | ')} |`, `| ${RUN_LOG_COLUMNS.map(() => '---').join(' | ')} |`, ...kept.map((r) => `| ${ROW_KEYS.map((k) => String(r[k] ?? '-').replace(/\|/g, '/')).join(' | ')} |`)].join('\n')}\n`
+}
+
+/**
+ * The trend of the last `last` rows: per run the `✗` per plan, fix rounds per plan and parked count, and the one line the
+ * report ends with. Fewer than two rows: `Trend: first logged run`.
+ */
+export function trendOf(rows, { last = 3 } = {}) {
+  const points = rows.map((r) => ({ run: r.run, x: num(r.perPlan), fix: rate(num(r.fixRounds) ?? 0, planList(r.plans).length), parked: num(r.parked) ?? 0 }))
+  if (points.length < 2) return { points, line: 'Trend: first logged run' }
+  const tail = points.slice(-last)
+  const show = (f, fmt = (v) => v) => tail.map((p) => (f(p) === null || f(p) === undefined ? '-' : fmt(f(p)))).join(' → ')
+  return { points, line: `Trend (last ${tail.length} runs): ✗ per plan ${show((p) => p.x)} · fix rounds per plan ${show((p) => p.fix)} · parked ${show((p) => p.parked)}` }
+}
+
+// ---- what the next run injects (the character budget) ------------------------------------------------------------------
+/** "3.1k" for 3100, "820" for 820. */
+export const kChars = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
+
+/**
+ * The blocks the next run injects — LESSONS per role, RULES per group, RECENT_RUNS — with their size in characters (the JSON
+ * array as the task shows it) and the total. `roles` counts the roles that receive at least one non-empty block.
+ */
+export function contextBudget({ lessons = {}, rules = {}, recent = [] }) {
+  const blocks = []
+  const roles = new Set()
+  for (const [role, lines] of Object.entries(lessons)) if (INJECTED_ROLES.includes(role) && lines.length) {
+    blocks.push({ name: `LESSONS ${role}`, chars: JSON.stringify(lines).length })
+    roles.add(role)
+  }
+  for (const [group, lines] of Object.entries(rules)) if (lines.length) {
+    blocks.push({ name: `RULES ${group}`, chars: JSON.stringify(lines).length })
+    for (const [role, g] of Object.entries(RULES_GROUP)) if (g === group) roles.add(role)
+  }
+  if (recent.length) {
+    blocks.push({ name: 'RECENT_RUNS readiness', chars: JSON.stringify(recent).length })
+    roles.add('readiness')
+  }
+  const total = blocks.reduce((a, b) => a + b.chars, 0)
+  return { blocks, total, roles: roles.size, line: `Context added by learning: ${kChars(total)} chars across ${roles.size} roles` }
 }

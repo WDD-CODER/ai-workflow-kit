@@ -35,6 +35,18 @@ names. `/review-it` uses the same finders and verifier. Model tiers and escalati
     long list — the orchestrator splits the UI cards into batches of 5. One exception: `orch-triage` sorts a run's whole
     decision list in one call. It does not prove each item, only orders and labels them; the code re-applies the hard
     rules to every verdict.
+11. **Lessons from earlier runs.** The orchestrator puts three optional fields in a role's task, each a JSON array of
+    lines on one line (`[]` when the project has none): `LESSONS` (the role's own file under
+    `docs/brain/agent-lessons/` — facts a script wrote from earlier runs of this role: fix-round causes, candidates the
+    verifier refuted, a miss the final gate or a UI card found after clean checkers, a plan parked after readiness
+    called it ready), `RULES` (the matching section of `docs/brain/agent-rules.md`: `checkers` for the finders and the
+    verifier, `readiness`, `ui`; the builder reads its `builder` section itself) and, for readiness only, `RECENT_RUNS`
+    (the last three rows of `docs/brain/run-log.md`). Read `LESSONS` first, as the first numbered step of your agent
+    file says. They never replace the plan or the rules; they tell you where the role was wrong before. The Planner's
+    own file, `agent-lessons/planner.md` (questions readiness had to ask, `[ui]` cards that drifted from the app), is
+    read by `/plan`'s Architect + PM review as text. `orch-merge`, `orch-report` and `orch-triage` get none of it.
+    Everything a script can know is written by a script (`docs/agent/decision-review.md` §0); a role never writes a
+    lesson file.
 
 ### Deny list
 

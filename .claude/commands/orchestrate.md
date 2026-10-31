@@ -54,7 +54,10 @@ every prompt from the plans and the state script.
 3. **Run.** Start the same workflow with `args`
    `{ "mode": "run", "run": "<run>", "plans": [ … the plans still in the run … ],
    "root": "<absolute main folder path>", "checks": { "<NNN>": [ … readiness commands … ] },
-   "mainChecks": { "<NNN>": [ … readiness mainCommands … ] }, "mainApproved": true, "ui": false }`
+   "mainChecks": { "<NNN>": [ … readiness mainCommands … ] }, "mainApproved": true, "ui": false,
+   "asked": { "<NNN>": [ … that plan's readiness questions and envNeeds, as returned … ] } }`
+   (`asked` lists only the plans readiness had something to ask about; a plan left out counts as ready — the run records
+   it, and the lessons for readiness and the Planner are written from it)
    (after a delegated reply add `"mainDelegated": true`: the run then keeps only the main-folder commands `main-try`
    saw pass and drops the others with a run note; add `"npxDropped": [ … the plans' npxDropped reasons … ]` when
    readiness listed any, so the report shows them)
@@ -98,6 +101,8 @@ every prompt from the plans and the state script.
      print it only when `<n>` is above 0;
    - the report path on the run branch (`docs/orchestrator/runs/<run>/report.md`) and the local copy
      `.claude\orchestrator-runs\<run>.md`;
+   - the result's `learning` (lesson lines added, `budget`, `trend`) as two lines — `Context added by learning: …` and
+     the trend line, which is also the last line of the report; nothing was asked of a model for them;
    - when the report has an `App errors since the run started` section: its command and its lines as the report shows
      them (the project's own output — a line such as `no entries` means none); never run the log command again;
    - the **decisions** the workflow returned (`decisions`, each with `verdict`, `forced`, `kind`, `confidence`, `rec`,
@@ -136,12 +141,19 @@ every prompt from the plans and the state script.
       ask again, nothing was written;
    2. `node scripts/decision-log.mjs stats --write --dir <mergeFolder>` — agreement per kind and the short calibration
       file the triage agent reads;
-   3. `node scripts/decision-log.mjs learn --reply "<the reply>"` — follow `docs/agent/decision-review.md`:
+   3. `node scripts/decision-log.mjs learn --reply "<the reply>"` — follow `docs/agent/decision-review.md` §3:
       `LEARNING: nothing to record` skips this item with no model call; otherwise log the `✗` items (`add … --dir
-      <mergeFolder>`, then `repeats` and `rules`), propose a rule when the same kind repeats, send generic lessons to
-      the kit;
-   4. `node scripts/orch-state.mjs brain-commit --run <run>` — commits `docs/brain` on the run branch
-      (`BRAIN: committed <n> file(s) on <branch>` or `BRAIN: nothing to commit`).
+      <mergeFolder>`), word one rule per `RULE_PROPOSAL` line (the first `✗` of a kind starts a rule at once, marked
+      `(pending — seen once)`; `repeats` promotes it on the second) or an `enforce:` line when a check, a hook or a
+      test could catch the mistake instead, add a `## checkers` rule for each `checker-miss: yes`, scaffold the eval case
+      of each (`node scripts/decision-log.mjs case --from D<n> --run <run> --dir <mergeFolder>`, no model call) and send
+      generic lessons to the kit;
+   4. `node scripts/orch-state.mjs brain-commit --run <run>` — commits `docs/brain` and any new
+      `docs/agent-evals/cases/<checker>/<case>` folder on the run branch (`BRAIN: committed <n> file(s) on <branch>` or `BRAIN: nothing
+      to commit`).
+
+   The wrap-up lists the new rules (pending ones marked), the case paths and, under "Enforce candidates (a plan each,
+   when you want them)", the lines of `node scripts/decision-log.mjs rules --enforce --dir <mergeFolder>`.
 
    A pilot run then waits for `continue`.
 
