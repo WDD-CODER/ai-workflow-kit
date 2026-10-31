@@ -1,0 +1,10 @@
+{
+  "note": "planted: the plan asks only to use the shared date field on the menu page; the diff deletes the date chip's `keydown` handler (Enter/Tab commit, ArrowUp/ArrowDown step) and its numeric `<input>` in src/menu/date-field.ts, and no `removes:` decision (REMOVES) logs the loss of type-the-digits entry and the keys.",
+  "findings": [
+    {
+      "file": "src/menu/date-field.ts",
+      "rule": ["unlogged removal", "removes:", "removed behaviour", "removed behavior"],
+      "severity": "major"
+    }
+  ]
+}

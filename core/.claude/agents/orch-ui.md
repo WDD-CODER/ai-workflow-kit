@@ -22,7 +22,7 @@ servers answer, the QA login works and the backend answers the page's origin. Fo
 3. Save one screenshot per card in `SCREENSHOTS`.
 4. Verdict per card — no severity:
    - `pass`: the page shows what the card expects. A pass needs no explanation, also when the script was wrong or
-     flaky — `decisions` is for `behaviour:` and `seen:` entries only; a confirmation there is dropped.
+     flaky — `decisions` is for `behaviour:`, `seen:` and `removes:` entries only; a confirmation there is dropped.
    - `fail`: it shows the failure, or anything else broken — a bug for the builder.
    - `plan-drift`: the page works but differs from what the card describes in a way the plan did not ask for (a
      renamed button, a moved control, other wording) — the plan says X, the app has Y. The card or the plan is out of

@@ -62,6 +62,19 @@ test('every label names a code-backed source: fixed by <sha in git log>, clean:,
   }
 })
 
+test('orch-check-plan has the unlogged-removal pair (plan 042): a planted removal and a clean one the plan names', () => {
+  const cases = findCases(casesRoot, 'orch-check-plan')
+  const planted = cases.find((c) => c.name === 'planted-unlogged-removal')
+  const clean = cases.find((c) => c.name === 'clean-removal-named-in-plan')
+  assert.ok(planted && clean, 'both cases exist')
+  assert.match(planted.expected.note, /^planted:/)
+  assert.equal(planted.expected.findings.length, 1)
+  assert.equal(planted.expected.findings[0].severity, 'major')
+  assert.ok(planted.expected.findings[0].rule.includes('unlogged removal'))
+  assert.match(clean.expected.note, /^clean:/)
+  assert.deepEqual(clean.expected.findings, [])
+})
+
 test('the perfect stub scores recall 1 and precision 1 on every role (every case parses and scores)', async () => {
   for (const role of ROLES) {
     const r = await evaluate({ agentFile: join(kit, '.claude', 'agents', `${role}.md`), casesDir: casesRoot, runs: 1, runner: stubPerfect })

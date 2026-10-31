@@ -1,0 +1,31 @@
+diff --git a/src/menu/date-field.ts b/src/menu/date-field.ts
+index 3c1a9e2..8d47b05 100644
+--- a/src/menu/date-field.ts
++++ b/src/menu/date-field.ts
+@@ -1,26 +1,12 @@
+ import { SharedDateField } from '../shared/date-field'
+
+ export function mountMenuDate(host: HTMLElement, onPick: (d: Date) => void) {
+-  const chip = document.createElement('div')
+-  chip.className = 'date-chip'
+-  chip.innerHTML = '<input class="date-chip__digits" inputmode="numeric" placeholder="DDMM">'
+-  chip.addEventListener('keydown', (e) => {
+-    if (e.key === 'Enter' || e.key === 'Tab') commitDigits(chip, onPick)
+-    if (e.key === 'ArrowUp') step(chip, 1)
+-    if (e.key === 'ArrowDown') step(chip, -1)
+-  })
+-  host.appendChild(chip)
++  const field = new SharedDateField()
++  field.onChange(onPick)
++  host.appendChild(field.element)
+ }
+-
+-function commitDigits(chip: HTMLElement, onPick: (d: Date) => void) {
+-  const digits = (chip.querySelector('input') as HTMLInputElement).value
+-  onPick(new Date(2000 + Number(digits.slice(2, 4)), Number(digits.slice(0, 2)) - 1, 1))
+-}
+-
+-function step(chip: HTMLElement, by: number) {
+-  const input = chip.querySelector('input') as HTMLInputElement
+-  input.value = String(Number(input.value || 0) + by)
+-}

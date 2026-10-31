@@ -87,7 +87,9 @@ every prompt from the plans and the state script.
    - first, when the result's `stuck` is set (the run ended on a limit: `agent-call limit`, `same reason twice`, or
      `run stopped with an error`), that line as it is — `STUCK: …` — before anything else; when the session's own model
      was the one that died, say the Human can switch it with `/model`;
-   - merged plans and parked plans with their reason, and why the run stopped when it did; `reportCommitted` false →
+   - merged plans and parked plans with their reason, each skipped plan with its reason (`depends on parked <NNN>` or
+     `shares files with parked <NNN>`), and why the run stopped when it did; a `removes:` decision comes first, with
+     the card the report shows under "What only the Human can do"; `reportCommitted` false →
      say the report exists only as the local copy and why the run branch did not get it;
    - the final gate: `finalGate.ok` false → say so first (`final gate failed: <command>` and its output tail) and do
      **not** hand the run branch over as clean; no pull-request lines until the Human has seen it;
@@ -111,7 +113,7 @@ every prompt from the plans and the state script.
         `follow-ups: D7 D8 …` and `noise: D15 …` the same way;
      5. the reply line `reply: decisions: ok | D<n> ✗ <what I'd choose>` (several on one line, comma-separated).
      When `triage.mode` is `off`, `triage.note` is set (print it: `triage: no usable result — full list`) or every verdict
-     is `none`, print today's list: numbered `D1…Dn`, grouped by plan, `behaviour:` first, one line each
+     is `none`, print today's list: numbered `D1…Dn`, every `removes:` line first, then grouped by plan, `behaviour:` first, one line each
      (`D3 · plan <NNN> · behaviour: …`), then the reply format: `decisions: ok` or `D<n> ✗ <what I'd choose>`. When the
      result's `decisionsDropped` counts are not all zero, add one line `dropped <n> confirmation line(s) (not
      decisions)` with the total — they cost no note and need no grade. With no decisions print `decisions: none` and

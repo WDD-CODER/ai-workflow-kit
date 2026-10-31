@@ -152,7 +152,7 @@ async function runFlow(args, hooks = {}) {
     if (cmd === 'init') return { ok: true, mergeFolder: '/merge', startedAt: '2026-01-01T00:00:00.000Z', ...(hooks.init ?? {}) }
     if (cmd === 'order') {
       const todo = plansIn.filter((p) => !(hooks.merged ?? []).includes(p))
-      return { ok: true, waves: hooks.waves ?? [todo], waveLocks: [], skipped: hooks.merged ?? [], plans: Object.fromEntries(plansIn.map((p) => [p, { path: `plans/${p}-x.plan.md` }])) }
+      return { ok: true, waves: hooks.waves ?? [todo], waveLocks: hooks.waveLocks ?? [], ...(hooks.edges ? { edges: hooks.edges } : {}), skipped: hooks.merged ?? [], plans: Object.fromEntries(plansIn.map((p) => [p, { path: `plans/${p}-x.plan.md` }])) }
     }
     if (cmd === 'plan-info') return { ok: true, path: `plans/${f.plan}-x.plan.md`, branch: `feat/${f.plan}-x`, startTier: 'build', invariants: [], npmScripts: [], uiItems: [] }
     if (cmd === 'worktree') return { ok: true, path: `/wt/${f.plan}` }
@@ -160,6 +160,7 @@ async function runFlow(args, hooks = {}) {
     if (cmd === 'scripts') return { ok: true, scripts: hooks.scripts ?? {} }
     if (cmd === 'main-tries') return { ok: true, passed: hooks.passed ?? {} }
     if (cmd === 'finish') return { ok: true, merged: [], parked: [], report: 'r', local: 'l', reportCommitted: true }
+    if (cmd === 'clean' && hooks.clean) return hooks.clean
     if (cmd === 'diff') return { ok: true, files: [], sensitive: false }
     return { ok: true }
   }
@@ -285,6 +286,118 @@ test('pilot: more plans than pilotSize -> the first plans run, the run stops wit
   const few = await runFlow({ plans: plans.slice(0, PILOT) })
   assert.equal(few.result.pilot, null)
   assert.equal(few.calls.filter((c) => c.type === 'orch-builder').length, PILOT)
+})
+
+// ---- plan 042: a park skips only its dependents; removes: is a decision type listed first ---------------------------
+const builtPlans = (calls) => [...new Set(calls.filter((c) => c.type === 'orch-builder').map((c) => /feat\/(\d+)-/.exec(c.task.BRANCH)[1]))]
+const parkHook = (edges, extra = {}) => ({ waves: [['101'], ['102']], edges, gateFails: (folder) => folder === '/wt/101', ...extra })
+const stateOf = (result, nnn) => result.outcomes.find((o) => o.nnn === nnn)?.state
+const skipCommand = (commands, nnn, reason) => commands.some((c) => c.includes(`orch-state.mjs set --run=r1 --plan=${nnn} --state=skipped "--reason=${reason}"`))
+const stopCommands = (commands) => commands.filter((c) => /orch-state\.mjs stop/.test(c))
+
+test('onPark dependents: a plan with no edge to the parked one is built and merged, and the run is not stopped', async () => {
+  const r = await runFlow({ plans: ['101', '102'], pilot: false }, parkHook([]))
+  assert.deepEqual(builtPlans(r.calls), ['101', '102'])
+  assert.equal(stateOf(r.result, '101'), 'parked')
+  assert.equal(stateOf(r.result, '102'), 'merged')
+  assert.equal(r.result.stopReason, null)
+  assert.equal(stopCommands(r.commands).length, 0)
+  assert.ok(r.notes.every((n) => !/later waves not started/.test(n)))
+})
+
+test('onPark dependents: a Depends-on plan and a plan that depends on that one are skipped with the parked plan named, no builder call', async () => {
+  const dep = (from, to) => ({ from, to, reason: 'Depends-on:' })
+  const one = await runFlow({ plans: ['101', '102'], pilot: false }, parkHook([dep('101', '102')]))
+  assert.deepEqual(builtPlans(one.calls), ['101'])
+  assert.equal(stateOf(one.result, '102'), 'skipped')
+  assert.ok(skipCommand(one.commands, '102', 'depends on parked 101'))
+  assert.ok(one.notes.some((n) => /wave 1 parked 101 — skipped 102 \(depends on parked 101\); 0 later plan\(s\) go on/.test(n)))
+  const chain = await runFlow({ plans: ['101', '102', '103'], pilot: false }, parkHook([dep('101', '102'), dep('102', '103')], { waves: [['101'], ['102'], ['103']] }))
+  assert.deepEqual(builtPlans(chain.calls), ['101'])
+  assert.ok(skipCommand(chain.commands, '102', 'depends on parked 101'))
+  assert.ok(skipCommand(chain.commands, '103', 'depends on parked 101'), 'the chain names the parked plan it starts from')
+  // A third plan with no edge still runs next to a skipped dependent.
+  const mixed = await runFlow({ plans: ['101', '102', '103'], pilot: false }, parkHook([dep('101', '102')], { waves: [['101'], ['102', '103']] }))
+  assert.deepEqual(builtPlans(mixed.calls), ['101', '103'])
+  assert.equal(stateOf(mixed.result, '103'), 'merged')
+})
+
+test('onPark dependents: a plan that shares files with the parked one is skipped, and so is what depends on it', async () => {
+  const edges = [{ from: '101', to: '102', reason: 'scope overlap: src/a.ts', lock: true }, { from: '102', to: '103', reason: 'Depends-on:' }]
+  const r = await runFlow({ plans: ['101', '102', '103'], pilot: false }, parkHook(edges, { waves: [['101'], ['102'], ['103']] }))
+  assert.deepEqual(builtPlans(r.calls), ['101'])
+  assert.ok(skipCommand(r.commands, '102', 'shares files with parked 101'))
+  assert.ok(skipCommand(r.commands, '103', 'depends on parked 101'))
+  // Inside one wave a lock group runs one after the other: the member after a parked one is skipped, not built.
+  const group = await runFlow({ plans: ['101', '102'], pilot: false }, { waves: [['101', '102']], edges, waveLocks: [[{ plans: ['101', '102'] }]], gateFails: (folder) => folder === '/wt/101' })
+  assert.deepEqual(builtPlans(group.calls), ['101'])
+  assert.ok(skipCommand(group.commands, '102', 'shares files with parked 101'))
+})
+
+test('onPark all, no edges in the order, a stopRun and a failed final gate keep stopping the run', async () => {
+  const dep = [{ from: '101', to: '102', reason: 'Depends-on:' }]
+  const all = await runFlow({ plans: ['101', '102'], pilot: false }, parkHook([], { source: (s) => s.replace('const ON_PARK = "dependents"', 'const ON_PARK = "all"') }))
+  assert.deepEqual(builtPlans(all.calls), ['101'])
+  assert.equal(all.result.stopReason, 'wave 1 parked 101 — later waves not started')
+  assert.ok(skipCommand(all.commands, '102', 'not started: wave 1 parked 101 — later waves not started'))
+  const bare = await runFlow({ plans: ['101', '102'], pilot: false }, parkHook(undefined))
+  assert.deepEqual(builtPlans(bare.calls), ['101'])
+  assert.equal(bare.result.stopReason, 'wave 1 parked 101 — later waves not started')
+  assert.ok(bare.notes.some((n) => /onPark dependents: the plan order has no edges — later waves not started, as onPark .all./.test(n)))
+  const dirty = await runFlow({ plans: ['101', '102'], pilot: false }, { waves: [['101'], ['102']], edges: dep, clean: { ok: false, error: 'dirty' } })
+  assert.match(dirty.result.stopReason, /^merge folder not clean after merging 101/)
+  assert.deepEqual(builtPlans(dirty.calls), ['101'])
+  const final = await runFlow({ plans: ['101', '102'], pilot: false }, parkHook([], { gateFails: (folder) => folder === '/wt/101' || folder === '/merge' }))
+  assert.match(final.result.stopReason, /^final gate failed/)
+})
+
+test('pilot still stops after pilotSize plans when onPark is dependents', { skip: PILOT === 0 && 'pilotSize is 0 in this project' }, async () => {
+  const plans = Array.from({ length: PILOT + 2 }, (_, i) => String(101 + i))
+  const r = await runFlow({ plans }, { edges: [] })
+  assert.deepEqual(r.result.pilot, { size: PILOT, waiting: plans.slice(PILOT) })
+  assert.match(r.result.stopReason, new RegExp(`^pilot of ${PILOT} plans done`))
+})
+
+test('removes: lines are kept in any case, numbered before every behaviour: and seen: line, and reach orch-check-plan only', async () => {
+  const decisions = { 101: ['seen: src/a.js:12 — NaN', 'behaviour: saved on blur — reverse: remove it'], 102: ['Removes: the date chip typing — reverse: restore the chip'] }
+  const r = await runFlow({ plans: ['101', '102'], pilot: false }, { builder: (nnn) => ({ decisions: decisions[nnn] }) })
+  assert.deepEqual(r.result.decisions.map(({ id, plan }) => `${id}:${plan}`), ['D1:102', 'D2:101', 'D3:101'])
+  assert.match(r.result.decisions[0].text, /^Removes: the date chip/)
+  const plan102 = r.calls.filter((c) => c.type === 'orch-check-plan' && /plan 102/.test(c.label ?? '') || c.plan === '102' && c.type === 'orch-check-plan')
+  assert.ok(plan102.every((c) => JSON.parse(c.task.REMOVES).length === 1))
+  assert.ok(r.calls.filter((c) => c.type === 'orch-check-plan' && c.plan === '101').every((c) => c.task.REMOVES === undefined), 'a plan without removals gets no REMOVES')
+  assert.ok(r.calls.filter((c) => ['orch-check-bugs', 'orch-check-rules'].includes(c.type)).every((c) => c.task.REMOVES === undefined), 'only the plan checker gets REMOVES')
+  assert.ok(r.commands.some((c) => /orch-state\.mjs decision /.test(c) && /--id=D1/.test(c) && /Removes:/.test(c)), 'a removal is a decision record, the one store the report reads')
+})
+
+test('the report: one card per removal at the top of "What only the Human can do", numbers running on', () => {
+  const status = {
+    run: 'r1', startedAt: 'T0', mainShaAtStart: 'aaaaaaa1',
+    plans: {
+      '001': { nnn: '001', title: 'One', state: 'merging', round: 1, humanItems: ['Check the page'], models: {} },
+      '002': { nnn: '002', title: 'Two', state: 'parked', round: 2, reason: 'gate failed', models: {} },
+    },
+    notes: [],
+  }
+  const decisions = [
+    { id: 'D1', plan: '001', text: 'removes: date chip typing and Enter/Tab keys — reverse: restore the chip', verdict: 'ask', forced: 'type', alsoFrom: [] },
+    { id: 'D2', plan: '002', text: 'removes: a menu entry — reverse: add it back', verdict: 'ask', forced: 'type', alsoFrom: [] },
+    { id: 'D3', plan: '001', text: 'behaviour: x — reverse: y', verdict: 'accept', alsoFrom: [] },
+  ]
+  const base = { status, merged: [{ nnn: '001', branch: 'feat/001-one', sha: 'bbbbbbb2' }], mainShaNow: 'aaaaaaa1', finishedAt: 'T1', runBranch: 'orch/r1', mainBranch: 'main' }
+  const r = lib.formatReport({ ...base, decisions })
+  const human = r.slice(r.indexOf('## What only the Human can do'))
+  assert.match(human, /^## What only the Human can do\n\n### Removed behaviour — check before merging the PR\n\n1\. 001: D1 removes: date chip typing and Enter\/Tab keys — reverse: restore the chip — open the screen; accept: decisions: ok · keep it: D1 ✗ restore\n/)
+  assert.ok(!/D2 removes/.test(human), 'a removal of a plan that did not merge has no card')
+  assert.match(human, /2\. 001 One: Check the page/, 'the numbers run on into the other cards')
+  const none = lib.formatReport({ ...base, decisions: decisions.slice(2) })
+  assert.ok(!/Removed behaviour/.test(none), 'no removals, no section')
+})
+
+test('orchestrator.onPark: dependents and all pass, anything else names the key', () => {
+  const ok = { 'orchestrator.runBranchPrefix': 'orch/', 'git.mainBranch': 'main' }
+  for (const v of ['dependents', 'all']) assert.deepEqual(orchestratorProblems({ ...ok, 'orchestrator.onPark': v }), [])
+  for (const v of ['none', '', 'ALL', true, null]) assert.match(orchestratorProblems({ ...ok, 'orchestrator.onPark': v })[0], /^orchestrator\.onPark is .* — it must be "dependents" .* or "all" /)
 })
 
 test('orchestrator.* config: defaults pass, bad values name the key', () => {

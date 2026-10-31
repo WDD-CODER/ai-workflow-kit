@@ -5,7 +5,7 @@ export const meta = {
   phases: [
     { title: 'Readiness', detail: 'plan order, one readiness agent per plan, environment preflight' },
     { title: 'Start', detail: 'run branch, merge folder, wave order from git' },
-    { title: 'Build', detail: 'per plan: builder, gate, checkers, merge into the run branch; stop after a wave that parked' },
+    { title: 'Build', detail: 'per plan: builder, gate, checkers, merge into the run branch; a park skips only the plans that depend on it or share its files' },
     { title: 'Report', detail: 'report on the run branch and a local copy in the main folder' },
   ],
 }
@@ -19,6 +19,8 @@ const MODELS = { build: "sonnet", judgment: "inherit" }
 const MAX_FIX_ROUNDS = 2
 const RUN_PREFIX = "orch/"
 const PILOT_SIZE = 3
+// What a parked plan stops: "dependents" = only the later plans that depend on it or share its files, "all" = every later plan.
+const ON_PARK = "dependents"
 // The decision triage (docs/agent/decision-review.md §5): "off" = no call, "shadow" = one orch-triage call recommends
 // a verdict per decision and the Human still sees every decision, "filter" = a calibrated kind is shown on one line.
 const TRIAGE = "shadow"
@@ -135,9 +137,9 @@ if (!PLANS.length || !PLANS.every((p) => /^\d{1,4}$/.test(p))) throw new Error('
 // ---- schemas (docs/agent/agent-roles.md) -------------------------------------------------------------------------
 const str = { type: 'string' }
 const strList = { type: 'array', items: str }
-// decisions: only "behaviour: …" (a choice the plan did not settle, with how to reverse it) and "seen: file:line …" (a
-// defect outside the job); evidence and confirmations are not decisions and are dropped (take()).
-const COMMON = { role: str, model: str, effort: str, decisions: { ...strList, description: 'only "behaviour: … — reverse: …" and "seen: file:line …" entries; evidence and confirmations are not decisions' }, escalate: str }
+// decisions: only "behaviour: …" (a choice the plan did not settle, with how to reverse it), "seen: file:line …" (a
+// defect outside the job) and "removes: … — reverse: …" (user-facing behaviour the job took away); evidence and confirmations are not decisions and are dropped (take()).
+const COMMON = { role: str, model: str, effort: str, decisions: { ...strList, description: 'only "behaviour: … — reverse: …", "seen: file:line …" and "removes: <what users lose> — reverse: <how>" entries; evidence and confirmations are not decisions' }, escalate: str }
 const RUNNER = { type: 'object', properties: { exitCode: { type: 'integer' }, output: { type: 'string', description: 'the command\'s output, with its ORCH_JSON line copied character for character — no reformatting, no wrapping, no quotes added' } }, required: ['exitCode', 'output'] }
 const PROBLEM = {
   type: 'object',
@@ -301,7 +303,7 @@ const CHANGED_FILES = {}
 // run() when args.mainDelegated is set, null otherwise.
 let mainPassed = null
 
-// Decisions agents took on their own: the `behaviour:` and `seen:` entries of every role result's `decisions` list.
+// Decisions agents took on their own: the `behaviour:`, `seen:` and `removes:` entries of every role result's `decisions` list.
 // They are numbered D1…Dn at the end of the run, grouped by plan, and the Human grades them in one reply
 // (docs/agent/decision-review.md). Anything else an agent put there (a confirmation, evidence — a run once had 11 of
 // 15) is dropped and only counted: each kept line is a run note (an agent call) and a line the Human grades.
@@ -310,7 +312,7 @@ let mainPassed = null
 // earlier launch of the run (init.priorDecisions): they keep their id and are never numbered again.
 const DECISIONS = []
 const DROPPED = {}
-const DECISION_RE = /^(behaviour|seen):/i
+const DECISION_RE = /^(behaviour|seen|removes):/i
 const DECISION_STOP = new Set('a an the and or of to in on for is it its with as at by be so that this not no'.split(' '))
 const FILE_LINE = /[\w./-]+\.\w{1,5}:\d+/g
 const decisionType = (text) => String(text).match(DECISION_RE)?.[1].toLowerCase()
@@ -346,12 +348,15 @@ function take(nnn, round, ...results) {
     }
   }
 }
-// Numbers the new decisions D<first>…, grouped by plan with behaviour: first; a prior decision keeps its own id.
+// Numbers the new decisions D<first>…: every removes: line of the run first (plan order), then grouped by plan with
+// behaviour: before seen:; a prior decision keeps its own id.
 function numberedDecisions(first) {
   const rank = (d) => (/^behaviour:/i.test(d.text) ? 0 : 1)
   const out = []
   const fresh = DECISIONS.filter((d) => !d.prior)
-  for (const plan of [...new Set(fresh.map((d) => d.plan))].sort()) out.push(...fresh.filter((d) => d.plan === plan).sort((a, b) => rank(a) - rank(b)))
+  const removal = (d) => /^removes:/i.test(d.text)
+  for (const plan of [...new Set(fresh.filter(removal).map((d) => d.plan))].sort()) out.push(...fresh.filter((d) => d.plan === plan && removal(d)))
+  for (const plan of [...new Set(fresh.map((d) => d.plan))].sort()) out.push(...fresh.filter((d) => d.plan === plan && !removal(d)).sort((a, b) => rank(a) - rank(b)))
   return out.map((d, i) => { d.id = `D${first + i}`; return d })
 }
 const idNumber = (id) => Number(String(id).replace(/\D/g, '')) || 0
@@ -378,6 +383,42 @@ function serial(fn) {
   const p = mergeChain.then(fn, fn)
   mergeChain = p.then(() => undefined, () => undefined)
   return p
+}
+
+// The later plans a park blocks, from the plan order's unmet edges ({ from, to, reason, lock? }: `to` needs `from`; a
+// `lock` edge is a scope overlap, either way). Returns Map<nnn, reason>: first every later plan reachable over
+// dependency edges from a parked plan (`depends on parked <root>`, root = the parked plan the chain starts from), then
+// every later plan with a lock edge to a parked plan (`shares files with parked <NNN>`), then the plans that depend on
+// those (`depends on parked <root>`, root = the parked plan they share files with).
+function blockedBy(parkedNnns, laterNnns, edges) {
+  const later = new Set(laterNnns)
+  const out = new Map()
+  const reach = (start, root) => {
+    const seen = new Set([start])
+    const todo = [start]
+    while (todo.length) {
+      const from = todo.shift()
+      for (const e of edges) {
+        if (e.lock || e.from !== from || seen.has(e.to)) continue
+        seen.add(e.to)
+        todo.push(e.to)
+        if (later.has(e.to) && !out.has(e.to)) out.set(e.to, `depends on parked ${root}`)
+      }
+    }
+  }
+  for (const p of parkedNnns) reach(p, p)
+  const shared = []
+  for (const p of parkedNnns) {
+    for (const e of edges) {
+      if (!e.lock || (e.from !== p && e.to !== p)) continue
+      const other = e.from === p ? e.to : e.from
+      if (!later.has(other) || out.has(other)) continue
+      out.set(other, `shares files with parked ${p}`)
+      shared.push([other, p])
+    }
+  }
+  for (const [n, p] of shared) reach(n, p)
+  return out
 }
 
 // ---- readiness ------------------------------------------------------------------------------------------------------
@@ -538,7 +579,10 @@ async function checkers(ctx) {
   if (!diff.ok) return { env: !!diff.envFailure, fail: !diff.envFailure, why: `diff: ${diff.error}`, findings: [] }
   const roles = diff.sensitive ? [...FINDERS, 'orch-security'] : FINDERS
   const base = task({ PLAN: ctx.info.path, BRANCH: `origin/${ctx.info.branch}`, BASE: `origin/${RUN_BRANCH}`, FOLDER: ctx.wt.path, FILES: diff.files })
-  const found = await parallel(roles.map((role) => () => ask(`Check plan ${ctx.nnn} of run ${RUN}. Follow .claude/agents/${role}.md.\n\n${base}`,
+  // The plan's own `removes:` decisions so far: the plan checker does not call a removal the builder logged "unlogged".
+  const removes = DECISIONS.filter((d) => d.plan === ctx.nnn && /^removes:/i.test(d.text)).map((d) => d.text)
+  const baseFor = (role) => (role === 'orch-check-plan' && removes.length ? `${base}\n${task({ REMOVES: removes })}` : base)
+  const found = await parallel(roles.map((role) => () => ask(`Check plan ${ctx.nnn} of run ${RUN}. Follow .claude/agents/${role}.md.\n\n${baseFor(role)}`,
     { agentType: role, schema: SCHEMA.finder, label: `${role.replace('orch-', '')} ${ctx.nnn}`, phase: 'Build', plan: ctx.nnn })))
   const results = found.filter(Boolean)
   const missing = roles.filter((_, i) => !found[i])
@@ -922,6 +966,7 @@ async function run() {
   }
   const pilotWaiting = [...waiting]
   const outcomes = []
+  const parkedRoots = []
   let stopReason = null
   let finalGate = null
   // Whatever happens in the waves or the final gate, the run ends with `stop` (when it did not finish) and `finish`:
@@ -929,6 +974,7 @@ async function run() {
   try {
   for (let w = 0; w < waves.length; w++) {
     const wave = waves[w]
+    if (!wave.length) continue
     log(`wave ${w + 1}: ${wave.join(', ')}`)
     // Plans in one lock group (overlapping scope) run one after the other; the rest of the wave runs in parallel.
     const groups = (order.waveLocks?.[w] ?? []).map((g) => g.plans.filter((p) => wave.includes(p)))
@@ -944,6 +990,13 @@ async function run() {
         try {
           const out = []
           for (const nnn of unit) {
+            // A member after a parked one shares its files (one lock group): it would build on what the park left.
+            const before = ON_PARK === 'dependents' ? out.find((o) => o.state === 'parked') : null
+            if (before) {
+              await setPlan(nnn, { state: 'skipped', reason: `shares files with parked ${before.nnn}` })
+              out.push({ nnn, state: 'skipped' })
+              continue
+            }
             out.push(await runPlan(nnn))
             // A plan that built in an idle wt-N slot gives it back, merged or parked (a slot with uncommitted or unpushed work stays).
             await state(['release', '--run', RUN, '--plan', nnn], `release ${nnn}`, nnn)
@@ -958,6 +1011,21 @@ async function run() {
     outcomes.push(...flat)
     const stop = flat.find((o) => o.stopRun)
     const parked = flat.filter((o) => o.state !== 'merged')
+    // onPark "dependents": a park skips only the later plans that depend on it or share its files, and the run goes on.
+    if (!stop && parked.length && ON_PARK === 'dependents' && Array.isArray(order.edges)) {
+      const hit = parked.filter((o) => o.state !== 'skipped').map((o) => o.nnn)
+      parkedRoots.push(...hit)
+      const blocked = blockedBy(parkedRoots, waves.slice(w + 1).flat(), order.edges)
+      for (const [nnn, reason] of blocked) {
+        await setPlan(nnn, { state: 'skipped', reason })
+        outcomes.push({ nnn, state: 'skipped' })
+      }
+      for (let k = w + 1; k < waves.length; k++) waves[k] = waves[k].filter((nnn) => !blocked.has(nnn))
+      const goOn = waves.slice(w + 1).flat().length
+      if (blocked.size) await note(`wave ${w + 1} parked ${hit.join(', ')} — skipped ${[...blocked].map(([nnn, reason]) => `${nnn} (${reason})`).join(', ')}; ${goOn} later plan(s) go on`)
+      // Nothing left to run after the park: the run ends stopped on it, as before.
+      if (goOn || waiting.length) continue
+    } else if (!stop && parked.length && ON_PARK === 'dependents') await note('onPark dependents: the plan order has no edges — later waves not started, as onPark "all"')
     if (stop || parked.length) {
       stopReason = stop ? stop.stopRun : `wave ${w + 1} parked ${parked.map((p) => p.nnn).join(', ')} — later waves not started`
       const later = [...waves.slice(w + 1).flat(), ...waiting]

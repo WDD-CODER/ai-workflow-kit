@@ -13,7 +13,7 @@
  *     205  run "theta" (plan 029): its gate fails the same way twice → parked at once as "same reason twice"
  *     206  run "iota" (plan 032): one [auto:main] item → its command runs in a second gate from the main folder,
  *          never at the merge (build + scope only) or the final gate
- *     203  depends on 201 → wave 2, not started while wave 1 parked a plan
+ *     203  depends on 201 and 202 → wave 2, skipped (`depends on parked 202`) while wave 1 parked 202
  *     204  its first builder returns ESCALATE → a fresh judgment-tier builder with the hand-off file
  *   run "gamma" — the UI step on (args.ui), escalation then a judgment failure, auth code in a plain path
  *     301  its first builder returns ESCALATE, then its gate fails → parked at round 1 (judgment + escalated)
@@ -70,7 +70,7 @@ export const PLANS = {
   '104': plan({ nnn: '104', title: 'Diamond bottom, pass true with a major', deps: ['102', '103'] }),
   '201': plan({ nnn: '201', title: 'Starts on judgment', inv: 'INV-1: deviation until the toy follow-up — touches the toy invariant' }),
   '202': plan({ nnn: '202', title: 'Keeps failing then passes', inv: 'INV-1: preserves — a plan that only preserves starts on build' }),
-  '203': plan({ nnn: '203', title: 'Second wave', deps: ['201'] }),
+  '203': plan({ nnn: '203', title: 'Second wave', deps: ['201', '202'] }),
   '204': plan({ nnn: '204', title: 'Escalates' }),
   '205': plan({ nnn: '205', title: 'Same gate failure twice' }),
   '206': plan({ nnn: '206', title: 'Main folder check', main: ['node scripts/log-ok.mjs --since=15m'] }),

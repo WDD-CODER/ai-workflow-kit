@@ -40,3 +40,7 @@ node scripts/pre-commit-security-grep.mjs
 
 - `grep -rnE "@Input\(|@Output\(|BehaviorSubject" <scope>` — the legacy decorators and the banned state type lint does not catch
 - `node scripts/techdebt-report.mjs scan` counts them too (the Angular rules: `legacy-decorator`, `behavior-subject`, `semicolon`)
+
+## removal-signals
+
+- Also a removal in this stack: a deleted `@HostListener('keydown…` or `document:keydown`, a `(keydown` or `(keyup` binding, `formControlName=`, `[formControl]`.
