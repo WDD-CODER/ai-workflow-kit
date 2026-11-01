@@ -1,6 +1,6 @@
 # Plan 035 — Skill Improver: Nightly Evidence-Driven Skill Upgrades
 
-Status: draft
+Status: S0–S9 done, S10 open until 2026-11-17 (one-month review); [human] Done-when items open
 Track: code — here (kit)
 Snapshot: 8bb9b671a6391c43ac3f584064c8974544566135
 Depends-on: none
@@ -143,9 +143,11 @@ Expected cost: evidence 0; edit ~30–60k; evals 6 runs × ~20–40k → **~150�
 - [x] S5: Open a PR with each night's skill improvement — PR creation + body template — tools/skill-improver/pr.mjs
 - [x] S6: Schedule the nightly run and document it — Scheduler script (PS5; daily at 02:10 by default, so plan 047's kit-learn run at 03:10 follows it) + README/CHANGELOG section + install-check strings + tests — kit-skill-improver.ps1, README.md, CHANGELOG.md, tools/install-check.mjs, tools/test/skill-improver.test.mjs
 - [x] S7: Try a full run by hand, including the budget stop and the safety stop — Manual end-to-end run on one kit-owned skill + budget-stop test + out-of-scope test — kit repo
-- [ ] S8: Turn on the nightly schedule after the Human's go and receive the first PR — Register the task (the Human's go), receive one nightly PR — local machine
-- [ ] S9: Render the kit's own copies, check drift, release, and bring the improver into the first project — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .`, kit PR + release, then `kit-sync` in the project (runs in that project, shipped with its own workflow) — .claude/**, docs/agent/**, .kit/install.json
-- [ ] S10: Review after one month whether the improvements helped — One-month review (2026-11-17 or later) — plans/035-skill-improver-nightly-evidence-driven-skill-upgrades.plan.md
+- [x] S8: Turn on the nightly schedule after the Human's go and receive the first PR — Register the task (the Human's go), receive one nightly PR — local machine
+- [x] S9: Render the kit's own copies, check drift, release, and bring the improver into the first project — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .`, kit PR + release, then `kit-sync` in the project (runs in that project, shipped with its own workflow) — .claude/**, docs/agent/**, .kit/install.json
+- [ ] S10: Review after one month whether the improvements helped — One-month review (open until 2026-11-17, not before) — plans/035-skill-improver-nightly-evidence-driven-skill-upgrades.plan.md
+
+- [x] S11: Make a failed eval generation a quiet no-change night and stop the editor from changing its own test — retry once, log the model reply, freeze `evals/evals.json` across the edit — tools/skill-improver/run.mjs, tools/test/skill-improver.test.mjs
 
 ## Technical Considerations
 
@@ -195,3 +197,4 @@ The weekly Scout and its HTML page (plan 036); cloud runs; auto-merge.
   hashes it in `.kit/install.json`). `run.mjs` now syncs and drift-checks the worktree after after > before, stages the
   three paths, and the guard allows exactly those; a test builds a real kit copy and checks the committed diff and
   drift-check.
+- **S8 + S9 (2026-11-01).** Manual run `--target skill --once`: billing `plan-limits`, picked `save-plan`, `no-change` (editor changed nothing), 36,784 tokens, $0.3814, one `spend.jsonl` line. Task `ai-workflow-kit skill-improver` registered via `.\kit-skill-improver.ps1 -Register` (daily 02:10, AC power only; `StartWhenAvailable` is absent from the task XML, i.e. its default false) after the Human's go. Remove: `.\kit-skill-improver.ps1 -Unregister`. `kit-sync` dry-run into the first project (kit v1.12.0): 0 new, 0 kit-update, 22 overrides — nothing to apply. The first nightly PR has not arrived yet.

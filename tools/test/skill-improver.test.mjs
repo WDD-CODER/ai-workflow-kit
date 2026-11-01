@@ -79,7 +79,7 @@ test('judge and editor files carry no front-matter in the prompt body', () => {
 })
 
 // End-to-end with a scripted fake `claude` and `gh`, in a throwaway kit repo.
-function sandboxKit() {
+function sandboxKit(noEvals = false) {
   const root = mkdtempSync(join(tmpdir(), 'si-e2e-'))
   const origin = join(root, 'origin.git')
   const repo = join(root, 'repo')
@@ -95,8 +95,10 @@ function sandboxKit() {
     mkdirSync(dirname(join(repo, f)), { recursive: true })
     copyFileSync(join(kit, f), join(repo, f))
   }
-  mkdirSync(join(repo, 'core', '.claude', 'skills', 'preflight', 'evals'), { recursive: true })
-  writeFileSync(join(repo, 'core', '.claude', 'skills', 'preflight', 'evals', 'evals.json'), JSON.stringify({ skill_name: 'preflight', evals: [{ id: 1, prompt: 'do it', expected_output: 'x', files: [], assertions: ['says IMPROVED'] }] }))
+  if (!noEvals) {
+    mkdirSync(join(repo, 'core', '.claude', 'skills', 'preflight', 'evals'), { recursive: true })
+    writeFileSync(join(repo, 'core', '.claude', 'skills', 'preflight', 'evals', 'evals.json'), JSON.stringify({ skill_name: 'preflight', evals: [{ id: 1, prompt: 'do it', expected_output: 'x', files: [], assertions: ['says IMPROVED'] }] }))
+  }
   const sy = spawnSync(process.execPath, ['tools/sync.mjs', '--target', '.', '--apply'], { cwd: repo, encoding: 'utf8' })
   assert.equal(sy.status, 0, sy.stdout + sy.stderr)
   g(repo, 'add', '-A')
@@ -106,7 +108,7 @@ function sandboxKit() {
   writeFileSync(
     fake,
     `
-import { readFileSync, writeFileSync, appendFileSync } from 'fs'
+import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } from 'fs'
 const argv = process.argv.slice(2)
 const sys = argv.includes('--append-system-prompt') ? argv[argv.indexOf('--append-system-prompt') + 1] : ''
 const prompt = readFileSync(0, 'utf8')
@@ -119,7 +121,18 @@ if (sys.includes('improve-skill') || sys.includes('Edit only files inside')) {
   const m = prompt.match(/Skill folder: (.*)/)[1]
   if (mode === 'outofscope') writeFileSync(m + '/../../../../README.md', 'oops')
   else if (mode !== 'nochange') appendFileSync(m + '/SKILL.md', 'IMPROVED\\n')
+  if (mode === 'tamper') writeFileSync(m + '/evals/evals.json', JSON.stringify({ skill_name: 'preflight', evals: [{ id: 1, prompt: 'easy', expected_output: 'x', files: [], assertions: ['always true'] }] }))
   out('changed', 10)
+} else if (prompt.startsWith('Write ') && prompt.includes('/evals/evals.json')) {
+  const dir = prompt.match(/^Write (.*)\\/evals\\/evals\\.json/)[1]
+  const n = existsSync(process.env.FAKE_COUNTER) ? Number(readFileSync(process.env.FAKE_COUNTER, 'utf8')) + 1 : 1
+  writeFileSync(process.env.FAKE_COUNTER, String(n))
+  const ok = mode === 'evalgen-ok' || (mode === 'evalgen-retry' && n >= 2)
+  if (ok) {
+    mkdirSync(dir + '/evals', { recursive: true })
+    writeFileSync(dir + '/evals/evals.json', JSON.stringify({ skill_name: 'preflight', evals: [{ id: 1, prompt: 'do it', expected_output: 'x', files: [], assertions: ['says IMPROVED'] }] }))
+  }
+  out(ok ? 'wrote it' : 'I could not write the file', 10)
 } else if (sys.includes('grade the output')) {
   const answer = (prompt.split('Assistant final answer:')[1] || '').split('Files it produced:')[0]
   out('{"results": [' + (answer.includes('IMPROVED') ? 'true' : 'false') + ']}', 10)
@@ -133,12 +146,12 @@ if (sys.includes('improve-skill') || sys.includes('Edit only files inside')) {
   return { root, repo, origin, fakeClaude: fake, fakeGh }
 }
 
-function runIt(env, extra = []) {
-  const s = sandboxKit()
+function runIt(env, extra = [], noEvals = false) {
+  const s = sandboxKit(noEvals)
   const home = join(s.root, 'home')
   const r = spawnSync(process.execPath, [RUN, '--repo', s.repo, '--skill', 'preflight', '--once', ...extra], {
     encoding: 'utf8',
-    env: { ...process.env, SKILL_IMPROVER_HOME: home, SKILL_IMPROVER_PROJECTS: join(s.root, 'no-transcripts'), SKILL_IMPROVER_CLAUDE: s.fakeClaude, SKILL_IMPROVER_GH: s.fakeGh, ...env },
+    env: { ...process.env, FAKE_COUNTER: join(s.root, 'counter'), SKILL_IMPROVER_HOME: home, SKILL_IMPROVER_PROJECTS: join(s.root, 'no-transcripts'), SKILL_IMPROVER_CLAUDE: s.fakeClaude, SKILL_IMPROVER_GH: s.fakeGh, ...env },
   })
   const branches = execFileSync('git', ['branch', '-r'], { cwd: s.repo, encoding: 'utf8' })
   execFileSync('git', ['fetch', '-q', 'origin'], { cwd: s.repo })
@@ -204,6 +217,32 @@ test('run: prints the billing mode before the first call and appends one spend.j
   const k = runIt({ FAKE_MODE: 'improve', ANTHROPIC_API_KEY: 'sk-test-not-real' })
   assert.match(k.r.stdout, /SKILL_IMPROVER: billing api-key/)
   assert.equal(JSON.parse(k.spend.trim()).mode, 'api-key')
+})
+
+test('run: eval generation that fails twice is a no-change night with the model reply logged, not an error', () => {
+  const { r, remote, log, spend } = runIt({ FAKE_MODE: 'evalgen-fail' }, [], true)
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+  assert.match(r.stdout, /no-change preflight \(eval generation failed twice\)/)
+  assert.match(log, /eval generation failed twice; last model reply: I could not write the file/)
+  assert.doesNotMatch(remote, /skill-improve/)
+  assert.equal(JSON.parse(spend.trim()).result, 'no-change')
+})
+
+test('run: eval generation retries once and then goes on to improve the skill', () => {
+  const { r, remote } = runIt({ FAKE_MODE: 'evalgen-retry' }, [], true)
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+  assert.match(r.stdout, /SKILL_IMPROVER: pr /)
+  assert.match(remote, /chore\/skill-improve-preflight-/)
+})
+
+test('run: the editor cannot change the eval file; it is restored and the PR holds no eval change', () => {
+  const { r, remote, origin } = runIt({ FAKE_MODE: 'tamper' })
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+  assert.match(r.stdout, /evals restored/)
+  const branch = remote.split('\n').map((l) => l.replace('*', '').trim()).find((b) => b.startsWith('chore/skill-improve-preflight-'))
+  assert.ok(branch, remote)
+  const names = execFileSync('git', ['--git-dir', origin, 'diff', '--name-only', 'main', branch], { encoding: 'utf8' }).split('\n').filter(Boolean)
+  assert.ok(!names.some((n) => n.includes('evals')), names.join(','))
 })
 
 test('run: an unknown target exits 2 before doing anything', () => {
