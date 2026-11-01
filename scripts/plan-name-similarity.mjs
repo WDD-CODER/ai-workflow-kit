@@ -255,6 +255,9 @@ function globsMeet(a, b) {
   return false
 }
 
+// Everything below runs only when this file is the script that was started: `tokenize` and `scoreOverlap` are also
+// imported (tools/lib/kit-learn groups look-alike lessons with them), and an import must run nothing.
+function main() {
 const inputName = resolveInputName()
 if (!inputName) {
   usage()
@@ -448,3 +451,8 @@ if (!args.json && scopeGlobs) {
 }
 
 process.exit(0)
+}
+
+export { tokenize, scoreOverlap }
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main()
