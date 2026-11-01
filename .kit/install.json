@@ -3,7 +3,7 @@
     "version": "1.12.0"
   },
   "source": "local:.",
-  "commit": "ce58b1a368400f580eff20d074e8adea9a1c1367",
+  "commit": "ce2802bbe89976f3ca3fd08955a714e7998b639f",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -350,7 +350,7 @@
       "source": "core/docs/agent/job-validation.md"
     },
     "docs/agent/kit-brain.md": {
-      "sha256": "69a5a43e876507f16e17bae04eb1140c51e8ab12b8daab2450871b0732a62608",
+      "sha256": "ac087959f111366d2b9ac1fbe82ebb568b6e796bbcfbb27f4758a5625d67b717",
       "kind": "managed",
       "source": "core/docs/agent/kit-brain.md"
     },
@@ -645,7 +645,7 @@
       "source": "core/scripts/kit-manifest-check.mjs"
     },
     "scripts/lib/brain-doc.mjs": {
-      "sha256": "132a451f27a12f2ce303a4064bbd917cf6e80bc0b623f374afd451c2af2b20e8",
+      "sha256": "6c80f96c5d8ed785452eed0bc626c4b33a328d60c36fc270e9e2d70a953f5b1b",
       "kind": "managed",
       "source": "core/scripts/lib/brain-doc.mjs"
     },

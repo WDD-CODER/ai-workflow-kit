@@ -64,7 +64,8 @@ gate, so `ui` and `finalGate` are `null`, as is any phase with no timestamps.
 **Signature.** The text of a problem with what changes between runs taken out, so the same failure in two runs or two
 projects matches: secrets and code cut first, then lower-case; quoted strings, ISO times, dates, hex ids of 7+ characters,
 `wt-<n>`, absolute paths (and the project root) and numbers become `<s> <t> <d> <h> <slot> <p> <n>`; spaces collapse; at
-most 120 characters. A relative path (one that does not start at a drive or a root slash) stays: it names what failed.
+most 120 characters. A path is `<p>` whether it is absolute or relative (two slashes or a file extension); the script a command runs
+(`node` followed by a script path) stays, because it names what failed.
 
 **Tokens.** Read from the transcripts Claude Code keeps of a Workflow's agents
 (`~/.claude/projects/<project>/<session>/subagents/workflows/wf_<id>/agent-*.jsonl` and `.meta.json`): the assistant lines carry

@@ -80,8 +80,9 @@ export function deepRedact(v) {
 /**
  * A problem's text with what changes from run to run taken out, so the same failure in two runs or two projects has
  * the same signature: lower-case; quoted strings, ISO times, dates, hex ids of 7+ characters holding a digit,
- * `wt-<n>` slots, absolute paths (and the project root) and numbers become `<s> <t> <d> <h> <slot> <p> <n>`;
- * spaces collapse; at most 120 characters. A relative path such as `scripts/x.mjs` stays: it names what failed.
+ * `wt-<n>` slots, paths (absolute, under the project root, or relative with two slashes or a file extension) and
+ * numbers become `<s> <t> <d> <h> <slot> <p> <n>`; spaces collapse; at most 120 characters. The script a command runs
+ * (`node scripts/x.mjs`) stays: it names what failed.
  */
 export function signature(text, { projectRoot } = {}) {
   // Secrets and code are cut first: a signature is stored and compared across projects, so it must never carry either.
@@ -95,6 +96,12 @@ export function signature(text, { projectRoot } = {}) {
     .replace(/\d{4}-\d{2}-\d{2}t[\d:.]+z?/g, '<t>')
     .replace(/\d{4}-\d{2}-\d{2}/g, '<d>')
     .replace(/(?<![\w.\-])(?:[a-z]:[\\/]|\/)[^\s"'`,;()<>]*[\\/][^\s"'`,;()<>]*/g, '<p>')
+    // A relative path (two or more slashes, or a file name with an extension) is a path too, so two reasons that differ
+    // only in it match — except the script a command runs (`node scripts/x.mjs`): that names what failed.
+    .replace(/(?<![\w.\-/<@:])[\w.\-@]+(?:\/[\w.\-@]*)+/g, (m, off, str) => {
+      if (/\bnode $/.test(str.slice(Math.max(0, off - 5), off))) return m
+      return (m.match(/\//g) ?? []).length >= 2 || /\.\w+$/.test(m) ? '<p>' : m
+    })
     .replace(/\bwt-\d+\b/g, '<slot>')
     .replace(/\b(?=[0-9a-f]*\d)[0-9a-f]{7,}\b/g, '<h>')
     .replace(/\b\d+(?:\.\d+)?\b/g, '<n>')

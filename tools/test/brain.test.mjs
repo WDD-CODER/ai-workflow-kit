@@ -92,7 +92,19 @@ test('signature: the same problem in two runs matches (path, number, hash, time,
   const leaky = lib.signature(`gate failed: Bearer ${'t0kenvalue'.repeat(3)} and ${URI} and api_key="${'abcd1234'.repeat(2)}"`)
   assert.ok(!/t0kenvalue|writer:pw|abcd1234/.test(leaky), leaky)
   assert.match(leaky, /redacted/)
-  assert.equal(lib.signature('src/app/x.ts failed'), 'src/app/x.ts failed', 'a relative path names what failed and stays')
+  assert.equal(lib.signature('src/app/x.ts failed'), '<p> failed', 'a relative path is a path')
+  assert.equal(lib.signature('gate: node scripts/log-query.mjs --level=error'), 'gate: node scripts/log-query.mjs --level=error', 'the script a command runs names what failed and stays')
+  assert.equal(lib.signature('either/or and/or'), 'either/or and/or', 'a slash in plain words is not a path')
+  // Park reasons of the hardened checkers: the same problem in two runs matches whatever the sha, rounds or file.
+  assert.equal(
+    lib.signature('no progress: head 9f3a7c21b unchanged across 2 fix rounds (fix rounds used: 2 of 2)'),
+    lib.signature('no progress: head 0ab4d99e1c22 unchanged across 3 fix rounds (fix rounds used: 3 of 5)'))
+  assert.equal(
+    lib.signature('replan needed: the scope lacks C:\\work\\app-wt-1\\src\\a.ts'),
+    lib.signature('replan needed: the scope lacks D:\\other\\app-wt-3\\lib\\b.ts'))
+  assert.equal(lib.signature('replan needed: the scope lacks src/app/a.ts'), lib.signature('replan needed: the scope lacks src/app/b.ts'))
+  assert.equal(lib.signature('replan needed: the scope lacks src/a.ts:12'), lib.signature('replan needed: the scope lacks lib/z.ts:340'))
+  assert.notEqual(lib.signature('replan needed: the scope lacks src/a.ts'), lib.signature('no progress: head 9f3a7c21b unchanged across 2 fix rounds'))
   assert.equal(lib.signature('failed in /home/u/proj/a/b.ts', {}), 'failed in <p>')
   assert.equal(lib.signature('failed in C:/work/app/x', { projectRoot: 'C:\\work\\app' }), 'failed in <p>/x', 'the project root is cut out')
 })
