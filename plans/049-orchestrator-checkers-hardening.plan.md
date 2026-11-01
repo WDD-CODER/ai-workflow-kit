@@ -266,15 +266,15 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 - Any change to plans 045–048 except 045's `Depends-on:` line.
 
 ## Critical Questions
-- Q: Test-file gate — fail or only flag? A: fail (a blocker finding, so the builder gets a fix round) — default
-  from the brief "flag or fail"; open for the Human to change to flag-only.
+- Q: Test-file gate — fail or only flag? A: fail (a blocker finding, so the builder gets a fix round) (Human,
+  2026-11-01).
 - Q: Does a broad folder glob (`tools/**`) count as listing the tests under it? A: no — only a scope line that names a
   test location counts; this is what makes the gate bite (045 and 048 already name their test files; a plan that
   relies on a folder glob for its tests must add a test line).
 - Q: The kit has no design reviewer and no `DESIGN.md` today. Build a new conditional finder `orch-check-design`
-  (H3 as written), or add the checklist to `orch-check-plan` instead, or drop H3? A: open — default H3 as written.
+  (H3 as written), or add the checklist to `orch-check-plan` instead, or drop H3? A: H3 as written (Human, 2026-11-01).
 - Q: Runs per case — 3 (≈30 USD, gives the spread the verdicts need) or 2 like BASELINE (≈20 USD, spread from 2
-  runs)? A: open — default 3.
+  runs)? A: 3 (Human, 2026-11-01).
 - Q: "No drop in precision" for the redaction adoption — exact (after ≥ before at two decimals) or within 0.02?
   A: exact, as the brief says.
 
