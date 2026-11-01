@@ -1805,3 +1805,122 @@ test('plan 049: the verifier gets the gate of the same round', async () => {
   assert.equal(gate[0].tail, 'all 12 tests passed')
   assert.ok(gate.every((x) => String(x.tail ?? '').split('\n').length <= 20))
 })
+
+// ---- Plan 045: the kit brain at the end of `finish` and after `grade` ----------------------------------------------------------
+// Both run `scripts/brain.mjs send` in a child process with a kill timer; a stub driver stands in for Atlas (no network),
+// and whatever the child does, the command's exit code and its report are the same.
+
+const BRAIN_STUB = join(kit, 'tools', 'fixtures', 'orchestrator', 'brain', 'stub-driver.mjs')
+const BRAIN_URI = `mongodb${'+srv'}://writer:pw@cluster.example.net/kitbrain` // built, never a real string
+const brainEnv = (home, extra = {}) => ({ ...process.env, KIT_BRAIN_URI: BRAIN_URI, KIT_BRAIN_HOME: home, KIT_BRAIN_DRIVER: BRAIN_STUB, KIT_BRAIN_TRANSCRIPTS_HOME: join(home, 'none'), ...extra })
+const plainEnv = () => {
+  const e = { ...process.env }
+  for (const k of Object.keys(e)) if (k.startsWith('KIT_BRAIN_')) delete e[k]
+  return e
+}
+const sh = (cwd, ...a) => spawnSync('git', a, { cwd, encoding: 'utf8' })
+
+/** A scratch git project (with an origin) holding the installed scripts and a finished-looking run, for `orch-state finish`. */
+function finishProject() {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'orch-brain-')))
+  const origin = `${dir}-origin.git`
+  sh(tmpdir(), 'init', '--bare', '--quiet', '-b', 'main', origin)
+  sh(dir, 'init', '--quiet', '-b', 'main')
+  sh(dir, 'config', 'user.email', 't@example.com')
+  sh(dir, 'config', 'user.name', 't')
+  cpSync(join(root, 'scripts'), join(dir, 'scripts'), { recursive: true, dereference: true })
+  writeFileSync(join(dir, '.gitignore'), 'scripts/\n.claude/\n')
+  writeFileSync(join(dir, 'README.md'), 'x\n')
+  sh(dir, 'add', '-A')
+  sh(dir, 'commit', '--quiet', '-m', 'init')
+  sh(dir, 'remote', 'add', 'origin', origin)
+  sh(dir, 'push', '--quiet', '-u', 'origin', 'main')
+  const status = JSON.parse(readFileSync(join(kit, 'tools', 'fixtures', 'orchestrator', 'brain', 'status.json'), 'utf8'))
+  status.run = 'fin'
+  status.phase = 'running'
+  delete status.finishedAt
+  delete status.mainShaAtStart
+  mkdirSync(join(dir, '.claude', 'orchestrator-runs', 'fin'), { recursive: true })
+  writeFileSync(join(dir, '.claude', 'orchestrator-runs', 'fin', 'status.json'), `${JSON.stringify(status, null, 2)}\n`)
+  const finish = (env) => spawnSync(process.execPath, [join(dir, 'scripts', 'orch-state.mjs'), 'finish', '--run=fin', '--final-gate=pass'], { cwd: dir, encoding: 'utf8', env, timeout: 120000 })
+  const report = () => readFileSync(join(dir, '.claude', 'orchestrator-runs', 'fin.md'), 'utf8').replace(/\d{4}-\d\d-\d\dT[\d:.]+Z/g, '<t>').replace(/origin\/main is [0-9a-f]{7,}/g, 'origin/main is <sha>')
+  const json = (r) => JSON.parse(/^ORCH_JSON (.*)$/m.exec(r.stdout)[1])
+  return { dir, origin, finish, report, json, clean: () => { rmSync(dir, { recursive: true, force: true }); rmSync(origin, { recursive: true, force: true }) } }
+}
+
+test('finish: sends the run to the kit brain after the local report is written; a send that fails or hangs changes neither the exit code nor the report', () => {
+  const base = finishProject()
+  const ok = finishProject()
+  const hang = finishProject()
+  const spin = finishProject()
+  const homes = [0, 1, 2].map(() => realpathSync(mkdtempSync(join(tmpdir(), 'orch-brain-home-'))))
+  try {
+    const none = base.finish(plainEnv())
+    assert.equal(none.status, 1, 'no merge folder in the scratch project: the report stays local, as it does without the brain')
+    const reference = base.json(none)
+    assert.ok(reference.local, none.stdout)
+    assert.match(reference.brain ?? 'BRAIN: off', /BRAIN: off/, 'a test run without a named brain home sends nothing')
+    // 1. a stub that accepts everything
+    const good = ok.finish(brainEnv(homes[0]))
+    assert.match(good.stdout, /^BRAIN: sent \d+, queue drained 0$/m, good.stdout)
+    assert.equal(good.status, none.status)
+    const strip = (p, j) => { const { brain, ...rest } = j; return JSON.stringify(rest).split(basename(p.dir)).join('<project>') }
+    assert.equal(strip(ok, ok.json(good)), strip(base, reference), 'the result is the same apart from the BRAIN line')
+    assert.equal(ok.report(), base.report(), 'the report is the same')
+    // 2. a stub that never answers (the child is killed after KIT_BRAIN_KILL_MS)
+    const t0 = Date.now()
+    const slow = hang.finish(brainEnv(homes[1], { KIT_STUB_MODE: 'hang', KIT_BRAIN_TIMEOUT_MS: '60000', KIT_BRAIN_KILL_MS: '1500' }))
+    assert.ok(Date.now() - t0 < 60000, 'finish did not wait for the stub')
+    assert.match(slow.stdout, /^BRAIN: queued \(the send did not finish within 2 s/m, slow.stdout)
+    assert.equal(slow.status, none.status)
+    assert.equal(hang.report(), base.report())
+    assert.ok(readdirSync(join(homes[1], '.kit-brain', 'queue')).length > 0, 'the documents were queued before the send started')
+    // 3. a stub that blocks the child's event loop at load: only the kill stops it
+    const blocked = spin.finish(brainEnv(homes[2], { KIT_STUB_MODE: 'spin', KIT_BRAIN_KILL_MS: '1500' }))
+    assert.match(blocked.stdout, /^BRAIN: queued \(the send did not finish/m)
+    assert.equal(blocked.status, none.status)
+    assert.equal(spin.report(), base.report())
+  } finally {
+    for (const p of [base, ok, hang, spin]) p.clean()
+    for (const h of homes) rmSync(h, { recursive: true, force: true })
+  }
+})
+
+test('grade: the rows just written (ok and ✗ alike) go to the kit brain; a hanging send changes nothing', () => {
+  const home = realpathSync(mkdtempSync(join(tmpdir(), 'orch-brain-home-')))
+  const mk = () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'orch-grade-')))
+    cpSync(join(root, 'scripts'), join(dir, 'scripts'), { recursive: true, dereference: true })
+    mkdirSync(join(dir, '.kit'), { recursive: true })
+    writeFileSync(join(dir, '.kit', 'install.json'), JSON.stringify({ kit: { version: '9.9.9' } }))
+    writeFileSync(join(dir, 'list.json'), JSON.stringify([
+      { id: 'D1', plan: '701', text: 'behaviour: sorted case-insensitively', verdict: 'accept', kind: 'sort-order' },
+      { id: 'D2', plan: '701', text: 'behaviour: page size is 20', verdict: 'ask', kind: 'page-size' },
+    ]))
+    const grade = (env) => spawnSync(process.execPath, [join(dir, 'scripts', 'decision-log.mjs'), 'grade', '--dir', dir, '--run', 'r1', '--reply', 'D2 ✗ page size 50', '--decisions', join(dir, 'list.json'), '--date', '2026-10-30'], { cwd: dir, encoding: 'utf8', env, timeout: 120000 })
+    return { dir, grade }
+  }
+  const a = mk()
+  const b = mk()
+  try {
+    const log = join(home, 'stub.log')
+    const r = a.grade(brainEnv(home, { KIT_STUB_LOG: log }))
+    assert.equal(r.status, 0, r.stdout + r.stderr)
+    assert.match(r.stdout, /DECISION_LOG: graded 2 item\(s\) \(1 ✗\)/)
+    assert.match(r.stdout, /^BRAIN: sent 2, queue drained 0$/m)
+    const sent = readFileSync(log, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).find((x) => x.op === 'insertMany')
+    assert.equal(sent.collection, 'grades')
+    assert.equal(sent.ids.length, 2, 'ok and ✗ alike')
+    const slow = b.grade(brainEnv(home, { KIT_STUB_MODE: 'hang', KIT_BRAIN_TIMEOUT_MS: '60000', KIT_BRAIN_KILL_MS: '1500' }))
+    assert.equal(slow.status, 0, slow.stdout + slow.stderr)
+    assert.match(slow.stdout, /BRAIN: queued \(the send did not finish/)
+    assert.equal(readFileSync(join(b.dir, 'docs', 'brain', 'decision-grades.jsonl'), 'utf8').split('\n').filter(Boolean).length, 2, 'the grades file is written whatever the send does')
+    // Graded again: nothing new was written, so nothing is sent.
+    const again = a.grade(brainEnv(home, { KIT_STUB_LOG: log }))
+    assert.doesNotMatch(again.stdout, /BRAIN:/)
+  } finally {
+    rmSync(a.dir, { recursive: true, force: true })
+    rmSync(b.dir, { recursive: true, force: true })
+    rmSync(home, { recursive: true, force: true })
+  }
+})

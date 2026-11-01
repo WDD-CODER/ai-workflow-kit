@@ -1,0 +1,64 @@
+{
+  "run": "run-fx",
+  "branch": "orch/run-fx",
+  "base": "main",
+  "startedAt": "2026-10-29T10:00:00.000Z",
+  "mainShaAtStart": "0e5e7f48e6451aee42e0148449efb4fe971ee7a2",
+  "plans": {
+    "701": {
+      "nnn": "701",
+      "title": "Widget list: sort by name",
+      "branch": "feat/701-widget-list-sort",
+      "state": "parked",
+      "round": 2,
+      "tier": "build",
+      "reason": "same reason twice: gate (main folder): node scripts/log-query.mjs --since=plan-start --level=error (fix rounds used: 2 of 2)",
+      "models": {
+        "orch-builder": { "model": "claude-sonnet-5-5", "effort": "medium" },
+        "orch-gate": { "model": "claude-haiku-5-5", "effort": "low" }
+      },
+      "humanItems": ["Open the list and see the names in order"],
+      "history": [
+        { "at": "2026-10-29T10:00:00.000Z", "state": "queued", "round": 0 },
+        { "at": "2026-10-29T10:02:00.000Z", "state": "building", "round": 0 },
+        { "at": "2026-10-29T10:10:00.000Z", "state": "gate", "round": 0 },
+        { "at": "2026-10-29T10:12:00.000Z", "state": "checking", "round": 0 },
+        { "at": "2026-10-29T10:20:00.000Z", "state": "fixing", "round": 1 },
+        { "at": "2026-10-29T10:25:00.000Z", "state": "gate", "round": 1 },
+        { "at": "2026-10-29T10:30:00.000Z", "state": "parked", "round": 2 }
+      ],
+      "flakes": [
+        { "command": "npm run test", "round": 1, "via": "rerun", "where": "gate", "at": "2026-10-29T10:26:00.000Z", "text": "flake: npm run test (plan 701, round 1)" }
+      ],
+      "gateEvents": ["timed out: npm run e2e"],
+      "earlier": [
+        { "nnn": "701", "round": 2, "state": "parked", "tier": "build", "reason": "gate (main folder): node scripts/log-query.mjs --since=plan-start --level=error in C:\\work\\app-wt-1 at 2026-10-29T09:00:00Z", "models": {} }
+      ],
+      "freeDiskGb": 28.4
+    },
+    "702": {
+      "nnn": "702",
+      "title": "Widget list: page size",
+      "branch": "feat/702-widget-list-page-size",
+      "state": "skipped",
+      "round": 0,
+      "tier": "build",
+      "reason": "not started: wave 1 parked 701 — later waves not started",
+      "models": {},
+      "humanItems": [],
+      "history": [{ "at": "2026-10-29T10:30:00.000Z", "state": "skipped", "round": 0 }]
+    }
+  },
+  "notes": [
+    { "at": "2026-10-29T10:05:00.000Z", "plan": "701", "text": "runner retry: gate 701 — first attempt: spawn EBUSY" },
+    { "at": "2026-10-29T10:31:00.000Z", "text": "wave 1 parked 701 — skipped 702 (not started); 0 later plan(s) go on" }
+  ],
+  "decisions": [
+    { "id": "D1", "plan": "701", "text": "behaviour: sorted case-insensitively" }
+  ],
+  "attempts": 1,
+  "phase": "finished",
+  "freeDiskGb": 28.4,
+  "updatedAt": "2026-10-29T10:35:00.000Z",
+  "finishedAt": "2026-10-29T10:35:00.000Z"
+}

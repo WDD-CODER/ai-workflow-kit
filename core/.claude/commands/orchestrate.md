@@ -150,7 +150,14 @@ every prompt from the plans and the state script.
       generic lessons to the kit;
    4. `node scripts/orch-state.mjs brain-commit --run <run>` — commits `docs/brain` and any new
       `docs/agent-evals/cases/<checker>/<case>` folder on the run branch (`BRAIN: committed <n> file(s) on <branch>` or `BRAIN: nothing
-      to commit`).
+      to commit`);
+   5. Write at most 8 lines of what you did by hand for this run after it finished (step, minutes if known, could a
+      script do it: yes/no) to `.claude/sessions/toil-<run>.json` — `[{ "step": "…", "minutes": 5, "script": "yes" }]` —
+      then `node scripts/brain.mjs send --toil --run <run>` (`BRAIN: sent <n>…` or `BRAIN: queued <n> (…)`: the kit
+      brain, `docs/agent/kit-brain.md`; a machine without it queues and loses nothing). None → skip.
+
+   The `grade` command in item 1 also sends its rows to the kit brain (a `BRAIN: …` line); `finish` in step 4 sends the
+   run's facts. Neither can fail the run.
 
    The wrap-up lists the new rules (pending ones marked), the case paths and, under "Enforce candidates (a plan each,
    when you want them)", the lines of `node scripts/decision-log.mjs rules --enforce --dir <mergeFolder>`.

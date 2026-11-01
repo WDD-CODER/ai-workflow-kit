@@ -15,6 +15,17 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
   file), because a code-folder glob does not cover the tests under it. `scope-check.mjs --tests --plan=<p>` is a
   warning-only shape lint for it (`SCOPE_TESTS: ok | warn | skipped`; docs-only plans are exempt) that `save-plan` runs
   with its other shape checks; it reuses the test-path helper of the test-file gate.
+- **The kit brain: every run sends its facts to a private store.** `scripts/brain.mjs` builds documents from a run's
+  `status.json` with no model call and no network until it sends (runs, plans with minutes per phase, events with a
+  signature that matches the same failure across runs and projects, graded decisions, the Planner's by-hand toil lines,
+  lessons) and inserts them into a MongoDB Atlas cluster the kit owner keeps. `orch-state.mjs finish`, `decision-log.mjs
+  grade` and, when `KIT_BRAIN_URI` is set, `kit-feedback.mjs` send at their end; a machine that is offline or not set up
+  queues the documents under `~/.kit-brain/queue` and the next send drains them; a send never changes a run's exit code or
+  report. Secrets and code are cut before anything is queued. Token counts per phase and per role are read from the
+  Workflow transcripts, or `null` when the format is not recognised. `tools/brain-query.mjs` (kit repository only) prints
+  runs, repeated problems and a per-kit-version trend. New config `brain.projectId` and `brain.enabled`; install and sync
+  refuse a connection string in any `brain.*` value (it lives in `KIT_BRAIN_URI`). `scripts/pre-commit-secret-scan.mjs`
+  exports its pattern list and no longer runs its git check when imported. Setup and schema: `docs/agent/kit-brain.md`.
 - **Orchestrator checkers hardening.** A changed test file that no scope line naming a test location lists is now a
   blocker found by script (`scope-check --diff` prints `SCOPE: test-out <path>`; `orch-state diff` returns
   `testsOutOfScope`), before any finder runs. Two fix rounds that end on the same head sha park the plan

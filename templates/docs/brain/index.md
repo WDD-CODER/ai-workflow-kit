@@ -16,6 +16,8 @@ Distilled project knowledge: history and reasoning, not current state. **Current
 8. `agent-lessons/` — one short file per orchestrator role and the Planner (`<role>.md`, at most 40 lines / 3,000 characters each), facts from earlier runs written by `node scripts/orch-state.mjs lessons`; `run-log.md` — one row per run, which `orch-readiness` and the run report's trend line read
 9. `follow-ups.md` — defects agents saw outside their job; every graded orchestrator decision is a line in `decision-grades.jsonl` (written by `decision-log.mjs grade`, never read by builders)
 
+Run evidence also leaves the project, to the kit's private store, with no model call (`node scripts/brain.mjs`): what goes where and how to set it up is in `docs/agent/kit-brain.md`.
+
 ## When to read what
 
 | Situation | Read |

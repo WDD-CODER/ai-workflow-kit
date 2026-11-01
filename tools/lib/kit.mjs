@@ -86,6 +86,7 @@ export function commandProblems(vals) {
   for (const m of asList(vals['mods.enabled'])) if (!MODS.includes(m)) out.push(`mods.enabled names "${m}" — allowed: ${MODS.map((x) => `"${x}"`).join(', ')}`)
   if (asList(vals['mods.enabled']).length && !/^[\w.-]+\/[\w.-]+$/.test(String(vals['mods.marketplaceRepo'] ?? ''))) out.push(`mods.marketplaceRepo is "${vals['mods.marketplaceRepo'] ?? ''}" — it must be <owner>/<repo>`)
   out.push(...orchestratorProblems(vals))
+  out.push(...brainProblems(vals))
   // ownership.upstreamPaths is read by the kit's own glob matcher and by the scope guard's (picomatch): only the syntax
   // both read alike (`**`, `*`, `?`, a trailing `/`).
   for (const g of asList(vals['ownership.upstreamPaths'])) {
@@ -116,6 +117,27 @@ export function ciCommandProblem(cmd) {
     return writes ? `${c}: ${writes.split('=')[0]} writes files, it is not a check` : null
   }
   return `${c}: not an allowed check (npm run <script>, pnpm run <script>, node scripts/<file>.mjs or node tools/<file>.mjs)`
+}
+
+/**
+ * brain.* (the kit brain, docs/agent/kit-brain.md): projectId is a slug, enabled a boolean, and no value under brain.* may
+ * look like a connection string — the string is a secret and lives in the KIT_BRAIN_URI environment variable, never in a
+ * file the kit manages. One message per bad key.
+ */
+export function brainProblems(vals) {
+  const out = []
+  for (const [key, v] of Object.entries(vals)) {
+    if (key.startsWith('brain.') && /mongodb(\+srv)?:\/\//.test(JSON.stringify(v ?? ''))) {
+      out.push(`${key} is not a config key — the connection string lives in KIT_BRAIN_URI`)
+    }
+  }
+  const id = vals['brain.projectId']
+  if (id !== undefined && id !== '' && !(typeof id === 'string' && /^[a-z0-9][a-z0-9._-]{0,59}$/.test(id))) {
+    out.push(`brain.projectId is ${JSON.stringify(id)} — it must be a short slug (lower-case letters, digits, dots, dashes), or empty to use project.repoName`)
+  }
+  const on = vals['brain.enabled']
+  if (on !== undefined && typeof on !== 'boolean') out.push(`brain.enabled is ${JSON.stringify(on)} — it must be true or false`)
+  return out
 }
 
 /**

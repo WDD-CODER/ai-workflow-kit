@@ -11,11 +11,16 @@
  * project must not carry one project's code or name. --text-file reads only a scratch file (under the OS temp folder
  * or .claude/sessions/, never a dotfile or a ".." path), so no secret file can reach the entry. --dry-run prints the entry and the gh calls and pushes nothing.
  *
- * Needs `gh` signed in. Node built-ins only. Exit 0 = sent (or dry run), 2 = refused or bad input, 1 = gh failed.
+ * On a machine set up for the kit brain (KIT_BRAIN_URI is set — docs/agent/kit-brain.md) the lesson goes to the brain's
+ * `lessonsIn` collection instead, after the same refusal checks, and no pull request is opened:
+ * `KIT_FEEDBACK: sent to the kit brain` (or `queued for the kit brain (…)` when the send could not finish; the queue
+ * retries it). Optional --role <role> and --why "<one line>" travel with it. Without KIT_BRAIN_URI nothing changes.
+ *
+ * Needs `gh` signed in (pull-request path only). Node built-ins only. Exit 0 = sent (or dry run), 2 = refused or bad input, 1 = gh failed.
  */
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve, basename, relative, isAbsolute } from 'node:path'
+import { join, resolve, basename, dirname, relative, isAbsolute } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
@@ -70,6 +75,23 @@ export function entryFile(date, slug, title, text) {
   return [`# ${title}`, '', `Sent ${date} from a project using the kit. One lesson, written in general terms.`, '', text.trim(), ''].join('\n')
 }
 
+/** The lesson goes to scripts/brain.mjs (next to this file) as a scratch JSON file; the answer is its one BRAIN line. */
+function sendToBrain(lesson, root) {
+  const brain = join(dirname(fileURLToPath(import.meta.url)), 'brain.mjs')
+  const dir = mkdtempSync(join(tmpdir(), 'kit-feedback-'))
+  try {
+    const file = join(dir, 'lesson.json')
+    writeFileSync(file, JSON.stringify(lesson))
+    const kill = Number(process.env.KIT_BRAIN_KILL_MS) > 0 ? Number(process.env.KIT_BRAIN_KILL_MS) : 15000
+    const r = spawnSync(process.execPath, [brain, 'send', '--lesson-file', file, '--root', root], { encoding: 'utf8', timeout: kill, killSignal: 'SIGKILL' })
+    const line = r.error || r.signal ? '' : (r.stdout ?? '').split(/\r?\n/).find((l) => l.startsWith('BRAIN:')) ?? ''
+    if (/^BRAIN: sent/.test(line)) process.stdout.write('KIT_FEEDBACK: sent to the kit brain\n')
+    else process.stdout.write(`KIT_FEEDBACK: queued for the kit brain (${/\((.*)\)/.exec(line)?.[1] ?? 'the send did not finish'}); the queue retries it with the next send\n`)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
 function main(argv) {
   const flags = {}
   for (let i = 0; i < argv.length; i++) {
@@ -88,8 +110,19 @@ function main(argv) {
   }
   if (!title || !text || !String(text).trim()) refuse('--title and --text (or --text-file) are required')
   const cfg = readJson(join(root, '.kit', 'config.json')) ?? readJson(join(root, 'kit.config.json')) ?? {}
-  const why = privacyProblem(`${title}\n${text}`, cfg, basename(root))
+  if (flags.role !== undefined && !/^[a-z][a-z-]{0,39}$/.test(String(flags.role))) refuse('--role takes a role name (lower-case letters and dashes, e.g. builder, check-bugs)')
+  const why = privacyProblem(`${title}\n${text}\n${flags.why ?? ''}\n${flags.role ?? ''}`, cfg, basename(root))
   if (why) refuse(`refused — ${why}. Write the lesson without project names, repository names, project paths or code.`)
+  // A machine set up for the kit brain sends the lesson there (no pull request, no push rights on the kit repository).
+  if (process.env.KIT_BRAIN_URI) {
+    const lesson = { role: flags.role ? String(flags.role) : null, title, text: String(text).trim(), why: flags.why ? String(flags.why) : '' }
+    if (flags['dry-run']) {
+      process.stdout.write(`KIT_FEEDBACK: dry run — would send to the kit brain (KIT_BRAIN_URI is set), nothing sent\n--- lesson ---\n${JSON.stringify(lesson, null, 2)}\n`)
+      return
+    }
+    sendToBrain(lesson, root)
+    return
+  }
   const install = readJson(join(root, '.kit', 'install.json'))
   const repo = repoOf(install?.source)
   if (!repo) refuse(`.kit/install.json source is ${JSON.stringify(install?.source ?? null)} — kit feedback needs github:<owner>/<repo>`)
