@@ -1447,6 +1447,36 @@ test('orch-state lessons: the lines land in docs/brain/agent-lessons/<role>.md, 
   } finally { t.clean() }
 })
 
+test('plan 046: orch-state context answers the kit\'s live lessons per role (before ## Retired, no leading dash); a missing file adds nothing', () => {
+  const t = learnDir()
+  try {
+    const seed = (role, live, retired = []) => `# Kit lessons — ${role}\nheader\n${live.map((l) => `- ${l}`).join('\n')}\n\n## Retired\n${retired.map((l) => `- ${l}`).join('\n')}\n`
+    t.write('docs/agent/kit-lessons/builder.md', seed('builder', ['K1: quote the glob — why: node 24 fails (issue I1, since v1.13.0)', 'K2: stamp the slot — why: x (issue I2, since v1.13.0)'], ['K3: old — why: y (issue I3, since v1.12.0) — retired gone:never']))
+    t.write('docs/agent/kit-lessons/planner.md', seed('planner', ['K4: planner only — why: z (issue I4, since v1.13.0)']))
+    const r = t.orch('context')
+    assert.equal(r.status, 0, r.stderr)
+    const j = JSON.parse(/ORCH_JSON (.*)/.exec(r.stdout)[1])
+    assert.deepEqual(j.kitLessons, { builder: ['K1: quote the glob — why: node 24 fails (issue I1, since v1.13.0)', 'K2: stamp the slot — why: x (issue I2, since v1.13.0)'] }, 'live lines only; the planner file is read by /plan, not injected; no gate file adds nothing')
+  } finally { t.clean() }
+})
+
+test('plan 046: a kind the project graded fewer than minGraded times takes the kit\'s triage-prior row; a kind it graded enough keeps its own', () => {
+  const src = readFileSync(join(root, 'scripts', 'orch-state.mjs'), 'utf8')
+  assert.ok(src.includes('stats: withKitPrior(agreementStats(gradeRows), kitTriagePrior('), 'finish applies the prior to the triage stats')
+  const grab = (name) => new RegExp(`(?:function ${name}\\([\\s\\S]*?\\n\\})`).exec(src)[0]
+  const readIf = () => '# Kit triage prior\n\n| Kind | Graded | Agreement |\n| --- | --- | --- |\n| sort-order | 40 | 95% |\n| copy | 30 | 50% |\n'
+  const joinPath = (...p) => p.join('/')
+  const { kitTriagePrior, withKitPrior } = new Function('readIf', 'join', `${grab('kitTriagePrior')}\n${grab('withKitPrior')}\nreturn { kitTriagePrior, withKitPrior }`)(readIf, joinPath)
+  const prior = kitTriagePrior('/x')
+  assert.deepEqual(prior['sort-order'], { graded: 40, agree: 38, agreement: 0.95 })
+  const stats = { kinds: { 'sort-order': { graded: 3, agree: 3, agreement: 1 }, copy: { graded: 25, agree: 25, agreement: 1 } }, all: { last: 50, graded: 28, agree: 28, agreement: 1 } }
+  const merged = withKitPrior(stats, prior, 20)
+  assert.equal(merged.kinds['sort-order'].graded, 40, 'the project graded 3 (< 20): the kit row')
+  assert.equal(merged.kinds.copy.graded, 25, 'the project graded 25 (>= 20): its own row')
+  assert.deepEqual(merged.all, stats.all)
+  assert.deepEqual(withKitPrior(stats, {}, 20), stats, 'no prior, no change')
+})
+
 test('orch-state lessons: a merge folder that is gone (a merged run\'s was removed) is an error — nothing is written in the main checkout', () => {
   const t = learnDir(LESSON_STATUS, { merge: false })
   try {
@@ -1649,6 +1679,27 @@ test('every launched role task carries LESSONS as a JSON array of lines (RULES a
   assert.deepEqual(['LESSONS', 'RULES', 'RECENT_RUNS'].map((k) => bareReady.calls.find((c) => c.type === 'orch-readiness').task[k]), ['[]', '[]', '[]'])
   // merge and report agents get none of it
   assert.equal(first('orch-merge').task.LESSONS, undefined)
+})
+
+test('plan 046: every role gets the kit\'s lessons first, in the file\'s order, then the project\'s; a role with no kit file adds nothing', async () => {
+  const kitLessons = {
+    builder: ['K1: quote the glob — why: node 24 fails (issue I1, since v1.13.0)', 'K2: stamp the slot — why: checks cannot pass (issue I2, since v1.13.0)'],
+    gate: ['K3: time out the gate — why: it hung (issue I3, since v1.13.0)'],
+    readiness: ['K4: read the slot rule — why: parked after ready (issue I4, since v1.13.0)'],
+  }
+  const lessons = { builder: ['2026-10-01 old: project lesson for builder'], readiness: ['2026-10-01 old: project lesson for readiness'], 'check-bugs': ['2026-10-01 old: project lesson for check-bugs'] }
+  const arr = (v) => JSON.parse(v)
+  const run = await runFlow({ plans: ['101'], pilot: false }, { context: { lessons, kitLessons } })
+  const first = (type) => run.calls.find((c) => c.type === type)
+  assert.deepEqual(arr(first('orch-builder').task.LESSONS), [...kitLessons.builder, ...lessons.builder], 'kit lines first, ordered as the file, then the project\'s')
+  for (const c of run.calls.filter((x) => x.type === 'orch-gate')) assert.deepEqual(arr(c.task.LESSONS), kitLessons.gate, 'a role with kit lessons only')
+  assert.deepEqual(arr(first('orch-check-bugs').task.LESSONS), lessons['check-bugs'], 'a missing kit file adds nothing')
+  assert.deepEqual(arr(first('orch-check-plan').task.LESSONS), [], 'neither side has a line')
+  const ready = await runFlow({ mode: 'readiness', plans: ['101'] }, { context: { lessons, kitLessons } })
+  assert.deepEqual(arr(ready.calls.find((c) => c.type === 'orch-readiness').task.LESSONS), [...kitLessons.readiness, ...lessons.readiness])
+  // junk in the kit answer is ignored, not trusted
+  const junk = await runFlow({ plans: ['101'], pilot: false }, { context: { lessons, kitLessons: { builder: ['', 7, null, 'K9: ok'] } } })
+  assert.deepEqual(arr(junk.calls.find((c) => c.type === 'orch-builder').task.LESSONS), ['K9: ok', ...lessons.builder])
 })
 
 test('a failed context read is a run note and every role gets []; the read is one call per launch, not per plan', async () => {

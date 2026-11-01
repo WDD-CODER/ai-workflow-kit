@@ -387,6 +387,39 @@ function lessonsIn(base, files = new Map()) {
   }
   return out
 }
+/**
+ * The kit's own lessons: the live lines `- K<n>: …` (before `## Retired`) of docs/agent/kit-lessons/<role>.md,
+ * without the leading dash, for the injected roles. A missing file is an empty list. The kit owns these files.
+ */
+function kitLessonsIn(base) {
+  const out = {}
+  for (const role of INJECTED_ROLES) {
+    const text = readIf(join(base, 'docs', 'agent', 'kit-lessons', `${role}.md`))
+    if (!text) continue
+    const lines = []
+    for (const l of text.replace(/\r\n/g, '\n').split('\n').slice(2)) {
+      if (l.trim() === '## Retired') break
+      if (/^- K\d+: /.test(l)) lines.push(l.replace(/^-\s+/, ''))
+    }
+    if (lines.length) out[role] = lines
+  }
+  return out
+}
+/** The kit's triage prior (docs/agent/kit-lessons/triage-calibration.md): { kind: { graded, agree, agreement } } from its table. */
+function kitTriagePrior(base) {
+  const out = {}
+  for (const l of (readIf(join(base, 'docs', 'agent', 'kit-lessons', 'triage-calibration.md')) ?? '').split('\n')) {
+    const m = /^\|\s*([^|]+?)\s*\|\s*(\d+)\s*\|\s*(\d+)%\s*\|$/.exec(l)
+    if (m) out[m[1]] = { graded: Number(m[2]), agree: Math.round((Number(m[2]) * Number(m[3])) / 100), agreement: Number(m[3]) / 100 }
+  }
+  return out
+}
+/** The project's agreement per kind; a kind it graded fewer than `minGraded` times takes the kit's row when the kit has one. */
+function withKitPrior(stats, prior, minGraded) {
+  const kinds = { ...stats.kinds }
+  for (const [kind, row] of Object.entries(prior)) if ((kinds[kind]?.graded ?? 0) < minGraded) kinds[kind] = row
+  return { ...stats, kinds }
+}
 const rulesIn = (base) => {
   const t = readIf(join(base, 'docs', 'brain', 'agent-rules.md')) ?? ''
   return { checkers: ruleLines(t, 'checkers'), readiness: ruleLines(t, 'readiness'), ui: ruleLines(t, 'ui') }
@@ -937,7 +970,8 @@ const commands = {
     const rules = rulesIn(base)
     const recent = recentRunsOf(parseRunLog(readIf(join(base, RUN_LOG_REL)) ?? '').rows)
     const budget = contextBudget({ lessons: all, rules, recent })
-    emit({ ok: true, lessons, rules, recent, chars: budget.total, line: budget.line }, budgetLines(budget))
+    const kitLessons = kitLessonsIn(base)
+    emit({ ok: true, lessons, kitLessons, rules, recent, chars: budget.total, line: budget.line }, budgetLines(budget))
   },
 
   // The lesson lines of the run, derived from status.json by code (no model call), appended to docs/brain/agent-lessons/
@@ -1035,7 +1069,7 @@ const commands = {
     const appErrors = runLogQuery(status.startedAt)
     // The grade rows (docs/brain/decision-grades.jsonl) of the merge folder, else of the main folder: agreement per kind.
     const gradeRows = readGradeRows([join(mf, 'docs', 'brain', 'decision-grades.jsonl'), join(root, 'docs', 'brain', 'decision-grades.jsonl')])
-    const triage = { mode: TRIAGE, stats: agreementStats(gradeRows), minAgreement: TRIAGE_MIN_AGREEMENT, minGraded: TRIAGE_MIN_GRADED }
+    const triage = { mode: TRIAGE, stats: withKitPrior(agreementStats(gradeRows), kitTriagePrior(existsSync(mf) ? mf : root), TRIAGE_MIN_GRADED), minAgreement: TRIAGE_MIN_AGREEMENT, minGraded: TRIAGE_MIN_GRADED }
     // What the run teaches the next one: lesson lines from status.json, this run's row of the run log, and the trend line and
     // character budget the report ends with. Computed here in memory (a failure never stops the report); the files are
     // written and committed below, with the report, in the merge folder.
