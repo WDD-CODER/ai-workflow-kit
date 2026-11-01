@@ -28,7 +28,9 @@ Always allowed regardless of the list below: this plan file itself, its own
 hotspots (`{{paths.hotspots}}` — add to them, never rewrite or remove an existing entry without escalating).
 
 ```scope
-[one glob per line, prefer folder globs]
+[one glob per line, prefer folder globs for code]
+[and one line that must name the test location itself — a tests folder glob or a single test file — when a step
+changes code that has tests; a code-folder glob does not cover the tests under it]
 ```
 
 ## Read Scope

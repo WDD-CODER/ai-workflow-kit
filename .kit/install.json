@@ -3,7 +3,7 @@
     "version": "1.12.0"
   },
   "source": "local:.",
-  "commit": "a1e2502f5656c26e8734ebddda5190a3e15ff478",
+  "commit": "9de9e4584c7bd86b361c447a4d3b33c6a5fca5f5",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -155,7 +155,7 @@
       "source": "core/.claude/commands/orchestrate.md"
     },
     ".claude/commands/plan.md": {
-      "sha256": "64ea23456c001cae04c325a7f5a47f4a9b3aa07d79f62a88418796f0e490d169",
+      "sha256": "aa148a65ad625028233ee2f2f2ba89f3432549cd78b0d1d286d933f05cc53d04",
       "kind": "managed",
       "source": "core/.claude/commands/plan.md"
     },
@@ -225,7 +225,7 @@
       "source": "core/.claude/references/hld-template.md"
     },
     ".claude/references/prd-template.md": {
-      "sha256": "4368ebc67407655757f6306f7d74dd0211ea9d09f0b8cfa73644bbac084e91f1",
+      "sha256": "f6c4f5efa3f1f4cf1e232a72f68684a149eebad3379b4005459a525f9795607e",
       "kind": "managed",
       "source": "core/.claude/references/prd-template.md"
     },
@@ -250,12 +250,12 @@
       "source": "core/.claude/skills/preflight/SKILL.md"
     },
     ".claude/skills/save-plan/SKILL.md": {
-      "sha256": "f432308bd2af5706a122e48f6ec6d2f39e3324a26c06cd0b91bcd2af4f96ed2a",
+      "sha256": "2cc579f6e7273c7e7fca4a1deda4f7ccd637b51744716048f41de50c1fdeba82",
       "kind": "managed",
       "source": "core/.claude/skills/save-plan/SKILL.md"
     },
     ".claude/skills/save-plan/evals/evals.json": {
-      "sha256": "d7deffe10deb21611459fc3bfbd8c78f431a1f0cd3ec5df06eeea322bdecdbef",
+      "sha256": "24193f8deb9483f0f80981d82f97563b3e2a03fbfe5042e46803e7281dd1bbcd",
       "kind": "managed",
       "source": "core/.claude/skills/save-plan/evals/evals.json"
     },
@@ -694,6 +694,11 @@
       "kind": "managed",
       "source": "core/scripts/lib/redact.mjs"
     },
+    "scripts/lib/scope-tests-lint.mjs": {
+      "sha256": "300b7d0efda98b7d343cf1c93be9ee587fc49d3c1789f370a59b452c30af18e3",
+      "kind": "managed",
+      "source": "core/scripts/lib/scope-tests-lint.mjs"
+    },
     "scripts/lib/slot-procs.mjs": {
       "sha256": "678430cb7581789c747e8e2c2a64c45e4c18787c68d53ddb4023df506982dc44",
       "kind": "managed",
@@ -800,7 +805,7 @@
       "source": "core/scripts/run-python.sh"
     },
     "scripts/scope-check.mjs": {
-      "sha256": "caf3af460f82c8c3fe40757e8faacd476d6a96d690343b2dbe564a1fc2eaf997",
+      "sha256": "1f5d43141f5f6354794d9827cff2a3ed50e8e6b6a54c11c74490c96a86c26d1c",
       "kind": "managed",
       "source": "core/scripts/scope-check.mjs"
     },

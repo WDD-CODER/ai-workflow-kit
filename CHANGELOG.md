@@ -10,6 +10,11 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 ## [Unreleased]
 
 ### Added
+- **Plans are told to name their test location.** `/plan`, the PRD template and `save-plan` now say that when a step
+  changes code that has tests, a scope line must name the test location itself (a tests folder glob or a single test
+  file), because a code-folder glob does not cover the tests under it. `scope-check.mjs --tests --plan=<p>` is a
+  warning-only shape lint for it (`SCOPE_TESTS: ok | warn | skipped`; docs-only plans are exempt) that `save-plan` runs
+  with its other shape checks; it reuses the test-path helper of the test-file gate.
 - **Orchestrator checkers hardening.** A changed test file that no scope line naming a test location lists is now a
   blocker found by script (`scope-check --diff` prints `SCOPE: test-out <path>`; `orch-state diff` returns
   `testsOutOfScope`), before any finder runs. Two fix rounds that end on the same head sha park the plan

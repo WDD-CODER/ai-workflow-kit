@@ -12,6 +12,7 @@
  *   node scripts/scope-check.mjs --arch --diff=<base> [--plan=<path>]   (WARN, exit 0)
  *   node scripts/scope-check.mjs --deps --plan=<path>
  *   node scripts/scope-check.mjs --tags --plan=<path>
+ *   node scripts/scope-check.mjs --tests --plan=<path>
  *
  * --diff also prints "SCOPE: test-out <path>" (exit 1) for a changed test file that no scope line naming a test
  * location lists (a broad folder glob such as tools/** does not list the tests under it).
@@ -33,6 +34,10 @@
  * when every Done-when item starts with [auto], [ui] or [human]; else one line per bad item (no tag, an unclosed
  * "[ui", a wrong spelling such as "[UI]") and exit 1.
  *
+ * --tests is the save-plan shape lint for test locations (scripts/lib/scope-tests-lint.mjs): when the scope names code
+ * and no scope line names a test location it prints "SCOPE_TESTS: warn" and the code lines; "SCOPE_TESTS: ok" when a
+ * test location is named; "SCOPE_TESTS: skipped (docs only)" / "(no scope)". A warning, never an error: always exit 0.
+ *
  * --arch reads the architecture invariants registry (docs/brain/invariants.md; see
  * scripts/lib/invariants.mjs). With --plan: exit 1 when the plan's scope touches an
  * invariant that has no "## Architecture Impact" entry, or a deviation/changes entry
@@ -52,6 +57,7 @@ import { extractScopeGlobs, testFilesOutOfScope } from './lib/plan-scope.mjs'
 import { listOpenPlans, OPEN_PLAN_DIRS } from './lib/plan-paths.mjs'
 import { parseDependsOn, parseProsePrerequisites } from './lib/plan-deps.mjs'
 import { doneWhenTagProblems } from './lib/done-when.mjs'
+import { scopeTestsLint } from './lib/scope-tests-lint.mjs'
 import { parseInvariants, checkPlanArch, diffArchWarnings, decisionWithoutAdr, parseAddedLines } from './lib/invariants.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -345,6 +351,18 @@ function cmdTags(args) {
   console.log('DONE_WHEN_TAGS: ok')
 }
 
+function cmdTests(args) {
+  if (!args.plan || args.plan === true) fail('--tests requires --plan=<path>')
+  const planPath = normalize(args.plan)
+  const r = scopeTestsLint(readPlanFile(planPath))
+  if (r.status === 'warn') {
+    console.log('SCOPE_TESTS: warn')
+    console.log(`  ${planPath} changes code (scope: ${r.codeGlobs.join(', ')}) but no scope line names a test location - add one (a tests folder glob or a single test file); a code-folder glob does not cover the tests under it`)
+  } else if (r.status === 'docs-only') console.log('SCOPE_TESTS: skipped (docs only)')
+  else if (r.status === 'no-scope') console.log('SCOPE_TESTS: skipped (no scope)')
+  else console.log('SCOPE_TESTS: ok')
+}
+
 const args = parseArgs(process.argv.slice(2))
 
 if (args.arch && args.diff) cmdArchDiff(args)
@@ -352,8 +370,9 @@ else if (args.arch && args.plan) cmdArchPlan(args)
 else if (args.arch) fail('--arch needs --plan=<p> or --diff=<base>')
 else if (args.deps) cmdDeps(args)
 else if (args.tags) cmdTags(args)
+else if (args.tests) cmdTests(args)
 else if (args.file) cmdFile(args)
 else if (args.diff) cmdDiff(args)
 else if (args.overlap) cmdOverlap(args)
 else if (args.drift) cmdDrift(args)
-else fail('usage: --file=<p> | --diff=<base> | --overlap --plan=<p> | --drift [--plan=<p>] | --arch --plan=<p> | --arch --diff=<base> | --deps --plan=<p> | --tags --plan=<p>')
+else fail('usage: --file=<p> | --diff=<base> | --overlap --plan=<p> | --drift [--plan=<p>] | --arch --plan=<p> | --arch --diff=<base> | --deps --plan=<p> | --tags --plan=<p> | --tests --plan=<p>')
