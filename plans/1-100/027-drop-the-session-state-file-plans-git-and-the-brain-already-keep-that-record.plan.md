@@ -1,6 +1,6 @@
 # Plan 027 — Drop the session-state file: plans, git and the brain already keep that record
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: dc7893fb3b9027ed3e62c6a4af0c35a150917c81
 

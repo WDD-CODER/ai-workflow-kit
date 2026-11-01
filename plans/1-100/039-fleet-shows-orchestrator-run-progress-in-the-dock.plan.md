@@ -1,6 +1,6 @@
 # Plan 039 — Fleet shows orchestrator run progress in the dock
 
-Status: draft
+Status: done
 Track: code — here (kit)
 Snapshot: 95a75dbcdfae0d7cf42e998ab29d9d17884f2397
 Depends-on: none

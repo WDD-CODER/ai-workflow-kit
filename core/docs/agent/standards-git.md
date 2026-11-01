@@ -105,6 +105,10 @@ node scripts/free-merged-slots.mjs
 
 The first line stops the slot's dev servers (servers are off unless a session needs them). The fetch matters: `gh` merges on GitHub, so without it `origin/{{git.mainBranch}}` is one commit behind. The last line frees the slot: it stops any server still running there, detaches to `origin/{{git.mainBranch}}` (idle) and clears `.worktree-plan`, so a later "pull {{git.mainBranch}}" cannot fast-forward the merged branch. Stay in the slot folder. Do not `cd` to the main folder and do not check out `{{git.mainBranch}}`. Next job: the Human runs `/clear`, then `take plan NNN` in the same slot — `take-plan.mjs` fetches, releases the merged branch, and claims the new plan without starting servers (`node scripts/slot-serve.mjs` starts them when a step needs the app).
 
+### Plan close after the merge (every repo, every lane)
+
+After every merge, check whether the merged work finished a plan: run `node scripts/plan-close.mjs --dry-run`. It lists each open plan whose Atomic Sub-tasks are all ticked (and no `[auto]` Done-when item is open). When it lists any, run `node scripts/plan-close.mjs` — it sets `Status: done` and files the plan under `plans/<range>/` — then commit only `plans/` with `plan(NNN): close — merged` and push (plans may be written on `{{git.mainBranch}}`). Never move a plan by hand. Skip it when `todo-sync` already closed the plan on origin (the script reports `already closed`). A plan that is not fully ticked stays open — never force it.
+
 ### Brain capture — auto-write with opt-out
 
 Write the approved fenced draft **verbatim** to `docs/brain/**` (for a gotcha: append to the matching `gotchas/<domain>.md` per the routing table in `docs/brain/gotchas.md`; new file under `patterns/`; next-numbered file under `decisions/`) as part of handling `merge` / `later` / `open-pr-only`, then commit on the PR branch (or open a tiny follow-up PR/commit if already merged). Skip the write only on an explicit `no brain` / `skip brain` reply. `brain edit …` revises the draft and re-shows it before writing. This is why there is no need for a separate `brain approve` token.

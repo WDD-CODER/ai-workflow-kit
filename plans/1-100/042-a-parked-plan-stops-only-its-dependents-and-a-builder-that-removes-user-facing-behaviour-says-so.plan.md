@@ -1,6 +1,6 @@
 # Plan 042 — A parked plan stops only the plans that depend on it or share its files, and a builder that removes something users already have says so
 
-Status: draft
+Status: done
 Depends-on: 041
 Snapshot: a363b42
 

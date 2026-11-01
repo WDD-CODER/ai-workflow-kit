@@ -1,6 +1,6 @@
 # Plan 040 — An orchestrator run never stalls on a slot-only check, reports app errors, and checks the manifest before the PR
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: 5a24a28
 

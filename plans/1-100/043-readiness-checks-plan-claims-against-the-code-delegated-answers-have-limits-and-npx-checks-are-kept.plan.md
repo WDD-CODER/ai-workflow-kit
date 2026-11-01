@@ -1,6 +1,6 @@
 # Plan 043 — Readiness checks what a plan claims against the code, a delegated answer never approves an unseen main-folder command, and `npx` checks are kept as project scripts
 
-Status: draft
+Status: done
 Depends-on: 040
 Snapshot: a363b42
 

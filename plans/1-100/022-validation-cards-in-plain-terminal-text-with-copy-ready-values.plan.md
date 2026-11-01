@@ -1,6 +1,6 @@
 # Plan 022 — Validation cards in plain terminal text with copy-ready values
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: a142a8337ab251a266845a3224190d91ee50ecb6
 

@@ -1,6 +1,6 @@
 # Plan 044 — A run ends clean: the final gate runs what CI runs, a test that passed only on rerun is recorded as a flake, plans close without a todo section, merge folders are removed, and a slot can serve the run branch for validation
 
-Status: draft
+Status: done
 Depends-on: 040
 Snapshot: a363b42
 

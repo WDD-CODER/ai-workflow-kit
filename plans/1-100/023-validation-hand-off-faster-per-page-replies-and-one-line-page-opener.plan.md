@@ -1,6 +1,6 @@
 # Plan 023 — Validation hand-off faster: per-page replies and a one-line page opener
 
-Status: draft
+Status: done
 Depends-on: 022
 Snapshot: a142a8337ab251a266845a3224190d91ee50ecb6
 
