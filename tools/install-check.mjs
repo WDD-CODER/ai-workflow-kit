@@ -943,6 +943,16 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     }
     if (!/^## checkers$/m.test(read(od, 'docs/brain/agent-rules.md'))) fail('lessons: the agent-rules.md seed has no per-role sections')
     const wf = read(od, '.claude/workflows/orchestrate.js')
+    // Plan 046: the kit's own lessons are installed (managed) with the other docs; the kit-only /kit-learn is not.
+    for (const f of [...['readiness', 'builder', 'check-plan', 'check-bugs', 'check-rules', 'security', 'verify', 'ui', 'gate', 'planner'].map((r) => `docs/agent/kit-lessons/${r}.md`), 'docs/agent/kit-lessons/triage-calibration.md']) {
+      if (!existsSync(join(od, f))) fail(`kit lessons: install did not copy ${f}`)
+    }
+    for (const f of ['.claude/commands/kit-learn.md', 'tools/kit-learn.mjs', 'tools/kit-lessons.mjs', 'scripts/kit-learn.mjs']) {
+      if (existsSync(join(od, f))) fail(`kit lessons: ${f} is kit-only and must not be installed into a project`)
+    }
+    if (!/^## Retired$/m.test(read(od, 'docs/agent/kit-lessons/builder.md'))) fail('kit lessons: builder.md has no Retired section')
+    if (!read(od, '.claude/commands/plan.md').includes('docs/agent/kit-lessons/planner.md')) fail('kit lessons: /plan does not read the kit planner lessons')
+    if (!wf.includes('[...kitLessons(role), ...projectLessons(role)]')) fail('kit lessons: orchestrate.js does not put the kit lessons before the project lessons')
     if (!wf.includes('const MAX_FIX_ROUNDS = 2') || !wf.includes('const RUN_PREFIX = "orch/"') || !wf.includes('const PILOT_SIZE = 3')) fail('orchestrator: orchestrate.js does not render maxFixRounds 2 / runBranchPrefix "orch/" / pilotSize 3')
     if (!wf.includes('const FALLBACK_MODEL = "opus"') || !wf.includes('const MAX_NOTES = 12') || !wf.includes('const MAX_CALLS = 60')) fail('orchestrator: orchestrate.js does not render fallbackModel "opus" / maxNotesPerPlan 12 / maxAgentCallsPerPlan 60')
     if (!read(od, 'scripts/orch-state.mjs').includes('const STALE_MIN = 10')) fail('orchestrator: orch-state.mjs does not render staleMin 10')
