@@ -287,9 +287,13 @@ With the UI step off, a failed script is a finding for the builder, and a card n
   the `judgment` tier that reads the hand-off file (`.claude/sessions/orch-<run>/handoff-<NNN>.md`), the plan and
   `git diff` — never the first builder's transcript. A failure on that builder, or a failure when the rounds used
   reach `maxFixRounds`, parks the plan with its reason.
-- **Test files are guarded by script.** A changed test file (`**/*.test.*`, `**/*.spec.*`, `**/test/**`, `**/tests/**`,
-  `**/__tests__/**`, `e2e/**`) that no line of the plan's `## Read-Write Scope` itself names (`tools/test/**`,
-  `src/a.test.ts`; a broad folder glob such as `tools/**` does not list the tests under it) is a `blocker` finding,
+- **Test files are guarded by script.** A changed test file (`*.test.*`, `*.spec.*`, `*_test.*`, `*_spec.*`, `test_*`,
+  or under a `test`, `tests`, `spec`, `specs`, `e2e`, `cypress`, `playwright`, `__tests__`, `__snapshots__` or `__mocks__`
+  folder at any depth; case-insensitive; a rename counts as a change of the old path too) that no line of the plan's
+  `## Read-Write Scope` itself names (`tools/test/**`, `src/a.test.ts`; a broad folder glob such as `tools/**` does not
+  list the tests under it) is a `blocker` finding. The scope is read from the plan as the run branch (or, for
+  `scope-check --diff`, the base ref) holds it, never from the branch's own copy: a test location the Human approves
+  mid-run must be in the plan on the base first. The finding is
   `test file outside the plan's scope`, raised by `orch-state.mjs diff` (`testsOutOfScope`) before any finder runs.
   `scope-check.mjs --diff` prints `SCOPE: test-out <path>` and exits 1 for the same files, so `/ship` gets it too.
 - **No progress stops the plan.** Two fix rounds in a row whose builder ends on the head sha the round started on park

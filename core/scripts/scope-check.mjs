@@ -152,9 +152,10 @@ function buildMatcher(planPath) {
 }
 
 function changedFiles(base) {
-  const ranged = git(['diff', '--name-only', `${base}...HEAD`])
-  const staged = git(['diff', '--name-only', '--cached'])
-  const unstaged = git(['diff', '--name-only'])
+  // --no-renames: a moved-away file is listed under its old path too (a renamed test file is still a changed test file).
+  const ranged = git(['diff', '--name-only', '--no-renames', `${base}...HEAD`])
+  const staged = git(['diff', '--name-only', '--no-renames', '--cached'])
+  const unstaged = git(['diff', '--name-only', '--no-renames'])
   const untracked = git(['ls-files', '--others', '--exclude-standard'])
 
   const all = new Set()
@@ -191,8 +192,12 @@ function cmdDiff(args) {
   const { isMatch, scopeGlobs } = buildMatcher(planPath)
   const files = changedFiles(args.diff)
   const out = files.filter(f => isUpstream(f) || !isMatch(f))
-  // A test file inside the scope only through a broad glob: the scope must name a test location.
-  const testOut = testFilesOutOfScope(files.filter(f => !out.includes(f)), scopeGlobs, (g) => picomatch(g, { dot: true }))
+  // A test file inside the scope only through a broad glob: the scope must name a test location. The test lines are read
+  // from the plan as the base ref holds it, never from the branch's own copy: a builder that adds a test glob to its
+  // own scope block must not approve its own test edits. A plan not on the base falls back to the working copy.
+  const onBase = git(['show', `${args.diff}:${planPath}`])
+  const baseGlobs = (onBase && extractScopeGlobs(onBase)) || scopeGlobs
+  const testOut = testFilesOutOfScope(files.filter(f => !out.includes(f)), baseGlobs, (g) => picomatch(g, { dot: true }))
 
   if (!out.length && !testOut.length) {
     console.log('SCOPE: ok')

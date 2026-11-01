@@ -3,7 +3,7 @@
     "version": "1.12.0"
   },
   "source": "local:.",
-  "commit": "8c0048ddcf9749827060e897239da4aa8ccd8c51",
+  "commit": "a1e2502f5656c26e8734ebddda5190a3e15ff478",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -275,7 +275,7 @@
       "source": "core/.claude/skills/worktree-setup/SKILL.md"
     },
     ".claude/workflows/orchestrate.js": {
-      "sha256": "91f0552f378242deba69b889ece0e83f014a1fdc008646d6ea97c1a8fa0aba90",
+      "sha256": "05c8dc4f1e87aa5f396ab755711d4cf064e11f27eb38287583d4658246a1c1f8",
       "kind": "managed",
       "source": "core/.claude/workflows/orchestrate.js"
     },
@@ -355,7 +355,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "eb2e6d1ed234f84cccff8f6188541069ccd7bf2b9e2751ff1c8c25b50207ef53",
+      "sha256": "e977d66c62c32e26b307edf018392126739b588ca9e2ccb867912ca3b0688153",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -685,7 +685,7 @@
       "source": "core/scripts/lib/plan-paths.mjs"
     },
     "scripts/lib/plan-scope.mjs": {
-      "sha256": "3d220e92ea25e52b1d13401a03ac280c6822ea33b7a888041b16691942290750",
+      "sha256": "40d2afa5ce27b9c4c1e9a65302d6fdfcc72ff73c6951b7da5cb5acc0856e61a3",
       "kind": "managed",
       "source": "core/scripts/lib/plan-scope.mjs"
     },
@@ -725,7 +725,7 @@
       "source": "core/scripts/orch-preflight.mjs"
     },
     "scripts/orch-state.mjs": {
-      "sha256": "4392589fb4c7e210ddf29fd7c1917cc065913922c23d8ad75b4a430960a86a22",
+      "sha256": "bf86b664553dd46dd4493df8e20243f53ee1a2a0ace04bf392670a37aedfa0c5",
       "kind": "managed",
       "source": "core/scripts/orch-state.mjs"
     },
@@ -800,7 +800,7 @@
       "source": "core/scripts/run-python.sh"
     },
     "scripts/scope-check.mjs": {
-      "sha256": "25dbaa400b46e8c259fc518744235a8264bf7b75d973c4418bfe2a553bf8f820",
+      "sha256": "caf3af460f82c8c3fe40757e8faacd476d6a96d690343b2dbe564a1fc2eaf997",
       "kind": "managed",
       "source": "core/scripts/scope-check.mjs"
     },

@@ -297,4 +297,10 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
      baseline; cost per case rose 0.07 → 0.20; `gate.json` is constructed. Kept, but not an improvement over 2026-10-22.
   4. Unchanged agents moved by up to 0.25 between runs (check-rules recall 0.25 on 2026-10-22, 0.50 now): 2 runs cannot
      decide small effects.
+- CI e2e failed on PR #78 (`orchestrator-e2e`: 6 of 90): `orch-state.mjs` refused `--replan`, `--replan-why`, `--not-done`
+  (flag allow-list), so every escalation parked; unit tests stub the state script and missed it. Fixed (flags added),
+  plus the automated security review: both gates read the scope from the base plan (a builder cannot approve its own
+  test edits — a test location approved mid-run must be in the plan on the base), diffs use `--no-renames`, the
+  test-path patterns are case-insensitive and wider (`spec`, `e2e`, `cypress`, `_test.`, `test_*`), curly quotes are
+  made plain in the new builder-text arguments. `tools/orchestrator-e2e.mjs` 90/90, `e2e-check` 55/55.
 - Full `npm test` passed except a guard timing test under load, which passes alone (31/31).

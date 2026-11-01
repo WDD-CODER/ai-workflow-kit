@@ -41,8 +41,9 @@ before(() => {
 after(() => rmSync(dir, { recursive: true, force: true }))
 
 test('isTestPath names the test locations', () => {
-  for (const p of ['a.test.ts', 'src/a.spec.js', 'tools/test/x.mjs', 'x/tests/y.js', 'x/__tests__/y.js', 'e2e/a.js']) assert.ok(isTestPath(p), p)
-  for (const p of ['src/a.ts', 'tools/latest.mjs', 'docs/testing.md']) assert.ok(!isTestPath(p), p)
+  for (const p of ['a.test.ts', 'src/a.spec.js', 'tools/test/x.mjs', 'x/tests/y.js', 'x/__tests__/y.js', 'e2e/a.js',
+    'src/Test/A.js', 'pkg/a_test.go', 'pkg/test_a.py', 'web/e2e/a.ts', 'web/cypress/a.js', 'x/spec/a.rb', 'x/__snapshots__/a.snap']) assert.ok(isTestPath(p), p)
+  for (const p of ['src/a.ts', 'tools/latest.mjs', 'docs/testing.md', 'src/contest_x.js', 'src/attest.mjs']) assert.ok(!isTestPath(p), p)
 })
 
 test('a broad folder glob does not list the tests under it', () => {
@@ -54,8 +55,36 @@ test('scope-check --diff: test-out under tools/**, ok when the scope names the t
   const out = check()
   assert.equal(out.status, 1)
   assert.match(out.stdout, /^SCOPE: test-out tools\/test\/x\.test\.mjs$/m)
+  // A builder adding the test line to its own copy of the plan does not approve its test edits: the base ref decides.
   writeFileSync(join(dir, 'plans', '001-gate.plan.md'), plan(['tools/**', 'tools/test/x.test.mjs']))
+  const self = check()
+  assert.equal(self.status, 1, 'the branch copy of the plan is not trusted')
+  assert.match(self.stdout, /SCOPE: test-out tools\/test\/x\.test\.mjs/)
+  // The Human's approval is a plan on the base that names the test: then it is ok.
+  git('checkout', '-q', '--', 'plans')
+  git('switch', '-q', 'main')
+  writeFileSync(join(dir, 'plans', '001-gate.plan.md'), plan(['tools/**', 'tools/test/x.test.mjs']))
+  git('commit', '-q', '-am', 'plan names the test')
+  git('switch', '-q', 'feat/001-gate')
+  git('merge', '-q', '--no-edit', 'main')
   const ok = check()
   assert.equal(ok.status, 0, ok.stdout + ok.stderr)
   assert.match(ok.stdout, /SCOPE: ok/)
+})
+
+test('scope-check --diff: a renamed test file still counts as a changed test file', () => {
+  git('switch', '-q', 'main')
+  writeFileSync(join(dir, 'plans', '001-gate.plan.md'), plan(['tools/**']))
+  git('commit', '-q', '-am', 'back to a broad scope')
+  git('switch', '-q', '-c', 'feat/001-rename')
+  mkdirSync(join(dir, 'tools', 'test'), { recursive: true })
+  writeFileSync(join(dir, 'tools', 'test', 'old.test.mjs'), 'export const a = 1\nexport const b = 2\nexport const c = 3\n')
+  git('add', '-A')
+  git('commit', '-q', '-m', 'add old test')
+  git('switch', '-q', '-c', 'feat/001-rename2')
+  git('mv', 'tools/test/old.test.mjs', 'tools/moved.mjs')
+  git('commit', '-q', '-m', 'move the test away')
+  const r = spawnSync('node', ['scripts/scope-check.mjs', '--diff=feat/001-rename', '--plan=plans/001-gate.plan.md'], { cwd: dir, encoding: 'utf8' })
+  assert.equal(r.status, 1)
+  assert.match(r.stdout, /SCOPE: test-out tools\/test\/old\.test\.mjs/)
 })

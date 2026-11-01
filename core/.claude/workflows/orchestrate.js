@@ -200,6 +200,7 @@ const task = (fields) => [
 ].join('\n')
 // Shell quoting for the runner: values are plain words, or double-quoted with quotes and backticks turned into ', a
 // backslash into / and $ and line breaks into a space — a raw JSON sample in a reason or note keeps its shape.
+const plainQuotes = (s) => String(s).replace(/[‘-‟«»]/g, "'")
 const q = (v) => {
   const s = String(v)
   return /^[\w.,:/=@+-]+$/.test(s) ? s : `"${s.replace(/["`]/g, "'").replace(/\\/g, '/').replace(/[$\r\n]/g, ' ').slice(0, 400)}"`
@@ -1029,8 +1030,9 @@ async function runPlan(nnn) {
       // A persisting failure, an ESCALATE / blocked builder or a second finding: a fresh builder on the judgment tier.
       const w = await state(['handoff', '--run', RUN, '--plan', nnn, '--step', `round ${ctx.round}`, '--check', failure.check ?? failure.why, '--tail', failure.tail ?? failure.why, '--tried', `${ctx.tier} builder, mode ${mode}`,
         // Does the plan itself need a change? The last builder's own answer (none given = no).
-        '--replan', ctx.lastBuilder?.planChange?.needed === true ? 'yes' : 'no', '--replan-why', String(ctx.lastBuilder?.planChange?.why ?? 'the builder gave no planChange').slice(0, 240),
-        ...(Array.isArray(ctx.lastBuilder?.notDone) && ctx.lastBuilder.notDone.length ? ['--not-done', ctx.lastBuilder.notDone.join('; ').slice(0, 400)] : [])], `handoff ${nnn}`, nnn)
+        // Builder text: curly quotes (shell quote characters in some shells) become plain ones before it reaches a command.
+        '--replan', ctx.lastBuilder?.planChange?.needed === true ? 'yes' : 'no', '--replan-why', plainQuotes(String(ctx.lastBuilder?.planChange?.why ?? 'the builder gave no planChange').slice(0, 240)),
+        ...(Array.isArray(ctx.lastBuilder?.notDone) && ctx.lastBuilder.notDone.length ? ['--not-done', plainQuotes(ctx.lastBuilder.notDone.join('; ').slice(0, 400))] : [])], `handoff ${nnn}`, nnn)
       if (!w.ok) return park(`hand-off file: ${w.error}`)
       ctx.tier = 'judgment'
       ctx.escalated = true

@@ -99,7 +99,9 @@ const SENSITIVE_CODE_RE = /auth|permission|password|jwt|session[_-]?id|tokens?\b
 // folder is always this script's own project) or a second positional word stops the command.
 const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tier', 'sha', 'role', 'model', 'effort', 'roles', 'reason', 'card', 'card-status', 'page', 'shots', 'via', 'step', 'check', 'tail', 'tried', 'text', 'min', 'stale-min', 'files', 'cmd', 'id', 'verdict', 'kind', 'confidence', 'rec', 'why', 'forced', 'dup-of', 'command', 'where',
   // facts the workflow records for the lessons (docs/agent/orchestrator.md "status.json"), and `trend` / `finish` options
-  'candidates', 'refuted', 'refuted-rules', 'verify-by', 'late-low', 'reappeared', 'miss', 'round-cause', 'gate-event', 'asked', 'ready', 'final-gate', 'last'])
+  'candidates', 'refuted', 'refuted-rules', 'verify-by', 'late-low', 'reappeared', 'miss', 'round-cause', 'gate-event', 'asked', 'ready', 'final-gate', 'last',
+  // the hand-off's replan verdict and the builder's receipt
+  'replan', 'replan-why', 'not-done'])
 function parseArgs(argv) {
   const out = { _: [] }
   for (let i = 0; i < argv.length; i++) {
@@ -683,7 +685,8 @@ const commands = {
     const branch = branchOf(planPath(nnn), nnn)
     fetchOrigin()
     const head = refExists(`origin/${branch}`) ? `origin/${branch}` : branch
-    const d = git(root, 'diff', '--name-only', `origin/${runBranch(run)}...${head}`)
+    // --no-renames: a moved-away file is listed under its old path too, so a renamed test file is still a changed test file.
+    const d = git(root, 'diff', '--name-only', '--no-renames', `origin/${runBranch(run)}...${head}`)
     if (d.status !== 0) fail(`git diff ${runBranch(run)}...${head}: ${d.err}`)
     const files = d.out.split('\n').filter(Boolean)
     const tests = sensitiveTests()

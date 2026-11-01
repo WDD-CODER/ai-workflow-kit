@@ -47,13 +47,14 @@ export function extractScopeGlobs(planText) {
  * A plan may change a test file only when a scope line itself names a test location (`tools/test/**`, `src/a.test.ts`);
  * a broad folder glob (`tools/**`) never lists the tests under it, so a builder cannot edit the tests that would catch it.
  */
-const TEST_DIR = /(^|\/)(test|tests|__tests__)(\/|$)/
-const TEST_NAME = /\.(test|spec)\./
-const E2E = /^e2e(\/|$)/
+// Case-insensitive; a test folder at any depth (test, tests, spec, specs, e2e, cypress, playwright, __tests__,
+// __snapshots__, __mocks__) or a file named *.test.*, *.spec.*, *_test.*, *_spec.* or test_*.
+const TEST_DIR = /(^|\/)(test|tests|spec|specs|e2e|cypress|playwright|__tests__|__snapshots__|__mocks__)(\/|$)/i
+const TEST_NAME = /(\.(test|spec)\.|_(test|spec)\.|(^|\/)test_[^/]*$)/i
 
 export function isTestPath(path) {
   const p = String(path).replace(/\\/g, '/')
-  return TEST_DIR.test(p) || TEST_NAME.test(p) || E2E.test(p)
+  return TEST_DIR.test(p) || TEST_NAME.test(p)
 }
 
 /** The scope globs that name a test location themselves. */
