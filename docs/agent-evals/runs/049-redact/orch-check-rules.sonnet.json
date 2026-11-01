@@ -1,0 +1,84 @@
+{
+  "agent": "orch-check-rules",
+  "model": "sonnet",
+  "redact": true,
+  "cases": [
+    {
+      "name": "clean-019-compare",
+      "runs": 2,
+      "tp": 0,
+      "fn": 0,
+      "fp": 0,
+      "recall": 1,
+      "precision": 1,
+      "noise": 0,
+      "tokens": 176316,
+      "costUsd": 0.1489456,
+      "errors": 0,
+      "errorDetails": []
+    },
+    {
+      "name": "planted-hardcoded-port",
+      "runs": 2,
+      "tp": 0,
+      "fn": 2,
+      "fp": 2,
+      "recall": 0,
+      "precision": 0,
+      "noise": 1,
+      "tokens": 175768,
+      "costUsd": 0.1521656,
+      "errors": 0,
+      "errorDetails": []
+    },
+    {
+      "name": "planted-installed-copy-edited",
+      "runs": 2,
+      "tp": 1,
+      "fn": 1,
+      "fp": 1,
+      "recall": 0.5,
+      "precision": 0.5,
+      "noise": 1,
+      "tokens": 191423,
+      "costUsd": 0.21401160000000002,
+      "errors": 0,
+      "errorDetails": []
+    }
+  ],
+  "total": {
+    "name": "TOTAL",
+    "runs": 6,
+    "tp": 1,
+    "fn": 3,
+    "fp": 3,
+    "recall": 0.25,
+    "precision": 0.25,
+    "noise": 0.6666666666666666,
+    "tokens": 543507,
+    "costUsd": 0.5151228000000001,
+    "errors": 0,
+    "spread": {
+      "recall": 0.5,
+      "precision": 0.5,
+      "noise": 0
+    }
+  },
+  "runTotals": [
+    {
+      "recall": 0,
+      "precision": 0,
+      "noise": 0.6666666666666666,
+      "costUsd": 0.2589664,
+      "errors": 0
+    },
+    {
+      "recall": 0.5,
+      "precision": 0.5,
+      "noise": 0.6666666666666666,
+      "costUsd": 0.2561564,
+      "errors": 0
+    }
+  ],
+  "below": []
+}

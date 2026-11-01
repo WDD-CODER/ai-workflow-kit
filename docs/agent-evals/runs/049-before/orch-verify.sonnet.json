@@ -1,0 +1,90 @@
+{
+  "agent": "orch-verify",
+  "model": "sonnet",
+  "cases": [
+    {
+      "name": "fixed-010-lockfile-and-false-alarms",
+      "runs": 2,
+      "tp": 0,
+      "fn": 2,
+      "fp": 0,
+      "recall": 0,
+      "precision": 1,
+      "noise": 0,
+      "tokens": 190047,
+      "costUsd": 0.0677092,
+      "errors": 1,
+      "errorDetails": [
+        "invalid result: verdicts[1].severity must be one of blocker, major, minor, nit; verdicts[2].severity must be one of blocker, major, minor, nit"
+      ]
+    },
+    {
+      "name": "fixed-017-short-path-and-home",
+      "runs": 2,
+      "tp": 0,
+      "fn": 2,
+      "fp": 0,
+      "recall": 0,
+      "precision": 1,
+      "noise": 0,
+      "tokens": 212139,
+      "costUsd": 0.0754822,
+      "errors": 1,
+      "errorDetails": [
+        "invalid result: pass is false but the result's own list says true — a model's pass flag is never trusted"
+      ]
+    },
+    {
+      "name": "fixed-018-capital-x-and-crlf",
+      "runs": 2,
+      "tp": 0,
+      "fn": 2,
+      "fp": 0,
+      "recall": 0,
+      "precision": 1,
+      "noise": 0,
+      "tokens": 171927,
+      "costUsd": 0.0608086,
+      "errors": 2,
+      "errorDetails": [
+        "invalid result: verdicts[1].severity must be one of blocker, major, minor, nit",
+        "invalid result: verdicts[1].severity must be one of blocker, major, minor, nit"
+      ]
+    }
+  ],
+  "total": {
+    "name": "TOTAL",
+    "runs": 6,
+    "tp": 0,
+    "fn": 6,
+    "fp": 0,
+    "recall": 0,
+    "precision": 1,
+    "noise": 0,
+    "tokens": 574113,
+    "costUsd": 0.204,
+    "errors": 4,
+    "spread": {
+      "recall": 0,
+      "precision": 0,
+      "noise": 0
+    }
+  },
+  "runTotals": [
+    {
+      "recall": 0,
+      "precision": 1,
+      "noise": 0,
+      "costUsd": 0.100355,
+      "errors": 1
+    },
+    {
+      "recall": 0,
+      "precision": 1,
+      "noise": 0,
+      "costUsd": 0.10364500000000001,
+      "errors": 3
+    }
+  ],
+  "below": []
+}

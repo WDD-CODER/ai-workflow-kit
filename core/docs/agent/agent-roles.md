@@ -86,7 +86,8 @@ Used by the orchestrator after the gate passes, and by `/review-it`.
    guards, secrets handling); otherwise it is skipped.
 2. **Verifier** (`orch-verify`) gets every candidate and tries to refute it against the code. It drops a candidate
    only with a concrete refutation (`file:line` or a command result that shows the claim is wrong). A candidate it
-   cannot refute is kept, with a confidence 0–100.
+   cannot refute is kept, with a confidence 0–100. It also gets `GATE` (the round's gate results with a 20-line tail):
+   evidence for keeping or refuting, never a verdict on pass.
 3. **Threshold:** only kept candidates with confidence ≥ 80 are reported.
 4. **Do not report:** issues that existed before the diff; lines the diff did not change; anything lint, typecheck or
    the build already catch; pedantic nits; changes that look intentional (named in the plan or a commit message).

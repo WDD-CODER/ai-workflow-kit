@@ -26,7 +26,15 @@ Validating roles are compared on Sonnet and Opus only; Haiku is never a validato
 | `--min-recall x` / `--min-precision y` | Exit 1 when the total is below the threshold (a gate for prompt changes). |
 | `--allow-write` | Run an agent that can edit files. Refused by default: an agent without a `tools:` line, or with `Edit`/`Write` in it. |
 | `--runner <module.mjs>` | Replace the model call (tests use a stub). Default: Claude Code, `claude -p --output-format json`. |
-| `--json` | Print the report as JSON. |
+| `--json` | Print the report as JSON, with the per-run totals (`runTotals`) and the run-to-run spread (`total.spread`). |
+| `--case-list <file>` | Run only the cases the file names, one `<role>/<case>` per line (`#` comments). A named case that is missing is an error. |
+| `--redact` | Show the agent the case `plan.md` without its `## Execution Notes` and tell it to read diffs only. |
+| `--with-gate` | Show the agent the case's `input/gate.json` (what the project checks printed); without the flag the file is not shown. |
+
+`node tools/agent-eval-ab.mjs --before <dir> --after <dir> [--arm name=dir] [--adopt-rule redaction] [--out file.md]`
+compares two folders of `--json` reports and prints a verdict per figure — `improved`, `regressed` or `no real change`
+— from `d = max(0.05, 2 × the larger run-to-run spread)`; never type a verdict by hand. `--adopt-rule redaction` prints
+`ADOPT` for a finder only when recall rises by ≥ d and precision does not drop (two decimals), else `REJECT`.
 
 The default runner spends tokens: one non-interactive Claude Code call per case and run, with the agent body (plus
 `docs/agent/agent-roles.md` when it sits next to it) as the system prompt and the case input inline as the prompt.

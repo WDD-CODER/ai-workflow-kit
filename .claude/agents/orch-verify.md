@@ -29,6 +29,11 @@ a test or a one-line `node -e` to check a claim; never edit, commit or install.
 4. `keep` carries `confidence` 0–100: how sure you are that the problem is real and matters. Below 80 it is not
    reported. Keep the finder's `severity` unless the code shows it is lower or higher; say why in `note`.
 
+`GATE` (when given) is what the project checks printed on this very branch: each command, its `status` and the last
+20 lines. Use it as evidence: a check that ran and passed refutes "the build or a test would catch this" only when it
+covers the cited line; a check that failed with a tail naming the cited line supports `keep`. `GATE` never decides
+`pass` and a passing gate never refutes a candidate on its own; only a concrete `file:line` or command result does.
+
 The finders and you run on the `review` tier (never Haiku); the kit repository's agent-eval baseline holds the
 measured numbers per model.
 

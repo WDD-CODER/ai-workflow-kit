@@ -13,6 +13,9 @@
  *   node scripts/scope-check.mjs --deps --plan=<path>
  *   node scripts/scope-check.mjs --tags --plan=<path>
  *
+ * --diff also prints "SCOPE: test-out <path>" (exit 1) for a changed test file that no scope line naming a test
+ * location lists (a broad folder glob such as tools/** does not list the tests under it).
+ *
  * A path matching ownership.upstreamPaths (kit.config.json) is never in scope: --file prints "SCOPE: upstream <path>".
  *
  * --plan defaults to the active slot's .worktree-plan, else (outside a slot) the plan a numbered branch
@@ -45,7 +48,7 @@ import { resolve, dirname, join, relative, isAbsolute } from 'path'
 import { fileURLToPath } from 'url'
 import picomatch from 'picomatch'
 import { activePlanPath, branchPlanPath } from './lib/slot.mjs'
-import { extractScopeGlobs } from './lib/plan-scope.mjs'
+import { extractScopeGlobs, testFilesOutOfScope } from './lib/plan-scope.mjs'
 import { listOpenPlans, OPEN_PLAN_DIRS } from './lib/plan-paths.mjs'
 import { parseDependsOn, parseProsePrerequisites } from './lib/plan-deps.mjs'
 import { doneWhenTagProblems } from './lib/done-when.mjs'
@@ -185,15 +188,21 @@ function cmdFile(args) {
 
 function cmdDiff(args) {
   const planPath = resolvePlanPath(args)
-  const { isMatch } = buildMatcher(planPath)
-  const out = changedFiles(args.diff).filter(f => isUpstream(f) || !isMatch(f))
+  const { isMatch, scopeGlobs } = buildMatcher(planPath)
+  const files = changedFiles(args.diff)
+  const out = files.filter(f => isUpstream(f) || !isMatch(f))
+  // A test file inside the scope only through a broad glob: the scope must name a test location.
+  const testOut = testFilesOutOfScope(files.filter(f => !out.includes(f)), scopeGlobs, (g) => picomatch(g, { dot: true }))
 
-  if (!out.length) {
+  if (!out.length && !testOut.length) {
     console.log('SCOPE: ok')
     return
   }
-  console.log('SCOPE: out')
-  for (const f of out) console.log(`  ${f}${isUpstream(f) ? ' (upstream-owned: ownership.upstreamPaths)' : ''}`)
+  if (out.length) {
+    console.log('SCOPE: out')
+    for (const f of out) console.log(`  ${f}${isUpstream(f) ? ' (upstream-owned: ownership.upstreamPaths)' : ''}`)
+  }
+  for (const f of testOut) console.log(`SCOPE: test-out ${f}`)
   process.exit(1)
 }
 

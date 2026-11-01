@@ -1,0 +1,28 @@
+# The 25 cases of docs/agent-evals/BASELINE.md (2026-10-22), one <role>/<case> per line.
+# The two orch-check-plan cases added later by plan 042 (clean-removal-named-in-plan, planted-unlogged-removal) are not here.
+# Used by: node tools/agent-eval.mjs --case-list docs/agent-evals/baseline-2026-10-22.cases.txt
+orch-check-bugs/clean-011-plan-graph
+orch-check-bugs/clean-013-agent-result
+orch-check-bugs/fixed-010-empty-lockfile
+orch-check-bugs/fixed-014-status-race
+orch-check-bugs/fixed-017-cd-unknown-folder
+orch-check-bugs/fixed-017-stale-worktree-plan
+orch-check-bugs/fixed-017-windows-short-path
+orch-check-bugs/fixed-018-ui-items-capital-x
+orch-check-bugs/fixed-sec-diff-unread-fails-open
+orch-check-bugs/planted-allow-all-check
+orch-check-bugs/planted-inverted-comparison
+orch-check-bugs/planted-lost-escape
+orch-check-bugs/planted-off-by-one
+orch-check-bugs/planted-unchecked-error
+orch-check-plan/clean-019-compare-and-score
+orch-check-plan/fixed-010-scope-and-done-when
+orch-check-plan/fixed-014-report-by-page
+orch-check-plan/fixed-018-ui-items-not-held
+orch-check-plan/planted-ticked-subtask-missing
+orch-check-rules/clean-019-compare
+orch-check-rules/planted-hardcoded-port
+orch-check-rules/planted-installed-copy-edited
+orch-verify/fixed-010-lockfile-and-false-alarms
+orch-verify/fixed-017-short-path-and-home
+orch-verify/fixed-018-capital-x-and-crlf

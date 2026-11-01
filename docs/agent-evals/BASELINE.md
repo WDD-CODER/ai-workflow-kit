@@ -109,3 +109,9 @@ orch-verify on sonnet: fixed-010-lockfile-and-false-alarms 0.00/1.00 · fixed-01
 - Before the numbers gate prompt changes (`--min-recall` / `--min-precision`), the scorer or the labels need a
   severity tolerance (`blocker` ≈ `major`); then rerun this set. That is a harness change outside plan 021's scope
   (the prompt's categories are already in the bug labels).
+
+## After plan 049
+
+The checkers were re-measured on the same 25 cases (Sonnet, 2 runs): a fresh before-run, the redaction and verifier-gate
+experiments, and an after-run, with a script-computed verdict per figure — see
+`docs/agent-evals/049-checkers-hardening.md`. The 2026-10-22 tables above stay as the reference.

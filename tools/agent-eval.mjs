@@ -8,20 +8,24 @@
  *     [--min-precision 0.8]     exit 1 when the total precision is below this
  *     [--runner <module.mjs>]   a module whose default export is the runner (tests use a stub; default: Claude Code)
  *     [--allow-write]           run an agent that can edit files (refused by default)
- *     [--json]                  print the report as JSON instead of the table
+ *     [--json]                  print the report as JSON instead of the table (with per-run totals and the spread)
+ *     [--case-list <file>]      run only the cases the file names, one `<role>/<case>` per line (the same cases twice)
+ *     [--redact]                show the agent the case plan without its `## Execution Notes`, and tell it to read diffs only
+ *     [--with-gate]             show the agent the case's input/gate.json (what the project checks printed)
  *
  * The default runner calls `claude -p` once per case and run, and spends tokens. Prints a table (case, recall,
  * precision, noise, tokens, cost) with a total line. Exit 0 = thresholds met, 1 = below a threshold, 2 = usage error
  * or a refused agent. Node built-ins only.
  */
 import { resolve } from 'node:path'
+import { readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
-import { evaluate, formatTable, claudeRunner } from './lib/agent-eval/run.mjs'
+import { evaluate, formatTable, claudeRunner, caseListFor, loadAgent } from './lib/agent-eval/run.mjs'
 
-const USAGE = 'usage: node tools/agent-eval.mjs --agent <agent.md> --cases <dir> [--runs 2] [--model <id>] [--min-recall x] [--min-precision y] [--runner <module.mjs>] [--allow-write] [--json]'
+const USAGE = 'usage: node tools/agent-eval.mjs --agent <agent.md> --cases <dir> [--runs 2] [--model <id>] [--min-recall x] [--min-precision y] [--runner <module.mjs>] [--allow-write] [--json] [--case-list <file>] [--redact] [--with-gate]'
 
 function parseArgs(argv) {
-  const opts = { runs: 2, model: null, minRecall: null, minPrecision: null, runner: null, allowWrite: false, json: false }
+  const opts = { runs: 2, model: null, minRecall: null, minPrecision: null, runner: null, allowWrite: false, json: false, caseList: null, redact: false, withGate: false }
   const value = (i, name) => {
     const v = argv[i + 1]
     if (v === undefined || v.startsWith('--')) throw new Error(`${name} needs a value`)
@@ -43,6 +47,9 @@ function parseArgs(argv) {
     else if (a === '--runner') opts.runner = value(i++, a)
     else if (a === '--allow-write') opts.allowWrite = true
     else if (a === '--json') opts.json = true
+    else if (a === '--case-list') opts.caseList = value(i++, a)
+    else if (a === '--redact') opts.redact = true
+    else if (a === '--with-gate') opts.withGate = true
     else throw new Error(`unknown argument ${a}`)
   }
   if (!opts.agent || !opts.cases) throw new Error('--agent and --cases are required')
@@ -67,7 +74,8 @@ async function main() {
   }
   let report
   try {
-    report = await evaluate({ agentFile: resolve(opts.agent), casesDir: resolve(opts.cases), runs: opts.runs, model: opts.model, runner, allowWrite: opts.allowWrite })
+    const caseNames = opts.caseList ? caseListFor(readFileSync(resolve(opts.caseList), 'utf8'), loadAgent(resolve(opts.agent)).name) : null
+    report = await evaluate({ agentFile: resolve(opts.agent), casesDir: resolve(opts.cases), runs: opts.runs, model: opts.model, runner, allowWrite: opts.allowWrite, caseNames, redact: opts.redact, withGate: opts.withGate })
   } catch (e) {
     console.error(`AGENT_EVAL: refused — ${e.message}`)
     return 2

@@ -74,6 +74,9 @@ file (`docs/agent/model-routing.md` rule 5) before you return and name it in `ev
     "node --test tests/parser.test.mjs -> exit 0, # pass 6, # fail 0",
     "src/parser.mjs:12 — new parseHeader()"
   ],
+  "done": ["T1: parser and its tests"],
+  "notDone": [],
+  "checksRun": [{ "command": "npm run build", "status": "pass" }, { "command": "node --test tests/parser.test.mjs", "status": "pass" }],
   "decisions": ["behaviour: kept the old flag as an alias (the simplest option) — reverse: drop the alias"],
   "uiCards": [
     { "card": "Save shows Saved", "page": "http://localhost:5173/settings", "test": "npx playwright test e2e/ui/001-1.spec.ts", "screenshot": "screens/001-1.png" },
@@ -84,3 +87,13 @@ file (`docs/agent/model-routing.md` rule 5) before you return and name it in `ev
 
 `status` is `built`, `blocked` or `ESCALATE`. A result that is not `built` carries `blocker` (one sentence: what
 stops you, with the command and exit code) and may carry `envFailure: true` when the cause is the environment.
+
+**The receipt:** `done` lists the sub-tasks you finished, `notDone` what you left undone and why (an empty list when
+nothing), `checksRun` every check you ran with `pass`, `fail` or `not-run`. It is recorded for the hand-off and the
+report; it never decides pass (the gate does), and a check you list as `pass` that the gate fails is noted as a
+contradiction. Add no token or cost figures.
+
+**`planChange`** (required when `status` is `blocked` or `ESCALATE`): `{ "needed": true|false, "why": "..." }`.
+Answer `true` only when the plan itself cannot hold as written: a Done-when item that cannot be met, a scope line that
+forbids a file the plan's own sub-task needs, or two sub-tasks that contradict each other. A failing check, a bug or
+a hard task is `false`. A judgment-tier builder that answers `true` parks the plan for the Human with `replan needed`.

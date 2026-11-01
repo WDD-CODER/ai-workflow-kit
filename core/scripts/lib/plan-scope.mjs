@@ -41,3 +41,32 @@ export function extractScopeGlobs(planText) {
   }
   return null
 }
+
+/**
+ * Test-file gate. A test file is one under a test folder or named *.test.* / *.spec.* (plus e2e/**).
+ * A plan may change a test file only when a scope line itself names a test location (`tools/test/**`, `src/a.test.ts`);
+ * a broad folder glob (`tools/**`) never lists the tests under it, so a builder cannot edit the tests that would catch it.
+ */
+const TEST_DIR = /(^|\/)(test|tests|__tests__)(\/|$)/
+const TEST_NAME = /\.(test|spec)\./
+const E2E = /^e2e(\/|$)/
+
+export function isTestPath(path) {
+  const p = String(path).replace(/\\/g, '/')
+  return TEST_DIR.test(p) || TEST_NAME.test(p) || E2E.test(p)
+}
+
+/** The scope globs that name a test location themselves. */
+export function testScopeGlobs(scopeGlobs) {
+  return (scopeGlobs ?? []).filter((g) => isTestPath(g))
+}
+
+/**
+ * Of the changed files, the test files no test-naming scope line matches. `matchGlobs(globs)` returns a path
+ * predicate (picomatch with dot:true), passed in so this file keeps no dependency.
+ */
+export function testFilesOutOfScope(files, scopeGlobs, matchGlobs) {
+  const listed = testScopeGlobs(scopeGlobs)
+  const isListed = listed.length ? matchGlobs(listed) : () => false
+  return (files ?? []).filter((f) => isTestPath(f) && !isListed(String(f).replace(/\\/g, '/')))
+}

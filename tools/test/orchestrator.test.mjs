@@ -189,7 +189,7 @@ async function runFlow(args, hooks = {}) {
     const nnn = /plan (\d+)/.exec(prompt)?.[1]
     if (type === 'orch-builder') {
       const b = hooks.builder?.(nnn) ?? {}
-      return { ...base, status: 'built', branch: t.BRANCH, headSha: 'abc1234', summary: 's', evidence: ['e'], ...b }
+      return { ...base, status: 'built', branch: t.BRANCH, headSha: 'abc1234', summary: 's', evidence: ['e'], done: ['T1'], notDone: [], checksRun: [], ...b }
     }
     if (type === 'orch-gate') {
       const cmds = JSON.parse(t.COMMANDS)
@@ -1664,7 +1664,9 @@ test('facts ride on the plan\'s own set calls: round causes, the verifier\'s tot
   let n = 0
   const A = { id: 'p', file: 'src/a.js', line: 1, rule: 'logic: A', reasoning: 'r', severity: 'major' }
   const B = { id: 'p', file: 'src/b.js', line: 2, rule: 'logic: B', reasoning: 'r', severity: 'major' }
+  let sha = 0
   const { commands } = await runFlow({ plans: ['101'], pilot: false }, {
+    builder: () => ({ headSha: `abc${++sha}` }), // each round pushes something new (plan 049: no progress parks the plan)
     problems: (type) => (type === 'orch-check-plan' ? [[A, B], [A], []][n++] ?? [] : []),
     verdicts: (cands) => cands.map((c) => ({ id: c.id, verdict: c.rule === 'logic: A' && c.file === 'src/a.js' && cands.length === 2 ? 'refuted' : 'keep', confidence: 90, severity: 'major' })),
   })
@@ -1733,4 +1735,73 @@ test('the nine role files tell their agent to read LESSONS first (not orch-merge
   for (const other of ['orch-merge', 'orch-report', 'orch-triage']) assert.ok(!readFileSync(join(root, '.claude', 'agents', `${other}.md`), 'utf8').includes('`LESSONS`'), `${other} reads no lessons`)
   for (const role of ['readiness', 'ui', 'check-plan', 'check-bugs', 'check-rules', 'verify']) assert.match(readFileSync(join(root, '.claude', 'agents', `orch-${role}.md`), 'utf8'), /`RULES`/, `orch-${role}.md names RULES`)
   assert.match(readFileSync(join(root, '.claude', 'agents', 'orch-readiness.md'), 'utf8'), /`RECENT_RUNS`[\s\S]*two of the last three runs[\s\S]*once/)
+})
+
+test('plan 049: a test file outside the plan scope is a blocker found by script, with no finder call, and gets a fix round', async () => {
+  let n = 0
+  const { calls } = await runFlow({ plans: ['101'], pilot: false }, { diff: () => ({ files: ['src/a.test.ts'], testsOutOfScope: ++n === 1 ? ['src/a.test.ts'] : [] }) })
+  const builders = calls.filter((c) => c.type === 'orch-builder')
+  assert.equal(builders.length, 2, 'one fix round')
+  const findings = JSON.parse(builders[1].task.FINDINGS)
+  assert.equal(findings.length, 1)
+  assert.equal(findings[0].rule, "test file outside the plan's scope")
+  assert.equal(findings[0].severity, 'blocker')
+  assert.equal(findings[0].file, 'src/a.test.ts')
+  const before = calls.slice(0, calls.indexOf(builders[1])).filter((c) => /^orch-check-/.test(c.type ?? ''))
+  assert.equal(before.length, 0, 'no finder ran before the fix round')
+})
+
+test('plan 049: two fix rounds that end on the same head sha park the plan (no progress), with maxFixRounds 5', async () => {
+  const five = (s) => s.replace('const MAX_FIX_ROUNDS = 2', 'const MAX_FIX_ROUNDS = 5')
+  const r = await runFlow({ plans: ['101'], pilot: false }, { source: five, gateFails: (folder) => folder === '/wt/101', gateTail: (n) => `FAIL spec ${n}` })
+  const o = r.result.outcomes[0]
+  assert.equal(o.state, 'parked')
+  assert.match(o.reason, /^no progress: head abc1234 unchanged across 2 fix rounds \(fix rounds used: 2 of 5\)$/)
+  assert.equal(r.calls.filter((c) => c.type === 'orch-builder').length, 3, 'first + 2 fix rounds, then parked')
+  // a builder that pushes something new each round is not stopped by it
+  let k = 0
+  const moving = await runFlow({ plans: ['101'], pilot: false }, { source: five, builder: () => ({ headSha: `abc${++k}` }), gateFails: (folder) => folder === '/wt/101', gateTail: (n) => `FAIL spec ${n}` })
+  assert.doesNotMatch(moving.result.outcomes[0].reason, /no progress/) // it stops at the judgment-tier limit instead
+})
+
+test('plan 049: every escalation records a replan verdict; a judgment-tier builder that says needed parks the plan', async () => {
+  let n = 0
+  const r = await runFlow({ plans: ['101'], pilot: false }, {
+    builder: () => (++n === 1 ? { status: 'ESCALATE', blocker: 'too hard', planChange: { needed: false, why: 'a hard task, not a plan fault' } } : { planChange: { needed: true, why: 'Done-when 2 contradicts the scope' }, headSha: 'def9999' }),
+  })
+  const handoff = r.commands.find((c) => /orch-state\.mjs handoff/.test(c))
+  assert.match(handoff, /--replan=no/)
+  assert.match(handoff, /a hard task, not a plan fault/)
+  const o = r.result.outcomes[0]
+  assert.equal(o.state, 'parked')
+  assert.equal(o.reason, 'replan needed: Done-when 2 contradicts the scope')
+  assert.equal(r.calls.filter((c) => c.type === 'orch-builder').length, 2, 'no further round after the verdict')
+  // a first-tier builder that says needed does not park: only the judgment tier does
+  let m = 0
+  const first = await runFlow({ plans: ['101'], pilot: false }, { builder: () => (++m === 1 ? { status: 'blocked', blocker: 'x', planChange: { needed: true, why: 'w' } } : {}) })
+  assert.ok(first.commands.some((c) => /orch-state\.mjs handoff/.test(c) && /--replan=yes/.test(c)), 'the verdict reaches the hand-off')
+  assert.equal(first.result.outcomes[0].state, 'merged')
+})
+
+test('plan 049: the receipt is recorded, never trusted: a pass claim next to a failing gate is noted and the plan still fails', async () => {
+  let cmd = null
+  const r = await runFlow({ plans: ['101'], pilot: false }, {
+    gateFails: (folder, cmds) => { cmd = cmds[0]; return folder === '/wt/101' },
+    gateTail: (n) => `FAIL spec ${n}`,
+    builder: () => ({ notDone: ['T3: docs'], checksRun: cmd ? [{ command: cmd, status: 'pass' }] : [] }),
+  })
+  assert.ok(r.notes.some((c) => c.includes(`receipt contradicts gate: ${cmd}`)), r.notes.join('\n'))
+  assert.ok(r.notes.some((c) => c.includes('builder left undone') && c.includes('T3: docs')))
+  assert.equal(r.result.outcomes[0].state, 'parked')
+})
+
+test('plan 049: the verifier gets the gate of the same round', async () => {
+  const bug = { id: 'p', file: 'src/a.js', line: 1, rule: 'logic: A', reasoning: 'r', severity: 'major' }
+  let n = 0
+  const r = await runFlow({ plans: ['101'], pilot: false }, { problems: (type) => (type === 'orch-check-bugs' && ++n === 1 ? [bug] : []), passTail: () => 'all 12 tests passed' })
+  const v = r.calls.find((c) => c.type === 'orch-verify')
+  const gate = JSON.parse(v.task.GATE)
+  assert.ok(gate.length > 0 && gate.every((x) => x.status === 'pass'))
+  assert.equal(gate[0].tail, 'all 12 tests passed')
+  assert.ok(gate.every((x) => String(x.tail ?? '').split('\n').length <= 20))
 })

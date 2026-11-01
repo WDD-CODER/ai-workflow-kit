@@ -156,10 +156,15 @@ const SCHEMA = {
     type: 'object',
     properties: {
       ...COMMON, status: { type: 'string', enum: ['built', 'blocked', 'ESCALATE'] }, branch: str, headSha: str, summary: str, evidence: strList, blocker: str, envFailure: { type: 'boolean' },
+      // The receipt: what it did, what it left undone, which checks it ran. Recorded, never trusted: pass comes from the gate.
+      done: strList, notDone: strList,
+      checksRun: { type: 'array', items: { type: 'object', properties: { command: str, status: { type: 'string', enum: ['pass', 'fail', 'not-run'] } }, required: ['command', 'status'] } },
+      // Required with status blocked / ESCALATE (a missing one counts as "no"): does the PLAN itself have to change?
+      planChange: { type: 'object', properties: { needed: { type: 'boolean' }, why: str }, required: ['needed', 'why'] },
       // The plan's [ui] cards: page, the one short e2e test that checks it (none = no script can) and its screenshot.
       uiCards: { type: 'array', items: { type: 'object', properties: { card: str, page: str, test: str, screenshot: str }, required: ['card', 'page'] } },
     },
-    required: ['role', 'model', 'effort', 'status', 'branch', 'summary', 'evidence'],
+    required: ['role', 'model', 'effort', 'status', 'branch', 'summary', 'evidence', 'done', 'notDone', 'checksRun'],
   },
   gate: {
     type: 'object',
@@ -659,8 +664,13 @@ async function checkers(ctx) {
   const diff = await state(['diff', '--run', RUN, '--plan', ctx.nnn], `diff ${ctx.nnn}`, ctx.nnn)
   if (Array.isArray(diff.files)) CHANGED_FILES[ctx.nnn] = diff.files
   if (!diff.ok) return { env: !!diff.envFailure, fail: !diff.envFailure, why: `diff: ${diff.error}`, findings: [] }
+  // Test-file gate: a test file the plan's scope does not name is a blocker found by script, before any finder.
+  if (Array.isArray(diff.testsOutOfScope) && diff.testsOutOfScope.length) {
+    const findings = diff.testsOutOfScope.map((f, i) => ({ id: `scope-${i + 1}`, severity: 'blocker', file: f, line: 0, rule: "test file outside the plan's scope", reasoning: `${f} is a test file and no line of the plan's Read-Write Scope names a test location that matches it; a builder may not change the tests that would catch it. Revert it or ask the Human for \`approved: ${f}\`.` }))
+    return { results: [], diff, fail: true, why: `checker: ${findings.map((k) => `${k.severity} ${k.file}:${k.line} ${k.rule}`).join('; ')}`, findings }
+  }
   const roles = diff.sensitive ? [...FINDERS, 'orch-security'] : FINDERS
-  const base = task({ PLAN: ctx.info.path, BRANCH: `origin/${ctx.info.branch}`, BASE: `origin/${RUN_BRANCH}`, FOLDER: ctx.wt.path, FILES: diff.files })
+  const base =task({ PLAN: ctx.info.path, BRANCH: `origin/${ctx.info.branch}`, BASE: `origin/${RUN_BRANCH}`, FOLDER: ctx.wt.path, FILES: diff.files })
   // Each finder's own lessons, and the `checkers` rules (the security reviewer reads the security standards instead).
   const own = (role) => task({ LESSONS: lessonsOf(role.replace('orch-', '')), RULES: role === 'orch-security' ? undefined : rulesOf('checkers') })
   // The plan's own `removes:` decisions so far: the plan checker does not call a removal the builder logged "unlogged".
@@ -678,7 +688,7 @@ async function checkers(ctx) {
   }
   if (missing.length) return { results, fail: true, env: false, why: `checker returned nothing: ${missing.join(', ')}`, findings: [] }
   if (!candidates.length) return { results, diff }
-  const v = await ask(`Verify the candidate problems of plan ${ctx.nnn} of run ${RUN}. Follow .claude/agents/orch-verify.md.\n\n${task({ PLAN: ctx.info.path, BRANCH: `origin/${ctx.info.branch}`, BASE: `origin/${RUN_BRANCH}`, FOLDER: ctx.wt.path, CANDIDATES: candidates, LESSONS: lessonsOf('verify'), RULES: rulesOf('checkers') })}`,
+  const v = await ask(`Verify the candidate problems of plan ${ctx.nnn} of run ${RUN}. Follow .claude/agents/orch-verify.md.\n\n${task({ PLAN: ctx.info.path, BRANCH: `origin/${ctx.info.branch}`, BASE: `origin/${RUN_BRANCH}`, FOLDER: ctx.wt.path, CANDIDATES: candidates, GATE: ctx.gateView?.length ? ctx.gateView : undefined, LESSONS: lessonsOf('verify'), RULES: rulesOf('checkers') })}`,
     { agentType: 'orch-verify', schema: SCHEMA.verify, label: `verify ${ctx.nnn}`, phase: 'Build', plan: ctx.nnn })
   results.push(v)
   // A candidate without a verdict (or no verifier result) stays kept: dropping needs a concrete refutation.
@@ -911,6 +921,23 @@ async function runPlan(nnn) {
     const b = await builder(ctx, mode, findings)
     take(nnn, ctx.round, b)
     results = [b]
+    ctx.lastBuilder = b
+    // A judgment-tier builder that says the plan itself must change: parked for the Human, no further round.
+    if (b && ctx.tier === 'judgment' && b.planChange?.needed === true) {
+      await setPlan(nnn, { round: ctx.round }, results)
+      return park(`replan needed: ${String(b.planChange.why ?? '').trim().slice(0, 240) || '(no reason given)'}`)
+    }
+    if (b && Array.isArray(b.notDone) && b.notDone.length) await note(`builder left undone (round ${ctx.round}): ${b.notDone.slice(0, 5).join('; ').slice(0, 300)}`, nnn)
+    // No progress: a fix round whose builder ends on the head the previous round ended on. Two in a row park.
+    if (b?.status === 'built' && b.headSha) {
+      if (ctx.round > 0 && ctx.lastHead && b.headSha === ctx.lastHead) ctx.noProgress = (ctx.noProgress ?? 0) + 1
+      else ctx.noProgress = 0
+      ctx.lastHead = b.headSha
+      if (ctx.noProgress >= 2) {
+        await setPlan(nnn, { round: ctx.round }, results)
+        return park(`no progress: head ${String(b.headSha).slice(0, 7)} unchanged across 2 fix rounds (fix rounds used: ${ctx.round} of ${MAX_FIX_ROUNDS})`)
+      }
+    }
     if (!b) failure = { why: 'the builder returned nothing', escalate: true }
     else if (b.envFailure) failure = { env: true, why: `builder: ${b.blocker ?? 'environment failure'}` }
     else if (b.status !== 'built') failure = { why: `builder ${b.status}: ${b.blocker ?? ''}`, escalate: true }
@@ -924,6 +951,13 @@ async function runPlan(nnn) {
       results.push(g.r)
       take(nnn, ctx.round, g.r)
       await recordFlakes(g, b.headSha, 'gate')
+      // What the verifier is shown of this round's gate: each command, its status and a 20-line tail.
+      ctx.gateView = (g.r?.results ?? []).map((x) => ({ command: x.command, status: x.status, ...(x.tail ? { tail: String(x.tail).split(/\r?\n/).slice(-20).join('\n') } : {}) }))
+      // The builder's receipt is recorded, never trusted: a check it says passed that the gate did not pass is noted.
+      for (const c of b.checksRun ?? []) {
+        const seen = ctx.gateView.find((x) => x.command === c.command)
+        if (c.status === 'pass' && seen && seen.status !== 'pass') await note(`receipt contradicts gate: ${c.command}`, nnn)
+      }
       if (!g.env && !g.fail && ctx.mainChecks.length) {
         // The [auto:main] checks, from the main folder (ROOT): its code is the main branch, so they prove the live side
         // effects of the plan's own checks (a log, a database), not the plan's code.
@@ -993,7 +1027,10 @@ async function runPlan(nnn) {
     ctx.knownFindings = findings.filter((f) => /^ui-/.test(f.id)).map((f) => `${f.file}: ${f.reasoning}`)
     if (failure.escalate || ctx.round >= 2) {
       // A persisting failure, an ESCALATE / blocked builder or a second finding: a fresh builder on the judgment tier.
-      const w = await state(['handoff', '--run', RUN, '--plan', nnn, '--step', `round ${ctx.round}`, '--check', failure.check ?? failure.why, '--tail', failure.tail ?? failure.why, '--tried', `${ctx.tier} builder, mode ${mode}`], `handoff ${nnn}`, nnn)
+      const w = await state(['handoff', '--run', RUN, '--plan', nnn, '--step', `round ${ctx.round}`, '--check', failure.check ?? failure.why, '--tail', failure.tail ?? failure.why, '--tried', `${ctx.tier} builder, mode ${mode}`,
+        // Does the plan itself need a change? The last builder's own answer (none given = no).
+        '--replan', ctx.lastBuilder?.planChange?.needed === true ? 'yes' : 'no', '--replan-why', String(ctx.lastBuilder?.planChange?.why ?? 'the builder gave no planChange').slice(0, 240),
+        ...(Array.isArray(ctx.lastBuilder?.notDone) && ctx.lastBuilder.notDone.length ? ['--not-done', ctx.lastBuilder.notDone.join('; ').slice(0, 400)] : [])], `handoff ${nnn}`, nnn)
       if (!w.ok) return park(`hand-off file: ${w.error}`)
       ctx.tier = 'judgment'
       ctx.escalated = true

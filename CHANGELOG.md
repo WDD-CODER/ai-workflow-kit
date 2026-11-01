@@ -10,6 +10,14 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 ## [Unreleased]
 
 ### Added
+- **Orchestrator checkers hardening.** A changed test file that no scope line naming a test location lists is now a
+  blocker found by script (`scope-check --diff` prints `SCOPE: test-out <path>`; `orch-state diff` returns
+  `testsOutOfScope`), before any finder runs. Two fix rounds that end on the same head sha park the plan
+  (`no progress`); a builder's `blocked`/`ESCALATE` result carries `planChange` and a judgment-tier `needed: true`
+  parks the plan (`replan needed`); the builder result carries a `done` / `notDone` / `checksRun` receipt that is
+  recorded, never trusted; the verifier gets the round's gate (`GATE`). `tools/agent-eval-ab.mjs` compares two
+  eval runs with script-computed verdicts; `agent-eval.mjs` gains `--case-list`, `--redact`, `--with-gate` and the
+  run-to-run spread. Redaction of the builder's notes for the finders was measured and not adopted.
 - **The orchestrator learns from run to run.** Scripts write what a run knows, with no model call: lesson
   lines built from fixed templates (a rule name, a file kind, a count) go to one short file per role under
   `docs/brain/agent-lessons/<role>.md` (`readiness`, `builder`, `check-plan`, `check-bugs`, `check-rules`, `security`,
