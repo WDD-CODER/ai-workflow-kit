@@ -88,6 +88,10 @@ test('signature: the same problem in two runs matches (path, number, hash, time,
   assert.notEqual(lib.signature('gate: node scripts/log-query.mjs --level=error'), lib.signature('gate: node scripts/other-check.mjs --level=error'))
   assert.notEqual(lib.signature('timed out: npm run e2e'), lib.signature('env-fail rerun: npm run e2e'))
   assert.ok(lib.signature('x'.repeat(500)).length <= 120)
+  // A secret in a park reason never reaches the signature (it is stored and compared across projects).
+  const leaky = lib.signature(`gate failed: Bearer ${'t0kenvalue'.repeat(3)} and ${URI} and api_key="${'abcd1234'.repeat(2)}"`)
+  assert.ok(!/t0kenvalue|writer:pw|abcd1234/.test(leaky), leaky)
+  assert.match(leaky, /redacted/)
   assert.equal(lib.signature('src/app/x.ts failed'), 'src/app/x.ts failed', 'a relative path names what failed and stays')
   assert.equal(lib.signature('failed in /home/u/proj/a/b.ts', {}), 'failed in <p>')
   assert.equal(lib.signature('failed in C:/work/app/x', { projectRoot: 'C:\\work\\app' }), 'failed in <p>/x', 'the project root is cut out')

@@ -87,7 +87,8 @@ export function deepRedact(v) {
  * spaces collapse; at most 120 characters. A relative path such as `scripts/x.mjs` stays: it names what failed.
  */
 export function signature(text, { projectRoot } = {}) {
-  let t = String(text ?? '').toLowerCase()
+  // Secrets and code are cut first: a signature is stored and compared across projects, so it must never carry either.
+  let t = redact(text).toLowerCase()
   if (projectRoot) {
     const r = String(projectRoot).toLowerCase().replace(/\\/g, '/').replace(/\/+$/, '')
     if (r.length > 3) t = t.split(r).join('<p>').split(r.replace(/\//g, '\\')).join('<p>')
