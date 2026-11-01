@@ -3,7 +3,7 @@
     "version": "1.12.0"
   },
   "source": "local:.",
-  "commit": "0a1b1b78805dba1d80e60a7c0157d7df4d7effa7",
+  "commit": "ce58b1a368400f580eff20d074e8adea9a1c1367",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -635,7 +635,7 @@
       "source": "core/scripts/handoff-check.sh"
     },
     "scripts/kit-feedback.mjs": {
-      "sha256": "3724b9af941417da2b1f90fed9cd440624844f8a8823b115e30bd94240fc1075",
+      "sha256": "3bb816afc3c1d82a814dcaf55887741274f003b8a18a4e5abaf7950dad583cac",
       "kind": "managed",
       "source": "core/scripts/kit-feedback.mjs"
     },
@@ -645,7 +645,7 @@
       "source": "core/scripts/kit-manifest-check.mjs"
     },
     "scripts/lib/brain-doc.mjs": {
-      "sha256": "5f9ee78db7cd40a38b689d4547eed7598da81888b3bd59d70c094947b8c3fca8",
+      "sha256": "132a451f27a12f2ce303a4064bbd917cf6e80bc0b623f374afd451c2af2b20e8",
       "kind": "managed",
       "source": "core/scripts/lib/brain-doc.mjs"
     },
@@ -790,7 +790,7 @@
       "source": "core/scripts/plan-write-guard.sh"
     },
     "scripts/pre-commit-secret-scan.mjs": {
-      "sha256": "187d4fde8e5bf79067e14faaa644abc9f15307efbe2f7fcec893da65cc9ecd20",
+      "sha256": "25a0e005c3c2e4b093b77fd9cd5ed740be64e4d929925fde4ef98f60df3345eb",
       "kind": "managed",
       "source": "core/scripts/pre-commit-secret-scan.mjs"
     },

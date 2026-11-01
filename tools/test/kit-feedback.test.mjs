@@ -79,6 +79,9 @@ test('with KIT_BRAIN_URI set the lesson goes to the kit brain (lessonsIn), after
   const stub = join(kit, 'tools', 'fixtures', 'orchestrator', 'brain', 'stub-driver.mjs')
   const brain = { KIT_BRAIN_URI: `mongodb${'+srv'}://writer:pw@cluster.example.net/kitbrain`, KIT_BRAIN_HOME: home, KIT_BRAIN_DRIVER: stub, KIT_STUB_LOG: log }
   try {
+    const badRole = send(dir, ['--title', 'A lesson', '--text', 'A general lesson.', '--role', 'Pineapple Pantry'], brain)
+    assert.equal(badRole.status, 2, 'a role is a short name, not free text')
+    assert.match(badRole.stderr, /--role takes a role name/)
     const refused = send(dir, ['--title', 'A lesson', '--text', 'It happened on Pineapple Pantry screens'], brain)
     assert.equal(refused.status, 2, 'the same refusal checks run first')
     assert.match(refused.stderr, /KIT_FEEDBACK: refused/)

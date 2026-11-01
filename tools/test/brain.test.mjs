@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync, cpSync, utimesSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync, cpSync, utimesSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { brainProblems } from '../lib/kit.mjs'
@@ -132,6 +132,18 @@ test('pre-commit-secret-scan: importing it runs no git command and exports the p
     const r = spawnSync(process.execPath, [scan], { cwd: dir, encoding: 'utf8' })
     assert.equal(r.status, 1)
     assert.match(r.stderr, /secret-scan: blocked bad\.js — matched pattern "generic-api-key"/)
+    // The scan must not be skipped by how the script is named: a differently-cased path (Windows) or a symlink to it.
+    if (process.platform === 'win32') {
+      const cased = spawnSync(process.execPath, [scan.replace(/pre-commit-secret-scan/, 'PRE-COMMIT-SECRET-SCAN')], { cwd: dir, encoding: 'utf8' })
+      assert.equal(cased.status, 1, `a differently-cased path still scans: ${cased.stderr}`)
+    }
+    const link = join(dir, 'scan-link.mjs')
+    let linked = true
+    try { symlinkSync(scan, link) } catch { linked = false } // no symlink right on this machine: skip this part
+    if (linked) {
+      const viaLink = spawnSync(process.execPath, [link], { cwd: dir, encoding: 'utf8' })
+      assert.equal(viaLink.status, 1, `a symlink to the script still scans: ${viaLink.stderr}`)
+    }
   } finally { gone(dir) }
 })
 

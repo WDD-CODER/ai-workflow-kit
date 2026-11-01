@@ -290,7 +290,7 @@ export function lessonDoc(lesson, { root, host } = {}) {
   const title = redact(lesson?.title ?? '').slice(0, 200)
   return {
     _id: `${info.project}:lesson:${sha(`${title}|${text}`, 12)}`, schema: SCHEMA, project: info.project, machine: machineId(host), kitVersion: info.kitVersion, kitCommit: info.kitCommit,
-    role: lesson?.role ? String(lesson.role).slice(0, 40) : null, title, text, why: redact(lesson?.why ?? '').slice(0, 500),
+    role: lesson?.role ? redact(String(lesson.role)).slice(0, 40) : null, title, text, why: redact(lesson?.why ?? '').slice(0, 500),
   }
 }
 

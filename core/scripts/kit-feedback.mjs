@@ -110,7 +110,8 @@ function main(argv) {
   }
   if (!title || !text || !String(text).trim()) refuse('--title and --text (or --text-file) are required')
   const cfg = readJson(join(root, '.kit', 'config.json')) ?? readJson(join(root, 'kit.config.json')) ?? {}
-  const why = privacyProblem(`${title}\n${text}\n${flags.why ?? ''}`, cfg, basename(root))
+  if (flags.role !== undefined && !/^[a-z][a-z-]{0,39}$/.test(String(flags.role))) refuse('--role takes a role name (lower-case letters and dashes, e.g. builder, check-bugs)')
+  const why = privacyProblem(`${title}\n${text}\n${flags.why ?? ''}\n${flags.role ?? ''}`, cfg, basename(root))
   if (why) refuse(`refused — ${why}. Write the lesson without project names, repository names, project paths or code.`)
   // A machine set up for the kit brain sends the lesson there (no pull request, no push rights on the kit repository).
   if (process.env.KIT_BRAIN_URI) {

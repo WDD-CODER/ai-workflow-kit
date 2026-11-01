@@ -4,7 +4,7 @@
  * the script being run, so importing it does nothing.
  */
 import { execSync } from 'child_process'
-import { readFileSync } from 'fs'
+import { readFileSync, realpathSync } from 'fs'
 import { resolve } from 'path'
 import { fileURLToPath } from 'url'
 
@@ -45,4 +45,17 @@ function main() {
   }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main()
+// Run the scan only when this file is the script being run (an import just reads PATTERNS). The paths are compared by real
+// path, and case-insensitively on Windows, so a symlink or a differently-cased path never skips the scan; if the paths
+// cannot be resolved the scan runs (fail closed).
+function runDirectly() {
+  if (!process.argv[1]) return false
+  try {
+    const a = realpathSync(resolve(process.argv[1]))
+    const b = realpathSync(fileURLToPath(import.meta.url))
+    return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b
+  } catch {
+    return true
+  }
+}
+if (runDirectly()) main()
