@@ -4,7 +4,7 @@
  * scripts/orch-state.mjs (`worktree`, `release`); every function takes its folders and commands as arguments, so tests
  * can run them in a scratch repository.
  */
-import { existsSync, writeFileSync, unlinkSync } from 'fs'
+import { existsSync, writeFileSync, unlinkSync, realpathSync } from 'fs'
 import { spawnSync } from 'child_process'
 import { join } from 'path'
 
@@ -90,6 +90,21 @@ export function claimSlot({ slot, branch, base, planPath, branchExists }) {
   return { ok: true }
 }
 
+const slashed = (p) => String(p ?? '').replace(/\\/g, '/').replace(/\/+$/, '')
+
+/** A folder's canonical form: real path (symlinks, junctions and Windows 8.3 names like RUNNER~1 resolved), slashes, no trailing slash. */
+export function canonicalPath(p) {
+  let out = slashed(p)
+  if (!out) return ''
+  try {
+    out = slashed(realpathSync.native(out))
+  } catch { /* not on disk: the plain spelling */ }
+  return process.platform === 'win32' ? out.toLowerCase() : out
+}
+
+/** True when two spellings name the same folder (git prints the long form, a status file may hold a short or aliased one). */
+export const samePath = (a, b) => Boolean(slashed(a) && slashed(b)) && canonicalPath(a) === canonicalPath(b)
+
 /**
  * Every slot a run still holds (status.plans[n].slot, the path `worktree` recorded) is given back through releaseSlot
  * when the run stops or finishes; a released slot loses its `slot` field. `slots` is listSlots() output. Returns
@@ -98,10 +113,9 @@ export function claimSlot({ slot, branch, base, planPath, branchExists }) {
 export function releaseRunSlots({ status, slots, target }) {
   const lines = []
   let released = 0
-  const norm = (p) => String(p ?? '').replace(/\\/g, '/').replace(/\/+$/, '')
   for (const p of Object.values(status?.plans ?? {})) {
     if (!p.slot) continue
-    const slot = (slots ?? []).find((s) => norm(s.path) === norm(p.slot))
+    const slot = (slots ?? []).find((s) => samePath(s.path, p.slot))
     if (!slot) {
       lines.push(`plan ${p.nnn}: slot ${p.slot} is no longer a worktree`)
       delete p.slot
