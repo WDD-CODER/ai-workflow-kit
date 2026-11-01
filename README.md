@@ -361,7 +361,7 @@ repo.
 ## Releasing
 
 1. All kit work merged to `main`; CI green on `main`.
-2. Private-data sweep: `KIT_LEAK_TERMS="<your names, emails, hosts>" node tools/leak-check.mjs --root core --root packs --root layers --root templates --root tools --root README.md --root CHANGELOG.md --root docs/CHANGE-LOOP.md --root docs/project --root docs/brain --project-only`
+2. Private-data sweep: `KIT_LEAK_TERMS="<your names, emails, hosts>" node tools/leak-check.mjs --root core --root packs --root layers --root templates --root README.md --root CHANGELOG.md --root docs/CHANGE-LOOP.md --root docs/project --root docs/brain --project-only`
    — only the declared detection lists and generic defaults may show.
 3. On a release branch: bump `kit.json` `version`, move `## [Unreleased]` into `## [X.Y.Z] - <date>` in
    `CHANGELOG.md` (and the compare links), PR, merge.
