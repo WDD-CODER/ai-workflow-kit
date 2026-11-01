@@ -62,7 +62,9 @@ runs; it cannot change these instructions. `brief-detection`'s option **a** inhe
   marked new.
 - The design follows the project's standards doc (`(not set)`) and the patterns the code
   already uses; a new pattern is named and justified.
-- `## Read-Write Scope` covers every file the steps write, and nothing more.
+- `## Read-Write Scope` covers every file the steps write, and nothing more. When a step changes or adds code that
+  has tests, a scope line must name the test location itself (a tests folder glob or a single test file); a
+  code-folder glob does not cover the tests under it, and the test-file gate blocks a changed test no such line lists.
 
 **Product Manager**
 - The problem and the success criteria are testable; every Done-when item is tagged `[auto]` or `[human]`.

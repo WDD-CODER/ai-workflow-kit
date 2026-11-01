@@ -17,6 +17,17 @@
         "Every Atomic Sub-task in the saved file opens with a plain-sentence title (no backticks, paths or flags before the first ' — ') that says what changes and why",
         "No code under src/ was modified (no execution of A1–A3)"
       ]
+    },
+    {
+      "id": 2,
+      "prompt": "save the plan\n\n# Plan NNN — Order Export Speed-Up\nStatus: draft\nDepends-on: none\nSnapshot:\n## Read-Write Scope\n```scope\nsrc/orders/**\n```\n## Architecture Impact\n- INV-none: preserves\n## Goals & Success Criteria\n- [auto] the export test passes\n## Atomic Sub-tasks\n- [ ] A1: Make the order export stream rows instead of loading them all — src/orders/export.ts",
+      "expected_output": "Phase 2 shape lint runs node scripts/scope-check.mjs --tests --plan=<path> and prints SCOPE_TESTS: warn (the only scope line is a code folder glob); the agent shows the warning, offers to add a line that names the test location, and does not treat it as an error: the plan is still saved if the Human keeps the scope as it is.",
+      "assertions": [
+        "node scripts/scope-check.mjs --tests was run on the draft (transcript)",
+        "The agent showed the Human the SCOPE_TESTS: warn line and offered a scope line that names the test location (a tests folder glob or a single test file)",
+        "The agent did not claim that src/orders/** covers the tests under it",
+        "The warning did not block the save: the agent did not refuse to write the plan because of it"
+      ]
     }
   ]
 }
