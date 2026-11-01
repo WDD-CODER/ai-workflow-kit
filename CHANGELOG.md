@@ -9,6 +9,8 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-11-01
+
 ### Added
 - **Plans are told to name their test location.** `/plan`, the PRD template and `save-plan` now say that when a step
   changes code that has tests, a scope line must name the test location itself (a tests folder glob or a single test
@@ -126,6 +128,10 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
   checkout, on `origin/<main>` and in the main worktree, and took the rest from branch names shaped
   `<type>/NNN-<slug>`, so two plans saved on a `plan/<slug>` branch were invisible and their number was offered
   again. It now reads `plans/` on every local and remote branch (one `ls-tree` per ref), whatever the branch is called.
+- **A slot recorded under another spelling of its path is still the same slot.** `releaseRunSlots` and
+  `free-merged-slots` matched a run's recorded slot to `git worktree list` by string, so a Windows 8.3 short name
+  (`RUNNER~1`) or an alias was reported "no longer a worktree" and the held slot was forgotten while still checked
+  out. Both now compare canonical paths (`samePath` in `orch-folders.mjs`). The Windows e2e on `main` is green again.
 
 ## [1.12.0] - 2026-10-29
 
@@ -1155,7 +1161,8 @@ Phases 4 to 6A, never tagged. Projects installed from a local kit folder.
 Phases 1 and 2, before this repository existed: the workflow was extracted from its source project into a
 stack-neutral `core/` with `{{placeholder}}` config keys and a leak check.
 
-[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.12.0...HEAD
+[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.13.0...HEAD
+[1.13.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.13.0
 [1.12.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.12.0
 [1.11.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.11.0
 [1.10.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.10.0
