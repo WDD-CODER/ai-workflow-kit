@@ -405,7 +405,7 @@ export function tokensForRun({ root, startedAt, finishedAt, home = homedir() }) 
 export const brainHome = (home = process.env.KIT_BRAIN_HOME || homedir()) => join(home, '.kit-brain')
 
 /**
- * The MongoDB driver's `MongoClient`: from a stub module (`driverPath`, tests) or from `<brainHome>/node_modules/mongodb`
+ * The database driver's `MongoClient`: from a stub module (`driverPath`, tests) or from `<brainHome>/node_modules/mongodb`
  * (installed once per machine by `brain.mjs setup`). Nothing else is loaded, so a machine without the setup never
  * touches a driver.
  */

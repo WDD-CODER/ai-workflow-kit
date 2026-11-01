@@ -3,7 +3,7 @@
     "version": "1.12.0"
   },
   "source": "local:.",
-  "commit": "9de9e4584c7bd86b361c447a4d3b33c6a5fca5f5",
+  "commit": "0a1b1b78805dba1d80e60a7c0157d7df4d7effa7",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -150,7 +150,7 @@
       "source": "core/.claude/commands/kit-feedback.md"
     },
     ".claude/commands/orchestrate.md": {
-      "sha256": "f9dc178a5af1170768049445e44ecc5c2f2c75c1bbfeff0e3fc783028609a363",
+      "sha256": "44e7757d8f9ba8edbdd1d89a98217a66c73a5caf904fba0f848f35826ec24afa",
       "kind": "managed",
       "source": "core/.claude/commands/orchestrate.md"
     },
@@ -340,7 +340,7 @@
       "source": "core/docs/agent/brain-capture.md"
     },
     "docs/agent/decision-review.md": {
-      "sha256": "d8c5180516a5b261c19d7585414f9710d5796207aa8beaed766a8baf20b46941",
+      "sha256": "08a52205b7384654ca7b39e49cfb661dc0847d56e8cf50ef64131e7cafa2f1d4",
       "kind": "managed",
       "source": "core/docs/agent/decision-review.md"
     },
@@ -349,13 +349,18 @@
       "kind": "managed",
       "source": "core/docs/agent/job-validation.md"
     },
+    "docs/agent/kit-brain.md": {
+      "sha256": "69a5a43e876507f16e17bae04eb1140c51e8ab12b8daab2450871b0732a62608",
+      "kind": "managed",
+      "source": "core/docs/agent/kit-brain.md"
+    },
     "docs/agent/model-routing.md": {
       "sha256": "b37374dacc6aa7d24b326dd2ba8d1db2b758a2f79159640831d189fee6141223",
       "kind": "managed",
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "e977d66c62c32e26b307edf018392126739b588ca9e2ccb867912ca3b0688153",
+      "sha256": "9864bfa92516d8aa4bc749ef538d62b157bf5a66e4c180de884fcd28ce2d400d",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -385,7 +390,7 @@
       "source": "core/docs/agent/standards-security.md"
     },
     "docs/agent/workflow-map.md": {
-      "sha256": "542a4deb69c4cd3584fa51cb70468c9dedfbe240e527a597ceda861789cb0bf8",
+      "sha256": "ad3cdc63cb00700964db51a12e68ee8d675cb9a6bfee6a1b24733ba8b1483dff",
       "kind": "managed",
       "source": "core/docs/agent/workflow-map.md"
     },
@@ -594,6 +599,11 @@
       "kind": "managed",
       "source": "core/scripts/brain-review-check.mjs"
     },
+    "scripts/brain.mjs": {
+      "sha256": "5cee3326e8664d6e405809d1d4831673356066175beee842e74ab4aa18716522",
+      "kind": "managed",
+      "source": "core/scripts/brain.mjs"
+    },
     "scripts/branch-autodelete-check.mjs": {
       "sha256": "8985db74f97dc5893a11174eccc4d775d60bf739987a3917dda60b388e337329",
       "kind": "managed",
@@ -605,7 +615,7 @@
       "source": "core/scripts/branch-guard.sh"
     },
     "scripts/decision-log.mjs": {
-      "sha256": "7657fb08d9d2c200f4efdbd9f03495db0241d6647d879e800aa7bc739000d676",
+      "sha256": "d7e10e8ab1f6e68e0a09d34bf610110a207a67caebb6a49bdc59bc2fc3e82547",
       "kind": "managed",
       "source": "core/scripts/decision-log.mjs"
     },
@@ -625,7 +635,7 @@
       "source": "core/scripts/handoff-check.sh"
     },
     "scripts/kit-feedback.mjs": {
-      "sha256": "9566af2520c9ab314e34f36c9052474e6d2ef3cda8172d5c69d0564578d9309f",
+      "sha256": "3724b9af941417da2b1f90fed9cd440624844f8a8823b115e30bd94240fc1075",
       "kind": "managed",
       "source": "core/scripts/kit-feedback.mjs"
     },
@@ -633,6 +643,11 @@
       "sha256": "5d47c9ffa7e856734565a42ed572c167764d6faa0796ea3485a99032bcd4a8ac",
       "kind": "managed",
       "source": "core/scripts/kit-manifest-check.mjs"
+    },
+    "scripts/lib/brain-doc.mjs": {
+      "sha256": "5f9ee78db7cd40a38b689d4547eed7598da81888b3bd59d70c094947b8c3fca8",
+      "kind": "managed",
+      "source": "core/scripts/lib/brain-doc.mjs"
     },
     "scripts/lib/done-when.mjs": {
       "sha256": "26613270c57bc1282a0ee99afafe555897c26acd45a031319fe3766c931713be",
@@ -730,7 +745,7 @@
       "source": "core/scripts/orch-preflight.mjs"
     },
     "scripts/orch-state.mjs": {
-      "sha256": "bf86b664553dd46dd4493df8e20243f53ee1a2a0ace04bf392670a37aedfa0c5",
+      "sha256": "e3ec4767426efa58e7ecf9d635cc8cd2a2ca621488d0861717710f6ad393efff",
       "kind": "managed",
       "source": "core/scripts/orch-state.mjs"
     },
@@ -775,7 +790,7 @@
       "source": "core/scripts/plan-write-guard.sh"
     },
     "scripts/pre-commit-secret-scan.mjs": {
-      "sha256": "049ad5376dee0589de3e6512e88d78b09d260d3473f3307b3b7d222157637f7a",
+      "sha256": "187d4fde8e5bf79067e14faaa644abc9f15307efbe2f7fcec893da65cc9ecd20",
       "kind": "managed",
       "source": "core/scripts/pre-commit-secret-scan.mjs"
     },

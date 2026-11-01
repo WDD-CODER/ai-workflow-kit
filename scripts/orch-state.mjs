@@ -1054,13 +1054,16 @@ const commands = {
     const local = join(runsDir(), `${run}.md`)
     mkdirSync(runsDir(), { recursive: true })
     writeFileSync(local, report)
+    // The run's facts go to the kit brain (docs/agent/kit-brain.md): after the local report exists, before the branch commit,
+    // so a failed push still sends. It can never change this command's exit code or the report.
+    const brainLine = brainSend(['--run', run, `--final-gate=${String(args['final-gate'] ?? 'none')}`])
     const parked = Object.values(status.plans).filter((x) => x.state === 'parked' || x.state === 'left-run').map((x) => x.nnn)
     const rel = `docs/orchestrator/runs/${run}`
     const learningOut = learned ? { lessonsAdded: learned.added.length, lessonsDropped: learned.dropped.length, budget: learned.budget.line, chars: learned.budget.total, trend: learned.trend.line } : { error: learnError }
     const learningLines = learned ? [`lessons: ${learned.added.length} line(s) added, ${learned.dropped.length} dropped`, ...budgetLines(learned.budget), learned.trend.line] : [`lessons: not written (${learnError})`]
-    const base = { triage: triageOut, report: `${rel}/report.md`, local: local.replace(/\\/g, '/'), merged: merged.map((m) => m.nnn), parked, phase: status.phase, slots: slots.lines, learning: learningOut }
+    const base = { triage: triageOut, report: `${rel}/report.md`, local: local.replace(/\\/g, '/'), merged: merged.map((m) => m.nnn), parked, phase: status.phase, slots: slots.lines, learning: learningOut, ...(brainLine ? { brain: brainLine } : {}) }
     const notCommitted = (error, extra = {}) => emit({ ok: false, ...base, reportCommitted: false, error: `${error} — the report is in ${local}`, ...extra },
-      [...slots.lines, `report: local copy ${local} (not committed to ${branch}: ${error})`, ...learningLines])
+      [...slots.lines, `report: local copy ${local} (not committed to ${branch}: ${error})`, ...learningLines, ...(brainLine ? [brainLine] : [])])
     if (!existsSync(mf)) notCommitted(`no merge folder ${mf}`)
     const dirty = git(mf, 'status', '--porcelain').out
     if (dirty) notCommitted(`the merge folder ${mf} has uncommitted files: ${dirty.split('\n').map((l) => l.slice(3)).join(', ')}`)
@@ -1078,8 +1081,24 @@ const commands = {
     if (p.status !== 0) notCommitted(`git push origin ${branch}: ${p.err.split('\n').pop()}`, { envFailure: true })
     const left = git(mf, 'status', '--porcelain').out
     emit({ ok: !left, ...base, reportCommitted: true, ...(left ? { error: `merge folder not clean: ${left}` } : {}) },
-      [...slots.lines, `report: ${rel}/report.md on ${branch}; local copy ${local}`, `merged ${merged.length}: ${merged.map((m) => m.nnn).join(', ') || 'none'}; parked ${parked.length}: ${parked.join(', ') || 'none'}`, ...learningLines])
+      [...slots.lines, `report: ${rel}/report.md on ${branch}; local copy ${local}`, `merged ${merged.length}: ${merged.map((m) => m.nnn).join(', ') || 'none'}; parked ${parked.length}: ${parked.join(', ') || 'none'}`, ...learningLines, ...(brainLine ? [brainLine] : [])])
   },
+}
+
+// The kit brain (docs/agent/kit-brain.md): `node scripts/brain.mjs send …` in a child process that is killed after 15 s
+// (KIT_BRAIN_KILL_MS shortens it in tests). Returns its one `BRAIN:` line; a script that is not installed gives null.
+// Whatever happens here — a throw, a hang, a non-zero exit — the caller's exit code and report are untouched.
+function brainSend(extra) {
+  const script = join(root, 'scripts', 'brain.mjs')
+  if (!existsSync(script)) return null
+  const kill = Number(process.env.KIT_BRAIN_KILL_MS) > 0 ? Number(process.env.KIT_BRAIN_KILL_MS) : 15000
+  try {
+    const r = spawnSync(process.execPath, [script, 'send', ...extra], { cwd: root, encoding: 'utf8', timeout: kill, killSignal: 'SIGKILL' })
+    if (r.error?.code === 'ETIMEDOUT' || r.signal) return `BRAIN: queued (the send did not finish within ${Math.round(kill / 1000)} s; its documents wait in the queue)`
+    return (r.stdout ?? '').split(/\r?\n/).find((l) => l.startsWith('BRAIN:')) ?? `BRAIN: no answer (exit ${r.status})`
+  } catch (e) {
+    return `BRAIN: not sent (${String(e.message).split('\n')[0]})`
+  }
 }
 
 // The grade rows of the first file that exists (one JSON object per line); an unreadable line is skipped.

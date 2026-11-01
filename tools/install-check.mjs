@@ -931,7 +931,7 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   if (r.status !== 0) fail(`install for the orchestrator files: exit ${r.status}, ${(r.stdout + r.stderr).trim().split('\n').pop()}`)
   else {
     for (const f of ['.claude/workflows/orchestrate.js', '.claude/commands/orchestrate.md', 'docs/agent/orchestrator.md', 'scripts/orch-state.mjs', 'scripts/orch-preflight.mjs', 'scripts/lib/orch-run.mjs',
-      'scripts/brain.mjs', 'scripts/lib/brain-doc.mjs',
+      'scripts/brain.mjs', 'scripts/lib/brain-doc.mjs', 'docs/agent/kit-brain.md',
       'scripts/decision-log.mjs', 'scripts/kit-feedback.mjs', '.claude/commands/kit-feedback.md', 'docs/agent/decision-review.md', 'docs/brain/decision-log.md', 'docs/brain/agent-rules.md',
       // The workflow scout: command, page builder, pull request step, page template and the seed sources list.
       '.claude/commands/scout.md', 'scripts/scout/render.mjs', 'scripts/scout/pr.mjs', 'scripts/scout/page-template.html', 'docs/scout/sources.json']) {

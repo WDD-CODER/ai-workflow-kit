@@ -116,6 +116,9 @@ branch himself.
    `.worktree-plan`. When `commands.logQuery` is set, `finish` runs it once from the main folder (no shell; only
    `node scripts/…` or `node tools/…`), with `--since=plan-start` replaced by the run's start time, and the report gets
    an `App errors since the run started` section: the command, its exit code and its first 20 lines, never parsed.
+   After the local copy is written, and before the branch commit, `finish` also runs `node scripts/brain.mjs send --run
+   <run>` in a child process killed after 15 s and prints its one `BRAIN:` line: the run's facts go to the kit's private
+   store, or wait in the local queue (`docs/agent/kit-brain.md`). It never changes the exit code or the report.
    `{{git.mainBranch}} untouched` stays `yes` when the only files that changed on `{{git.mainBranch}}` during the run are
    plan files and `.claude/todo.md` (the Planner's own pushes); the line counts them.
    **Learning** (no model call): `finish` also appends the lesson lines of the run to

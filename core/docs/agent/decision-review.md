@@ -81,7 +81,10 @@ runs no command.
    "Enforce candidates (a plan each, when you want them)" (`rules --enforce`); a plan from one is a normal `/plan`.
    `docs/brain/agent-rules.md` has one section per role; builders read `## builder`, never `decision-log.md`.
 4. **Kit feedback.** A lesson that is true for any project — not tied to this product's screens, names or code —
-   goes to the kit: `node scripts/kit-feedback.mjs --title "<title>" --text "<the lesson, general terms>"`. It opens a
+   goes to the kit. On a machine set up for the kit brain (`KIT_BRAIN_URI` set, `docs/agent/kit-brain.md`) the same
+   command sends it to the brain's `lessonsIn` collection, after the same refusals, and opens no pull request; the rest of
+   this item describes the pull-request path used otherwise. The graded rows written by `grade` (item 1) are sent to the
+   brain too, `ok` and `✗` alike. `node scripts/kit-feedback.mjs --title "<title>" --text "<the lesson, general terms>"`. By default it opens a
    pull request on the kit repository (`.kit/install.json` `source`) with one file under `feedback/inbox/`, and
    **refuses** (exit 2, nothing pushed) text that names the project or its repository, a path under `paths.srcRoot` /
    `paths.serverRoot`, or holds a code fence. Rewrite the lesson without them, or keep it project-local. `--text-file`

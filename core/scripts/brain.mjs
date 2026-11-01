@@ -1,5 +1,5 @@
 /**
- * Kit brain — sends a run's facts to the kit's private MongoDB store, with no model call and no write access to the kit
+ * Kit brain — sends a run's facts to the kit's private document store, with no model call and no write access to the kit
  * (docs/agent/kit-brain.md). A machine that is offline or not set up loses nothing: documents wait in a local queue and go
  * out with the next send.
  *
