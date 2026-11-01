@@ -147,6 +147,8 @@ Expected cost: evidence 0; edit ~30–60k; evals 6 runs × ~20–40k → **~150�
 - [x] S9: Render the kit's own copies, check drift, release, and bring the improver into the first project — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .`, kit PR + release, then `kit-sync` in the project (runs in that project, shipped with its own workflow) — .claude/**, docs/agent/**, .kit/install.json
 - [ ] S10: Review after one month whether the improvements helped — One-month review (open until 2026-11-17, not before) — plans/035-skill-improver-nightly-evidence-driven-skill-upgrades.plan.md
 
+- [x] S11: Make a failed eval generation a quiet no-change night and stop the editor from changing its own test — retry once, log the model reply, freeze `evals/evals.json` across the edit — tools/skill-improver/run.mjs, tools/test/skill-improver.test.mjs
+
 ## Technical Considerations
 
 - Dependencies: `tools/leak-check.mjs`, `tools/sync.mjs`, `tools/drift-check.mjs`, the skill-creator eval format.

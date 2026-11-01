@@ -17,7 +17,7 @@
  * Exit: 0 done (PR, no-change or paused), 2 out-of-scope or unknown target, 3 budget reached, 1 error.
  */
 import { spawnSync } from 'child_process'
-import { existsSync, readFileSync, mkdirSync, mkdtempSync, cpSync, copyFileSync, readdirSync, statSync, rmSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, mkdtempSync, cpSync, copyFileSync, readdirSync, statSync, rmSync } from 'fs'
 import { join, resolve, dirname, relative } from 'path'
 import { fileURLToPath } from 'url'
 import { Meter, BudgetError } from './lib/budget.mjs'
@@ -184,18 +184,33 @@ async function improveSkill({ skill, evidenceFor, meter, repoRoot }) {
     const judgeSystem = body(readFileSync(join(wt.path, 'core', '.claude', 'agents', 'skill-judge.md'), 'utf8'))
 
     // Evals: existing, or 3 generic cases written first (they become part of the PR).
+    // A failed generation gets one retry that names the exact shape; a second failure is a no-change night, not a crash.
     let generated = false
     if (!readEvals(info.dir)) {
       generated = true
-      await inStage({ wt, skillRel, fn: ({ cwd, stagedSkill }) => runClaude({
-        prompt: `Write ${stagedSkill}/evals/evals.json for the skill "${skill}" (skill-creator format: {"skill_name","evals":[{"id","prompt","expected_output","files":[],"assertions":[...]}]}). Exactly 3 generic cases that exercise the skill, 3-5 machine-checkable assertions each. Evidence counts (no text): ${JSON.stringify(evidenceFor)}. Never name a real project, person or path; use invented example names.`,
-        cwd,
-        meter,
-        model: models.run,
-      }) })
-      if (!readEvals(info.dir)) throw new Error('eval generation produced no valid evals.json')
+      let lastReply = ''
+      for (let attempt = 1; attempt <= 2 && !readEvals(info.dir); attempt++) {
+        const retryNote = attempt === 1 ? '' : ' A previous attempt left no valid file. The file must be valid JSON with a top-level "evals" array of exactly 3 objects. Write it with the Write tool, then Read it back to check it.'
+        await inStage({ wt, skillRel, fn: async ({ cwd, stagedSkill }) => {
+          const res = await runClaude({
+            prompt: `Write ${stagedSkill}/evals/evals.json for the skill "${skill}" (skill-creator format: {"skill_name","evals":[{"id","prompt","expected_output","files":[],"assertions":[...]}]}). Exactly 3 generic cases that exercise the skill, 3-5 machine-checkable assertions each. Evidence counts (no text): ${JSON.stringify(evidenceFor)}. Never name a real project, person or path; use invented example names.${retryNote}`,
+            cwd,
+            meter,
+            model: models.run,
+          })
+          lastReply = res.text
+        } })
+      }
+      if (!readEvals(info.dir)) {
+        log(`no-change ${skill} 0 0 eval generation failed twice; last model reply: ${lastReply.replace(/\s+/g, ' ').slice(0, 300)}`)
+        console.log(`SKILL_IMPROVER: no-change ${skill} (eval generation failed twice), nothing pushed`)
+        return { result: 'no-change' }
+      }
     }
     const evals = readEvals(info.dir)
+    // The eval file is frozen before the edit: the editor must not write its own test.
+    const evalsFile = join(info.dir, 'evals', 'evals.json')
+    const evalsFrozen = readFileSync(evalsFile, 'utf8')
 
     // Edit (strong model), inside the skill folder only.
     await inStage({ wt, skillRel, fn: ({ cwd, stagedSkill }) => runClaude({
@@ -205,6 +220,14 @@ async function improveSkill({ skill, evidenceFor, meter, repoRoot }) {
       model: models.edit,
       appendSystem: commandMd,
     }) })
+
+    // Put the frozen eval file back if the editor touched it, and say so.
+    if (!existsSync(evalsFile) || readFileSync(evalsFile, 'utf8') !== evalsFrozen) {
+      mkdirSync(dirname(evalsFile), { recursive: true })
+      writeFileSync(evalsFile, evalsFrozen)
+      log(`evals-restored ${skill} editor changed the eval file`)
+      console.log(`SKILL_IMPROVER: evals restored (the editor changed the eval file of ${skill})`)
+    }
 
     // Path guard before any more spend.
     const allowed = skillAllowed(skill)
