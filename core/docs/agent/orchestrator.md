@@ -287,6 +287,26 @@ With the UI step off, a failed script is a finding for the builder, and a card n
   the `judgment` tier that reads the hand-off file (`.claude/sessions/orch-<run>/handoff-<NNN>.md`), the plan and
   `git diff` — never the first builder's transcript. A failure on that builder, or a failure when the rounds used
   reach `maxFixRounds`, parks the plan with its reason.
+- **Test files are guarded by script.** A changed test file (`*.test.*`, `*.spec.*`, `*_test.*`, `*_spec.*`, `test_*`,
+  or under a `test`, `tests`, `spec`, `specs`, `e2e`, `cypress`, `playwright`, `__tests__`, `__snapshots__` or `__mocks__`
+  folder at any depth; case-insensitive; a rename counts as a change of the old path too) that no line of the plan's
+  `## Read-Write Scope` itself names (`tools/test/**`, `src/a.test.ts`; a broad folder glob such as `tools/**` does not
+  list the tests under it) is a `blocker` finding. The scope is read from the plan as the run branch (or, for
+  `scope-check --diff`, the base ref) holds it, never from the branch's own copy: a test location the Human approves
+  mid-run must be in the plan on the base first. The finding is
+  `test file outside the plan's scope`, raised by `orch-state.mjs diff` (`testsOutOfScope`) before any finder runs.
+  `scope-check.mjs --diff` prints `SCOPE: test-out <path>` and exits 1 for the same files, so `/ship` gets it too.
+- **No progress stops the plan.** Two fix rounds in a row whose builder ends on the head sha the round started on park
+  the plan with `no progress: head <sha> unchanged across 2 fix rounds (fix rounds used: n of maxFixRounds)`, before
+  the gate runs again.
+- **Replan verdict.** A builder that returns `blocked` or `ESCALATE` also returns `planChange: { needed, why }`; every
+  escalation writes `replan: yes|no — <why>` into the hand-off file and `status.json`. A judgment-tier builder with
+  `needed: true` parks the plan with `replan needed: <why>` instead of using another round.
+- **The builder's receipt.** The result also carries `done`, `notDone` and `checksRun`. It is recorded (`notDone` in
+  the run notes and the hand-off), never trusted: a `checksRun` pass that the gate failed adds the note `receipt
+  contradicts gate: <command>`, and pass still comes from the gate. The receipt never reaches the finders.
+- **The verifier sees the gate.** The verify task carries `GATE` — each command, its status and a 20-line tail from
+  the same round's worktree gate. It is evidence only and never decides pass.
 - **Environment failures cost no round.** A builder, gate or merger that reports an environment failure (disk, network,
   a database that is down, a temp folder in use) pauses the plan (`env-paused`), runs `orch-preflight.mjs --env-only`,
   and retries once when it passes. A failing check or a second environment failure parks the plan with the reason,

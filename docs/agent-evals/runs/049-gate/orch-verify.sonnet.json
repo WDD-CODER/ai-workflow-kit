@@ -1,0 +1,88 @@
+{
+  "agent": "orch-verify",
+  "model": "sonnet",
+  "withGate": true,
+  "cases": [
+    {
+      "name": "fixed-010-lockfile-and-false-alarms",
+      "runs": 2,
+      "tp": 0,
+      "fn": 2,
+      "fp": 0,
+      "recall": 0,
+      "precision": 1,
+      "noise": 0,
+      "tokens": 190651,
+      "costUsd": 0.0675974,
+      "errors": 0,
+      "errorDetails": []
+    },
+    {
+      "name": "fixed-017-short-path-and-home",
+      "runs": 2,
+      "tp": 0,
+      "fn": 2,
+      "fp": 0,
+      "recall": 0,
+      "precision": 1,
+      "noise": 0,
+      "tokens": 319504,
+      "costUsd": 0.0967063,
+      "errors": 1,
+      "errorDetails": [
+        "invalid result: pass is false but the result's own list says true — a model's pass flag is never trusted"
+      ]
+    },
+    {
+      "name": "fixed-018-capital-x-and-crlf",
+      "runs": 2,
+      "tp": 1,
+      "fn": 1,
+      "fp": 0,
+      "recall": 0.5,
+      "precision": 1,
+      "noise": 1,
+      "tokens": 86229,
+      "costUsd": 0.0677441,
+      "errors": 1,
+      "errorDetails": [
+        "runner failed: claude exited 1:  | Configuration error in C:\\Users\\danwe\\.claude.json: JSON Parse error: Unexpected EOF"
+      ]
+    }
+  ],
+  "total": {
+    "name": "TOTAL",
+    "runs": 6,
+    "tp": 1,
+    "fn": 5,
+    "fp": 0,
+    "recall": 0.16666666666666666,
+    "precision": 1,
+    "noise": 0.3333333333333333,
+    "tokens": 596384,
+    "costUsd": 0.2320478,
+    "errors": 2,
+    "spread": {
+      "recall": 0.3333333333333333,
+      "precision": 0,
+      "noise": 0.3333333333333333
+    }
+  },
+  "runTotals": [
+    {
+      "recall": 0,
+      "precision": 1,
+      "noise": 0,
+      "costUsd": 0.0893664,
+      "errors": 1
+    },
+    {
+      "recall": 0.3333333333333333,
+      "precision": 1,
+      "noise": 0.3333333333333333,
+      "costUsd": 0.1426814,
+      "errors": 1
+    }
+  ],
+  "below": []
+}

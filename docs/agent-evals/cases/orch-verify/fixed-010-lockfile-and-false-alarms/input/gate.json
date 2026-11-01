@@ -1,0 +1,5 @@
+[
+  { "command": "npm run build", "status": "pass", "tail": "build ok" },
+  { "command": "npm run lint", "status": "pass", "tail": "lint ok: 0 problems" },
+  { "command": "npm test", "status": "pass", "tail": "# tests 160\n# pass 160\n# fail 0" }
+]

@@ -41,3 +41,33 @@ export function extractScopeGlobs(planText) {
   }
   return null
 }
+
+/**
+ * Test-file gate. A test file is one under a test folder or named *.test.* / *.spec.* (plus e2e/**).
+ * A plan may change a test file only when a scope line itself names a test location (`tools/test/**`, `src/a.test.ts`);
+ * a broad folder glob (`tools/**`) never lists the tests under it, so a builder cannot edit the tests that would catch it.
+ */
+// Case-insensitive; a test folder at any depth (test, tests, spec, specs, e2e, cypress, playwright, __tests__,
+// __snapshots__, __mocks__) or a file named *.test.*, *.spec.*, *_test.*, *_spec.* or test_*.
+const TEST_DIR = /(^|\/)(test|tests|spec|specs|e2e|cypress|playwright|__tests__|__snapshots__|__mocks__)(\/|$)/i
+const TEST_NAME = /(\.(test|spec)\.|_(test|spec)\.|(^|\/)test_[^/]*$)/i
+
+export function isTestPath(path) {
+  const p = String(path).replace(/\\/g, '/')
+  return TEST_DIR.test(p) || TEST_NAME.test(p)
+}
+
+/** The scope globs that name a test location themselves. */
+export function testScopeGlobs(scopeGlobs) {
+  return (scopeGlobs ?? []).filter((g) => isTestPath(g))
+}
+
+/**
+ * Of the changed files, the test files no test-naming scope line matches. `matchGlobs(globs)` returns a path
+ * predicate (picomatch with dot:true), passed in so this file keeps no dependency.
+ */
+export function testFilesOutOfScope(files, scopeGlobs, matchGlobs) {
+  const listed = testScopeGlobs(scopeGlobs)
+  const isListed = listed.length ? matchGlobs(listed) : () => false
+  return (files ?? []).filter((f) => isTestPath(f) && !isListed(String(f).replace(/\\/g, '/')))
+}

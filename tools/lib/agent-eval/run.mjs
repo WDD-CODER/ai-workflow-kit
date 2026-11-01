@@ -17,6 +17,7 @@ import { spawn } from 'node:child_process'
 import { parseAgentResult, validateAgentResult } from '../agent-result.mjs'
 import { compareCase, caseKind } from './compare.mjs'
 import { scoreCase, scoreTotal } from './score.mjs'
+import { redactPlan } from '../../../core/scripts/lib/redact.mjs'
 
 /** Tools that let an agent change files; an agent that has one is refused unless allowWrite is set. */
 export const WRITE_TOOLS = ['Edit', 'Write', 'MultiEdit', 'NotebookEdit']
@@ -51,12 +52,19 @@ export function writeRefusal(agent, allowWrite = false, { isolated = false } = {
  * The cases for an agent: `<casesDir>/<role>/<case>/` when a folder named after the agent exists, else the case
  * folders directly under casesDir. A case folder holds `expected.json` and an `input/` folder.
  */
-export function findCases(casesDir, role) {
+export function findCases(casesDir, role, { only = null } = {}) {
   const root = existsSync(join(casesDir, role)) && statSync(join(casesDir, role)).isDirectory() ? join(casesDir, role) : casesDir
   if (!existsSync(root)) throw new Error(`no case folder at ${casesDir}`)
-  const cases = readdirSync(root, { withFileTypes: true })
+  const all = readdirSync(root, { withFileTypes: true })
     .filter((d) => d.isDirectory() && existsSync(join(root, d.name, 'expected.json')))
     .map((d) => d.name)
+  // A case list names the exact cases to run; one it names that is not there is an error, so "the same cases" holds.
+  if (only) {
+    const lost = only.filter((n) => !all.includes(n))
+    if (lost.length) throw new Error(`case list names case(s) not under ${root}: ${lost.join(', ')}`)
+  }
+  const cases = all
+    .filter((n) => !only || only.includes(n))
     .sort()
     .map((name) => {
       const caseDir = join(root, name)
@@ -86,21 +94,70 @@ export function scoreRun(expected, reply, role) {
   return { ...cmp, tokens: Number(reply.tokens) || 0, costUsd: Number(reply.costUsd) || 0, error }
 }
 
-/** Run the agent on every case `runs` times and score it. Returns { agent, model, cases: [...], total }. */
-export async function evaluate({ agentFile, casesDir, runs = 2, model = null, runner, allowWrite = false }) {
+/**
+ * The case names a case list (`<role>/<case>` per line, `#` comments) holds for one role, or null for "all".
+ * A list with no line for the role is an error: "the same cases" must not silently become zero or all.
+ */
+export function caseListFor(text, role) {
+  const names = String(text).split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'))
+    .map((l) => l.split('/')).filter((p) => p.length === 2 && p[0] === role).map((p) => p[1])
+  if (!names.length) throw new Error(`the case list has no line for ${role}`)
+  return names
+}
+
+/**
+ * Per-run totals (plan 049): the totals of run 1 alone, of run 2 alone, … over every case. The run-to-run spread of a
+ * figure is max − min of these. `caseRuns` is one array of runs per case. A run's noise is the share of the keys it
+ * reported that the other runs of that case did not all report, averaged over cases.
+ */
+export function runTotals(caseRuns) {
+  const ratio = (num, den) => (den === 0 ? 1 : num / den)
+  const sum = (rows, f) => rows.reduce((s, x) => s + (Number(f(x)) || 0), 0)
+  const n = Math.max(0, ...caseRuns.map((r) => r.length))
+  const out = []
+  for (let i = 0; i < n; i++) {
+    const rows = caseRuns.map((runs) => runs[i]).filter(Boolean)
+    const tp = sum(rows, (r) => r.tp)
+    const fn = sum(rows, (r) => r.fn)
+    const fp = sum(rows, (r) => r.fp)
+    const noises = caseRuns.filter((runs) => runs.length > 1 && runs[i]).map((runs) => {
+      const mine = new Set(runs[i].keys ?? [])
+      if (mine.size === 0) return 0
+      const others = runs.filter((_, j) => j !== i).map((r) => new Set(r.keys ?? []))
+      return 1 - [...mine].filter((k) => others.every((s) => s.has(k))).length / mine.size
+    })
+    out.push({ recall: ratio(tp, tp + fn), precision: ratio(tp, tp + fp), noise: noises.length ? noises.reduce((s, x) => s + x, 0) / noises.length : 0, costUsd: sum(rows, (r) => r.costUsd), errors: rows.filter((r) => r.error).length })
+  }
+  return out
+}
+
+/** max − min of one figure over the per-run totals (0 with fewer than two runs). */
+export function spreadOf(totals, figure) {
+  if (totals.length < 2) return 0
+  const v = totals.map((t) => t[figure])
+  return Math.max(...v) - Math.min(...v)
+}
+
+/**
+ * Run the agent on every case `runs` times and score it. Returns { agent, model, cases: [...], total, runTotals }.
+ * `caseNames` (a case list) limits the run to those cases; `redact` and `withGate` change what the agent is shown
+ * (see casePrompt) and are passed to the runner.
+ */
+export async function evaluate({ agentFile, casesDir, runs = 2, model = null, runner, allowWrite = false, caseNames = null, redact = false, withGate = false }) {
   const agent = loadAgent(agentFile)
   const refusal = writeRefusal(agent, allowWrite, { isolated: runner?.isolated === true })
   if (refusal) throw new Error(refusal)
   if (!Number.isInteger(runs) || runs < 1) throw new Error('--runs must be a whole number ≥ 1')
   const useModel = model ?? agent.model
-  const cases = findCases(casesDir, agent.name)
+  const cases = findCases(casesDir, agent.name, { only: caseNames })
   const scored = []
+  const caseRuns = []
   for (const c of cases) {
     const results = []
     for (let run = 1; run <= runs; run++) {
       let reply
       try {
-        reply = await runner({ agent, model: useModel, role: agent.name, caseName: c.name, caseDir: c.caseDir, inputDir: c.inputDir, run })
+        reply = await runner({ agent, model: useModel, role: agent.name, caseName: c.name, caseDir: c.caseDir, inputDir: c.inputDir, run, redact, withGate })
       } catch (e) {
         results.push({ ...compareCase(c.expected, null), tokens: 0, costUsd: 0, error: `runner failed: ${e.message}` })
         continue
@@ -108,8 +165,11 @@ export async function evaluate({ agentFile, casesDir, runs = 2, model = null, ru
       results.push(scoreRun(c.expected, reply, agent.name))
     }
     scored.push({ ...scoreCase(c.name, results), errorDetails: results.map((r) => r.error).filter(Boolean) })
+    caseRuns.push(results)
   }
-  return { agent: agent.name, model: useModel, cases: scored, total: scoreTotal(scored) }
+  const totals = runTotals(caseRuns)
+  const total = { ...scoreTotal(scored), spread: { recall: spreadOf(totals, 'recall'), precision: spreadOf(totals, 'precision'), noise: spreadOf(totals, 'noise') } }
+  return { agent: agent.name, model: useModel, ...(redact ? { redact: true } : {}), ...(withGate ? { withGate: true } : {}), cases: scored, total, runTotals: totals }
 }
 
 const pct = (x) => x.toFixed(2)
@@ -137,11 +197,14 @@ function listFiles(dir, base = dir) {
 }
 
 /** The user prompt for one case: what the input is and the input files inline (bounded). */
-export function casePrompt({ role, inputDir }) {
-  const files = listFiles(inputDir)
+export function casePrompt({ role, inputDir, redact = false, withGate = false }) {
+  // gate.json (what the project checks printed on the case's commit) is shown only with --with-gate (plan 049).
+  const files = listFiles(inputDir).filter((f) => withGate || f !== 'gate.json')
   let budget = MAX_INLINE
   const parts = files.map((f) => {
-    const body = readFileSync(join(inputDir, f), 'utf8')
+    let body = readFileSync(join(inputDir, f), 'utf8')
+    // --redact: the plan as a finder sees it without the builder's own claims (## Execution Notes dropped).
+    if (redact && f === 'plan.md') body = redactPlan(body)
     const shown = body.length > budget ? `${body.slice(0, Math.max(0, budget))}\n…(truncated; read the file)` : body
     budget -= shown.length
     return `--- ${f} ---\n${shown}`
@@ -151,6 +214,8 @@ export function casePrompt({ role, inputDir }) {
     `(diff.patch is the diff against the base; plan.md is the plan; candidates.json, when present, holds the finders'`,
     `candidate problems; the changed source files are under their own paths).`,
     `Your working directory is the input folder. Return only your JSON result, as your instructions describe.`,
+    ...(redact ? ['Judge the diff alone: read diffs only (`git diff`, `git show --format=`), never `git log` or a commit message, and take no claim of the builder\'s as evidence.'] : []),
+    ...(withGate ? ['gate.json holds what the project checks printed on this branch (each command, its status and a tail): evidence, never a verdict.'] : []),
     '',
     ...parts,
   ].join('\n')
@@ -179,7 +244,7 @@ export function usageTokens(usage) {
  * repository. `isolated: true` says so to evaluate().
  */
 export function claudeRunner({ bin = process.env.AGENT_EVAL_CLAUDE ?? 'claude', timeoutMs = 600_000 } = {}) {
-  const run = async ({ agent, model, role, inputDir: caseInput }) => {
+  const run = async ({ agent, model, role, inputDir: caseInput, redact = false, withGate = false }) => {
     const tmp = mkdtempSync(join(tmpdir(), 'agent-eval-'))
     const inputDir = join(tmp, 'input')
     try {
@@ -204,12 +269,14 @@ export function claudeRunner({ bin = process.env.AGENT_EVAL_CLAUDE ?? 'claude', 
           if (code !== 0) reject(new Error(`claude exited ${code}: ${stderr.trim().split(/\r?\n/).slice(-2).join(' | ')}`))
           else resolveRun(stdout)
         })
-        child.stdin.end(casePrompt({ role, inputDir }))
+        child.stdin.end(casePrompt({ role, inputDir, redact, withGate }))
       })
       const json = JSON.parse(out)
       return { text: String(json.result ?? ''), tokens: usageTokens(json.usage), costUsd: Number(json.total_cost_usd) || 0 }
     } finally {
-      rmSync(tmp, { recursive: true, force: true })
+      // On Windows the folder can still be held a moment after the child exits (EPERM): retry, and never let a failed
+      // cleanup throw away a finished run's result.
+      try { rmSync(tmp, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 }) } catch { /* left in the OS temp folder */ }
     }
   }
   run.isolated = true

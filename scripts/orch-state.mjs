@@ -23,7 +23,7 @@
  *                                          [--gate-event "<text>"] [--asked "q1 || q2" --ready yes|no]
  *   node scripts/orch-state.mjs flake     --run <name> [--plan <NNN>] --command "<cmd>" [--round n] --via rerun|same-commit --where gate|main|final [--sha x]
  *                                          records a check that passed only on a rerun (plans[NNN].flakes[], run-level flakes[])
- *   node scripts/orch-state.mjs handoff    --run <name> --plan <NNN> --step s --check c --tail t --tried x
+ *   node scripts/orch-state.mjs handoff    --run <name> --plan <NNN> --step s --check c --tail t --tried x [--replan yes|no --replan-why t --not-done t]
  *                                          the hand-off file a fresh judgment-tier builder reads (the escalation is recorded)
  *   node scripts/orch-state.mjs context    [--run <name>]                   LESSONS / RULES / RECENT_RUNS for the roles (read-only) and their size
  *   node scripts/orch-state.mjs lessons    --run <name>                     lesson lines from status.json into docs/brain/agent-lessons/ (no model call)
@@ -56,7 +56,9 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, statfsSync, openSyn
 import { spawnSync } from 'child_process'
 import { resolve, dirname, join } from 'path'
 import { fileURLToPath } from 'url'
+import { createRequire } from 'module'
 import { findOpenPlan } from './lib/plan-paths.mjs'
+import { extractScopeGlobs, testFilesOutOfScope } from './lib/plan-scope.mjs'
 import { planNumber, planTitle, mergeSubjectRe } from './lib/plan-deps.mjs'
 import { uiItems } from './lib/done-when.mjs'
 import { listSlots } from './lib/slot.mjs'
@@ -86,7 +88,8 @@ const GATE_TIMEOUT_MIN = 15
 // Sensitive paths (the security reviewer runs on them): the same reading as ship-prep — a regex string replaces the
 // built-in list, a list of globs is added to it.
 const DEFAULT_SENSITIVE_RE = /auth|crypto|guard|interceptor|security|permission|payment|migration|secret|\.env|\.github\/workflows/i
-const SENSITIVE_CFG = ["tools/lib/source.mjs","core/scripts/pre-commit-secret-scan.mjs"]
+const picomatch = createRequire(import.meta.url)('picomatch') // scripts/node_modules (the scope guard needs it too)
+const SENSITIVE_CFG =["tools/lib/source.mjs","core/scripts/pre-commit-secret-scan.mjs"]
 // Added lines that name auth or permission code (the security reviewer runs on them whatever the file path).
 // No word boundary before the stems, so camelCase names (checkAuthToken, hasPermission) match too.
 const SENSITIVE_CODE_RE = /auth|permission|password|jwt|session[_-]?id|tokens?\b|\broles?\b/i
@@ -96,7 +99,9 @@ const SENSITIVE_CODE_RE = /auth|permission|password|jwt|session[_-]?id|tokens?\b
 // folder is always this script's own project) or a second positional word stops the command.
 const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tier', 'sha', 'role', 'model', 'effort', 'roles', 'reason', 'card', 'card-status', 'page', 'shots', 'via', 'step', 'check', 'tail', 'tried', 'text', 'min', 'stale-min', 'files', 'cmd', 'id', 'verdict', 'kind', 'confidence', 'rec', 'why', 'forced', 'dup-of', 'command', 'where',
   // facts the workflow records for the lessons (docs/agent/orchestrator.md "status.json"), and `trend` / `finish` options
-  'candidates', 'refuted', 'refuted-rules', 'verify-by', 'late-low', 'reappeared', 'miss', 'round-cause', 'gate-event', 'asked', 'ready', 'final-gate', 'last'])
+  'candidates', 'refuted', 'refuted-rules', 'verify-by', 'late-low', 'reappeared', 'miss', 'round-cause', 'gate-event', 'asked', 'ready', 'final-gate', 'last',
+  // the hand-off's replan verdict and the builder's receipt
+  'replan', 'replan-why', 'not-done'])
 function parseArgs(argv) {
   const out = { _: [] }
   for (let i = 0; i < argv.length; i++) {
@@ -680,7 +685,8 @@ const commands = {
     const branch = branchOf(planPath(nnn), nnn)
     fetchOrigin()
     const head = refExists(`origin/${branch}`) ? `origin/${branch}` : branch
-    const d = git(root, 'diff', '--name-only', `origin/${runBranch(run)}...${head}`)
+    // --no-renames: a moved-away file is listed under its old path too, so a renamed test file is still a changed test file.
+    const d = git(root, 'diff', '--name-only', '--no-renames', `origin/${runBranch(run)}...${head}`)
     if (d.status !== 0) fail(`git diff ${runBranch(run)}...${head}: ${d.err}`)
     const files = d.out.split('\n').filter(Boolean)
     const tests = sensitiveTests()
@@ -691,8 +697,16 @@ const commands = {
     const codeFiles = added.files
     const unread = added.failed || d.truncated
     const sensitive = sensitiveFiles.length > 0 || codeFiles.length > 0 || unread
-    emit({ ok: true, files, sensitive, sensitiveFiles, sensitiveCode: codeFiles, ...(unread ? { diffUnread: true } : {}), head: git(root, 'rev-parse', head).out },
-      [`${files.length} file(s) changed, ${sensitiveFiles.length} sensitive by path, ${codeFiles.length} by added auth/permission code${unread ? '; the diff could not be read in full: sensitive' : ''}`])
+    // Test-file gate: a changed test file no scope line naming a test location lists. The scope is read from the plan
+    // as the run branch holds it (the plan before the builder), never from the plan branch: a builder that adds a test
+    // glob to its own scope block must not approve its own test edits. Else the copy in this folder.
+    const rel = planPath(nnn)
+    const onBase = git(root, 'show', `origin/${runBranch(run)}:${rel}`)
+    const planText = onBase.status === 0 ? onBase.out : (existsSync(join(root, rel)) ? readFileSync(join(root, rel), 'utf8') : '')
+    const scopeGlobs = extractScopeGlobs(planText) ?? []
+    const testsOutOfScope = testFilesOutOfScope(files.filter((f) => f !== rel && !f.startsWith('.claude/sessions/')), scopeGlobs, (g) => picomatch(g, { dot: true }))
+    emit({ ok: true, files, sensitive, sensitiveFiles, sensitiveCode: codeFiles, testsOutOfScope, ...(unread ? { diffUnread: true } : {}), head: git(root, 'rev-parse', head).out },
+      [`${files.length} file(s) changed, ${sensitiveFiles.length} sensitive by path, ${codeFiles.length} by added auth/permission code${testsOutOfScope.length ? `, ${testsOutOfScope.length} test file(s) outside the scope` : ''}${unread ? '; the diff could not be read in full: sensitive' : ''}`])
   },
 
   set() {
@@ -817,6 +831,9 @@ const commands = {
     const files = git(root, 'diff', '--name-only', `origin/${runBranch(run)}...${head}`).out.split('\n').filter(Boolean)
     const val = (k) => (args[k] && args[k] !== true ? String(args[k]) : '(not given)')
     const rel = `.claude/sessions/orch-${run}/handoff-${nnn}.md`
+    // Does the plan itself have to change? yes | no; anything else is "no".
+    const replan = args.replan === 'yes' ? 'yes' : 'no'
+    const replanWhy = args['replan-why'] && args['replan-why'] !== true ? String(args['replan-why']) : '(not given)'
     mkdirSync(dirname(join(root, rel)), { recursive: true })
     writeFileSync(join(root, rel), [
       `Step:            ${val('step')} of plan ${nnn} (run ${run}, branch ${branch})`,
@@ -825,6 +842,8 @@ const commands = {
       `Failing check:   ${val('check')}`,
       `Output tail:     ${val('tail')}`,
       'Suspected cause: (a guess) see the output tail; rerun the failing check first',
+      `Replan:          ${replan} — ${replanWhy}`,
+      ...(args['not-done'] && args['not-done'] !== true ? [`Not done:        ${String(args['not-done'])}`] : []),
       '',
     ].join('\n'))
     // The escalation is a fact the builder lessons are written from (lessonFacts): its step and the failing check.
@@ -832,6 +851,7 @@ const commands = {
     if (st?.plans?.[nnn]) {
       const e = { step: val('step'), check: val('check').slice(0, 200) }
       st.plans[nnn].escalations = [...(st.plans[nnn].escalations ?? []).filter((x) => x.step !== e.step || x.check !== e.check), e]
+      st.plans[nnn].replan = `${replan} — ${replanWhy}`
       writeStatus(run, st)
     }
     emit({ ok: true, path: rel }, [`hand-off file ${rel}`])

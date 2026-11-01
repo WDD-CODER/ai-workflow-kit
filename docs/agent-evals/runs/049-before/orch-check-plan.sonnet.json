@@ -1,0 +1,111 @@
+{
+  "agent": "orch-check-plan",
+  "model": "sonnet",
+  "cases": [
+    {
+      "name": "clean-019-compare-and-score",
+      "runs": 2,
+      "tp": 0,
+      "fn": 0,
+      "fp": 0,
+      "recall": 1,
+      "precision": 1,
+      "noise": 0,
+      "tokens": 172100,
+      "costUsd": 0.0581154,
+      "errors": 0,
+      "errorDetails": []
+    },
+    {
+      "name": "fixed-010-scope-and-done-when",
+      "runs": 2,
+      "tp": 1,
+      "fn": 3,
+      "fp": 1,
+      "recall": 0.25,
+      "precision": 0.5,
+      "noise": 1,
+      "tokens": 202377,
+      "costUsd": 0.0714034,
+      "errors": 0,
+      "errorDetails": []
+    },
+    {
+      "name": "fixed-014-report-by-page",
+      "runs": 2,
+      "tp": 1,
+      "fn": 1,
+      "fp": 3,
+      "recall": 0.5,
+      "precision": 0.25,
+      "noise": 1,
+      "tokens": 168351,
+      "costUsd": 0.0691828,
+      "errors": 0,
+      "errorDetails": []
+    },
+    {
+      "name": "fixed-018-ui-items-not-held",
+      "runs": 2,
+      "tp": 0,
+      "fn": 2,
+      "fp": 1,
+      "recall": 0,
+      "precision": 0,
+      "noise": 1,
+      "tokens": 203798,
+      "costUsd": 0.08380560000000001,
+      "errors": 0,
+      "errorDetails": []
+    },
+    {
+      "name": "planted-ticked-subtask-missing",
+      "runs": 2,
+      "tp": 0,
+      "fn": 2,
+      "fp": 2,
+      "recall": 0,
+      "precision": 0,
+      "noise": 0,
+      "tokens": 167813,
+      "costUsd": 0.0600666,
+      "errors": 0,
+      "errorDetails": []
+    }
+  ],
+  "total": {
+    "name": "TOTAL",
+    "runs": 10,
+    "tp": 2,
+    "fn": 8,
+    "fp": 7,
+    "recall": 0.2,
+    "precision": 0.2222222222222222,
+    "noise": 0.6,
+    "tokens": 914439,
+    "costUsd": 0.34257379999999993,
+    "errors": 0,
+    "spread": {
+      "recall": 0.4,
+      "precision": 0.4,
+      "noise": 0.19999999999999996
+    }
+  },
+  "runTotals": [
+    {
+      "recall": 0,
+      "precision": 0,
+      "noise": 0.4,
+      "costUsd": 0.17005189999999998,
+      "errors": 0
+    },
+    {
+      "recall": 0.4,
+      "precision": 0.4,
+      "noise": 0.6,
+      "costUsd": 0.1725219,
+      "errors": 0
+    }
+  ],
+  "below": []
+}
