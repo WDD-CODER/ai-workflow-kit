@@ -1,6 +1,6 @@
 # Plan 033 — An unreadable state call is retried once and the park reason shows what the runner returned
 
-Status: draft
+Status: done
 Track: code — here (kit)
 Snapshot: d21d4bcac6b004ea8c99b6695ed13248c5d8c528
 Depends-on: none

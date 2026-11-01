@@ -1,6 +1,6 @@
 # Plan 038 — A plan number counts plans on every branch, not only numbered branch names
 
-Status: draft
+Status: done
 Track: code — here (kit)
 Snapshot: 504cefad6e32decbf0b8db1298012b963fd40eed
 Depends-on: none

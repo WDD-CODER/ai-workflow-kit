@@ -1,6 +1,6 @@
 # Plan 031 — An Override Cannot Drop a Step the Kit Requires: Required-Step Markers, an Override Check in CI, /ship and drift-check
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: 76097c3
 

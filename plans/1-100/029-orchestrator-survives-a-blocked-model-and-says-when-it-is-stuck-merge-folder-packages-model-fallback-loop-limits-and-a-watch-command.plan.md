@@ -1,6 +1,6 @@
 # Plan 029 — Orchestrator survives a blocked model and says when it is stuck: merge-folder packages, model fallback, loop limits and a watch command
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: 7109f6143c2566b502f1fe8994b16b60f1a6b911
 

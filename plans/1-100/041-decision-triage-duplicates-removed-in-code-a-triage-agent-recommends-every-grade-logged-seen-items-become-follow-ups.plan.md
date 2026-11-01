@@ -1,6 +1,6 @@
 # Plan 041 — Decision triage: the run removes duplicate decisions in code, a triage agent recommends a verdict for each, every grade is logged, and `seen:` items become follow-ups
 
-Status: draft
+Status: done
 Depends-on: 030, 040
 Snapshot: a363b42
 

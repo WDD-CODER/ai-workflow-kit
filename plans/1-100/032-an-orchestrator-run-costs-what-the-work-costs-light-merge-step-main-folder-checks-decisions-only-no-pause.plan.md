@@ -1,6 +1,6 @@
 # Plan 032 — An orchestrator run costs what the work costs: a light merge step, checks that run from the main folder, decisions only, and no pause when there is nothing to ask
 
-Status: draft
+Status: done
 Track: code — here (kit)
 Snapshot: d922f7adae224bb58a88b9dc2abcdd8632840c90
 Depends-on: none

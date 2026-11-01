@@ -1,6 +1,6 @@
 # Plan 034 — A run with a main-folder check always waits for go
 
-Status: draft
+Status: done
 Track: code — here (kit)
 Snapshot: e782cd08a7350220b727a9a7ea91624c65192c76
 Depends-on: none

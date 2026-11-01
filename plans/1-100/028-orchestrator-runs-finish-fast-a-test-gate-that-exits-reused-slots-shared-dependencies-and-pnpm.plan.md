@@ -1,6 +1,6 @@
 # Plan 028 — Orchestrator runs finish fast: a test gate that exits, reused slots, shared dependencies and pnpm
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: d70250b4fe350b5b8d883d3b7731540a186edf0f
 

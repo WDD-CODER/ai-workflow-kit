@@ -1,6 +1,6 @@
 # Plan 025 — Decision Review and Learning Loop: Agents Log Unasked Choices, the Human Grades Them, Lessons Flow Back
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: a142a8337ab251a266845a3224190d91ee50ecb6
 

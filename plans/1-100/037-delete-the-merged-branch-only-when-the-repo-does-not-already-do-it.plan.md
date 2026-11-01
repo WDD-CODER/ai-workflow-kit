@@ -1,6 +1,6 @@
 # Plan 037 — Delete the merged branch only when the repo does not already do it
 
-Status: draft
+Status: done
 Track: code — here (kit)
 Snapshot: e6141fffea34debe0cf510d2d4d20aacb77ea57a
 Depends-on: none

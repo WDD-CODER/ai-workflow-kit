@@ -3,7 +3,7 @@
     "version": "1.12.0"
   },
   "source": "local:.",
-  "commit": "f3ff6add281fe80ab410edf09764888a27ae010d",
+  "commit": "8c0048ddcf9749827060e897239da4aa8ccd8c51",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -370,12 +370,12 @@
       "source": "core/docs/agent/ship-recovery.md"
     },
     "docs/agent/ship-regular.md": {
-      "sha256": "79220f7bf799d73117e843952a32f063002f78c9a963083224ff17b08f6aded0",
+      "sha256": "5ab10992c49b0ec4587a22c5f78d4926a8d79b392c30ea30d1513b3ad253fba7",
       "kind": "managed",
       "source": "core/docs/agent/ship-regular.md"
     },
     "docs/agent/standards-git.md": {
-      "sha256": "fe08de38d60629c5adef4d243c2a45e45ea2d576d7b944784473d6f43318d2e5",
+      "sha256": "c3f418286c6cbe96dac8bb6f0f0fada26c4e912da7db21f800a7af73afbec727",
       "kind": "managed",
       "source": "core/docs/agent/standards-git.md"
     },

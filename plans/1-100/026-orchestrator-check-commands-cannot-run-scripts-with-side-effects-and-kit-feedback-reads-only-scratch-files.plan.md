@@ -1,6 +1,6 @@
 # Plan 026 — Orchestrator check commands cannot run scripts with side effects, and kit-feedback reads only scratch files
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: 6e3f56e1f71af251cb4860fb9bbdce540b42d538
 
