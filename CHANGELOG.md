@@ -9,6 +9,21 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Added
+- **`/kit-learn`: the kit turns run evidence into a problem ledger, problem cards, plans and kit-owned lessons** (kit
+  repository only). `tools/kit-learn.mjs collect` reads the kit brain, keeps one ledger entry per problem (runs, projects,
+  minutes lost, first and last seen, last kit version, status `open | planned | fixed | regressed | dismissed`) and prints it
+  ranked by `minutesLost × (1 + ln(runs)) × (projects ≥ 2 ? 1.5 : 1)`, regressed first. A fixed problem whose signature comes
+  back from a run whose kit contains the fix (`git merge-base --is-ancestor`) is `regressed`. The session writes at most 5
+  cards (cause as `file:symbol`, what should have caught it, options, a recommendation); one reply line (`ok`, `I1 plan`,
+  `I2 lesson builder`, `I3 dismiss <why>`, …) goes through `apply`, which records a `proposals` row per card, so a rejected idea
+  stays rejected until 2 more runs bring it back. `plan-check` holds a plan from a brain issue to a regression test.
+  `docs/agent/kit-lessons/<role>.md` are the kit's own lessons per role (2,000 characters, id-based `tools/kit-lessons.mjs`
+  edits, retired only for a positive reason), handed to every role before the project's own; `kit-learn.mjs lessons` reports
+  exposures and recurrences, `trend` shows whether the kit gets better, `triage-prior` calibrates a new project's triage from
+  every project's grades. The graders (`agent-eval`, the signature code, the leak and secret checks, `tools/test/**`) are
+  protected from the loop. The kit-side database role is a Human step (`docs/agent/kit-brain.md`, Setup 8).
+
 ## [1.13.0] - 2026-11-01
 
 ### Added
@@ -117,20 +132,6 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
   `kit-skill-improver.ps1` (daily 02:10, AC power only, never catches up). One skill per night, a PR only when the new
   version beats the old one on its evals; hard token cap, path guard and leak guard; every run prints its billing mode
   and logs tokens and dollars to `~/.claude/skill-improver/spend.jsonl`. See the README section "Skill improver".
-
-- **`/kit-learn`: the kit turns run evidence into a problem ledger, problem cards, plans and kit-owned lessons** (kit
-  repository only). `tools/kit-learn.mjs collect` reads the kit brain, keeps one ledger entry per problem (runs, projects,
-  minutes lost, first and last seen, last kit version, status `open | planned | fixed | regressed | dismissed`) and prints it
-  ranked by `minutesLost × (1 + ln(runs)) × (projects ≥ 2 ? 1.5 : 1)`, regressed first. A fixed problem whose signature comes
-  back from a run whose kit contains the fix (`git merge-base --is-ancestor`) is `regressed`. The session writes at most 5
-  cards (cause as `file:symbol`, what should have caught it, options, a recommendation); one reply line (`ok`, `I1 plan`,
-  `I2 lesson builder`, `I3 dismiss <why>`, …) goes through `apply`, which records a `proposals` row per card, so a rejected idea
-  stays rejected until 2 more runs bring it back. `plan-check` holds a plan from a brain issue to a regression test.
-  `docs/agent/kit-lessons/<role>.md` are the kit's own lessons per role (2,000 characters, id-based `tools/kit-lessons.mjs`
-  edits, retired only for a positive reason), handed to every role before the project's own; `kit-learn.mjs lessons` reports
-  exposures and recurrences, `trend` shows whether the kit gets better, `triage-prior` calibrates a new project's triage from
-  every project's grades. The graders (`agent-eval`, the signature code, the leak and secret checks, `tools/test/**`) are
-  protected from the loop. The kit-side database role is a Human step (`docs/agent/kit-brain.md`, Setup 8).
 
 ### Fixed
 - **A run no longer stalls on a slot-only check.** A main-folder check that reads a slot's plan-start stamp

@@ -3,7 +3,7 @@
     "version": "1.13.0"
   },
   "source": "local:.",
-  "commit": "a8c8600e31b9b2efddca261ae633169637df73b8",
+  "commit": "9631c3b8c55c156ee069893799c669ae92925bc5",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -155,7 +155,7 @@
       "source": "core/.claude/commands/orchestrate.md"
     },
     ".claude/commands/plan.md": {
-      "sha256": "aa148a65ad625028233ee2f2f2ba89f3432549cd78b0d1d286d933f05cc53d04",
+      "sha256": "e2b5e11ee1cb266dbe56d3faa7cd1dbc5d1140baada32f6a12d1d161d224be66",
       "kind": "managed",
       "source": "core/.claude/commands/plan.md"
     },
@@ -275,7 +275,7 @@
       "source": "core/.claude/skills/worktree-setup/SKILL.md"
     },
     ".claude/workflows/orchestrate.js": {
-      "sha256": "05c8dc4f1e87aa5f396ab755711d4cf064e11f27eb38287583d4658246a1c1f8",
+      "sha256": "e0c2cb5183f1824b09fd8c73afcf8caf5bbbb29a4c54f80eb60f1c3ef8981bce",
       "kind": "managed",
       "source": "core/.claude/workflows/orchestrate.js"
     },
@@ -340,7 +340,7 @@
       "source": "core/docs/agent/brain-capture.md"
     },
     "docs/agent/decision-review.md": {
-      "sha256": "08a52205b7384654ca7b39e49cfb661dc0847d56e8cf50ef64131e7cafa2f1d4",
+      "sha256": "7db7c8e2b37daec5f3cb8765136ad210ea909657b223edb553b1282e5bc93b6e",
       "kind": "managed",
       "source": "core/docs/agent/decision-review.md"
     },
@@ -350,9 +350,64 @@
       "source": "core/docs/agent/job-validation.md"
     },
     "docs/agent/kit-brain.md": {
-      "sha256": "ac087959f111366d2b9ac1fbe82ebb568b6e796bbcfbb27f4758a5625d67b717",
+      "sha256": "d4bdbf091926dee32527e854d6f9166d0cbfaf993ba857f22bd3cf7a5cabf779",
       "kind": "managed",
       "source": "core/docs/agent/kit-brain.md"
+    },
+    "docs/agent/kit-lessons/builder.md": {
+      "sha256": "0e8c2f6c79c01cee8c98025630d40e814beb861a4f5f9ba79be4eb2dc19e0c4e",
+      "kind": "managed",
+      "source": "core/docs/agent/kit-lessons/builder.md"
+    },
+    "docs/agent/kit-lessons/check-bugs.md": {
+      "sha256": "503824cf83543faa65f5717c0a6378c9df26ff362bef3ab5d56f0b8a272d61b6",
+      "kind": "managed",
+      "source": "core/docs/agent/kit-lessons/check-bugs.md"
+    },
+    "docs/agent/kit-lessons/check-plan.md": {
+      "sha256": "088182c4e03e65a972c579ba0361addf633c004e6590fd2f036d86476774a2cb",
+      "kind": "managed",
+      "source": "core/docs/agent/kit-lessons/check-plan.md"
+    },
+    "docs/agent/kit-lessons/check-rules.md": {
+      "sha256": "575832f41b816fcdea2be160bbe292cba4109feb9f95e421107658d2a6116b94",
+      "kind": "managed",
+      "source": "core/docs/agent/kit-lessons/check-rules.md"
+    },
+    "docs/agent/kit-lessons/gate.md": {
+      "sha256": "bad8852fa90f25f17465f65dd7c3ef6ba56cc46020fed84ae606cec48c6b5c81",
+      "kind": "managed",
+      "source": "core/docs/agent/kit-lessons/gate.md"
+    },
+    "docs/agent/kit-lessons/planner.md": {
+      "sha256": "d290762fe7ca8eb71494a4a57c0005bfdf61b3a39155ba68cfb9b1bc8ea88e95",
+      "kind": "managed",
+      "source": "core/docs/agent/kit-lessons/planner.md"
+    },
+    "docs/agent/kit-lessons/readiness.md": {
+      "sha256": "44135b3f77a37a888c2943f4f1fd50273338e9cf7d14abf1d6a5cad0a3596f43",
+      "kind": "managed",
+      "source": "core/docs/agent/kit-lessons/readiness.md"
+    },
+    "docs/agent/kit-lessons/security.md": {
+      "sha256": "2f096c51cc843e7f5f2122e3135f54e9378892289795f8d9306ce2cafe8d1b44",
+      "kind": "managed",
+      "source": "core/docs/agent/kit-lessons/security.md"
+    },
+    "docs/agent/kit-lessons/triage-calibration.md": {
+      "sha256": "0edcd788260767bf9765818c2b7be3bc6cec5dda7f9620b6b9c401919834c1f0",
+      "kind": "managed",
+      "source": "core/docs/agent/kit-lessons/triage-calibration.md"
+    },
+    "docs/agent/kit-lessons/ui.md": {
+      "sha256": "2be6adc42025bb01ee7c3a0d8c50648bd47108173b20fb7fd5bd436fc30fd676",
+      "kind": "managed",
+      "source": "core/docs/agent/kit-lessons/ui.md"
+    },
+    "docs/agent/kit-lessons/verify.md": {
+      "sha256": "bd8a5f49aa987511705af2e5522b642e29e3e3c62f6c6cb870444e4116a64983",
+      "kind": "managed",
+      "source": "core/docs/agent/kit-lessons/verify.md"
     },
     "docs/agent/model-routing.md": {
       "sha256": "b37374dacc6aa7d24b326dd2ba8d1db2b758a2f79159640831d189fee6141223",
@@ -390,7 +445,7 @@
       "source": "core/docs/agent/standards-security.md"
     },
     "docs/agent/workflow-map.md": {
-      "sha256": "ad3cdc63cb00700964db51a12e68ee8d675cb9a6bfee6a1b24733ba8b1483dff",
+      "sha256": "feede4ddc2586ae6bb0de36344eb8b287f97ab9878d4d54cdbc1e03369f383c2",
       "kind": "managed",
       "source": "core/docs/agent/workflow-map.md"
     },
@@ -745,7 +800,7 @@
       "source": "core/scripts/orch-preflight.mjs"
     },
     "scripts/orch-state.mjs": {
-      "sha256": "e3ec4767426efa58e7ecf9d635cc8cd2a2ca621488d0861717710f6ad393efff",
+      "sha256": "ac824bc3c38b8c3b932b1a02ba234196330bd573fce026ce512ecc4a68a9555c",
       "kind": "managed",
       "source": "core/scripts/orch-state.mjs"
     },
@@ -775,7 +830,7 @@
       "source": "core/scripts/plan-ledger-check.mjs"
     },
     "scripts/plan-name-similarity.mjs": {
-      "sha256": "bc3985e66f2f72b5017ed23ebee3612e1f853e765907b7753362af33ff18aaf2",
+      "sha256": "bb61311a45c593b5b3e6eb0cc76004d31e83acfb3ac1c58ce8387024b0f1cb00",
       "kind": "managed",
       "source": "core/scripts/plan-name-similarity.mjs"
     },
