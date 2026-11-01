@@ -931,6 +931,7 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   if (r.status !== 0) fail(`install for the orchestrator files: exit ${r.status}, ${(r.stdout + r.stderr).trim().split('\n').pop()}`)
   else {
     for (const f of ['.claude/workflows/orchestrate.js', '.claude/commands/orchestrate.md', 'docs/agent/orchestrator.md', 'scripts/orch-state.mjs', 'scripts/orch-preflight.mjs', 'scripts/lib/orch-run.mjs',
+      'scripts/brain.mjs', 'scripts/lib/brain-doc.mjs',
       'scripts/decision-log.mjs', 'scripts/kit-feedback.mjs', '.claude/commands/kit-feedback.md', 'docs/agent/decision-review.md', 'docs/brain/decision-log.md', 'docs/brain/agent-rules.md',
       // The workflow scout: command, page builder, pull request step, page template and the seed sources list.
       '.claude/commands/scout.md', 'scripts/scout/render.mjs', 'scripts/scout/pr.mjs', 'scripts/scout/page-template.html', 'docs/scout/sources.json']) {
@@ -1043,6 +1044,19 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     const b = run('install.mjs', ['--target', ob])
     if (b.status !== 2 || !b.stderr.includes(msg) || files(ob).length !== 1) fail(`install with orchestrator ${JSON.stringify(orch)}: exit ${b.status}, ${b.stderr.trim().split('\n')[0]}`)
     rmSync(ob, { recursive: true, force: true })
+  }
+  // brain.*: a connection string is never a config value (it lives in KIT_BRAIN_URI); install refuses it, naming the key.
+  const uriCfg = `mongodb${'+srv'}://user:pass@cluster.example.net/`
+  for (const [brain, msg] of [
+    [{ uri: uriCfg }, 'brain.uri is not a config key — the connection string lives in KIT_BRAIN_URI'],
+    [{ projectId: uriCfg }, 'brain.projectId is not a config key — the connection string lives in KIT_BRAIN_URI'],
+    [{ enabled: 'yes' }, 'brain.enabled is "yes" — it must be true or false'],
+  ]) {
+    const bb = tmp('brain-bad')
+    writeFileSync(join(bb, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, brain }))
+    const b = run('install.mjs', ['--target', bb])
+    if (b.status !== 2 || !b.stderr.includes(msg) || files(bb).length !== 1) fail(`install with brain ${JSON.stringify(brain).slice(0, 40)}: exit ${b.status}, ${b.stderr.trim().split('\n')[0]}`)
+    rmSync(bb, { recursive: true, force: true })
   }
   // sync refuses a bad value too, naming the key.
   const os = tmp('orch-sync')

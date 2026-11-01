@@ -5,7 +5,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -22,7 +22,9 @@ function project(source = 'github:acme/ai-workflow-kit') {
   return dir
 }
 // PATH is emptied so a refusal that wrongly reached `gh` would fail with ENOENT instead of touching a network.
-const send = (dir, args) => spawnSync(process.execPath, [script, '--root', dir, ...args], { encoding: 'utf8', env: { ...process.env, PATH: '' } })
+// KIT_BRAIN_* is removed: a machine set up for the kit brain would otherwise take the brain path instead of the gh path.
+const noBrain = () => Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('KIT_BRAIN_')))
+const send = (dir, args, env = {}) => spawnSync(process.execPath, [script, '--root', dir, ...args], { encoding: 'utf8', env: { ...noBrain(), PATH: '', ...env } })
 
 test('each refusal: exit 2, a reason on stderr, nothing sent', () => {
   const dir = project()
@@ -68,6 +70,42 @@ test('dry run: prints the entry, the branch feedback/<date>-<slug>, the inbox fi
     assert.match(r.stdout, /gh api -X PUT repos\/acme\/ai-workflow-kit\/contents\/feedback\/inbox\//)
     assert.match(r.stdout, /gh pr create --repo acme\/ai-workflow-kit --head feedback\//)
   } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('with KIT_BRAIN_URI set the lesson goes to the kit brain (lessonsIn), after the same refusals, and no pull request is opened', () => {
+  const dir = project('local:.') // not a GitHub source: the brain path does not need one
+  const home = mkdtempSync(join(tmpdir(), 'kitfb-home-'))
+  const log = join(home, 'stub.log')
+  const stub = join(kit, 'tools', 'fixtures', 'orchestrator', 'brain', 'stub-driver.mjs')
+  const brain = { KIT_BRAIN_URI: `mongodb${'+srv'}://writer:pw@cluster.example.net/kitbrain`, KIT_BRAIN_HOME: home, KIT_BRAIN_DRIVER: stub, KIT_STUB_LOG: log }
+  try {
+    const refused = send(dir, ['--title', 'A lesson', '--text', 'It happened on Pineapple Pantry screens'], brain)
+    assert.equal(refused.status, 2, 'the same refusal checks run first')
+    assert.match(refused.stderr, /KIT_FEEDBACK: refused/)
+    assert.equal(existsSync(log), false, 'a refused lesson reaches no driver')
+    const dry = send(dir, ['--title', 'Read the receipt', '--text', 'A general lesson about receipts.', '--role', 'builder', '--dry-run'], brain)
+    assert.equal(dry.status, 0, dry.stderr)
+    assert.match(dry.stdout, /dry run — would send to the kit brain/)
+    assert.equal(existsSync(log), false, 'a dry run sends nothing')
+    const r = send(dir, ['--title', 'Read the receipt', '--text', 'A general lesson about receipts.', '--role', 'builder', '--why', 'it repeated'], brain)
+    assert.equal(r.status, 0, r.stdout + r.stderr)
+    assert.equal(r.stdout.trim(), 'KIT_FEEDBACK: sent to the kit brain')
+    const calls = readFileSync(log, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))
+    const ins = calls.find((c) => c.op === 'insertMany')
+    assert.equal(ins.collection, 'lessonsIn')
+    assert.equal(ins.ids.length, 1)
+    // A store that does not answer: queued, still exit 0, still no pull request (PATH is empty, a gh call would fail).
+    const down = send(dir, ['--title', 'Read the receipt again', '--text', 'Another general lesson.'], { ...brain, KIT_STUB_MODE: 'throw' })
+    assert.equal(down.status, 0, down.stdout + down.stderr)
+    assert.match(down.stdout, /^KIT_FEEDBACK: queued for the kit brain \(connection refused\); the queue retries/)
+    // Without the connection string, today's path: a local source is refused for the gh route.
+    const pr = send(dir, ['--title', 'Read the receipt', '--text', 'A general lesson about receipts.', '--dry-run'])
+    assert.equal(pr.status, 2)
+    assert.match(pr.stderr, /needs github:<owner>\/<repo>/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+    rmSync(home, { recursive: true, force: true })
+  }
 })
 
 test('privacyProblem and repoOf in isolation', () => {

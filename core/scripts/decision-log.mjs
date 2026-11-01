@@ -479,6 +479,19 @@ function main(argv) {
     }
     const x = rowsOut.filter((l) => JSON.parse(l).humanVerdict === '✗').length
     process.stdout.write(`DECISION_LOG: graded ${rowsOut.length} item(s) (${x} ✗) → ${GRADES}; ${followOut.length} follow-up(s) → ${FOLLOWUPS}\n`)
+    // The rows just written — ok and ✗ alike, they are the triage calibration data — go to the kit brain
+    // (docs/agent/kit-brain.md). A child process killed after 15 s; whatever it does, this command's result is unchanged.
+    const brain = join(dirname(fileURLToPath(import.meta.url)), 'brain.mjs')
+    if (rowsOut.length && existsSync(brain)) {
+      try {
+        const kill = Number(process.env.KIT_BRAIN_KILL_MS) > 0 ? Number(process.env.KIT_BRAIN_KILL_MS) : 15000
+        const r = spawnSync(process.execPath, [brain, 'send', '--grades', '--run', flags.run, '--root', dir], { encoding: 'utf8', timeout: kill, killSignal: 'SIGKILL' })
+        const l = r.error || r.signal ? `BRAIN: queued (the send did not finish within ${Math.round(kill / 1000)} s; its documents wait in the queue)` : (r.stdout ?? '').split(/\r?\n/).find((s) => s.startsWith('BRAIN:'))
+        if (l) process.stdout.write(`${l}\n`)
+      } catch {
+        // never fails the grading
+      }
+    }
   }
 
   // Agreement per kind from the grade rows: an ask agrees with ✗, every other verdict with ok (rows the triage left
