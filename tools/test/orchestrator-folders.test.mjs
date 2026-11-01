@@ -2,9 +2,9 @@
 // (scripts/lib/orch-run.mjs) and the config keys it added (tools/lib/kit.mjs). Scratch repositories only.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { join, resolve } from 'path'
+import { join, resolve, dirname, basename } from 'path'
 import { spawnSync } from 'child_process'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, realpathSync, cpSync } from 'fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, realpathSync, cpSync, symlinkSync } from 'fs'
 import { tmpdir } from 'os'
 import { pathToFileURL, fileURLToPath } from 'url'
 import { orchestratorProblems, commandProblems } from '../lib/kit.mjs'
@@ -121,13 +121,40 @@ test('slots: release detaches and removes the marker; uncommitted or unpushed wo
   assert.equal(existsSync(join(s.path, '.worktree-plan')), false)
 })
 
+test('samePath: one folder in two spellings (alias, slashes, trailing slash, 8.3 short name) is one; different or empty are not', () => {
+  const dir = tmp()
+  const real = join(dir, 'proj-wt-1')
+  mkdirSync(real)
+  const link = join(tmp(), 'alias')
+  symlinkSync(dir, link, 'junction')
+  assert.equal(folders.samePath(real, join(link, 'proj-wt-1')), true, 'alias')
+  assert.equal(folders.samePath(real, real.replace(/\\/g, '/') + '/'), true, 'slashes and trailing slash')
+  assert.equal(folders.samePath(real, join(dir, 'proj-wt-2')), false, 'different folder')
+  assert.equal(folders.samePath(real, ''), false)
+  assert.equal(folders.samePath(undefined, undefined), false)
+  assert.equal(folders.samePath(join(dir, 'gone'), join(dir, 'gone') + '/'), true, 'not on disk: plain spelling')
+  if (process.platform === 'win32') {
+    // the CI runner's RUNNER~1: the 8.3 form of this folder, when the volume keeps short names
+    const r = spawnSync('powershell', ['-NoProfile', '-Command', `(New-Object -ComObject Scripting.FileSystemObject).GetFolder('${real}').ShortPath`], { encoding: 'utf8' })
+    const short = r.stdout.trim()
+    if (short && existsSync(short) && short.toLowerCase() !== real.toLowerCase()) assert.equal(folders.samePath(real, short), true, `8.3 ${short}`)
+  }
+})
+
 test('run slots: stop and finish give every held slot back through releaseRunSlots; a dirty slot is kept and says why', () => {
   const main = repo()
   const a = slotOf(main, 1)
   const b = slotOf(main, 2)
   for (const [s, n] of [[a, '001'], [b, '002']]) assert.equal(folders.claimSlot({ slot: s, branch: `feat/${n}-x`, base: 'main', planPath: `plans/${n}-x.plan.md`, branchExists: false }).ok, true)
   writeFileSync(join(b.path, 'wip.txt'), 'x\n')
-  const status = { plans: { '001': { nnn: '001', branch: 'feat/001-x', slot: a.path.replace(/\\/g, '/') }, '002': { nnn: '002', branch: 'feat/002-x', slot: b.path }, '003': { nnn: '003', branch: 'feat/003-x' } } }
+  // plan 001 records its slot through an alias of the folder (a junction/symlink to its parent), as a short 8.3 name
+  // (RUNNER~1) or another spelling would: still the same folder, so it is released and not forgotten.
+  const aliasSlot = (path) => {
+    const link = join(tmp(), 'alias')
+    symlinkSync(dirname(path), link, 'junction')
+    return join(link, basename(path)).replace(/\\/g, '/')
+  }
+  const status = { plans: { '001': { nnn: '001', branch: 'feat/001-x', slot: aliasSlot(a.path) }, '002': { nnn: '002', branch: 'feat/002-x', slot: b.path }, '003': { nnn: '003', branch: 'feat/003-x' } } }
   const slots = [{ ...a, plan: 'plans/001-x.plan.md', branch: 'feat/001-x', detached: false }, { ...b, plan: 'plans/002-x.plan.md', branch: 'feat/002-x', detached: false }]
   const r = folders.releaseRunSlots({ status, slots, target: 'main' })
   assert.deepEqual(r.lines, ['plan 001: slot wt-1 released', 'plan 002: slot wt-2 kept — uncommitted files in the slot'])
@@ -473,7 +500,8 @@ test('free-merged-slots removes the clean merge folder of a merged run; a live, 
   writeFileSync(join(runs, 'status.json'), JSON.stringify({ run: 'live', phase: 'running', updatedAt: new Date().toISOString(), plans: {}, notes: [] }) + '\n')
   const r = node(dir, 'free-merged-slots.mjs')
   assert.equal(r.status, 0, r.stdout + r.stderr)
-  const at = (run) => r.stdout.split(/\r?\n/).find((l) => l.startsWith('merge folder ' + folderOf(run)) || l.replace(/\\/g, '/').startsWith('merge folder ' + folderOf(run).replace(/\\/g, '/')))
+  // git prints the long form of a folder; the test's own path may be a short 8.3 one (RUNNER~1) on Windows
+  const at = (run) => r.stdout.split(/\r?\n/).find((l) => { const m = /^merge folder (.+?): (?:left alone|removed)/.exec(l); return m && m[1].replace(/\\/g, '/').split('/').pop() === basename(folderOf(run)) })
   assert.match(at('done'), /: removed \(run branch orch\/done merged; local branch kept\)$/)
   assert.equal(existsSync(folderOf('done')), false, 'the merged run\'s folder is gone')
   assert.equal(sh(dir, 'branch', '--list', 'orch/done').includes('orch/done'), true, 'the local branch is kept')

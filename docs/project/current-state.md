@@ -1,7 +1,7 @@
 # CURRENT STATE — ai-workflow-kit
 > Updated when a kit plan merges. Feeds the Context Capsule "Current State" section.
 - How work runs here (solo flow): `/plan` → plan saved and pushed on `main` → `git switch -c feat/NNN-<slug>`
-  → build in this folder → `/ship` (build, lint, test, review, validation hand-off, PR) → Dandan merges →
+  → build in this folder → `/ship` (build, lint, test, review, validation hand-off, PR) → the Human merges →
   `git switch main` and `git pull`. No slots, no `.claude/todo.md`; the plan's own checkboxes are the record.
 - Last completed: the kit installed into itself (solo flow, drift check in CI).
 - Next: the orchestrator plans (011 plan order, 013 role agents, 014 orchestrator; then 017 guards, 018 UI tier,

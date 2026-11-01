@@ -3,7 +3,7 @@
     "version": "1.12.0"
   },
   "source": "local:.",
-  "commit": "ce2802bbe89976f3ca3fd08955a714e7998b639f",
+  "commit": "d27b72effe8e7a1397d9be5b3ec09f6a4cecc512",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -620,7 +620,7 @@
       "source": "core/scripts/decision-log.mjs"
     },
     "scripts/free-merged-slots.mjs": {
-      "sha256": "a4a9485973bc92b87246320a53ba1674a37ab9e5080832c926cceb2bf5a451b2",
+      "sha256": "10c96300183e0ae5f768088f6d9600f7e0afc531a309118049b66922f11c9e72",
       "kind": "managed",
       "source": "core/scripts/free-merged-slots.mjs"
     },
@@ -670,7 +670,7 @@
       "source": "core/scripts/lib/invariants.mjs"
     },
     "scripts/lib/orch-folders.mjs": {
-      "sha256": "bfe3e99ecf4152c738aab4d8e07cba9c17a650d62dc8a7b0c421b113a93480f5",
+      "sha256": "599f2aaa4862685cdfa1b3eb432d2eac3ba2b075fc1e9de6a74d195212ceabc5",
       "kind": "managed",
       "source": "core/scripts/lib/orch-folders.mjs"
     },

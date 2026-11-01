@@ -19,6 +19,7 @@ import { execFileSync } from 'child_process'
 import { resolve, dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import { listSlots } from './lib/slot.mjs'
+import { samePath } from './lib/orch-folders.mjs'
 import { stopSlotServers } from './lib/slot-procs.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -153,7 +154,7 @@ function main() {
       console.log(`wt-${s.slot}: idle — left alone`)
       continue
     }
-    const held = live.find((h) => (h.slot && h.slot === norm(s.path)) || (h.branch && h.branch === s.branch))
+    const held = live.find((h) => (h.slot && samePath(h.slot, s.path)) || (h.branch && h.branch === s.branch))
     if (held) {
       console.log(`wt-${s.slot}: branch=${s.branch} claimed by live orchestrator run ${held.run} — left alone`)
       continue
