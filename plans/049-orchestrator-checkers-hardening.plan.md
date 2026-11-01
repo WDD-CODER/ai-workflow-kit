@@ -28,7 +28,8 @@ they are hardened first. Seven gaps, found in the code on `65f45bb`:
    every finder may run `git log` / `git show`, which print the builder's commit messages. A finder that reads "tests
    pass, scope respected" is primed to agree. Nobody has measured whether hiding it finds more.
 3. **There is no design reviewer.** No `DESIGN.md` checklist and no design finder exist in the kit (`git grep -i
-   "DESIGN.md"` → nothing). A design-track plan is checked only for bugs, plan fit and rules.
+   "DESIGN.md"` → nothing). A design-track plan is checked only for bugs, plan fit and rules. Dropped from this plan
+   (Human, 2026-11-01); see Out of Scope.
 4. **Escalation never asks whether the plan is wrong.** On a persisting failure the workflow writes a hand-off and
    starts a fresh judgment-tier builder (`orchestrate.js` ~L994–1001); nothing records whether the plan itself needs a
    change, so a plan that cannot be built as written burns its last round and parks with a code reason.
@@ -40,13 +41,13 @@ they are hardened first. Seven gaps, found in the code on `65f45bb`:
    it cannot use "this check ran and passed / failed with this tail" when it keeps or refutes a finding.
 
 ## Goals & Success Criteria
-**Primary:** each of the seven changes is either adopted because the re-run of the same 25 BASELINE cases shows it
+**Primary:** each of the six changes is either adopted because the re-run of the same 25 BASELINE cases shows it
 helps (or, for the code-only changes, shows no regression), or left out because it does not — and the Human can see
 that in one comparison table.
 
 Measurement rule (applies to every item below): "before" is a fresh re-run on this plan's starting commit, not the
-2026-10-22 numbers; Sonnet, 3 runs per case, the 25 case ids listed in BASELINE.md, today's exact-severity scorer.
-For each figure, `s` = the larger of the two arms' run-to-run spread (max − min of the 3 run totals) and the real
+2026-10-22 numbers; Sonnet, 2 runs per case (as BASELINE), the 25 case ids listed in BASELINE.md, today's exact-severity scorer.
+For each figure, `s` = the larger of the two arms' run-to-run spread (max − min of the 2 run totals) and the real
 difference is `d = max(0.05, 2 × s)`.
 
 - [auto] Test-file gate: `node scripts/scope-check.mjs --diff=<base> --plan=<plan>` on a fixture branch that edits
@@ -61,10 +62,6 @@ difference is `d = max(0.05, 2 × s)`.
 - [auto] Redaction adopted only by numbers: `node tools/agent-eval-ab.mjs --before <dir> --after <dir>` prints, per
   finder, `ADOPT` only when recall rises by ≥ d **and** precision after ≥ precision before (two decimals); otherwise
   `REJECT`. The orchestrator change (H2b) is built only for an `ADOPT`; the verdict line is copied into Execution Notes.
-- [auto] Design reviewer: with a `DESIGN.md` at the project root and a diff that touches a style or markup file, the
-  stub run calls `orch-check-design` with `CHECKLIST: DESIGN.md`; without `DESIGN.md` it is never called (tests);
-  `node tools/agent-eval.mjs --agent .claude/agents/orch-check-design.md --cases docs/agent-evals/cases/orch-check-design
-  --runs 3 --model sonnet --json` runs on its 3 new cases and the numbers are recorded as its first baseline.
 - [auto] Escalation records a replan verdict: the builder result has `planChange: { needed, why }`; every escalation
   writes `replan: yes|no — <why>` into the hand-off file and status.json; a judgment-tier builder that returns
   `needed: true` parks the plan with `replan needed: <why>` instead of using another round (tests).
@@ -78,7 +75,7 @@ difference is `d = max(0.05, 2 × s)`.
 - [auto] The verifier gets the gate: the verify task carries `GATE` (each command, status and a 20-line tail) from the
   last worktree gate of the same round (test); `--with-gate` in agent-eval passes a case's `input/gate.json`.
 - [auto] Pass stays computed by script: the existing test "finder pass: true next to a blocker is recomputed" still
-  passes, and new tests show the verifier's `pass`, the builder's `checksRun` and the design finder's `pass` never
+  passes, and new tests show the verifier's `pass`, and the builder's `checksRun` never
   turn a failure into a pass.
 - [auto] Before/after table: `docs/agent-evals/049-checkers-hardening.md` exists with, per role, the before run, every
   experiment arm and the after run (recall, precision, noise, errors, spread, d, cost), and one verdict per figure
@@ -114,8 +111,7 @@ The 2026-10-22 numbers are the reference the Human knows; the judgement is alway
 | cost per role | bugs 3.03, plan 0.73, rules 0.57, verify 2.08 USD (2 runs) | H2 a little down, H7 a little up | reported, not judged | over +20 % per case: named in the table for the Human |
 
 H1, H4, H5 and H6 change code paths the 25 cases do not exercise; they are judged by "no regressed figure in the
-after run" plus their own `[auto]` tests. The new design finder has no baseline: its first numbers become one.
-
+after run" plus their own `[auto]` tests.
 ## Execution Mode
 - Parallel: no
 - Concurrent plans: none. Runs before 045 (045 gets `Depends-on: …, 049`, so 046–048 follow). Plan 048 changes the
@@ -140,10 +136,8 @@ core/.claude/agents/orch-check-plan.md
 core/.claude/agents/orch-check-rules.md
 core/.claude/agents/orch-security.md
 core/.claude/agents/orch-verify.md
-core/.claude/agents/orch-check-design.md
 core/docs/agent/orchestrator.md
 core/docs/agent/agent-roles.md
-core/docs/agent/model-routing.md
 core/docs/agent/agent-evals.md
 tools/agent-eval.mjs
 tools/agent-eval-ab.mjs
@@ -152,15 +146,12 @@ tools/test/scope-tests-gate.test.mjs
 tools/test/orchestrator.test.mjs
 tools/test/agent-eval.test.mjs
 tools/test/agent-eval-ab.test.mjs
-tools/test/agent-contracts.test.mjs
-tools/test/eval-cases.test.mjs
 tools/test/fixtures/**
 docs/agent-evals/BASELINE.md
 docs/agent-evals/049-checkers-hardening.md
 docs/agent-evals/baseline-2026-10-22.cases.txt
 docs/agent-evals/runs/049-*/**
 docs/agent-evals/cases/orch-verify/*/input/gate.json
-docs/agent-evals/cases/orch-check-design/**
 scripts/**
 .claude/**
 docs/agent/**
@@ -216,7 +207,7 @@ append the path to the scope block above and retry.
 - [ ] Richer builder receipt.
 
 ### Nice to Have (P2)
-- [ ] Design finder with a `DESIGN.md` checklist (see Critical Questions).
+- none
 
 ## UI/UX Notes
 - Terminal and run-report text only. New park reasons and notes are the exact strings in Goals.
@@ -225,44 +216,44 @@ append the path to the scope block above and retry.
 
 These are the plan's milestones: a Worker does them in order and ticks each one after it is checked.
 
-- [ ] H0: Measure the starting point on the same 25 cases before anything changes — `docs/agent-evals/baseline-2026-10-22.cases.txt` (the 25 case ids BASELINE.md lists, one `<role>/<case>` per line; the two check-plan cases added later are not in it); `agent-eval.mjs --case-list <file>` runs only those; `--json` keeps per-run totals so the spread can be computed; `tools/agent-eval-ab.mjs --before <dir> --after <dir> [--adopt-rule redaction]` prints the table and a verdict per figure from the rule in Goals; run the 4 roles × sonnet × 3 runs on the plan's starting commit into `docs/agent-evals/runs/049-before/` — tools/agent-eval.mjs, tools/lib/agent-eval/run.mjs, tools/agent-eval-ab.mjs, tools/test/agent-eval.test.mjs, tools/test/agent-eval-ab.test.mjs, docs/agent-evals/baseline-2026-10-22.cases.txt, docs/agent-evals/runs/049-before/**
+- [ ] H0: Measure the starting point on the same 25 cases before anything changes — `docs/agent-evals/baseline-2026-10-22.cases.txt` (the 25 case ids BASELINE.md lists, one `<role>/<case>` per line; the two check-plan cases added later are not in it); `agent-eval.mjs --case-list <file>` runs only those; `--json` keeps per-run totals so the spread can be computed; `tools/agent-eval-ab.mjs --before <dir> --after <dir> [--adopt-rule redaction]` prints the table and a verdict per figure from the rule in Goals; run the 4 roles × sonnet × 2 runs on the plan's starting commit into `docs/agent-evals/runs/049-before/` — tools/agent-eval.mjs, tools/lib/agent-eval/run.mjs, tools/agent-eval-ab.mjs, tools/test/agent-eval.test.mjs, tools/test/agent-eval-ab.test.mjs, docs/agent-evals/baseline-2026-10-22.cases.txt, docs/agent-evals/runs/049-before/**
 - [ ] H1: Fail a branch that touches a test file the plan's scope does not name — `isTestPath()` in plan-scope.mjs (`**/*.test.*`, `**/*.spec.*`, `**/test/**`, `**/tests/**`, `**/__tests__/**`, `e2e/**`); a test file counts as listed only when a scope line that itself names a test location matches it (`tools/test/**`, `src/a.test.ts`), never through a broad folder glob; `--diff` prints `SCOPE: test-out <path>` and exits 1 (so `/ship`'s ship-prep gets it too); `orch-state.mjs diff` returns `testsOutOfScope`; `checkers()` turns a non-empty list into a blocker finding before any finder runs — core/scripts/lib/plan-scope.mjs, core/scripts/scope-check.mjs, core/scripts/orch-state.mjs, core/.claude/workflows/orchestrate.js, tools/test/scope-tests-gate.test.mjs, tools/test/orchestrator.test.mjs, tools/test/fixtures/**
-- [ ] H2a: Measure whether finders find more when they do not see the builder's claims — `core/scripts/lib/redact.mjs` (drop `## Execution Notes`, keep every checkbox line); `agent-eval.mjs --redact` applies it to the case plan and adds the "diffs only, no commit messages" line to the prompt; run check-bugs, check-plan, check-rules × sonnet × 3 runs into `docs/agent-evals/runs/049-redact/`; `agent-eval-ab.mjs --adopt-rule redaction` gives ADOPT / REJECT per finder — core/scripts/lib/redact.mjs, tools/agent-eval.mjs, tools/lib/agent-eval/run.mjs, tools/test/agent-eval.test.mjs, docs/agent-evals/runs/049-redact/**
+- [ ] H2a: Measure whether finders find more when they do not see the builder's claims — `core/scripts/lib/redact.mjs` (drop `## Execution Notes`, keep every checkbox line); `agent-eval.mjs --redact` applies it to the case plan and adds the "diffs only, no commit messages" line to the prompt; run check-bugs, check-plan, check-rules × sonnet × 2 runs into `docs/agent-evals/runs/049-redact/`; `agent-eval-ab.mjs --adopt-rule redaction` gives ADOPT / REJECT per finder — core/scripts/lib/redact.mjs, tools/agent-eval.mjs, tools/lib/agent-eval/run.mjs, tools/test/agent-eval.test.mjs, docs/agent-evals/runs/049-redact/**
 - [ ] H2b: Give the finders the redacted plan in real runs, only for finders that got ADOPT — `orch-state.mjs redact --run --plan` writes `.claude/sessions/orch-<run>/plan-<NNN>.redacted.md`; `checkers()` passes it as `PLAN` (and drops `REMOVES`) for adopted finders; their agent files say to read diffs only; `orch-security` follows check-bugs' verdict (it has no cases, said in the table) — skipped with a line in Execution Notes when no finder got ADOPT — core/scripts/orch-state.mjs, core/.claude/workflows/orchestrate.js, core/.claude/agents/orch-check-bugs.md, core/.claude/agents/orch-check-plan.md, core/.claude/agents/orch-check-rules.md, core/.claude/agents/orch-security.md, tools/test/orchestrator.test.mjs
-- [ ] H3: Add a design finder that checks a design-touching diff against the project's DESIGN.md checklist — new `orch-check-design` (read-only, same finder schema, runs like `orch-security`: only when `DESIGN.md` exists at the project root and the diff touches `**/*.{css,scss,less,html,jsx,tsx,vue,svelte}` or the plan has `Track: design|split`); gets the diff file list and `CHECKLIST: DESIGN.md`; registered in agent-roles and model-routing (review tier, never Haiku); 3 new cases (one planted checklist break, one clean, one break in a file the checklist does not cover) and its first measured numbers — core/.claude/agents/orch-check-design.md, core/scripts/orch-state.mjs, core/.claude/workflows/orchestrate.js, core/docs/agent/agent-roles.md, core/docs/agent/model-routing.md, docs/agent-evals/cases/orch-check-design/**, tools/test/orchestrator.test.mjs, tools/test/agent-contracts.test.mjs, tools/test/eval-cases.test.mjs
 - [ ] H4: Make every escalation say whether the plan itself must change — builder schema `planChange: { needed: boolean, why: string }` (required on ESCALATE and blocked); `orch-state.mjs handoff --replan yes|no --replan-why <text>` writes `replan:` into the hand-off and status.json; a judgment-tier builder with `needed: true` parks with `replan needed: <why>`; the builder file says when to answer yes (a Done-when item or a scope line that cannot hold as written) — core/.claude/workflows/orchestrate.js, core/scripts/orch-state.mjs, core/.claude/agents/orch-builder.md, core/docs/agent/orchestrator.md, tools/test/orchestrator.test.mjs
 - [ ] H5: Make the builder say what it did, what it did not do and which checks it ran — builder schema requires `done`, `notDone`, `checksRun: [{command, status}]` (no token or usage data — that is 045 Step 0); the hand-off and the run report show `notDone`; a `checksRun` pass that the gate failed adds `receipt contradicts gate: <command>`; the receipt never reaches the finders — core/.claude/workflows/orchestrate.js, core/.claude/agents/orch-builder.md, core/docs/agent/orchestrator.md, tools/test/orchestrator.test.mjs
 - [ ] H6: Stop a plan whose builder makes no progress instead of running to the round limit — in `runPlan()` keep the sha status.json holds when a fix round starts; a round whose builder returns that same `headSha` counts as "no progress"; two in a row park with the reason in Goals — core/.claude/workflows/orchestrate.js, core/docs/agent/orchestrator.md, tools/test/orchestrator.test.mjs
-- [ ] H7: Give the verifier the gate's results so it can keep or refute with them — the verify task gets `GATE` (command, status, 20-line tail of the round's worktree gate); `orch-verify.md` says how to use it and that it never decides pass; `input/gate.json` for the 3 verify cases (what the gate printed on the case's commit — the project checks passed, since each bug got past them); `--with-gate`; run verify × sonnet × 3 runs into `docs/agent-evals/runs/049-gate/` and compare with H0 — core/.claude/workflows/orchestrate.js, core/.claude/agents/orch-verify.md, tools/lib/agent-eval/run.mjs, tools/agent-eval.mjs, docs/agent-evals/cases/orch-verify/*/input/gate.json, docs/agent-evals/runs/049-gate/**, tools/test/orchestrator.test.mjs, tools/test/agent-eval.test.mjs
-- [ ] H8: Re-run the same 25 cases on the finished branch and publish the comparison — 4 roles × sonnet × 3 runs into `docs/agent-evals/runs/049-after/` with every adopted change in place (H2b's redaction and H7's gate on); `agent-eval-ab.mjs` writes `docs/agent-evals/049-checkers-hardening.md` (before, each arm, after, verdicts, cost); a `regressed` figure → revert the step that caused it and re-run that role; add a short "After plan 049" section to BASELINE.md pointing to the new file (the 2026-10-22 tables stay) — docs/agent-evals/049-checkers-hardening.md, docs/agent-evals/runs/049-after/**, docs/agent-evals/BASELINE.md
-- [ ] D1: Document the test-file gate, the redaction result, the design finder, replan, the receipt, the no-progress stop and the verifier's gate input — core/docs/agent/orchestrator.md, core/docs/agent/agent-roles.md, core/docs/agent/agent-evals.md, CHANGELOG.md
+- [ ] H7: Give the verifier the gate's results so it can keep or refute with them — the verify task gets `GATE` (command, status, 20-line tail of the round's worktree gate); `orch-verify.md` says how to use it and that it never decides pass; `input/gate.json` for the 3 verify cases (what the gate printed on the case's commit — the project checks passed, since each bug got past them); `--with-gate`; run verify × sonnet × 2 runs into `docs/agent-evals/runs/049-gate/` and compare with H0 — core/.claude/workflows/orchestrate.js, core/.claude/agents/orch-verify.md, tools/lib/agent-eval/run.mjs, tools/agent-eval.mjs, docs/agent-evals/cases/orch-verify/*/input/gate.json, docs/agent-evals/runs/049-gate/**, tools/test/orchestrator.test.mjs, tools/test/agent-eval.test.mjs
+- [ ] H8: Re-run the same 25 cases on the finished branch and publish the comparison — 4 roles × sonnet × 2 runs into `docs/agent-evals/runs/049-after/` with every adopted change in place (H2b's redaction and H7's gate on); `agent-eval-ab.mjs` writes `docs/agent-evals/049-checkers-hardening.md` (before, each arm, after, verdicts, cost); a `regressed` figure → revert the step that caused it and re-run that role; add a short "After plan 049" section to BASELINE.md pointing to the new file (the 2026-10-22 tables stay) — docs/agent-evals/049-checkers-hardening.md, docs/agent-evals/runs/049-after/**, docs/agent-evals/BASELINE.md
+- [ ] D1: Document the test-file gate, the redaction result, replan, the receipt, the no-progress stop and the verifier's gate input — core/docs/agent/orchestrator.md, core/docs/agent/agent-roles.md, core/docs/agent/agent-evals.md, CHANGELOG.md
 - [ ] R1: Render the kit's own installed copies and check drift — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .` — scripts/**, .claude/**, docs/agent/**, .kit/install.json
 
 ## Technical Considerations
 - Dependencies: `orchestrate.js` (`checkers()`, `runPlan()`, `SCHEMA.builder`), `orch-state.mjs` (`diff`, `handoff`),
   `scope-check.mjs` `--diff` (used by `ship-prep.mjs`, so `/ship` gets the test gate too), `tools/lib/agent-eval/run.mjs`.
-- New files: `core/scripts/lib/redact.mjs`, `core/.claude/agents/orch-check-design.md`, `tools/agent-eval-ab.mjs`,
-  the case list, the comparison doc, 3 design cases, 3 `gate.json` inputs, two test files.
+- New files: `core/scripts/lib/redact.mjs`, `tools/agent-eval-ab.mjs`, the case list, the comparison doc,
+  3 `gate.json` inputs, two test files.
 - Model changes: builder result gains `planChange`, `done`, `notDone`, `checksRun`; verify task gains `GATE`;
-  `orch-state diff` gains `testsOutOfScope` (and `design` for H3).
+  `orch-state diff` gains `testsOutOfScope`.
 - Backend / API: none. Auth and validation: none. Data / migration: none.
 - Security surface: the test-file gate closes a way for a builder to pass by weakening tests. Redacted plan copies
   go only under `.claude/sessions/`.
 - Pass is computed by script everywhere: the gate from its results, finders from their problems' severities, the
   verifier from verdicts and the keep threshold, the test gate and the no-progress stop from git and status.json.
-  New fields (`checksRun`, the design finder's `pass`) are recorded, never trusted.
-- Noise: 3–14 cases per role and 3 runs; one case moves recall by 0.07–0.33. That is why every verdict uses
+  The new `checksRun` field is recorded, never trusted.
+- Noise: 3–14 cases per role and 2 runs; one case moves recall by 0.07–0.33. That is why every verdict uses
   `d = max(0.05, 2 × spread)` and why H2 needs a recall gain with no precision drop. The scorer stays exact-severity
   (plan 048 adds tolerance later), so these numbers compare with BASELINE.md.
-- Cost estimate (BASELINE sonnet, 2 runs: bugs 3.03 + plan 0.73 + rules 0.57 + verify 2.08 = 6.41 USD): 3 runs ≈
-  9.6 USD per full pass. H0 9.6 + H2a ≈ 6.5 + H3 ≈ 1 + H7 ≈ 3.1 + H8 9.6 ≈ **30 USD**, plus re-runs after a revert.
-- Lock groups: every sub-task names its exact files; the shared hot file is `orchestrate.js` (H1, H2b, H3–H7), so
+- Cost estimate (BASELINE sonnet, 2 runs: bugs 3.03 + plan 0.73 + rules 0.57 + verify 2.08 = 6.41 USD per full
+  pass): H0 6.4 + H2a ≈ 4.3 + H7 ≈ 2.1 + H8 6.4 ≈ **19 USD**, plus re-runs after a revert. With 2 runs the spread is
+  the gap between two runs, so `d` sits at its 0.05 floor more often and a small gain can read as "no real change".
+- Lock groups: every sub-task names its exact files; the shared hot file is `orchestrate.js` (H1, H2b, H4–H7), so
   those steps run one after another in this order.
 
 ## Out of Scope
 - Changing the scorer or any existing case's labels (plan 048). Token or usage data in the receipt (045 Step 0).
 - Changing models per role. Improving `orch-builder` beyond its result fields. Cases for `orch-security`.
-- Writing a `DESIGN.md` for any project — the finder reads a project's own file.
+- A design reviewer and a `DESIGN.md` checklist (brief step 3) — dropped by the Human on 2026-11-01; a later plan.
 - Any change to plans 045–048 except 045's `Depends-on:` line.
 
 ## Critical Questions
@@ -271,10 +262,11 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 - Q: Does a broad folder glob (`tools/**`) count as listing the tests under it? A: no — only a scope line that names a
   test location counts; this is what makes the gate bite (045 and 048 already name their test files; a plan that
   relies on a folder glob for its tests must add a test line).
-- Q: The kit has no design reviewer and no `DESIGN.md` today. Build a new conditional finder `orch-check-design`
-  (H3 as written), or add the checklist to `orch-check-plan` instead, or drop H3? A: H3 as written (Human, 2026-11-01).
+- Q: The kit has no design reviewer and no `DESIGN.md` today. Build a new conditional finder, add the checklist to
+  `orch-check-plan`, or drop the step? A: drop (Human, 2026-11-01); sub-task ids keep the brief's step numbers, so
+  there is no H3.
 - Q: Runs per case — 3 (≈30 USD, gives the spread the verdicts need) or 2 like BASELINE (≈20 USD, spread from 2
-  runs)? A: 3 (Human, 2026-11-01).
+  runs)? A: 2 (Human, 2026-11-01).
 - Q: "No drop in precision" for the redaction adoption — exact (after ≥ before at two decimals) or within 0.02?
   A: exact, as the brief says.
 
