@@ -114,6 +114,27 @@ test('redaction: keys, database strings and bearer tokens become [redacted:<patt
   assert.ok(!JSON.stringify(doc).includes('abcd1234') && !JSON.stringify(doc).includes('writer:pw'))
 })
 
+test('pre-commit-secret-scan: importing it runs no git command and exports the patterns brain-doc redacts with; run directly it still blocks a staged secret', async () => {
+  const scan = join(kit, 'core', 'scripts', 'pre-commit-secret-scan.mjs')
+  const mod = await import(pathToFileURL(scan).href)
+  assert.deepEqual(mod.PATTERNS.map((p) => p.name), ['aws-access-key', 'generic-api-key', 'bearer-token', 'private-key-block', 'google-api-key', 'mongo-uri-creds'])
+  assert.deepEqual(lib.SECRET_PATTERNS.slice(0, 6).map((p) => p.name), mod.PATTERNS.map((p) => p.name), 'one list: brain-doc imports it')
+  assert.ok(lib.SECRET_PATTERNS.every((p) => p.re.flags.includes('g')))
+  const dir = tmp('scan')
+  try {
+    const git = (...a) => spawnSync('git', a, { cwd: dir, encoding: 'utf8' })
+    git('init', '--quiet')
+    writeFileSync(join(dir, 'ok.js'), 'const a = 1\n')
+    git('add', 'ok.js')
+    assert.equal(spawnSync(process.execPath, [scan], { cwd: dir, encoding: 'utf8' }).status, 0, 'a clean staged file passes')
+    writeFileSync(join(dir, 'bad.js'), `const k = { api_key: "${'abcd1234'.repeat(2)}" }\n`)
+    git('add', 'bad.js')
+    const r = spawnSync(process.execPath, [scan], { cwd: dir, encoding: 'utf8' })
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, /secret-scan: blocked bad\.js — matched pattern "generic-api-key"/)
+  } finally { gone(dir) }
+})
+
 test('send without KIT_BRAIN_URI: the documents are queued, the line says why, exit 0', () => {
   const dir = project()
   try {
@@ -357,13 +378,17 @@ function transcripts(root, { phase = 'Build', meta = true, when = new Date('2026
   const wf = join(lib.transcriptDir(root, home), 'sess-1', 'subagents', 'workflows', 'wf_abc')
   mkdirSync(wf, { recursive: true })
   const line = (id, i, o, cr, cc) => JSON.stringify({ type: 'assistant', uuid: `u-${id}`, message: { id, usage: { input_tokens: i, output_tokens: o, cache_read_input_tokens: cr, cache_creation_input_tokens: cc } } })
-  const agent = (name, ph, lines) => {
+  const agent = (name, ph, type, lines) => {
     writeFileSync(join(wf, `${name}.jsonl`), `${lines.join('\n')}\n{"type":"user"}\n`)
-    if (meta) writeFileSync(join(wf, `${name}.meta.json`), JSON.stringify({ agentType: 'workflow-subagent', description: 'free text we never read', workflowPhase: ph }))
+    const m = { description: 'free text we never read', workflowPhase: ph }
+    if (type !== undefined) m.agentType = type
+    if (meta) writeFileSync(join(wf, `${name}.meta.json`), JSON.stringify(m))
     utimesSync(join(wf, `${name}.jsonl`), when, when)
   }
-  agent('agent-a1', phase, [line('m1', 10, 5, 100, 50), line('m1', 10, 5, 100, 50), line('m2', 1, 2, 3, 4)])
-  agent('agent-a2', 'Readiness', [line('m3', 7, 7, 7, 7)])
+  agent('agent-a1', phase, 'orch-builder', [line('m1', 10, 5, 100, 50), line('m1', 10, 5, 100, 50), line('m2', 1, 2, 3, 4)])
+  agent('agent-a2', 'Readiness', 'workflow-subagent', [line('m3', 7, 7, 7, 7)])
+  agent('agent-a3', phase, 'orch-gate', [line('m4', 2, 2, 2, 2)])
+  agent('agent-a4', phase, undefined, [line('m5', 3, 3, 3, 3)])
   return home
 }
 
@@ -373,14 +398,17 @@ test('tokens: summed per workflowPhase (a message id counts once), mixed phases 
   try {
     const t = lib.tokensForRun({ root, startedAt: '2026-10-29T10:00:00.000Z', finishedAt: '2026-10-29T10:35:00.000Z', home })
     assert.equal(t.note, null)
-    assert.deepEqual(t.tokens.byPhase.Build, { input: 11, output: 7, cacheRead: 103, cacheCreation: 54, agents: 1, roles: lib.PHASE_ROLES.Build, mixedRoles: true })
+    assert.deepEqual(t.tokens.byPhase.Build, { input: 16, output: 12, cacheRead: 108, cacheCreation: 59, agents: 3, roles: ['orch-builder', 'orch-gate'], fallback: 1, mixedRoles: true })
     assert.equal(t.tokens.byPhase.Readiness.input, 7)
-    assert.equal(t.tokens.byPhase.Readiness.mixedRoles, true, 'readiness shares its phase with the preflight runner')
-    assert.deepEqual(t.tokens.total, { input: 18, output: 14, cacheRead: 110, cacheCreation: 61, agents: 2 })
+    assert.equal(t.tokens.byPhase.Readiness.mixedRoles, true, 'a generic agent in a phase the kit lists with several roles: mixed, and not given a guessed role')
+    // The role is the meta file's agentType; "workflow-subagent" or no agentType falls back to the phase, never to description.
+    assert.deepEqual(Object.keys(t.tokens.byRole).sort(), ['orch-builder', 'orch-gate', 'phase:Build', 'phase:Readiness'])
+    assert.deepEqual(t.tokens.byRole['orch-builder'], { input: 11, output: 7, cacheRead: 103, cacheCreation: 54, agents: 1, phases: ['Build'] })
+    assert.deepEqual(t.tokens.byRole['phase:Build'], { input: 3, output: 3, cacheRead: 3, cacheCreation: 3, agents: 1, phases: ['Build'] })
+    assert.deepEqual(t.tokens.total, { input: 23, output: 19, cacheRead: 115, cacheCreation: 66, agents: 4 })
     const odd = transcripts(root, { phase: 'Something New' })
     const u = lib.tokensForRun({ root, startedAt: '2026-10-29T10:00:00.000Z', finishedAt: '2026-10-29T10:35:00.000Z', home: odd })
-    assert.equal(u.tokens.byPhase['Something New'].roles, null, 'a phase the kit does not know has no role guess')
-    assert.equal(u.tokens.byPhase['Something New'].mixedRoles, null)
+    assert.deepEqual(u.tokens.byPhase['Something New'].roles, ['orch-builder', 'orch-gate'], 'a phase the kit does not know still splits by agentType')
     gone(odd)
   } finally { gone(home) }
 })

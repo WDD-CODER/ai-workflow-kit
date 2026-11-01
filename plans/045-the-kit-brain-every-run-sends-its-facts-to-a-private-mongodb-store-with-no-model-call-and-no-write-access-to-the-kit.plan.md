@@ -99,6 +99,7 @@ core/scripts/lib/brain-doc.mjs
 core/scripts/orch-state.mjs
 core/scripts/decision-log.mjs
 core/scripts/kit-feedback.mjs
+core/scripts/pre-commit-secret-scan.mjs
 core/.claude/commands/orchestrate.md
 core/docs/agent/kit-brain.md
 core/docs/agent/orchestrator.md
@@ -258,16 +259,20 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
   `~/.claude/projects/<project>/<session>/subagents/workflows/wf_<id>/`; assistant lines carry `message.usage` and `message.id`
   (dedupe by id). `workflowPhase` in the meta file is a string set by the workflow's `phase()`. `description` is free text and is
   display only. In orchestrate runs the phases are `Start`, `Readiness`, `Build`, `Report`; `Build` holds the builder, gate,
-  three finders, verifier, security, ui and merge agents together, so B11 sums per `workflowPhase` and marks the phase
-  `mixedRoles: true` (it does not guess a role split). Other workflows seen on this machine use `Fix`, `Check`, `Review`,
+  three finders, verifier, security, ui and merge agents together. **Revised after the Human's call (2026-11-01):** in
+  orchestrate runs the meta file's `agentType` is the real role (`orch-builder`, `orch-gate`, …; only non-orchestrate
+  workflows show the generic `workflow-subagent`), so B11 sums per `workflowPhase` (`byPhase`) and per role (`byRole`): the
+  role is the meta `agentType`, and an agent with no `agentType` or `workflow-subagent` falls back to `phase:<Phase>`.
+  `mixedRoles: true` marks a phase whose total holds more than one role. `description` is never read. Other workflows seen on this machine use `Fix`, `Check`, `Review`,
   `Verify`, `Seams`, `Merge`, `Plans`, `Lane N`, `Final sweep`, `Setup`, `Plan`, `Commit plans`. A run is tied to its folders by
   time: the folder's newest agent file was written between `startedAt` and `finishedAt` + 1 min. Any unknown shape gives `tokens: null`.
 - **Step 0 driver:** `mongodb@6` installs on Windows with `npm install --prefix <home>/.kit-brain mongodb@6` (6.21.0 here), loads
   through `createRequire`, and a connect to a dead port fails with a clean error line (`BRAIN: FAIL — connect ECONNREFUSED`).
   A live connect to Atlas waits on H0.
-- **Decisions on my own:** (1) the secret patterns are copied into `lib/brain-doc.mjs`, not imported from
-  `pre-commit-secret-scan.mjs` (that file runs a git command when loaded and is not in the Read-Write Scope; `approved:
-  core/scripts/pre-commit-secret-scan.mjs` would let B3 move the list to a shared `lib/` file); (2) `brain.mjs` refuses to send under
+- **Scope addition (Human, 2026-11-01):** `approved: core/scripts/pre-commit-secret-scan.mjs` — export-only: `PATTERNS` is
+  exported and the git call runs only when the file is run directly; `lib/brain-doc.mjs` imports the list (plus one looser
+  bearer pattern) instead of copying it.
+- **Decisions on my own:** (1) [superseded by the scope addition above: the patterns were first copied]; (2) `brain.mjs` refuses to send under
   `node --test` unless the test names its own `KIT_BRAIN_HOME` or a stub driver, so existing tests (decision-log, kit-feedback) can
   never queue fixture data in a developer's real queue; (3) `KIT_BRAIN_KILL_MS` / `KIT_BRAIN_TIMEOUT_MS` shorten the two limits in
   tests; (4) `backfill` also sends the project's grade rows (idempotent); (5) a code fence keeps its first line of code, not the

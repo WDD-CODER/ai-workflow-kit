@@ -15,6 +15,7 @@ import { createRequire } from 'node:module'
 import { hostname, homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { PATTERNS } from '../pre-commit-secret-scan.mjs'
 
 export const SCHEMA = 1
 export const COLLECTIONS = ['runs', 'plans', 'grades', 'events', 'toil', 'lessonsIn']
@@ -25,15 +26,11 @@ const sha = (s, n = 8) => createHash('sha256').update(String(s)).digest('hex').s
 
 // ---------------------------------------------------------------------------------------------------- redaction
 
-// The secret patterns of core/scripts/pre-commit-secret-scan.mjs, plus a database URI with a password and a bearer
-// token of any length. (Kept here, not imported: that script runs a git command when it is loaded.)
+// The secret patterns of the pre-commit scan (scripts/pre-commit-secret-scan.mjs, imported — one list), made global so
+// every match is replaced, plus a bearer token of any length from 8 characters (the scan's own floor is 20).
 export const SECRET_PATTERNS = [
-  { name: 'aws-access-key', re: /AKIA[0-9A-Z]{16}/g },
-  { name: 'generic-api-key', re: /(?:api[_-]?key|apikey|secret[_-]?key|access[_-]?token)\s*[:=]\s*['"][A-Za-z0-9_\-]{16,}['"]/gi },
+  ...PATTERNS.map(({ name, re }) => ({ name, re: new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`) })),
   { name: 'bearer-token', re: /Bearer\s+[A-Za-z0-9\-_.=]{8,}/g },
-  { name: 'private-key-block', re: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g },
-  { name: 'google-api-key', re: /AIza[0-9A-Za-z\-_]{20,}/g },
-  { name: 'mongo-uri-creds', re: /mongodb(?:\+srv)?:\/\/[^:\s/]+:[^@\s]+@/g },
 ]
 
 const FENCE = '`'.repeat(3)
@@ -301,11 +298,14 @@ export function lessonDoc(lesson, { root, host } = {}) {
 
 /**
  * Which roles an orchestrator run's agents have in each `workflowPhase`, by what orchestrate.js passes to `agent()`.
- * Tokens are summed by phase only — the one structured field that is the same for every agent of a phase. A phase
- * that holds more than one role has `mixedRoles: true` in the result: its tokens are the sum of all of them and are
- * not split. `Build` is the case that matters: the builder, the gate, the three finders, the verifier, the security
- * checker, the `[ui]` checker and the merge agent all run in `Build`, so the phase total is the whole plan's cost.
- * (`description` is free text and `agentType` is not read: a wording change must never move tokens between roles.)
+ * Tokens are summed twice: per `workflowPhase` (`byPhase`, always) and per role (`byRole`). The role is the meta file's
+ * `agentType` (`orch-builder`, `orch-gate`, …: set by the workflow's `agentType` option, not free text); an agent whose
+ * `agentType` is missing or the generic `workflow-subagent` falls back to its phase, keyed `phase:<Phase>`. `Build` is the
+ * phase that matters: the builder, the gate, the three finders, the verifier, the security checker, the `[ui]` checker
+ * and the merge agent all run in it, so the `Build` total alone is the whole plan's cost — use `byRole` to split it.
+ * `mixedRoles: true` on a phase means its total holds more than one role: more than one distinct `agentType` was seen
+ * in it, or some of its agents fell back to the phase and this table lists more than one role for it. Tokens of a
+ * fallback agent are never assigned to a guessed role. (`description` is free text and is never read.)
  */
 export const PHASE_ROLES = {
   Start: ['kit-runner'],
@@ -320,7 +320,7 @@ const zero = () => ({ input: 0, output: 0, cacheRead: 0, cacheCreation: 0, agent
 export const transcriptDir = (root, home = homedir()) => join(home, '.claude', 'projects', resolve(root).replace(/[^A-Za-z0-9]/g, '-'))
 
 /**
- * Tokens of one run, summed per `workflowPhase`, from the transcripts Claude Code keeps of a Workflow's agents
+ * Tokens of one run, summed per `workflowPhase` and per role (see PHASE_ROLES), from the transcripts Claude Code keeps of a Workflow's agents
  * (`<transcriptDir>/<session>/subagents/workflows/wf_<id>/agent-*.jsonl` + `.meta.json`). A workflow folder belongs to
  * the run when its agent files were last written between the run's `startedAt` and a minute after `finishedAt`.
  * Assistant lines carry `message.usage` and `message.id`; a message id counts once. The format is not an official
@@ -341,6 +341,7 @@ export function tokensForRun({ root, startedAt, finishedAt, home = homedir() }) 
       for (const d of readdirSync(wf, { withFileTypes: true })) if (d.isDirectory() && d.name.startsWith('wf_')) wfDirs.push(join(wf, d.name))
     }
     const byPhase = {}
+    const byRole = {}
     const total = zero()
     const seen = new Set()
     let used = 0
@@ -353,8 +354,16 @@ export function tokensForRun({ root, startedAt, finishedAt, home = homedir() }) 
       for (const f of files) {
         const meta = readJson(join(dir, f.replace(/\.jsonl$/, '.meta.json')))
         if (!meta || typeof meta.workflowPhase !== 'string' || !meta.workflowPhase) return { tokens: null, note: `tokens: ${f} has no workflowPhase — format not recognised` }
-        const bucket = (byPhase[meta.workflowPhase] ??= { ...zero(), roles: PHASE_ROLES[meta.workflowPhase] ?? null })
+        const agentType = typeof meta.agentType === 'string' && /^[\w:.-]{1,60}$/.test(meta.agentType) && meta.agentType !== 'workflow-subagent' ? meta.agentType : null
+        const bucket = (byPhase[meta.workflowPhase] ??= { ...zero(), roles: [], fallback: 0 })
+        const roleKey = agentType ?? `phase:${meta.workflowPhase}`
+        const roleBucket = (byRole[roleKey] ??= { ...zero(), phases: [] })
+        if (!roleBucket.phases.includes(meta.workflowPhase)) roleBucket.phases.push(meta.workflowPhase)
+        if (agentType) {
+          if (!bucket.roles.includes(agentType)) bucket.roles.push(agentType)
+        } else bucket.fallback++
         bucket.agents++
+        roleBucket.agents++
         total.agents++
         for (const line of readFileSync(join(dir, f), 'utf8').split(/\r?\n/)) {
           if (!line.includes('"usage"')) continue
@@ -373,14 +382,18 @@ export function tokensForRun({ root, startedAt, finishedAt, home = homedir() }) 
           for (const [k, field] of [['input', 'input_tokens'], ['output', 'output_tokens'], ['cacheRead', 'cache_read_input_tokens'], ['cacheCreation', 'cache_creation_input_tokens']]) {
             const n = Number.isFinite(u[field]) ? u[field] : 0
             bucket[k] += n
+            roleBucket[k] += n
             total[k] += n
           }
         }
       }
     }
     if (!used) return { tokens: null, note: 'tokens: no workflow transcripts for this run' }
-    for (const b of Object.values(byPhase)) b.mixedRoles = Array.isArray(b.roles) ? b.roles.length > 1 : null
-    return { tokens: { byPhase, total, source: 'workflow transcripts' }, note: null }
+    for (const [phase, b] of Object.entries(byPhase)) {
+      b.roles.sort()
+      b.mixedRoles = b.roles.length > 1 || (b.fallback > 0 && (PHASE_ROLES[phase]?.length ?? 0) > 1)
+    }
+    return { tokens: { byPhase, byRole, total, source: 'workflow transcripts' }, note: null }
   } catch (e) {
     return { tokens: null, note: `tokens: transcripts not read (${String(e?.message ?? e).split('\n')[0].slice(0, 100)})` }
   }
