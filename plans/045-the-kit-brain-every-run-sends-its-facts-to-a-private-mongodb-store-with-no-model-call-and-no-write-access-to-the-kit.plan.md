@@ -1,6 +1,6 @@
 # Plan 045 — The kit brain: every run sends its facts to a private MongoDB store, with no model call and no write access to the kit
 
-Status: draft
+Status: built and merged (PR #80, 9ffa75f); H1 [human] check open until the first sync into FoodVibe
 Depends-on: 030, 041, 049
 Snapshot: a363b42
 
@@ -159,19 +159,19 @@ environment variable on the Human's machine is the Human's step (H0) — show th
 ## Functional Requirements
 
 ### Must Have (P0)
-- [ ] `brain.mjs digest | send | backfill | check | setup | queue` — documents from `status.json`, the run report
+- [x] `brain.mjs digest | send | backfill | check | setup | queue` — documents from `status.json`, the run report
   facts and the grades; the shared schema in `core/docs/agent/kit-brain.md` §Schema.
-- [ ] Local queue in `<home>/.kit-brain/queue/` with retry on every later send; never fails `finish` or `grade`.
-- [ ] Redaction and code cut before anything is queued or sent.
-- [ ] Deterministic `_id` and `signature`.
+- [x] Local queue in `<home>/.kit-brain/queue/` with retry on every later send; never fails `finish` or `grade`.
+- [x] Redaction and code cut before anything is queued or sent.
+- [x] Deterministic `_id` and `signature`.
 
 ### Should Have (P1)
-- [ ] `kit-feedback.mjs` sends lessons to `lessonsIn` when the brain is set up (replaces the PR path for set-up machines).
-- [ ] The Planner's post-run toil lines (`toil`).
-- [ ] `tools/brain-query.mjs` (kit-only): `runs`, `events --signature`, `trend --by kitVersion|project`.
+- [x] `kit-feedback.mjs` sends lessons to `lessonsIn` when the brain is set up (replaces the PR path for set-up machines).
+- [x] The Planner's post-run toil lines (`toil`).
+- [x] `tools/brain-query.mjs` (kit-only): `runs`, `events --signature`, `trend --by kitVersion|project`.
 
 ### Nice to Have (P2)
-- [ ] Tokens per role from transcripts (only if Step 0's spike says yes).
+- [x] Tokens per role from transcripts (only if Step 0's spike says yes). — per `workflowPhase` and per `agentType` (PR #80).
 
 ## UI/UX Notes
 - One line per send in the run's closing output: `BRAIN: sent 14, queue drained 0` or `BRAIN: queued 14 (…)`.
@@ -194,9 +194,10 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 - [x] B10: Let the kit read the brain — `tools/brain-query.mjs` (kit-only, never rendered; `KIT_BRAIN_READER_URI`): `runs [--last n] [--project p]`, `events [--signature s | --kind k] [--since d]`, `trend --by kitVersion|project` (the Goals columns), `--driver` stub in tests — tools/brain-query.mjs, tools/test/brain.test.mjs, tools/install-check.mjs
 - [x] B11: Tokens per role, only if Step 0 found them — read the run's agent transcripts, sum `message.usage` (input, output, cache read, cache creation) per `agent_type`, dedupe by `message.id`; unknown shape → `tokens: null` + one run note — core/scripts/lib/brain-doc.mjs, tools/test/brain.test.mjs
 - [x] B12: Config without secrets — `brain.projectId` (slug, default `project.repoName`) and `brain.enabled` (default true); install and sync refuse a value matching `/mongodb(\+srv)?:\/\//` anywhere under `brain.*`; `$comment` names `KIT_BRAIN_URI` — kit.config.json, tools/lib/kit.mjs, tools/test/brain.test.mjs
-- [ ] C1: Document the brain — new `core/docs/agent/kit-brain.md`: what goes where (project files vs brain vs kit repo — the table from the Human's 2026-10-30 discussion), §Schema (collections, fields, `_id`, signature rule), §Setup (Atlas free cluster, the `brainInsert` custom role with `INSERT` on `runs plans grades events toil lessonsIn`, users `kit-brain-writer` and `kit-brain-reader`, the IP entry, the two environment variables in PowerShell, one admin step that creates the indexes with a Temporary User), §Limits (0.5 GB, 100 ops/s, a cluster with no connection for 30 days is paused — the nightly 047 run keeps it awake), §Privacy (redaction, no code, the kit repo stays public); `workflow-map.md`, `orchestrator.md`, `decision-review.md`, `templates/docs/brain/index.md` point to it; CHANGELOG Unreleased — core/docs/agent/kit-brain.md, core/docs/agent/workflow-map.md, core/docs/agent/orchestrator.md, core/docs/agent/decision-review.md, templates/docs/brain/index.md, CHANGELOG.md, README.md
+- [x] C1: Document the brain — new `core/docs/agent/kit-brain.md`: what goes where (project files vs brain vs kit repo — the table from the Human's 2026-10-30 discussion), §Schema (collections, fields, `_id`, signature rule), §Setup (Atlas free cluster, the `brainInsert` custom role with `INSERT` on `runs plans grades events toil lessonsIn`, users `kit-brain-writer` and `kit-brain-reader`, the IP entry, the two environment variables in PowerShell, one admin step that creates the indexes with a Temporary User), §Limits (0.5 GB, 100 ops/s, a cluster with no connection for 30 days is paused — the nightly 047 run keeps it awake), §Privacy (redaction, no code, the kit repo stays public); `workflow-map.md`, `orchestrator.md`, `decision-review.md`, `templates/docs/brain/index.md` point to it; CHANGELOG Unreleased — core/docs/agent/kit-brain.md, core/docs/agent/workflow-map.md, core/docs/agent/orchestrator.md, core/docs/agent/decision-review.md, templates/docs/brain/index.md, CHANGELOG.md, README.md
 - [x] T1: Prove each behaviour with tests that fail on today's code — the Goals' test items, all with the stub driver; no test opens a network connection (the test asserts the real driver is never loaded) — tools/test/brain.test.mjs, tools/test/orchestrator.test.mjs, tools/test/kit-feedback.test.mjs
-- [ ] R1: Render the kit's own installed copies and check drift — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .` — scripts/, .claude/, docs/agent/, docs/brain/, .kit/install.json
+- [x] R1: Render the kit's own installed copies and check drift — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .` — scripts/, .claude/, docs/agent/, docs/brain/, .kit/install.json
+- [ ] H1: [human] After a kit release and a sync into FoodVibe: `node scripts/brain.mjs setup`, `check` (`BRAIN: ok`), `backfill`, and `node tools/brain-query.mjs runs --last 3` in the kit — the Done-when [human] item; keeps this plan open until the Human confirms
 
 ## Technical Considerations
 - Dependencies: `orch-state.mjs` `finish()` (writes the local report, then commits on the run branch — the send goes
