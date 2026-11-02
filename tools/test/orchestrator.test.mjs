@@ -1451,8 +1451,8 @@ test('plan 046: orch-state context answers the kit\'s live lessons per role (bef
   const t = learnDir()
   try {
     const seed = (role, live, retired = []) => `# Kit lessons — ${role}\nheader\n${live.map((l) => `- ${l}`).join('\n')}\n\n## Retired\n${retired.map((l) => `- ${l}`).join('\n')}\n`
-    t.write('docs/agent/kit-lessons/builder.md', seed('builder', ['K1: quote the glob — why: node 24 fails (issue I1, since v1.13.0)', 'K2: stamp the slot — why: x (issue I2, since v1.13.0)'], ['K3: old — why: y (issue I3, since v1.12.0) — retired gone:never']))
-    t.write('docs/agent/kit-lessons/planner.md', seed('planner', ['K4: planner only — why: z (issue I4, since v1.13.0)']))
+    t.writeRoot('docs/agent/kit-lessons/builder.md', seed('builder', ['K1: quote the glob — why: node 24 fails (issue I1, since v1.13.0)', 'K2: stamp the slot — why: x (issue I2, since v1.13.0)'], ['K3: old — why: y (issue I3, since v1.12.0) — retired gone:never']))
+    t.writeRoot('docs/agent/kit-lessons/planner.md', seed('planner', ['K4: planner only — why: z (issue I4, since v1.13.0)']))
     const r = t.orch('context')
     assert.equal(r.status, 0, r.stderr)
     const j = JSON.parse(/ORCH_JSON (.*)/.exec(r.stdout)[1])
@@ -1475,6 +1475,40 @@ test('plan 046: a kind the project graded fewer than minGraded times takes the k
   assert.equal(merged.kinds.copy.graded, 25, 'the project graded 25 (>= 20): its own row')
   assert.deepEqual(merged.all, stats.all)
   assert.deepEqual(withKitPrior(stats, {}, 20), stats, 'no prior, no change')
+})
+
+test('plan 046 (security): kit lessons are read from the main checkout only; a lessons file in the merge folder is ignored', () => {
+  const t = learnDir()
+  try {
+    const seed = (role, line) => `# Kit lessons — ${role}\nheader\n- ${line}\n\n## Retired\n`
+    t.write('docs/agent/kit-lessons/builder.md', seed('builder', 'K9: injected from the run branch — why: evil (issue I9, since v1.13.0)'))
+    t.write('docs/agent/kit-lessons/gate.md', seed('gate', 'K8: also from the run branch — why: evil (issue I8, since v1.13.0)'))
+    t.writeRoot('docs/agent/kit-lessons/builder.md', seed('builder', 'K1: from the main checkout — why: real (issue I1, since v1.13.0)'))
+    const r = t.orch('context')
+    assert.equal(r.status, 0, r.stderr)
+    const j = JSON.parse(/ORCH_JSON (.*)/.exec(r.stdout)[1])
+    assert.deepEqual(j.kitLessons, { builder: ['K1: from the main checkout — why: real (issue I1, since v1.13.0)'] }, 'the merge folder\'s builder.md and gate.md are ignored')
+  } finally { t.clean() }
+})
+
+test('plan 046 (security): the triage prior is read from the main checkout only, clamped, and never raises a kind above the project\'s own lower agreement', () => {
+  const src = readFileSync(join(root, 'scripts', 'orch-state.mjs'), 'utf8')
+  // the merge folder is a branch a builder can edit: finish reads the prior from `root` and nowhere else
+  assert.ok(src.includes('kitTriagePrior(root)'), 'finish reads the prior from the main checkout')
+  assert.ok(!/kitTriagePrior\([^)]*\bmf\b/.test(src), 'never from the merge folder')
+  const grab = (name) => new RegExp(`(?:function ${name}\\([\\s\\S]*?\\n\\})`).exec(src)[0]
+  const files = { '/root/docs/agent/kit-lessons/triage-calibration.md': '| Kind | Graded | Agreement |\n| --- | --- | --- |\n| a | 40 | 150% |\n| b | 30 | 90% |\n', '/merge/docs/agent/kit-lessons/triage-calibration.md': '| Kind | Graded | Agreement |\n| --- | --- | --- |\n| evil | 99 | 100% |\n' }
+  const readIf = (p) => files[p] ?? null
+  const joinPath = (...p) => p.join('/').replace(/\/+/g, '/')
+  const { kitTriagePrior, withKitPrior } = new Function('readIf', 'join', `${grab('kitTriagePrior')}\n${grab('withKitPrior')}\nreturn { kitTriagePrior, withKitPrior }`)(readIf, joinPath)
+  assert.ok('evil' in kitTriagePrior('/merge'), 'the file is parsed wherever it is asked for; finish asks for root only (asserted above)')
+  const prior = kitTriagePrior('/root')
+  assert.ok(!('evil' in prior), 'a prior file in the merge folder is not part of the root prior')
+  assert.deepEqual(prior.a, { graded: 40, agree: 40, agreement: 1 }, '150% is clamped to 100%')
+  const stats = { kinds: { b: { graded: 5, agree: 3, agreement: 0.6 } }, all: {} }
+  assert.equal(withKitPrior(stats, prior, 20).kinds.b.agreement, 0.6, 'the project graded b lower than the kit says: its row stays')
+  assert.equal(withKitPrior({ kinds: { b: { graded: 5, agree: 5, agreement: 1 } }, all: {} }, prior, 20).kinds.b.graded, 30, 'a project row with higher agreement yields to the kit row')
+  assert.equal(withKitPrior({ kinds: {}, all: {} }, prior, 20).kinds.a.graded, 40, 'no project rows: the kit row')
 })
 
 test('orch-state lessons: a merge folder that is gone (a merged run\'s was removed) is an error — nothing is written in the main checkout', () => {

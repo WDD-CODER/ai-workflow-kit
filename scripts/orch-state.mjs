@@ -410,14 +410,27 @@ function kitTriagePrior(base) {
   const out = {}
   for (const l of (readIf(join(base, 'docs', 'agent', 'kit-lessons', 'triage-calibration.md')) ?? '').split('\n')) {
     const m = /^\|\s*([^|]+?)\s*\|\s*(\d+)\s*\|\s*(\d+)%\s*\|$/.exec(l)
-    if (m) out[m[1]] = { graded: Number(m[2]), agree: Math.round((Number(m[2]) * Number(m[3])) / 100), agreement: Number(m[3]) / 100 }
+    if (!m) continue
+    // Values are clamped: graded and agree are whole numbers >= 0 (agree <= graded), agreement is within 0..1.
+    const graded = Math.max(0, Math.floor(Number(m[2])))
+    const agreement = Math.min(1, Math.max(0, Number(m[3]) / 100))
+    out[m[1]] = { graded, agree: Math.min(graded, Math.max(0, Math.round(graded * agreement))), agreement }
   }
   return out
 }
-/** The project's agreement per kind; a kind it graded fewer than `minGraded` times takes the kit's row when the kit has one. */
+/**
+ * The project's agreement per kind; a kind it graded fewer than `minGraded` times takes the kit's row when the kit has one —
+ * except that the kit never raises a kind above the project's own graded rows: when the project has graded rows for it with
+ * lower agreement, the project's row stays.
+ */
 function withKitPrior(stats, prior, minGraded) {
   const kinds = { ...stats.kinds }
-  for (const [kind, row] of Object.entries(prior)) if ((kinds[kind]?.graded ?? 0) < minGraded) kinds[kind] = row
+  for (const [kind, row] of Object.entries(prior)) {
+    const own = kinds[kind]
+    if ((own?.graded ?? 0) >= minGraded) continue
+    if (own && own.graded > 0 && own.agreement < row.agreement) continue
+    kinds[kind] = row
+  }
   return { ...stats, kinds }
 }
 const rulesIn = (base) => {
@@ -970,7 +983,8 @@ const commands = {
     const rules = rulesIn(base)
     const recent = recentRunsOf(parseRunLog(readIf(join(base, RUN_LOG_REL)) ?? '').rows)
     const budget = contextBudget({ lessons: all, rules, recent })
-    const kitLessons = kitLessonsIn(base)
+    // The kit's lessons come from the main checkout only: the merge folder is a branch a builder can edit.
+    const kitLessons = kitLessonsIn(root)
     emit({ ok: true, lessons, kitLessons, rules, recent, chars: budget.total, line: budget.line }, budgetLines(budget))
   },
 
@@ -1069,7 +1083,7 @@ const commands = {
     const appErrors = runLogQuery(status.startedAt)
     // The grade rows (docs/brain/decision-grades.jsonl) of the merge folder, else of the main folder: agreement per kind.
     const gradeRows = readGradeRows([join(mf, 'docs', 'brain', 'decision-grades.jsonl'), join(root, 'docs', 'brain', 'decision-grades.jsonl')])
-    const triage = { mode: TRIAGE, stats: withKitPrior(agreementStats(gradeRows), kitTriagePrior(existsSync(mf) ? mf : root), TRIAGE_MIN_GRADED), minAgreement: TRIAGE_MIN_AGREEMENT, minGraded: TRIAGE_MIN_GRADED }
+    const triage = { mode: TRIAGE, stats: withKitPrior(agreementStats(gradeRows), kitTriagePrior(root), TRIAGE_MIN_GRADED), minAgreement: TRIAGE_MIN_AGREEMENT, minGraded: TRIAGE_MIN_GRADED }
     // What the run teaches the next one: lesson lines from status.json, this run's row of the run log, and the trend line and
     // character budget the report ends with. Computed here in memory (a failure never stops the report); the files are
     // written and committed below, with the report, in the merge folder.
