@@ -33,6 +33,7 @@
  *   node scripts/orch-state.mjs decision   --run <name> --plan <NNN> --id D<n> --text "<line>" [--verdict v --kind k --confidence n
  *                                          --rec "<text>" --why "<text>" --forced f]   record one decision (upsert by id), or
  *                                          --plan <NNN> --dup-of D<n> --text "<line>" --role r --round n   a duplicate of one
+ *   node scripts/orch-state.mjs decisions  --run <name> --b64 <base64 of a JSON list of decision objects>   every decision in one call, all-or-nothing
  *   node scripts/orch-state.mjs brain-commit --run <name>                   commit docs/brain in the merge folder, push the run branch
  *   node scripts/orch-state.mjs stop       --run <name> --reason "<why the run stopped>"   (gives every held slot back)
  *   node scripts/orch-state.mjs watch      --run <name> [--stale-min <n>]   one line: RUNNING, FINISHED, STOPPED: <why>
@@ -102,7 +103,9 @@ const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tie
   // facts the workflow records for the lessons (docs/agent/orchestrator.md "status.json"), and `trend` / `finish` options
   'candidates', 'refuted', 'refuted-rules', 'verify-by', 'late-low', 'reappeared', 'miss', 'round-cause', 'gate-event', 'asked', 'ready', 'final-gate', 'last',
   // the hand-off's replan verdict and the builder's receipt
-  'replan', 'replan-why', 'not-done', 'failed'])
+  'replan', 'replan-why', 'not-done', 'failed',
+  // queued run notes riding on set / stop / finish, and the one-call decisions list
+  'note', 'notes-b64', 'b64', 'flakes-b64', 'with-worktree'])
 function parseArgs(argv) {
   const out = { _: [] }
   for (let i = 0; i < argv.length; i++) {
@@ -130,13 +133,106 @@ const repoName = REPO || root.split(/[\\/]/).pop()
 const parent = dirname(root)
 const nowIso = () => new Date().toISOString()
 
+// `plan-info --with-worktree` runs `worktree` inside the same call: while `capture` is set, emit hands the answer back
+// (thrown) instead of printing it and exiting.
+let capture = false
 function emit(result, lines = []) {
+  if (capture) throw Object.assign(new Error('captured'), { captured: { result, lines } })
   for (const l of lines) console.log(l)
   console.log(`ORCH_JSON ${JSON.stringify(result)}`)
   process.exit(result.ok ? 0 : 1)
 }
 const fail = (error, extra = {}) => emit({ ok: false, error, ...extra }, [`ORCH_STATE: FAIL — ${error}`])
 if (parsed.problem) fail(parsed.problem)
+
+// Run notes: pushed to status.notes in order. `--note "a || b"` on set (this plan's), `--notes-b64` on stop / finish (a
+// base64 JSON list of { plan?, text }); a malformed list exits 1 before anything is written.
+function addNotes(status, items) {
+  status.notes ??= []
+  for (const it of items) {
+    const text = String(it.text ?? '').trim()
+    if (text) status.notes.push({ at: nowIso(), ...(it.plan ? { plan: it.plan } : {}), text })
+  }
+}
+function notesB64() {
+  if (args['notes-b64'] === undefined) return []
+  let items
+  try {
+    items = JSON.parse(Buffer.from(String(args['notes-b64']), 'base64').toString('utf8'))
+  } catch (e) {
+    fail(`--notes-b64 is not base64 of a JSON list: ${e.message}`)
+  }
+  if (!Array.isArray(items) || items.some((i) => !i || typeof i !== 'object')) fail('--notes-b64 must hold a JSON list of { plan?, text }')
+  return items.map((i) => ({ plan: i.plan ? planNumber(String(i.plan)) : undefined, text: i.text }))
+}
+
+// One flake entry (shared by `flake` and the --flakes-b64 lists on set / stop / finish); `a` has the flags of a `flake`
+// call as keys. Returns { dup, text, flakes }.
+function applyFlake(status, a) {
+  const command = a.command && a.command !== true ? String(a.command).trim() : ''
+  if (!command || /[\r\n]/.test(command) || command.length > 300) fail('--command takes one check command (one line, at most 300 characters)')
+  const via = String(a.via ?? '')
+  if (!['rerun', 'same-commit'].includes(via)) fail(`--via "${via}" — allowed: rerun, same-commit`)
+  const where = String(a.where ?? '')
+  if (!['gate', 'main', 'final'].includes(where)) fail(`--where "${where}" — allowed: gate, main, final`)
+  if (a.round !== undefined && !/^\d+$/.test(String(a.round))) fail('--round takes a whole number')
+  const round = a.round !== undefined ? Number(a.round) : undefined
+  const nnn = a.plan !== undefined ? planNumber(String(a.plan)) : null
+  if (a.plan !== undefined && !nnn) fail('--plan takes a plan number')
+  if (nnn && round === undefined) fail('--round is needed with --plan')
+  const holder = nnn ? (status.plans[nnn] ??= { nnn, round: 0, models: {}, state: 'queued' }) : status
+  holder.flakes ??= []
+  const text = nnn ? `flake: ${command} (plan ${nnn}, round ${round})` : `flake: ${command} (final gate)`
+  const dup = holder.flakes.some((x) => x.command === command && x.round === round)
+  if (!dup) holder.flakes.push({ command, ...(round !== undefined ? { round } : {}), via, where, ...(a.sha && a.sha !== true ? { sha: String(a.sha) } : {}), at: nowIso(), text })
+  return { dup, text, flakes: holder.flakes.length }
+}
+// `--flakes-b64`: a base64 JSON list of flake objects (command, round, via, where, sha, plan?), recorded in order.
+function addFlakes(status, defaultPlan) {
+  if (args['flakes-b64'] === undefined) return
+  let items
+  try {
+    items = JSON.parse(Buffer.from(String(args['flakes-b64']), 'base64').toString('utf8'))
+  } catch (e) {
+    fail(`--flakes-b64 is not base64 of a JSON list: ${e.message}`)
+  }
+  if (!Array.isArray(items) || items.some((i) => !i || typeof i !== 'object')) fail('--flakes-b64 must hold a JSON list of flake objects')
+  for (const i of items) applyFlake(status, { ...i, ...(i.plan === undefined && defaultPlan ? { plan: defaultPlan } : {}) })
+}
+
+// The rules of one decision (shared by `decision` and `decisions`); `a` has the flags of a `decision` call as keys.
+function applyDecision(status, a, where = '') {
+  const bad = (m) => fail(where + m)
+  const text = typeof a.text === 'string' ? a.text.trim() : ''
+  if (!text) bad('--text is empty')
+  status.decisions ??= []
+  const plan = a.plan ? planNumber(String(a.plan)) : undefined
+  if (a['dup-of']) {
+    const parent = status.decisions.find((d) => d.id === a['dup-of'])
+    if (!parent) bad(`no decision ${a['dup-of']} to attach a duplicate to`)
+    parent.alsoFrom ??= []
+    if (text !== parent.text && !parent.alsoFrom.some((x) => x.text === text)) parent.alsoFrom.push({ text, role: String(a.role ?? 'agent'), round: Number(a.round) || 0 })
+    return { ok: true, id: parent.id, alsoFrom: parent.alsoFrom.length }
+  }
+  if (!/^D\d+$/.test(String(a.id ?? ''))) bad('--id must be D<number>')
+  const at = status.decisions.findIndex((d) => d.id === a.id)
+  const prev = at >= 0 ? status.decisions[at] : null
+  const next = { ...(prev ?? {}), id: a.id, plan: plan ?? prev?.plan, type: decisionType(text), text, alsoFrom: prev?.alsoFrom ?? [], attempt: prev?.attempt ?? status.attempts ?? 1 }
+  if (a.verdict !== undefined || !prev) {
+    const confidence = a.confidence === undefined || a.confidence === '' || a.confidence === null ? null : Number(a.confidence)
+    const forced = triageForce({ type: next.type, text, verdict: a.verdict, confidence })
+    next.verdict = forced.verdict
+    if (forced.forced) next.forced = forced.forced
+    else delete next.forced
+    next.kind = /^[a-z0-9][a-z0-9-]*$/.test(String(a.kind ?? '')) ? a.kind : '-'
+    next.confidence = Number.isFinite(confidence) && confidence >= 0 && confidence <= 100 ? confidence : null
+    next.rec = String(a.rec ?? '').slice(0, 160)
+    next.why = String(a.why ?? '').slice(0, 120)
+  }
+  if (at >= 0) status.decisions[at] = next
+  else status.decisions.push(next)
+  return { ok: true, id: next.id, verdict: next.verdict, forced: next.forced ?? null, decisions: status.decisions.length }
+}
 
 function git(cwd, ...a) {
   const r = spawnSync('git', a, { cwd, encoding: 'utf8', maxBuffer: 512 * 1024 * 1024 })
@@ -639,7 +735,24 @@ const commands = {
       status.plans[nnn] = { nnn, title: info.title, branch: info.branch, state: 'queued', round: 0, tier: tier, models: {}, humanItems: info.humanItems, history: prev?.history ?? [], ...(earlier.length ? { earlier } : {}) }
       writeStatus(run, status)
     }
-    emit(info, [`${nnn} ${info.title}: branch ${info.branch}, starts on ${tier}${invariants.length ? ` (${invariants.join(', ')})` : ''}`])
+    const lines = [`${nnn} ${info.title}: branch ${info.branch}, starts on ${tier}${invariants.length ? ` (${invariants.join(', ')})` : ''}`]
+    // --with-worktree: the plan's folder is made in the same call (one runner call instead of two) when the branch name is
+    // one the run accepts; the answer is `wt` (what a `worktree` call prints). A worktree that fails is `wt.ok: false`
+    // (with envFailure when the environment is to blame): the workflow then goes on with its own `worktree` retry path.
+    if (args['with-worktree'] !== undefined && !planBranchProblem(info.branch)) {
+      capture = true
+      let got
+      try {
+        commands.worktree()
+      } catch (e) {
+        if (!e.captured) throw e
+        got = e.captured
+      } finally {
+        capture = false
+      }
+      emit({ ...info, wt: got.result }, [...lines, ...got.lines, ...(got.result.ok ? [] : [`ORCH_STATE: FAIL — ${got.result.error}`])])
+    }
+    emit(info, lines)
   },
 
   worktree() {
@@ -833,6 +946,11 @@ const commands = {
       if (!['yes', 'no'].includes(text('ready'))) fail('--ready takes yes or no')
       p.ready = text('ready') === 'yes'
     }
+    // --note "a || b": the run notes the workflow queued for this plan, in order (one call instead of one per note).
+    // --notes-b64 is the same list as on stop / finish (the workflow sends this one: a plain argument is cut at 400 characters).
+    if (args.note !== undefined) addNotes(status, text('note').split(' || ').map((t) => ({ plan: nnn, text: t })))
+    addNotes(status, notesB64().map((i) => ({ plan: nnn, text: i.text })))
+    addFlakes(status, nnn)
     p.freeDiskGb = diskGb()
     status.freeDiskGb = p.freeDiskGb
     p.history ??= []
@@ -845,27 +963,10 @@ const commands = {
   // plans[NNN].flakes[] (no --plan: the run-level flakes[], the final gate's). The same command and round is one entry.
   flake() {
     const run = runName()
-    const command = args.command && args.command !== true ? String(args.command).trim() : ''
-    if (!command || /[\r\n]/.test(command) || command.length > 300) fail('--command takes one check command (one line, at most 300 characters)')
-    const via = String(args.via ?? '')
-    if (!['rerun', 'same-commit'].includes(via)) fail(`--via "${via}" — allowed: rerun, same-commit`)
-    const where = String(args.where ?? '')
-    if (!['gate', 'main', 'final'].includes(where)) fail(`--where "${where}" — allowed: gate, main, final`)
-    if (args.round !== undefined && !/^\d+$/.test(String(args.round))) fail('--round takes a whole number')
-    const round = args.round !== undefined ? Number(args.round) : undefined
-    const nnn = args.plan !== undefined ? planNumber(String(args.plan)) : null
-    if (args.plan !== undefined && !nnn) fail('--plan takes a plan number')
-    if (nnn && round === undefined) fail('--round is needed with --plan')
     const status = needStatus(run)
-    const holder = nnn ? (status.plans[nnn] ??= { nnn, round: 0, models: {}, state: 'queued' }) : status
-    holder.flakes ??= []
-    const text = nnn ? `flake: ${command} (plan ${nnn}, round ${round})` : `flake: ${command} (final gate)`
-    const dup = holder.flakes.some((x) => x.command === command && x.round === round)
-    if (!dup) {
-      holder.flakes.push({ command, ...(round !== undefined ? { round } : {}), via, where, ...(args.sha && args.sha !== true ? { sha: String(args.sha) } : {}), at: nowIso(), text })
-      writeStatus(run, status)
-    }
-    emit({ ok: true, recorded: !dup, flakes: holder.flakes.length }, [dup ? `${text} (already recorded)` : text])
+    const r = applyFlake(status, args)
+    if (!r.dup) writeStatus(run, status)
+    emit({ ok: true, recorded: !r.dup, flakes: r.flakes }, [r.dup ? `${r.text} (already recorded)` : r.text])
   },
 
   // The hand-off file a fresh builder reads (docs/agent/model-routing.md rule 5), written from the failure facts.
@@ -921,8 +1022,7 @@ const commands = {
     const run = runName()
     if (!args.text || args.text === true) fail('--text is empty')
     const status = needStatus(run)
-    status.notes ??= []
-    status.notes.push({ at: nowIso(), ...(args.plan ? { plan: planNumber(args.plan) } : {}), text: String(args.text) })
+    addNotes(status, [{ plan: args.plan ? planNumber(args.plan) : undefined, text: String(args.text) }])
     writeStatus(run, status)
     emit({ ok: true, notes: status.notes.length })
   },
@@ -932,38 +1032,28 @@ const commands = {
   // files a differently worded duplicate under the kept decision's alsoFrom.
   decision() {
     const run = runName()
-    const text = typeof args.text === 'string' ? args.text.trim() : ''
-    if (!text) fail('--text is empty')
     const status = needStatus(run)
-    status.decisions ??= []
-    const plan = args.plan ? planNumber(args.plan) : undefined
-    if (args['dup-of']) {
-      const parent = status.decisions.find((d) => d.id === args['dup-of'])
-      if (!parent) fail(`no decision ${args['dup-of']} to attach a duplicate to`)
-      parent.alsoFrom ??= []
-      if (text !== parent.text && !parent.alsoFrom.some((a) => a.text === text)) parent.alsoFrom.push({ text, role: String(args.role ?? 'agent'), round: Number(args.round) || 0 })
-      writeStatus(run, status)
-      emit({ ok: true, id: parent.id, alsoFrom: parent.alsoFrom.length })
-    }
-    if (!/^D\d+$/.test(String(args.id ?? ''))) fail('--id must be D<number>')
-    const at = status.decisions.findIndex((d) => d.id === args.id)
-    const prev = at >= 0 ? status.decisions[at] : null
-    const next = { ...(prev ?? {}), id: args.id, plan: plan ?? prev?.plan, type: decisionType(text), text, alsoFrom: prev?.alsoFrom ?? [], attempt: prev?.attempt ?? status.attempts ?? 1 }
-    if (args.verdict !== undefined || !prev) {
-      const confidence = args.confidence === undefined || args.confidence === '' ? null : Number(args.confidence)
-      const forced = triageForce({ type: next.type, text, verdict: args.verdict, confidence })
-      next.verdict = forced.verdict
-      if (forced.forced) next.forced = forced.forced
-      else delete next.forced
-      next.kind = /^[a-z0-9][a-z0-9-]*$/.test(String(args.kind ?? '')) ? args.kind : '-'
-      next.confidence = Number.isFinite(confidence) && confidence >= 0 && confidence <= 100 ? confidence : null
-      next.rec = String(args.rec ?? '').slice(0, 160)
-      next.why = String(args.why ?? '').slice(0, 120)
-    }
-    if (at >= 0) status.decisions[at] = next
-    else status.decisions.push(next)
+    const r = applyDecision(status, args)
     writeStatus(run, status)
-    emit({ ok: true, id: next.id, verdict: next.verdict, forced: next.forced ?? null, decisions: status.decisions.length })
+    emit(r)
+  },
+
+  // Every decision (and repeat marker) of a run in one call: --b64 is the base64 of a JSON list; each item holds the
+  // flags of one `decision` call as keys (plan, id, text, verdict, kind, confidence, rec, why — or plan, dup-of, text,
+  // role, round). Same rules per item; one bad item exits 1 and writes nothing.
+  decisions() {
+    const run = runName()
+    let items
+    try {
+      items = JSON.parse(Buffer.from(String(args.b64 ?? ''), 'base64').toString('utf8'))
+    } catch (e) {
+      fail(`--b64 is not base64 of a JSON list: ${e.message}`)
+    }
+    if (!Array.isArray(items) || !items.length || items.some((i) => !i || typeof i !== 'object' || Array.isArray(i))) fail('--b64 must hold a non-empty JSON list of objects')
+    const status = needStatus(run)
+    const out = items.map((it, n) => applyDecision(status, it, `item ${n + 1}: `))
+    writeStatus(run, status)
+    emit({ ok: true, count: out.length, decisions: status.decisions.length, ids: out.map((r) => r.id) })
   },
 
   // The run's brain files (docs/brain: grades, calibration, follow-ups, rules) are committed on the run branch in the
@@ -1032,6 +1122,8 @@ const commands = {
   stop() {
     const run = runName()
     const status = needStatus(run)
+    addNotes(status, notesB64())
+    addFlakes(status)
     status.phase = 'stopped'
     status.stopReason = String(args.reason ?? 'stopped')
     const slots = giveSlotsBack(run, status)
@@ -1085,6 +1177,8 @@ const commands = {
     fetchOrigin()
     const merged = mergedPlans(run)
     for (const m of merged) if (status.plans[m.nnn]) Object.assign(status.plans[m.nnn], { state: 'merged', sha: m.sha })
+    addNotes(status, notesB64())
+    addFlakes(status)
     if (status.phase === 'running') status.phase = 'finished'
     status.finishedAt = nowIso()
     const slots = giveSlotsBack(run, status)

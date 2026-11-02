@@ -337,18 +337,72 @@ async function setPlan(nnn, fields, results = []) {
   // Lesson facts queued for this plan go with this call.
   for (const [k, v] of Object.entries(FACTS[nnn] ?? {})) if (fields[k] === undefined) argv.push(`--${k}`, v)
   delete FACTS[nnn]
-  return state(argv, `state ${nnn} ${fields.state ?? ''}`, nnn)
+  // Run notes queued for this plan go with this call too; a failed call puts them back.
+  const queued = NOTES[nnn] ?? []
+  if (queued.length) {
+    argv.push('--notes-b64', toB64(JSON.stringify(queued.map((text) => ({ text })))))
+    delete NOTES[nnn]
+  }
+  const flakes = FLAKES[nnn] ?? []
+  if (flakes.length) {
+    argv.push('--flakes-b64', toB64(JSON.stringify(flakes)))
+    delete FLAKES[nnn]
+  }
+  const r = await state(argv, `state ${nnn} ${fields.state ?? ''}`, nnn)
+  if (!r?.ok) {
+    if (queued.length) NOTES[nnn] = [...queued, ...(NOTES[nnn] ?? [])]
+    if (flakes.length) FLAKES[nnn] = [...flakes, ...(FLAKES[nnn] ?? [])]
+  }
+  return r
 }
-// A run note is one runner agent call: at most MAX_NOTES per plan (run-level notes count under "run"), then one last
-// note says so and later ones are dropped without a call.
+// A run note makes no agent call of its own: it is queued, and the queued notes of a plan ride on that plan's next `set`
+// call (`--notes-b64`, the same base64 JSON list as on stop / finish: q cuts a plain argument at 400 characters); the run-level notes and any still queued go on `stop` and `finish` (`--notes-b64`).
+// MAX_NOTES per plan (run-level notes count under "run") still counts queued notes, then one last note says so.
+const NOTES = {}
 async function note(text, nnn) {
   const key = nnn ?? 'run'
   const n = (COUNT.notes[key] ?? 0) + 1
   if (n > MAX_NOTES) return { ok: true, capped: true }
   COUNT.notes[key] = n
   const line = n === MAX_NOTES ? `notes capped: ${MAX_NOTES} notes written for ${nnn ? `plan ${nnn}` : 'the run'} (orchestrator.maxNotesPerPlan), later notes are dropped` : text
-  return state(['note', '--run', RUN, ...(nnn ? ['--plan', nnn] : []), '--text', line], `note ${nnn ?? ''}`, nnn)
+  const one = String(line).trim()
+  if (one) (NOTES[key] ??= []).push(one)
+  return { ok: true, queued: true }
 }
+// Base64 of a UTF-8 string, by hand: the script has no Buffer. The runner re-types a command, and base64 has no quote,
+// space or newline to get wrong.
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+function toB64(str) {
+  const bytes = []
+  const e = encodeURIComponent(str)
+  for (let i = 0; i < e.length; i++) {
+    if (e[i] === '%') { bytes.push(parseInt(e.slice(i + 1, i + 3), 16)); i += 2 } else bytes.push(e.charCodeAt(i))
+  }
+  let out = ''
+  for (let i = 0; i < bytes.length; i += 3) {
+    const n = (bytes[i] << 16) | ((bytes[i + 1] ?? 0) << 8) | (bytes[i + 2] ?? 0)
+    out += B64[(n >> 18) & 63] + B64[(n >> 12) & 63] + (i + 1 < bytes.length ? B64[(n >> 6) & 63] : '=') + (i + 2 < bytes.length ? B64[n & 63] : '=')
+  }
+  return out
+}
+// Every queued note (plan and run level), taken off the queue as { plan?, text } for `stop` / `finish`.
+function takeNotes() {
+  const list = []
+  for (const [key, texts] of Object.entries(NOTES)) for (const text of texts) list.push({ ...(key === 'run' ? {} : { plan: key }), text })
+  for (const key of Object.keys(NOTES)) delete NOTES[key]
+  return list
+}
+// Flakes are write-only too: queued per plan ('run' = the final gate's) and sent the same way as the notes.
+const FLAKES = {}
+const queueFlake = (nnn, f) => (FLAKES[nnn ?? 'run'] ??= []).push(f)
+const notesArgs = () => {
+  const list = takeNotes()
+  const flakes = []
+  for (const [key, items] of Object.entries(FLAKES)) for (const f of items) flakes.push(key === 'run' ? f : { ...f, plan: key })
+  for (const key of Object.keys(FLAKES)) delete FLAKES[key]
+  return [...(list.length ? ['--notes-b64', toB64(JSON.stringify(list))] : []), ...(flakes.length ? ['--flakes-b64', toB64(JSON.stringify(flakes))] : [])]
+}
+const stopRun = (reason) => state(['stop', '--run', RUN, '--reason', reason, ...notesArgs()], 'stop')
 
 let mergeFolder = null
 // The files of each plan's last checked diff, for the triage agent (no extra call).
@@ -832,7 +886,8 @@ async function envCheck(ctx, why) {
 }
 
 async function runPlan(nnn) {
-  const info = await state(['plan-info', '--run', RUN, '--plan', nnn], `plan ${nnn}`, nnn)
+  // plan-info also makes the plan's folder (`--with-worktree`, answer in info.wt): one runner call, not two.
+  const info = await state(['plan-info', '--run', RUN, '--plan', nnn, '--with-worktree', 'yes'], `plan ${nnn}`, nnn)
   if (!info.ok) return { nnn, state: 'parked', reason: `plan-info: ${info.error}` }
   if (!PLAN_BRANCH_RE.test(String(info.branch))) return { nnn, state: 'parked', reason: `plan-info: plan branch ${JSON.stringify(info.branch)} does not match feat/<NNN>-<lower-case words>` }
   const extra = Array.isArray((A.checks ?? {})[nnn]) ? A.checks[nnn] : []
@@ -878,7 +933,7 @@ async function runPlan(nnn) {
       if (seen.has(command)) return
       seen.add(command)
       log(`flake: ${command} (plan ${nnn}, round ${round})`)
-      await state(['flake', '--run', RUN, '--plan', nnn, '--command', command, '--round', round, '--via', via, '--where', where, ...(sha ? ['--sha', sha] : [])], `flake ${nnn}`, nnn)
+      queueFlake(nnn, { command, round, via, where, ...(sha ? { sha } : {}) }) // rides on the plan's next `set` (or stop / finish)
     }
     for (const command of g.flaky ?? []) await flake(command, ctx.round, 'rerun')
     const last = ctx.lastGateFail
@@ -890,7 +945,7 @@ async function runPlan(nnn) {
   }
   const overLimit = () => callsOf(nnn) >= MAX_CALLS
   const limitReason = () => `agent-call limit: ${callsOf(nnn)} of ${MAX_CALLS} agent calls used (orchestrator.maxAgentCallsPerPlan)`
-  let wt = await state(['worktree', '--run', RUN, '--plan', nnn], `worktree ${nnn}`, nnn)
+  let wt = info.wt && typeof info.wt === 'object' ? info.wt : await state(['worktree', '--run', RUN, '--plan', nnn], `worktree ${nnn}`, nnn)
   if (!wt.ok && wt.envFailure) {
     const env = await envCheck(ctx, wt.error)
     if (!env.ok) return park(`environment: ${(env.problems ?? [env.error]).join('; ')}`)
@@ -1102,7 +1157,7 @@ async function run() {
   const startedAt = init.startedAt ?? null
   const order = await state(['order', '--run', RUN, '--plans', PLANS.join(',')], 'plan order')
   if (!order.ok) {
-    await state(['stop', '--run', RUN, '--reason', `plan order: ${order.error}`])
+    await stopRun(`plan order: ${order.error}`)
     return { mode: 'run', run: RUN, ok: false, stopped: 'order', problems: [order.error] }
   }
   if (order.skipped?.length) log(`already merged into ${RUN_BRANCH} (from git): ${order.skipped.join(', ')}`)
@@ -1191,7 +1246,7 @@ async function run() {
         await setPlan(nnn, { state: 'skipped', reason: `not started: ${stopReason}` })
         outcomes.push({ nnn, state: 'skipped' })
       }
-      await state(['stop', '--run', RUN, '--reason', stopReason])
+      await stopRun(stopReason)
       waiting.length = 0
       break
     }
@@ -1202,7 +1257,7 @@ async function run() {
       await setPlan(nnn, { state: 'skipped', reason: 'pilot: waits for the Human\'s continue' })
       outcomes.push({ nnn, state: 'skipped' })
     }
-    await state(['stop', '--run', RUN, '--reason', stopReason])
+    await stopRun(stopReason)
   }
   // The final integration gate: the project's full build and test once on the run branch after the last merge, so a
   // merge that breaks a test outside every plan is a finding, not a clean hand-over.
@@ -1220,12 +1275,12 @@ async function run() {
       }
       if (!stopReason) {
         stopReason = why.slice(0, 380)
-        await state(['stop', '--run', RUN, '--reason', stopReason])
+        await stopRun(stopReason)
       }
     } else finalGate = { ok: true }
     for (const command of g.flaky ?? []) {
       log(`flake: ${command} (final gate)`)
-      await state(['flake', '--run', RUN, '--command', command, '--via', 'rerun', '--where', 'final'], 'flake final')
+      queueFlake(null, { command, via: 'rerun', where: 'final' }) // rides on the `finish` call
     }
   }
   } catch (e) {
@@ -1233,7 +1288,7 @@ async function run() {
     log(why)
     if (!stopReason) {
       stopReason = why
-      await state(['stop', '--run', RUN, '--reason', stopReason])
+      await stopRun(stopReason)
     }
   }
   // The new decisions, numbered on from the highest earlier id (a relaunch needs no firstDecision), then one triage call
@@ -1276,19 +1331,23 @@ async function run() {
   for (const d of decisions) Object.assign(d, verdicts.get(d.id) ?? { verdict: 'none', forced: null, kind: '-', confidence: null, rec: '', why: '' })
   // Every decision is one record in status.json (never cut by maxNotesPerPlan: these calls count under "run"), then its
   // differently worded repeats; a new repeat of an earlier launch's decision is filed under that one.
-  const fileDup = (d, a) => state(['decision', '--run', RUN, '--plan', d.plan, '--dup-of', d.id, '--text', a.text.slice(0, 380), '--role', a.role ?? 'agent', '--round', String(a.round ?? 0)], `decision ${d.id} also`)
+  // All of them go in ONE `decisions --b64` call (a base64 JSON list, the items in this order; all-or-nothing).
+  const dupRow = (d, a) => ({ plan: d.plan, 'dup-of': d.id, text: a.text.slice(0, 380), role: a.role ?? 'agent', round: String(a.round ?? 0) })
+  const rows = []
   for (const d of DECISIONS) {
     if (d.prior) {
-      for (const a of d.alsoFrom.filter((x) => x.fresh)) await fileDup(d, a)
+      for (const a of d.alsoFrom.filter((x) => x.fresh)) rows.push(dupRow(d, a))
       continue
     }
-    await state(['decision', '--run', RUN, '--plan', d.plan, '--id', d.id, '--text', d.text.slice(0, 380), '--verdict', d.verdict, '--kind', d.kind, '--confidence', d.confidence === null ? '' : String(d.confidence), '--rec', d.rec, '--why', d.why], `decision ${d.id}`)
-    for (const a of d.alsoFrom) await fileDup(d, a)
+    rows.push({ plan: d.plan, id: d.id, text: d.text.slice(0, 380), verdict: d.verdict, kind: d.kind, confidence: d.confidence === null ? '' : String(d.confidence), rec: d.rec, why: d.why })
+    for (const a of d.alsoFrom) rows.push(dupRow(d, a))
   }
+  const valid = rows.filter((r) => String(r.text ?? '').trim()) // an empty text would fail the whole batch
+  if (valid.length) await state(['decisions', '--run', RUN, '--b64', toB64(JSON.stringify(valid))], 'decisions')
   if (triageNote) await note(triageNote)
   phase('Report')
   // `finish` also writes the run's lessons and its run-log row (no model call) and ends the report with the trend line.
-  const fin = await state(['finish', '--run', RUN, '--final-gate', finalGate ? (finalGate.ok ? 'ok' : 'failed') : 'none'], 'report')
+  const fin = await state(['finish', '--run', RUN, '--final-gate', finalGate ? (finalGate.ok ? 'ok' : 'failed') : 'none', ...notesArgs()], 'report')
   // A run that ended on a limit or an error: the command prints this line first (STUCK), before the lists.
   const LIMIT = /^(agent-call limit|same reason twice|run stopped with an error)/
   const stuckWhy = LIMIT.test(String(stopReason ?? '')) ? stopReason : outcomes.find((o) => LIMIT.test(String(o.reason ?? '')))?.reason ?? null
