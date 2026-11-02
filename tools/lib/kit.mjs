@@ -49,7 +49,7 @@ export const NOT_SET = '(not set)'
 const BLANK_OK = new Set(['paths.srcRoot', 'paths.serverRoot', 'paths.slotEnvFile', 'kit.mcpArgs', 'commands.slotPrepare', 'commands.dev', 'commands.testCi', 'orchestrator.watchTestPattern', 'slots.feMatcher', 'slots.feEnvFile'])
 export const REQUIRED = ['project.name', 'commands.build', 'commands.lint', 'commands.test', 'hooks.shellPath']
 // commands.* hold npm script names; the core files run them as `npm run <name>`. lintStaged is a full command.
-const SCRIPT_NAME_KEYS = ['build', 'buildProd', 'dev', 'devLocal', 'test', 'testCi', 'lint', 'e2e', 'codegen', 'cli', 'slotPrepare'].map((k) => `commands.${k}`)
+const SCRIPT_NAME_KEYS = ['build', 'buildProd', 'dev', 'devLocal', 'devRemote', 'test', 'testCi', 'lint', 'e2e', 'codegen', 'cli', 'slotPrepare'].map((k) => `commands.${k}`)
 
 /**
  * commands.* values that are full commands instead of npm script names ("npm run build" renders as

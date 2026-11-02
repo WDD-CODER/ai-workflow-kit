@@ -44,6 +44,25 @@ export function openAutoItems(planText) {
 }
 
 /**
+ * The open `- [ ] [auto:main] …` Done-when items (same section rules as openAutoItems): checks the orchestrator runs
+ * from the main folder against the live environment, so the run's preflight starts the main folder's backend for them.
+ */
+export function mainAutoItems(planText) {
+  const out = []
+  let inSection = false
+  for (const line of String(planText).replace(/\r\n/g, '\n').split('\n')) {
+    if (/^#{1,6}\s/.test(line)) {
+      inSection = DONE_WHEN_SECTION_RE.test(line)
+      continue
+    }
+    if (!inSection) continue
+    const m = /^\s*[-*]\s+\[ \]\s+\[auto:main\]\s*(.*)$/.exec(line)
+    if (m) out.push(m[1].trim())
+  }
+  return out
+}
+
+/**
  * The tags a Done-when item may start with (docs/agent/job-validation.md). Lower case, exactly as written.
  * `[auto:main]` is an `[auto]` item whose command the orchestrator runs from the main folder, not in a worktree or the
  * merge folder: it reads the live environment (`.env`, a database, a log) those folders never have.

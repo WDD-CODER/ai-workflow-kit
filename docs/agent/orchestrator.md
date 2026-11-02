@@ -13,7 +13,7 @@ branch himself.
 | Command | `.claude/commands/orchestrate.md` | Starts a run from a clean turn: readiness, the batched questions, `go`, the run, the final instructions |
 | Workflow | `.claude/workflows/orchestrate.js` | Readiness, ordering, the per-plan pipeline, the fix loop, the wave gate. No file, git or clock access |
 | State | `scripts/orch-state.mjs` | Every file, git and time step the workflow needs: run branch, merge folder, builder folders, `status.json`, hand-off files, the report |
-| Preflight | `scripts/orch-preflight.mjs` | Environment checks before the run and before a retry: disk, database, packages, dev server, git identity, remote, main folder, settings, a live run; `--ui` before any browser step: the pages' servers, the QA login, the backend from the page's origin |
+| Preflight | `scripts/orch-preflight.mjs` | Environment checks before the run and before a retry: disk, database, packages, dev server (started when missing), backend (started for a plan with an `[auto:main]` item), git identity, remote, main folder, settings, a live run; `--ui` before any browser step: the pages' servers, the QA login, the backend from the page's origin |
 | Role agents | `.claude/agents/orch-*.md` | One job each; shared contract in `docs/agent/agent-roles.md` |
 | Runner | `.claude/agents/kit-runner.md` | Runs the state and preflight commands for the workflow (mechanical tier) |
 
@@ -39,9 +39,16 @@ branch himself.
 ## The run
 
 1. **Readiness.** `plan-order --json` gives the waves. One `orch-readiness` agent per plan reports open questions,
-   environment needs and the commands the plan will run; `orch-preflight.mjs` checks the environment (with
-   `commands.dev` set, the dev server must answer on the base port or start through `scripts/slot-serve.mjs`; a failed
-   start stops the run before any builder). The command
+   environment needs and the commands the plan will run; `orch-preflight.mjs` checks the environment and starts what is
+   missing: with `commands.dev` set, a frontend that does not answer on the base port is started by
+   `scripts/slot-serve.mjs --main --servers fe` (`<pm> run <commands.dev>`, no port arguments); a plan with an open
+   `[auto:main]` item gets the main folder's backend the same way (`--servers be`: `<pm> run <commands.devLocal>` in
+   `server/`, or `commands.devRemote` when the request said `remote`; default scripts `dev:local` / `dev:remote`). A
+   server that answers is never touched; a held port is refused with its holder named, never killed; a failed start
+   stops the run before any builder with the server's own log lines (`fe.log` / `be.log` under `.claude/`) and the
+   exact command. It never asks the Human to start a server. The servers it started stay up after the run, like
+   hand-started ones; `node scripts/slot-stop.mjs --main` stops only those (recorded in `.main-serve-pids` under
+   `.claude/`). The command
    asks the Human every question in **one batch**, writes each answer into that plan's `## Execution Notes` (a plan
    commit on `main`), and leaves out a plan whose question stays unanswered. Then the Human says `go` —
    unless there was nothing to ask (`askHuman` false: every plan ready, no question, no environment need, no main-folder

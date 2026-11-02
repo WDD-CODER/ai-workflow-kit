@@ -32,6 +32,13 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
   (ADR 0015 supersedes 0007). `/review-it` hands each checker its own lessons (the kit's first) and the `## checkers`
   rules, read from the main folder. Each review writes one fact line (mode, kept, dropped, rechecked, minutes, models) to
   the plan's Execution Notes.
+- **The orchestrator preflight starts the main folder's servers itself.** A frontend that does not answer is started by
+  `scripts/slot-serve.mjs --main` (`<pm> run <commands.dev>`), and a plan with an open `[auto:main]` item gets the main
+  folder's backend on the local database (`commands.devLocal`) — or the remote one (new `commands.devRemote`) when the
+  request says `/orchestrate … remote`. No install and no environment changes in the main folder; a held port is refused
+  with its holder named; a failed start stops the run with the server's own log lines. A project with `commands.dev` set
+  no longer needs its dev server started by hand before `/orchestrate`. `slot-stop.mjs --main` stops only what the
+  preflight started; a slot's backend now also runs `commands.devLocal` instead of a fixed `dev:local`.
 
 ## [1.13.0] - 2026-11-01
 

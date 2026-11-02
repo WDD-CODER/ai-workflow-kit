@@ -130,6 +130,10 @@ const MODE = A.mode === 'readiness' ? 'readiness' : 'run'
 const RUN = String(A.run ?? '')
 const ROOT = String(A.root ?? '.')
 const PLANS = (Array.isArray(A.plans) ? A.plans : String(A.plans ?? '').split(',')).map((p) => String(p).trim()).filter(Boolean)
+// args.db "remote": the request said `remote` (/orchestrate … remote) — the preflight starts the main folder's backend on
+// the remote database (commands.devRemote). Never stored: a run without the word is local.
+const DB = A.db === 'remote' ? 'remote' : 'local'
+const PRE_DB = DB === 'remote' ? ['--db', 'remote'] : []
 const RUN_BRANCH = `${RUN_PREFIX}${RUN}`
 if (!/^[a-z0-9][a-z0-9-]{0,39}$/.test(RUN)) throw new Error(`args.run ${JSON.stringify(RUN)} is not a run name (lower-case letters, digits, dashes)`)
 if (!PLANS.length || !PLANS.every((p) => /^\d{1,4}$/.test(p))) throw new Error('args.plans must list plan numbers')
@@ -486,7 +490,7 @@ async function readiness() {
     `Readiness check for one plan of orchestrator run ${RUN}. Follow .claude/agents/orch-readiness.md; return one entry in plans.`,
     task({ PLAN: order.plans[nnn]?.path ?? nnn, RUN_ORDER: order.waves, RUN_PLANS: plans, LESSONS: lessonsOf('readiness'), RULES: rulesOf('readiness'), RECENT_RUNS: LEARN.recent }),
   ].join('\n\n'), { agentType: 'orch-readiness', schema: SCHEMA.readiness, label: `readiness ${nnn}`, phase: 'Readiness', plan: nnn })))
-  const pre = await runner('orch-preflight.mjs', ['--run', RUN, '--plans', PLANS.join(',')], 'preflight')
+  const pre = await runner('orch-preflight.mjs', ['--run', RUN, '--plans', PLANS.join(','), ...PRE_DB], 'preflight')
   // A check whose file does not exist (and that the plan does not create) can never pass: a run once spent fix rounds
   // and a stronger builder on `node tools/<kit script>.mjs` in a project that has no such file. Dropped here, shown to
   // the Human (askHuman), never run.
@@ -1050,7 +1054,7 @@ async function runPlan(nnn) {
 // ---- the run ------------------------------------------------------------------------------------------------------------
 async function run() {
   phase('Start')
-  const pre = await runner('orch-preflight.mjs', ['--run', RUN, '--plans', PLANS.join(',')], 'preflight')
+  const pre = await runner('orch-preflight.mjs', ['--run', RUN, '--plans', PLANS.join(','), ...PRE_DB], 'preflight')
   if (!pre.ok) return { mode: 'run', run: RUN, ok: false, stopped: 'preflight', problems: pre.problems ?? [pre.error] }
   // A main-folder check runs a plan's command in the live environment. Readiness listed them (mainApproval) and the
   // command waited for the Human's `go` before passing `mainApproved`; without it the run does not start — nothing is
@@ -1062,6 +1066,8 @@ async function run() {
   // No start time is passed: init reads its own clock (a value the model wrote was invented) and returns it.
   const init = await state(['init', '--run', RUN], 'start run')
   if (!init.ok) return { mode: 'run', run: RUN, ok: false, stopped: 'init', problems: [init.error] }
+  // The run report names the database mode once (a run note): local unless the request said `remote`.
+  await note(`database: ${DB} — when a plan needs the main folder's backend and none answers, the preflight starts ${DB === 'remote' ? 'commands.devRemote (the remote database), asked for this run' : 'commands.devLocal (the local database)'}; a backend already running is kept on whatever database it uses`)
   mergeFolder = init.mergeFolder
   // The roles' lessons and rules sections, once for the run (a failed read is a note; every role then gets `[]`).
   const learnProblem = await loadLearning()

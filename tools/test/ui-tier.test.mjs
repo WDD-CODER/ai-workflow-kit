@@ -43,6 +43,21 @@ test('tag lint: [ui (unclosed) and [UI] (wrong case) are rejected, and an untagg
   assert.deepEqual(tags.doneWhenTagProblems('## Done when\n- [auto] ok\n\n## Atomic Sub-tasks\n- [ ] A1: x\n'), [])
 })
 
+test('mainAutoItems: only the open [auto:main] items of the Done-when sections (plan 058: they need the main folder backend)', () => {
+  const t = [
+    '# Plan', '', '## Goals & Success Criteria',
+    '- [ ] [auto:main] node scripts/check-db.mjs exits 0',
+    '- [x] [auto:main] node scripts/done-already.mjs',
+    '- [ ] [auto] npm test',
+    '- [auto:main] no box: no state',
+    '* [ ] [auto:main]   node scripts/star.mjs',
+    '', '## Execution Notes', '- [ ] [auto:main] a note, not a Done-when item', '',
+  ].join('\r\n')
+  assert.deepEqual(tags.mainAutoItems(t), ['node scripts/check-db.mjs exits 0', 'node scripts/star.mjs'])
+  assert.deepEqual(tags.mainAutoItems('## Done when\n- [ ] [auto] npm test\n'), [])
+  assert.ok(tags.openAutoItems(t).includes('node scripts/check-db.mjs exits 0'), 'still an open [auto] item as before')
+})
+
 test('tag lint: [auto:main] (a check run from the main folder) passes; [main] and [Auto:main] are rejected', () => {
   assert.deepEqual(tags.DONE_WHEN_TAGS, ['auto', 'auto:main', 'ui', 'human'])
   assert.deepEqual(tags.doneWhenTagProblems(plan(['- [auto:main] `node scripts/log-query.mjs --since=15m` prints No entries', '- [auto] `npm run build` exits 0'])), [])

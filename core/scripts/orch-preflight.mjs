@@ -2,7 +2,7 @@
  * Orchestrator preflight — finds the environment problems before a run starts, so no builder spends a fix round on
  * them (docs/agent/orchestrator.md). One line per check: `OK`, `SKIP <why>` or `FAIL <what to do>`.
  *
- *   node scripts/orch-preflight.mjs [--run <name>] [--plans <NNN,NNN>] [--env-only] [--db-port <n>]
+ *   node scripts/orch-preflight.mjs [--run <name>] [--plans <NNN,NNN>] [--env-only] [--db-port <n>] [--db local|remote]
  *
  * Checks:
  *   disk         free disk >= orchestrator.minFreeDiskGb (ORCH_FREE_GB replaces the measured value, for tests)
@@ -11,7 +11,11 @@
  *                with --run, the run's merge folder (when it exists) has its scripts/ packages too
  *   gate         WARN when the gate's test script (commands.testCi, else commands.test) is a watch mode that never exits
  *   dev server   commands.dev set → the dev server answers on the base port (kit config slots.fePorts), else
- *                scripts/slot-serve.mjs starts it; a failed start is a FAIL (an environment failure before any builder)
+ *                `scripts/slot-serve.mjs --main --servers fe` starts it; a failed start is a FAIL carrying the server's
+ *                log tail (an environment failure before any builder) — never a request to start it by hand
+ *   backend      a --plans plan with an open [auto:main] item → the main folder's backend answers on slots.bePorts, else
+ *                `slot-serve.mjs --main --servers be --db <local|remote>` starts it (commands.devLocal / devRemote);
+ *                SKIP when no plan needs it
  *   git identity user.name and user.email are set
  *   remote       origin/<main branch> is known (a fetch has run)
  *   main folder  on the main branch with no uncommitted tracked file (a run never writes it; plans are committed first)
@@ -39,6 +43,7 @@ import { fileURLToPath } from 'url'
 import net from 'net'
 import { freeGb, runNameProblem, serverProblem, loginProblem, crossOriginProblem, watchModeProblem } from './lib/orch-run.mjs'
 import { findOpenPlan } from './lib/plan-paths.mjs'
+import { mainAutoItems } from './lib/done-when.mjs'
 import { extractScopeGlobs } from './lib/plan-scope.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -62,6 +67,8 @@ const flag = (name) => {
 }
 const envOnly = argv.includes('--env-only')
 const run = flag('--run')
+// --db remote: the run asked for the remote database (/orchestrate … remote); never stored, the default is local.
+const DB = flag('--db') === 'remote' ? 'remote' : 'local'
 const results = []
 const ok = (name) => results.push({ name, status: 'OK' })
 const skip = (name, why) => results.push({ name, status: 'SKIP', why })
@@ -142,20 +149,75 @@ function devPort() {
   return null
 }
 
-// commands.dev set: the dev server must answer, or start. A server that already answers on the base port passes;
-// otherwise scripts/slot-serve.mjs runs once and its failure (in the main folder it starts nothing: the main folder's
-// servers are the Human's) is an environment failure before any builder runs.
+// The main folder's servers start through `scripts/slot-serve.mjs --main` (one call per server, at most SERVE_TIMEOUT_MS
+// each). Its failure — a held port, a build error, the database down — is an environment failure before any builder
+// runs, and the message carries the server's own last log lines. Never "please start the server".
+function serveMain(servers) {
+  const serve = join(root, 'scripts', 'slot-serve.mjs')
+  if (!existsSync(serve)) return { ok: false, why: 'scripts/slot-serve.mjs is missing — run the kit sync' }
+  const r = spawnSync(process.execPath, [serve, '--main', '--servers', servers, '--db', DB], { cwd: root, encoding: 'utf8', timeout: SERVE_TIMEOUT_MS })
+  const out = `${r.stdout ?? ''}${r.stderr ?? ''}`.replace(/\r\n/g, '\n').trim()
+  if (r.status === 0) return { ok: true, line: out.split('\n').filter((l) => l.startsWith('SLOT_SERVE: main')).pop() ?? '' }
+  const tail = out.split('\n').slice(-12).join(' | ')
+  return { ok: false, why: `scripts/slot-serve.mjs did not start it (exit ${r.status ?? 'timeout'}: ${tail || 'no output'}) — run by node scripts/slot-serve.mjs --main --servers ${servers}${servers === 'be' ? ` --db ${DB}` : ''}` }
+}
+
+// commands.dev set: the dev server must answer, or it is started. A server that already answers on the base port
+// passes untouched.
 async function devServer() {
   if (!DEV) return skip('dev server', 'commands.dev is not set (no frontend)')
-  const serve = join(root, 'scripts', 'slot-serve.mjs')
-  if (!existsSync(serve)) return bad('dev server', 'scripts/slot-serve.mjs is missing — run the kit sync')
   const port = devPort()
   const url = port ? `http://localhost:${port}/` : null
   if (url && !serverProblem(url, await ask(url))) return ok('dev server')
-  const r = spawnSync(process.execPath, [serve], { cwd: root, encoding: 'utf8', timeout: SERVE_TIMEOUT_MS })
-  if (r.status === 0) return ok('dev server')
-  const tail = `${r.stdout ?? ''}${r.stderr ?? ''}`.trim().split(/\r?\n/).slice(-2).join(' | ')
-  bad('dev server', `${url ? `nothing answers on ${url} and ` : ''}scripts/slot-serve.mjs did not start it (exit ${r.status ?? 'timeout'}: ${tail || 'no output'}) — start the dev server, then relaunch`)
+  const s = serveMain('fe')
+  if (s.ok) return ok('dev server')
+  bad('dev server', `${url ? `nothing answered on ${url}; ` : ''}${s.why}`)
+}
+
+// The run's plans with an open [auto:main] Done-when item read the live environment from the main folder: they need its
+// backend. Started (local database, or remote with --db remote) only for such a plan; a backend that answers passes.
+function bePort() {
+  for (const f of ['kit.config.json', join('.kit', 'config.json')]) {
+    try {
+      const port = Number(JSON.parse(readFileSync(join(root, f), 'utf8')).slots?.bePorts)
+      if (Number.isInteger(port) && port > 0) return port
+    } catch { /* no such config */ }
+  }
+  return null
+}
+const listening = (port) => new Promise((done) => {
+  const s = net.connect({ port, host: '127.0.0.1' })
+  const end = (v) => {
+    s.destroy()
+    done(v)
+  }
+  s.setTimeout(2 * 1000, () => end(false))
+  s.once('connect', () => end(true))
+  s.once('error', () => end(false))
+})
+async function backend() {
+  const plans = String(flag('--plans') ?? '').split(',').map((s) => s.trim()).filter((s) => /^\d{1,4}$/.test(s))
+  const needing = plans.filter((nnn) => {
+    const path = findOpenPlan(root, nnn)
+    if (!path) return false
+    try {
+      return mainAutoItems(readFileSync(join(root, path), 'utf8')).length > 0
+    } catch {
+      return false
+    }
+  })
+  if (!needing.length) return skip('backend', 'no plan needs it')
+  // No backend to start for a plan that needs one: its [auto:main] check would fail after builders spent rounds.
+  if (!existsSync(join(root, 'server', 'package.json'))) return bad('backend', `plan ${needing.join(', ')} has an open [auto:main] item, but this folder has no server/package.json to start a backend from — add the backend, or take the [auto:main] item out of that plan`)
+  const port = bePort()
+  // A backend that answers is kept as it is; with --db remote nothing tells which database it runs on, so say so.
+  if (port && await listening(port)) {
+    if (DB === 'remote') return warn('backend', `a backend already answers on port ${port} and was kept as it is: the run uses the database it was started on, which may be the local one. For the remote database, stop it and relaunch`)
+    return ok('backend')
+  }
+  const s = serveMain('be')
+  if (s.ok) return ok('backend')
+  bad('backend', `plan ${needing.join(', ')} has an [auto:main] item and needs the main folder's backend (${DB} database); ${s.why}`)
 }
 
 function identity() {
@@ -312,6 +374,7 @@ else {
 }
 if (!envOnly && !uiOnly) {
   await devServer()
+  await backend()
   identity()
   remote()
   mainFolder()

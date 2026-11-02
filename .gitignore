@@ -13,6 +13,7 @@ Thumbs.db
 .worktree-cleanup
 .claude/.slot-pids
 .claude/.slot-plan-start
+.claude/.main-serve-pids
 .claude/logs/
 .claude/*.log
 
