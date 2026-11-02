@@ -354,6 +354,15 @@ export function mainPorts() {
 }
 
 /**
+ * A recorded chain root is still the process we started: the same creation time where the OS gives one (Windows);
+ * where it does not (POSIX `ps` gives none, t = 0), a live dev-chain process under that PID.
+ */
+export function isRecordedChain(rec, p) {
+  if (!p) return false
+  return rec.t ? p.t === rec.t : isChainProc(p)
+}
+
+/**
  * Stop only the chains `slot-serve.mjs --main` recorded in .claude/.main-serve-pids (still the same process by
  * creation time), each from its root. A server the Human started by hand in the folder is never touched. Returns log lines.
  */
@@ -362,7 +371,7 @@ export function stopMainServers({ root = repoRoot } = {}) {
   const table = processTable()
   for (const rec of readSlotPids(root, MAIN_PIDS)) {
     const p = table.get(rec.pid)
-    if (!p || !rec.t || p.t !== rec.t) continue
+    if (!isRecordedChain(rec, p)) continue
     if (killTree(rec.pid)) lines.push(`stopped PID ${rec.pid} (recorded: ${short(p.cmd)})`)
   }
   if (existsSync(pidsFileOf(root, MAIN_PIDS))) unlinkSync(pidsFileOf(root, MAIN_PIDS))

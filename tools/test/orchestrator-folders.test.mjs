@@ -744,6 +744,13 @@ test('a pnpm or dev:remote chain is a dev chain, so a failed start is killed and
   const procs = await import(pathToFileURL(join(kit, 'scripts', 'lib', 'slot-procs.mjs')).href)
   for (const cmd of ['"C:\\Program Files\\nodejs\\node.exe" "C:\\Users\\u\\AppData\\Roaming\\npm\\node_modules\\pnpm\\bin\\pnpm.cjs" run start', 'pnpm run dev:remote', 'pnpm.cmd run start', 'npm run dev:local', 'cmd /d /s /c "npm run dev:remote"']) assert.ok(procs.isChainCmd(cmd), cmd)
   for (const cmd of ['node server.js', 'git status', 'node dev:localish.js']) assert.ok(!procs.isChainCmd(cmd), cmd)
+  // a recorded root: same creation time where the OS gives one; with none (POSIX ps, t = 0) a live dev-chain process
+  const npmRoot = { pid: 7, name: process.platform === 'win32' ? 'node.exe' : 'npm', cmd: 'npm run start', t: 0 }
+  assert.ok(procs.isRecordedChain({ pid: 7, t: 0 }, npmRoot), 'POSIX: no creation time, a dev-chain process')
+  assert.ok(!procs.isRecordedChain({ pid: 7, t: 0 }, { ...npmRoot, cmd: 'vim notes.txt' }), 'POSIX: a reused PID that is not a dev chain')
+  assert.ok(procs.isRecordedChain({ pid: 7, t: 5 }, { ...npmRoot, t: 5 }))
+  assert.ok(!procs.isRecordedChain({ pid: 7, t: 5 }, { ...npmRoot, t: 6 }), 'Windows: another process under the same PID')
+  assert.ok(!procs.isRecordedChain({ pid: 7, t: 5 }, undefined), 'gone')
 })
 
 test('preflight starts a missing frontend and says OK; the backend only for a plan with an open [auto:main] item; a failed start is a FAIL with the log tail', async () => {

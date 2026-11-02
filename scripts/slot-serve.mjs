@@ -30,7 +30,7 @@ import {
   repoRoot, portState, processTable, listeners, devChains, killTree, readSlotPids, writeSlotPids,
   stopSlotServers, waitForPort, waitForPortFree, startServer, npmInstallIfChanged, generateEnvironmentSlot,
   hasFrontend as projectHasFrontend, frontendArgs, isFrontendCmd, installDirs, installReason,
-  mainPorts, spawnPm, projectPm, BE_LOCAL_SCRIPT, BE_REMOTE_SCRIPT, MAIN_PIDS, FE_SCRIPT_NAME, subtree
+  mainPorts, spawnPm, projectPm, BE_LOCAL_SCRIPT, BE_REMOTE_SCRIPT, MAIN_PIDS, FE_SCRIPT_NAME, subtree, isRecordedChain
 } from './lib/slot-procs.mjs'
 
 const isWin = process.platform === 'win32'
@@ -65,7 +65,7 @@ if (process.argv.includes('--main')) {
   const lst = listeners()
   const chains = devChains(repoRoot, table, lst)
   // The chains this script started earlier (same process by creation time): a port held inside one of them is ours.
-  const recordedEntries = readSlotPids(repoRoot, MAIN_PIDS).filter((e) => e.t && (table.get(e.pid) || {}).t === e.t)
+  const recordedEntries = readSlotPids(repoRoot, MAIN_PIDS).filter((e) => isRecordedChain(e, table.get(e.pid)))
   const recorded = recordedEntries.map((e) => e.pid)
   const inRecorded = (pid) => recorded.some((r) => subtree(table, r).includes(pid))
   const started = []
