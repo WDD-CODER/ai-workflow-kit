@@ -26,12 +26,12 @@ test('plan branch: feat/NNN- and the first four slug words', () => {
   assert.equal(lib.planBranch('plans\\design\\012-x.plan.md', '012'), 'feat/012-x')
 })
 
-test('start tier: judgment for a changed, deviated or unreadable invariant; "preserves" lines start on build', () => {
+test('INV-1 start tier: judgment for any named invariant (preserves, changes, deviation, unreadable); build for INV-none or none', () => {
   const plan = (lines) => `# Plan\n\n## Architecture Impact\n${lines}\n\n## Next\n`
   assert.deepEqual(lib.startTier(plan('- INV-none: preserves — nothing')), { tier: 'build', invariants: [] })
-  // A plan with only "preserves" lines (most plans): build. Two runs started on the main session's model for these.
-  assert.deepEqual(lib.startTier(plan('- INV-3: preserves — touches it\n- INV-7: preserves — reads it\n- INV-none: preserves')), { tier: 'build', invariants: [] })
-  assert.deepEqual(lib.startTier(plan('- INV-3: changes — ADR docs/brain/decisions/0009-x.md\n- INV-4: preserves')), { tier: 'judgment', invariants: ['INV-3'] })
+  // INV-1: a plan that only "preserves" a registered invariant starts on the pinned strong tier too.
+  assert.deepEqual(lib.startTier(plan('- INV-3: preserves — touches it\n- INV-7: preserves — reads it\n- INV-none: preserves')), { tier: 'judgment', invariants: ['INV-3', 'INV-7'] })
+  assert.deepEqual(lib.startTier(plan('- INV-3: changes — ADR docs/brain/decisions/0009-x.md\n- INV-4: preserves')), { tier: 'judgment', invariants: ['INV-3', 'INV-4'] })
   assert.deepEqual(lib.startTier(plan('- INV-5: deviation until the follow-up — why')), { tier: 'judgment', invariants: ['INV-5'] })
   assert.deepEqual(lib.startTier(plan('- INV-6: touches it, kind not said')), { tier: 'judgment', invariants: ['INV-6'] })
   assert.deepEqual(lib.startTier('# Plan with no section'), { tier: 'build', invariants: [] })
@@ -557,6 +557,73 @@ test('lost gate results: 1 of N back → only the missing commands run again, no
   assert.match(o.reason, /^environment, again after one retry: gate returned no result, twice, for: /)
   assert.equal(always.calls.filter((c) => c.type === 'orch-builder').length, 2, 'first + env-retry, never a fix round')
   assert.ok(always.commands.some((c) => c.includes('orch-preflight.mjs --env-only --run r1')), 'the env check names the run (merge folder packages)')
+})
+
+// ---- plan 063 (INV-1): the judgment tier is pinned to a named strong model --------------------------------------------
+test('INV-1 models.judgment never inherits: inherit and Haiku are refused naming INV-1; opus and a claude- id pass; the other tiers keep their rules', () => {
+  const vals = (judgment, extra = {}) => ({ 'models.mechanical': 'haiku', 'models.analysis': 'sonnet', 'models.judgment': judgment, 'models.build': 'sonnet', 'models.review': 'sonnet', ...extra })
+  const modelProblems = (v) => commandProblems(v).filter((p) => /^models\./.test(p))
+  for (const bad of ['inherit', 'haiku', 'claude-haiku-4-5', 'claude-3-5-haiku-20241022']) {
+    const p = modelProblems(vals(bad))
+    assert.equal(p.length, 1, `${bad}: ${p.join(' | ')}`)
+    assert.match(p[0], new RegExp(`^models\\.judgment is "${bad}" — INV-1`))
+  }
+  for (const ok of ['opus', 'sonnet', 'fable', 'claude-opus-5-5']) assert.deepEqual(modelProblems(vals(ok)), [], ok)
+  // build and review keep their rules: build may inherit, review never Haiku
+  assert.deepEqual(modelProblems(vals('opus', { 'models.build': 'inherit', 'models.mechanical': 'inherit' })), [])
+  assert.match(modelProblems(vals('opus', { 'models.review': 'haiku' }))[0], /^models\.review is "haiku"/)
+  // the scaffold and the installed workflow carry the pinned default
+  assert.equal(JSON.parse(readFileSync(join(kit, 'kit.config.json'), 'utf8')).models.judgment, 'opus')
+  assert.match(wfSource, /judgment: "opus"/)
+  assert.doesNotMatch(wfSource, /MODELS\.judgment === 'inherit'/, 'no inherit branch for the judgment builder')
+  assert.doesNotMatch(readFileSync(join(root, 'docs', 'agent', 'model-routing.md'), 'utf8'), /All five set to `inherit`/)
+})
+
+test('INV-1: readiness and an escalated builder are called on model opus; a build-tier builder carries no model of its own', async () => {
+  const ready = await runFlow({ mode: 'readiness', plans: ['101'] })
+  assert.ok(ready.calls.filter((c) => c.type === 'orch-readiness').every((c) => c.model === 'opus'), JSON.stringify(ready.calls.map((c) => [c.type, c.model])))
+  let n = 0
+  const r = await runFlow({ plans: ['101'], pilot: false }, { builder: () => (++n === 1 ? { status: 'ESCALATE', blocker: 'too hard' } : {}) })
+  const b = r.calls.filter((c) => c.type === 'orch-builder')
+  assert.deepEqual(b.map((c) => `${c.task.TIER}/${c.task.MODE}/${c.model}`), ['build/first/null', 'judgment/handoff/opus'])
+  assert.equal(b[1].effort, 'high')
+})
+
+test('INV-1: one failed fix round hands over to a fresh judgment builder, whatever maxFixRounds is; the judgment builder failing parks as "needs the Human" with no third builder', async () => {
+  for (const rounds of [1, 2, 3]) {
+    let head = 0 // a new head each call: this test is not about the no-progress park
+    const src = (s) => s.replace('const MAX_FIX_ROUNDS = 2', `const MAX_FIX_ROUNDS = ${rounds}`)
+    const r = await runFlow({ plans: ['101'], pilot: false }, { source: src, gateFails: (folder) => folder === '/wt/101', gateTail: (k) => `FAIL spec ${k}`, builder: () => ({ summary: 'PREVIOUS-BUILDER-STORY', headSha: `abc${++head}` }) })
+    const b = r.calls.filter((c) => c.type === 'orch-builder')
+    assert.deepEqual(b.map((c) => `${c.task.TIER}/${c.task.MODE}`), ['build/first', 'build/fix', 'judgment/handoff'], `maxFixRounds ${rounds}: build, one fix round on build, then one fresh judgment builder — never a third build builder`)
+    assert.equal(b[2].model, 'opus')
+    const o = r.result.outcomes[0]
+    assert.equal(o.state, 'parked', `maxFixRounds ${rounds}`)
+    assert.match(o.reason, /— needs the Human$/)
+    // the fresh builder gets the hand-off file, the plan and the branch: no findings text, nothing the last builder wrote
+    assert.match(b[2].task.HANDOFF, /handoff-101\.md$/)
+    assert.equal(b[2].task.FINDINGS, undefined)
+    assert.ok(!JSON.stringify(b[2]).includes('PREVIOUS-BUILDER-STORY'), 'the previous builder summary never reaches the fresh builder')
+    const handoff = r.commands.filter((c) => /orch-state\.mjs handoff/.test(c))
+    assert.equal(handoff.length, 1, `maxFixRounds ${rounds}: one hand-off`)
+    assert.match(handoff[0], /--failed=/, 'Failed: is filled from the gate result')
+    assert.doesNotMatch(handoff[0], /--done/, 'Done: is derived by the script, never passed from the builder receipt')
+    assert.doesNotMatch(handoff[0], /PREVIOUS-BUILDER-STORY/)
+  }
+})
+
+test('INV-1 hand-off: Done: is derived from the ticked sub-tasks in the plan file, Failed: from the flag; the receipt is not an input', () => {
+  const t = learnDir({ run: 'fix-run', plans: { 101: { nnn: '101', state: 'fixing', round: 2, models: {} } } })
+  try {
+    t.writeRoot('plans/101-save-form.plan.md', '# Plan 101 — save form\n\n## Atomic Sub-tasks\n\n- [x] A1: tests first\n- [ ] B1: build it\n  - [x] not a top-level id\n- [x] B2: docs\n')
+    const h = t.orch('handoff', '--plan=101', '--step=round 2', '--check=npm run test', '--tail=boom', '--tried=build builder', '--failed=npm run test: boom | p1 src/a.js:3 logic: x')
+    assert.equal(h.status, 0, `${h.stderr}${h.stdout}`)
+    const text = readFileSync(join(t.dir, '.claude', 'sessions', 'orch-fix-run', 'handoff-101.md'), 'utf8')
+    assert.match(text, /^Done: {12}sub-tasks ticked: A1, B2; files changed: /m)
+    // the script takes no --done flag: Done: is not an input at all
+    assert.notEqual(t.orch('handoff', '--plan=101', '--step=s', '--check=c', '--tail=t', '--tried=x', '--done=T9 from the receipt').status, 0)
+    assert.match(text, /^Failed: {10}npm run test: boom \| p1 src\/a\.js:3 logic: x$/m)
+  } finally { t.clean() }
 })
 
 test('the word remote: args.db "remote" reaches both preflight calls and the run notes the database once; a run without it never passes --db remote', async () => {

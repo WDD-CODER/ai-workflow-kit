@@ -15,9 +15,9 @@ Each section below is parsed by `scripts/lib/invariants.mjs` — keep the exact 
 Add only rules whose breakage users would feel; workflow choices stay prose ADRs.
 Delete this file to switch the gate off.
 
-## INV-1 — <title>
-- Rule: <one line>
-- Source: <ADR / file>
-- Touches: `<glob>`, `<glob>`
-- Users lose if broken: <plain words>
-- Test: <test file "INV-1 …" | none>
+## INV-1 — Judgment roles run on a pinned strong model
+- Rule: models.judgment names a model (default opus), never inherit; readiness, a failed plan's fresh builder and the first builder of a plan that names an invariant run on it; if that builder fails, the plan stops for the Human
+- Source: docs/brain/decisions/0016-judgment-roles-run-on-a-pinned-strong-model.md
+- Touches: `core/docs/agent/model-routing.md`, `core/.claude/agents/orch-readiness.md`
+- Users lose if broken: a hard plan is judged or rebuilt by whatever model the session uses, so a weak model can approve or merge wrong work unnoticed
+- Test: tools/test/orchestrator.test.mjs "INV-1 …"

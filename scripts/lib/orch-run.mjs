@@ -62,14 +62,13 @@ export function uiCardProblem({ card, page, shots } = {}) {
 }
 
 /**
- * The tier a plan's first builder starts on: judgment when Architecture Impact names an invariant (other than INV-none)
- * the plan changes or deviates from, or names one without saying which (unreadable). A line that only `preserves` an
- * invariant starts on build: most plans preserve something, and a judgment start for every one of them put the main
- * session's model on plans a build-tier builder handles.
+ * The tier a plan's first builder starts on (INV-1): judgment when Architecture Impact names any invariant other than
+ * INV-none — preserves, changes, deviation or unreadable — else build. The judgment tier is a pinned strong model
+ * (models.judgment, never inherit), so the plans that touch a registered invariant are built on it.
  */
 export function startTier(planText) {
   const { entries } = parseArchImpact(String(planText))
-  const named = entries.filter((e) => e.id !== 'INV-none' && e.kind !== 'preserves').map((e) => e.id)
+  const named = entries.filter((e) => e.id !== 'INV-none').map((e) => e.id)
   return { tier: named.length ? 'judgment' : 'build', invariants: named }
 }
 

@@ -288,15 +288,18 @@ With the UI step off, a failed script is a finding for the builder, and a card n
 - **Pass is computed, never read.** A role result's own `pass` flag is ignored: the workflow computes it from the
   gate results, the finders' problems and the verifier's verdicts (a kept `blocker` or `major` with confidence ≥ 80
   fails). A finder that says `pass: true` next to a `major` problem is a fail, and the run notes it.
-- **Start tier.** A plan whose `## Architecture Impact` names an invariant other than `INV-none` that it `changes` or
-  is a `deviation` from — or names one without saying which — starts its builder on the `judgment` tier; a plan whose
-  lines only `preserves` invariants starts on `build` (most plans preserve something; a judgment start for every one of
-  them put the main session's model on plans a build-tier builder handles).
-- **Fix loop.** The first problem goes back to a builder on the same tier with the findings (round 1). A persisting
-  failure (round 2 and later), an `ESCALATE` or `blocked` builder, or a second finding starts a **fresh** builder on
-  the `judgment` tier that reads the hand-off file (`.claude/sessions/orch-<run>/handoff-<NNN>.md`), the plan and
-  `git diff` — never the first builder's transcript. A failure on that builder, or a failure when the rounds used
-  reach `maxFixRounds`, parks the plan with its reason.
+- **Start tier (INV-1).** A plan whose `## Architecture Impact` names any invariant other than `INV-none` — `preserves`,
+  `changes`, `deviation`, or one named without saying which — starts its builder on the `judgment` tier, a pinned
+  strong model (`models.judgment`, default `opus`, never `inherit`); a plan with `INV-none` or no Architecture Impact
+  starts on `build` (Sonnet by default).
+- **Fix loop.** The first problem goes back to a builder on the same tier with the findings (round 1). When that fix
+  round fails too — whatever `maxFixRounds` is — or when a builder returns `ESCALATE` or `blocked`, a **fresh** builder
+  on the `judgment` tier takes over. It reads the hand-off file (`.claude/sessions/orch-<run>/handoff-<NNN>.md`), the
+  plan and `git diff` — never the first builder's transcript or receipt. The script writes that file: `Done:` (the
+  sub-task ids ticked in the plan file on the branch, and the branch diff's files) and `Failed:` (the failing checks
+  with their tail and the round's open findings as `id file:line rule`), plus the tried step, output tail and replan
+  verdict. A failure on the judgment-tier builder that took over parks the plan as `needs the Human`; no third
+  builder is started. `maxFixRounds` bounds the build-tier fix rounds only.
 - **Test files are guarded by script.** A changed test file (`*.test.*`, `*.spec.*`, `*_test.*`, `*_spec.*`, `test_*`,
   or under a `test`, `tests`, `spec`, `specs`, `e2e`, `cypress`, `playwright`, `__tests__`, `__snapshots__` or `__mocks__`
   folder at any depth; case-insensitive; a rename counts as a change of the old path too) that no line of the plan's

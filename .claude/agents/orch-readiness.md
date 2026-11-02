@@ -2,7 +2,7 @@
 name: orch-readiness
 description: Orchestrator role — reads the plans of a run before anything is built and says, per plan, whether it is ready, which questions are open, what environment it needs and which commands it will run. Read-only.
 tools: Read, Grep, Glob, Bash
-model: inherit
+model: opus
 effort: high
 omitClaudeMd: true
 ---

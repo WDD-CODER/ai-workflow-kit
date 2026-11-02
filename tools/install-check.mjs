@@ -1104,7 +1104,7 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
 }
 
 // models.* (docs/agent/model-routing.md): the tiers render into the agent and forked-skill frontmatter; no inline
-// command carries a `model:` (a model switch breaks the prompt cache); all tiers inherit = routing off; a value that is
+// command carries a `model:` (a model switch breaks the prompt cache); models.judgment never inherits (INV-1); a value that is
 // not a model alias or a claude- id is refused like a bad ci.* mode.
 {
   const modelLines = (dir) => files(dir).filter((f) => f.startsWith('.claude/')).flatMap((f) =>
@@ -1117,7 +1117,7 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   }
   // The role agents (docs/agent/agent-roles.md) and their default tiers.
   const ORCH_DEFAULTS = {
-    '.claude/agents/orch-builder.md': 'sonnet', '.claude/agents/orch-readiness.md': 'inherit',
+    '.claude/agents/orch-builder.md': 'sonnet', '.claude/agents/orch-readiness.md': 'opus',
     '.claude/agents/orch-gate.md': 'haiku', '.claude/agents/orch-report.md': 'haiku',
     '.claude/agents/orch-check-plan.md': 'sonnet', '.claude/agents/orch-check-bugs.md': 'sonnet', '.claude/agents/orch-check-rules.md': 'sonnet',
     '.claude/agents/orch-verify.md': 'sonnet', '.claude/agents/orch-security.md': 'sonnet', '.claude/agents/orch-ui.md': 'sonnet', '.claude/agents/orch-triage.md': 'sonnet',
@@ -1165,12 +1165,20 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   }
   rmSync(md, { recursive: true, force: true })
 
+  // INV-1: models.judgment names a model, never inherit (and never Haiku); the other tiers may inherit.
   const mi = tmp('models-inherit')
-  writeFileSync(join(mi, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { mechanical: 'inherit', analysis: 'inherit', judgment: 'inherit', build: 'inherit' } }))
+  writeFileSync(join(mi, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { mechanical: 'inherit', analysis: 'inherit', build: 'inherit', review: 'inherit' } }))
   const i = run('install.mjs', ['--target', mi])
-  const notInherit = i.status === 0 ? modelLines(mi).filter(([, v]) => v !== 'inherit') : []
-  if (i.status !== 0 || !modelLines(mi).length || notInherit.length) fail(`all tiers inherit must render only model: inherit (routing off): exit ${i.status}, others ${JSON.stringify(notInherit)}`)
+  const notWant = i.status === 0 ? modelLines(mi).filter(([f, v]) => (f === '.claude/agents/orch-readiness.md' ? v !== 'opus' : v !== 'inherit')) : []
+  if (i.status !== 0 || !modelLines(mi).length || notWant.length) fail(`the other tiers inherit must render model: inherit and judgment opus: exit ${i.status}, others ${JSON.stringify(notWant)}`)
   rmSync(mi, { recursive: true, force: true })
+  for (const bad of ['inherit', 'haiku', 'claude-haiku-4-5']) {
+    const mj = tmp('models-judgment-bad')
+    writeFileSync(join(mj, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { judgment: bad } }))
+    const j = run('install.mjs', ['--target', mj])
+    if (j.status !== 2 || !j.stderr.includes(`models.judgment is "${bad}"`) || !j.stderr.includes('INV-1') || files(mj).length !== 1) fail(`install with models.judgment ${bad}: exit ${j.status}, ${j.stderr.trim().split('\n')[0]}`)
+    rmSync(mj, { recursive: true, force: true })
+  }
 
   const mp = tmp('models-project')
   writeFileSync(join(mp, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { mechanical: 'claude-haiku-5-5' } }))

@@ -9,6 +9,15 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Changed
+- **The orchestrator's judgment tier is pinned to a strong model (INV-1).** `models.judgment` now defaults to
+  `opus`; install and sync refuse `inherit` and any Haiku value for it, naming INV-1 - a project that set it to `inherit`
+  (or all tiers to `inherit` to turn routing off) must name a model. Readiness and the fresh builder always run on it. A plan
+  whose Architecture Impact names any invariant but `INV-none` starts on it; other plans start on Sonnet. After one failed
+  fix round (whatever `orchestrator.maxFixRounds` is) a fresh judgment-tier builder takes over from a hand-off file the
+  script writes (`Done:` from the plan's ticked sub-tasks and the branch diff, `Failed:` from the gate and checker results),
+  and if it fails too the plan is parked as `needs the Human`.
+
 ### Added
 - **`/kit-learn`: the kit turns run evidence into a problem ledger, problem cards, plans and kit-owned lessons** (kit
   repository only). `tools/kit-learn.mjs collect` reads the kit brain, keeps one ledger entry per problem (runs, projects,

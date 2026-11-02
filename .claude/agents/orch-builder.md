@@ -55,8 +55,10 @@ rules in `docs/agent/agent-roles.md` (non-interactive, evidence, deny list, sche
 ## When you stop
 
 Return `blocked` when a requirement cannot be met (a missing dependency, a deny-listed command needed, a check that
-keeps failing). Return `ESCALATE` when the task is beyond what you can do reliably. In both cases write the hand-off
-file (`docs/agent/model-routing.md` rule 5) before you return and name it in `evidence`.
+keeps failing). Return `ESCALATE` when the task is beyond what you can do reliably. In both cases fill `notDone` and
+`planChange` in your result: the orchestrator script writes the hand-off file itself (`docs/agent/model-routing.md`
+rule 5). Its `Done:` line is read from the sub-tasks you ticked `[x]` in the plan file (committed on your branch) and
+the branch diff, never from your receipt — tick each sub-task only when it is finished, and commit the plan file.
 
 ## Output (the only thing you return)
 
