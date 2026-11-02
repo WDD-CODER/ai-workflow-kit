@@ -5,8 +5,10 @@ description: Run saved plans unattended into one run branch — readiness questi
 # /orchestrate — run saved plans into one run branch ({{project.name}})
 
 Opt-in. Usage: `/orchestrate 451-457` (a range), `/orchestrate 451,453,457` (a list), optionally followed by a run
-name (`/orchestrate 451-457 batch-1`; default `run-<first>-<last>`) and the word `ask` (`/orchestrate 451 ask`: wait
-for `go` even when readiness has nothing to ask). The rules of a run: `docs/agent/orchestrator.md`.
+name (`/orchestrate 451-457 batch-1`; default `run-<first>-<last>`), the word `ask` (`/orchestrate 451 ask`: wait
+for `go` even when readiness has nothing to ask) and the word `remote` (`/orchestrate 451 remote`: when a plan needs the
+main folder's backend, the preflight starts it on the remote database, `commands.devRemote`, instead of the local one;
+for this run only — a run without the word is local). The rules of a run: `docs/agent/orchestrator.md`.
 
 Start from a clean turn: do not paste chat, notes or earlier agent output into any agent prompt. The workflow builds
 every prompt from the plans and the state script.
@@ -15,14 +17,17 @@ every prompt from the plans and the state script.
 
 1. **Refuse early.**
    - Expand the range to plan numbers. Each must be an open plan under the plan folders; a missing one → STOP.
-   - Run `node scripts/orch-preflight.mjs --run <run> --plans <NNN,NNN,…>`. Any `FAIL` line → print it and STOP (the
+   - Run `node scripts/orch-preflight.mjs --run <run> --plans <NNN,NNN,…>` (add `--db remote` when the request said
+     `remote`). It starts the main folder's frontend when it does not answer, and its backend when a plan has an open
+     `[auto:main]` item; it never asks you to start a server. Any `FAIL` line → print it and STOP (the
      main folder must be on `{{git.mainBranch}}` with no uncommitted tracked file, no run of that name may be live and
      no live run may hold one of these plans or a plan whose scope overlaps one of them, the disk, packages, git
      identity and settings must be in place).
 
 2. **Readiness (one batch of questions).** Start the `orchestrate` workflow
    (`.claude/workflows/orchestrate.js`) with `args`
-   `{ "mode": "readiness", "run": "<run>", "plans": ["451", …], "root": "<absolute main folder path>" }`.
+   `{ "mode": "readiness", "run": "<run>", "plans": ["451", …], "root": "<absolute main folder path>" }` (add
+   `"db": "remote"` to these `args` and to step 3's when the request said `remote`).
    It returns the waves, and per plan `state`, `questions`, `envNeeds`, `commands` and `mainCommands` (deny-listed
    ones removed and named in `denied`), plus the preflight result and `askHuman`.
    - Print the waves and every plan's state in one table, with a `claims` column per plan (`2 checked, 1 wrong`;

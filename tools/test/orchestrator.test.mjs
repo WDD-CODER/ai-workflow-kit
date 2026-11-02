@@ -559,6 +559,21 @@ test('lost gate results: 1 of N back → only the missing commands run again, no
   assert.ok(always.commands.some((c) => c.includes('orch-preflight.mjs --env-only --run r1')), 'the env check names the run (merge folder packages)')
 })
 
+test('the word remote: args.db "remote" reaches both preflight calls and the run notes the database once; a run without it never passes --db remote', async () => {
+  const pre = (r) => r.commands.filter((c) => /orch-preflight\.mjs --run r1 --plans/.test(c))
+  const remote = await runFlow({ plans: ['101'], pilot: false, db: 'remote' })
+  assert.ok(pre(remote).length >= 1 && pre(remote).every((c) => /--db remote/.test(c)), pre(remote).join(' | '))
+  assert.equal(remote.notes.filter((n) => /database: (local|remote) — /.test(n)).length, 1, remote.notes.join(' | '))
+  assert.ok(remote.notes.some((n) => /database: remote — .*commands\.devRemote/.test(n)), remote.notes.join(' | '))
+  const ready = await runFlow({ mode: 'readiness', plans: ['101'], db: 'remote' })
+  assert.ok(pre(ready).length === 1 && /--db remote/.test(pre(ready)[0]), pre(ready).join(' | '))
+  const local = await runFlow({ plans: ['101'], pilot: false })
+  assert.ok(pre(local).length >= 1 && !local.commands.some((c) => /--db remote/.test(c)))
+  assert.ok(local.notes.some((n) => /database: local — .*commands\.devLocal/.test(n)), local.notes.join(' | '))
+  const odd = await runFlow({ plans: ['101'], pilot: false, db: 'cloud' })
+  assert.ok(!odd.commands.some((c) => /--db/.test(c)), 'any other value is local')
+})
+
 test('same reason twice: an identical gate failure in two rounds parks the plan at once; a different tail goes on to the fix rounds', async () => {
   const same = await runFlow({ plans: ['101'], pilot: false }, { gateFails: (folder) => folder === '/wt/101' })
   const o = same.result.outcomes[0]

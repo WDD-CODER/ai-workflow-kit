@@ -29,10 +29,20 @@ import { frontendCommand } from './fe-command.mjs'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 export const repoRoot = resolve(__dirname, '..', '..')
 const isWin = process.platform === 'win32'
-const pidsFileOf = (root) => join(root, '.claude', '.slot-pids')
-const DEV_SERVER = /\b(node|nodemon|npm|npx|ng|vite|tsx|ts-node)(\.exe|\.cmd|\.js)?\b/i
-// A process that can sit in a dev chain: npm/npx launchers, npm's cmd.exe/sh shell, cross-env, a watcher, a frontend dev server.
-const CHAIN_CMD = /npm-cli\.js|npx-cli\.js|\bnpm(\.cmd)?\s|\bnpx(\.cmd)?\s|cross-env|--watch\b|\bng(\.js|\.cmd)?"?\s+serve\b|\bnodemon\b|\bvite\b|\bdev:local\b/i
+// .claude/.slot-pids: a slot's recorded chains; .claude/.main-serve-pids: the chains `slot-serve.mjs --main` started.
+export const SLOT_PIDS = '.slot-pids'
+export const MAIN_PIDS = '.main-serve-pids'
+const pidsFileOf = (root, file = SLOT_PIDS) => join(root, '.claude', file)
+const DEV_SERVER = /\b(node|nodemon|npm|npx|pnpm|ng|vite|tsx|ts-node)(\.exe|\.cmd|\.c?js)?\b/i
+// The backend's npm scripts (commands.devLocal / commands.devRemote; empty = dev:local / dev:remote).
+export const BE_LOCAL_SCRIPT = String({{commands.devLocal|json}} || '') || 'dev:local'
+export const BE_REMOTE_SCRIPT = String({{commands.devRemote|json}} || '') || 'dev:remote'
+const BE_SCRIPTS_RE = [...new Set(['dev:local', 'dev:remote', BE_LOCAL_SCRIPT, BE_REMOTE_SCRIPT])].map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+// A process that can sit in a dev chain: npm/npx/pnpm launchers, their cmd.exe/sh shell, cross-env, a watcher, a frontend
+// dev server, the backend's scripts.
+const CHAIN_CMD = new RegExp(`npm-cli\\.js|npx-cli\\.js|pnpm\\.c?js|\\bnpm(\\.cmd)?\\s|\\bnpx(\\.cmd)?\\s|\\bpnpm(\\.cmd|\\.exe)?"?\\s|cross-env|--watch\\b|\\bng(\\.js|\\.cmd)?"?\\s+serve\\b|\\bnodemon\\b|\\bvite\\b|(^|[\\s"])(${BE_SCRIPTS_RE})(?=[\\s"]|$)`, 'i')
+/** True when a command line is a dev-chain command (exported for the tests). */
+export const isChainCmd = (cmd) => CHAIN_CMD.test(cmd || '')
 // Never bash/powershell on Windows: the agent's own shell must not count as a chain root.
 const CHAIN_NAME = isWin ? /^(node|cmd)\.exe$/i : /^(node|nodejs|npm|npx|sh|dash)$/i
 const WATCHER = /--watch\b/
@@ -56,6 +66,9 @@ const FE_MATCHER_SRC = String({{slots.feMatcher|json}} || '')
 const FE_ENV_FILE = String({{slots.feEnvFile|json}} || '')
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const FE_MATCHER = FE_MATCHER_SRC ? new RegExp(FE_MATCHER_SRC, 'i') : FE_SCRIPT ? new RegExp(`\\brun\\s+${escapeRe(FE_SCRIPT)}(\\s|"|$)`, 'i') : null
+
+/** The frontend npm script (commands.dev), '' when the project has none. */
+export const FE_SCRIPT_NAME = FE_SCRIPT
 
 /** True when a command line is the frontend dev server (or a process of its chain). */
 export const isFrontendCmd = (cmd) => Boolean(FE_MATCHER) && FE_MATCHER.test(cmd || '')
@@ -309,9 +322,9 @@ export function portState(port, { root = repoRoot, table, lst, retried = false }
 
 // --- recorded PIDs -----------------------------------------------------------------------
 
-/** [{ pid, t }] from .claude/.slot-pids (t = 0 for an entry in the old format). */
-export function readSlotPids(root = repoRoot) {
-  const file = pidsFileOf(root)
+/** [{ pid, t }] from .claude/.slot-pids, or another pids file (t = 0 for an entry in the old format). */
+export function readSlotPids(root = repoRoot, name = SLOT_PIDS) {
+  const file = pidsFileOf(root, name)
   if (!existsSync(file)) return []
   try {
     return (JSON.parse(readFileSync(file, 'utf8')).pids || []).map((e) => (typeof e === 'object' ? { pid: Number(e.pid), t: Number(e.t) || 0 } : { pid: Number(e), t: 0 }))
@@ -321,7 +334,7 @@ export function readSlotPids(root = repoRoot) {
 }
 
 /** Record chain roots with their creation time, so a reused PID is never mistaken for ours. */
-export function writeSlotPids(pids, root = repoRoot, table = processTable()) {
+export function writeSlotPids(pids, root = repoRoot, table = processTable(), name = SLOT_PIDS) {
   const seen = new Set()
   const entries = []
   for (const pid of pids.map(Number)) {
@@ -330,8 +343,30 @@ export function writeSlotPids(pids, root = repoRoot, table = processTable()) {
     seen.add(pid)
     entries.push({ pid, t: p.t })
   }
-  mkdirSync(dirname(pidsFileOf(root)), { recursive: true })
-  writeFileSync(pidsFileOf(root), JSON.stringify({ pids: entries }, null, 2))
+  mkdirSync(dirname(pidsFileOf(root, name)), { recursive: true })
+  writeFileSync(pidsFileOf(root, name), JSON.stringify({ pids: entries }, null, 2))
+}
+
+/** The main folder's ports: the config base ports (slots.fePorts / slots.bePorts; main = base), null when unset. */
+export function mainPorts() {
+  const num = (v) => (Number.isInteger(Number(v)) && Number(v) > 0 ? Number(v) : null)
+  return { fe: num({{slots.fePorts|json}}), be: num({{slots.bePorts|json}}) }
+}
+
+/**
+ * Stop only the chains `slot-serve.mjs --main` recorded in .claude/.main-serve-pids (still the same process by
+ * creation time), each from its root. A server the Human started by hand in the folder is never touched. Returns log lines.
+ */
+export function stopMainServers({ root = repoRoot } = {}) {
+  const lines = []
+  const table = processTable()
+  for (const rec of readSlotPids(root, MAIN_PIDS)) {
+    const p = table.get(rec.pid)
+    if (!p || !rec.t || p.t !== rec.t) continue
+    if (killTree(rec.pid)) lines.push(`stopped PID ${rec.pid} (recorded: ${short(p.cmd)})`)
+  }
+  if (existsSync(pidsFileOf(root, MAIN_PIDS))) unlinkSync(pidsFileOf(root, MAIN_PIDS))
+  return lines
 }
 
 /** PIDs recorded by another harness in this folder (.claude/.<name>-pids other than .slot-pids). */
@@ -340,7 +375,7 @@ function otherHarnessPids(root) {
   const out = new Set()
   if (!existsSync(dir)) return out
   for (const f of readdirSync(dir)) {
-    if (!/^\..+-pids$/.test(f) || f === '.slot-pids') continue
+    if (!/^\..+-pids$/.test(f) || f === SLOT_PIDS) continue
     try {
       for (const e of JSON.parse(readFileSync(join(dir, f), 'utf8')).pids || []) out.add(Number(typeof e === 'object' ? e.pid : e))
     } catch {
@@ -433,11 +468,24 @@ export function spawnNpm(args, opts) {
 }
 
 /**
+ * Spawn `<pm> <args>` detached for the project's package manager (project.packageManager): npm through spawnNpm,
+ * pnpm as `pnpm` (`pnpm.cmd` through a shell on Windows). The slot paths keep spawnNpm.
+ */
+export function spawnPm(args, opts, pm = PROJECT_PM) {
+  if (pm !== 'pnpm') return spawnNpm(args, opts)
+  return spawn(isWin ? 'pnpm.cmd' : 'pnpm', args, { ...opts, detached: true, windowsHide: true, shell: isWin })
+}
+
+/** The project's package manager command name (npm or pnpm), for messages. */
+export const projectPm = () => PROJECT_PM
+
+/**
  * Start one dev server unless its port is held, then wait until it listens. A start that does not come up
  * (or whose port was taken by someone else meanwhile) is killed from its root, so it never leaves a watcher.
+ * `spawner` defaults to spawnNpm (the slot paths); the main folder passes spawnPm.
  * Returns { ok: true, root } or { ok: false, message }.
  */
-export function startServer({ label, port, cwd, args, env, logPath, timeoutMs }) {
+export function startServer({ label, port, cwd, args, env, logPath, timeoutMs, spawner = spawnNpm }) {
   const holder = portOwnerPid(port)
   if (holder) return { ok: false, message: `${label} not started: port ${port} is already held by PID ${holder} (${short(commandLine(holder))}). A second start would leave an idle watcher behind. Run node scripts/slot-stop.mjs if it is a leftover, then re-run.` }
   mkdirSync(dirname(logPath), { recursive: true })
@@ -449,7 +497,7 @@ export function startServer({ label, port, cwd, args, env, logPath, timeoutMs })
     try { renameSync(logPath, join(keepDir, `${basename(logPath, '.log')}-${stamp}.log`)) } catch { /* still held by a dying server: truncated below */ }
   }
   const logFd = openSync(logPath, 'w')
-  const child = spawnNpm(args, { cwd, env: env || process.env, stdio: ['ignore', logFd, logFd] })
+  const child = spawner(args, { cwd, env: env || process.env, stdio: ['ignore', logFd, logFd] })
   child.unref()
   // The wait below blocks the event loop, so an 'exit' event would never fire: probe the PID instead.
   const alive = () => {

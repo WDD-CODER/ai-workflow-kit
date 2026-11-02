@@ -8,6 +8,12 @@
  *   node scripts/slot-serve.mjs            # start what is not running, keep what is
  *   node scripts/slot-serve.mjs --restart  # stop this slot's servers first, then start both
  *   node scripts/slot-serve.mjs --ref <branch>  # idle slot only: check out origin/<branch> detached, mark it validating, then serve
+ *   node scripts/slot-serve.mjs --main [--servers fe,be] [--db local|remote]
+ *       main folder only (the orchestrator preflight): the frontend `<pm> run <commands.dev>` on slots.fePorts with no
+ *       port arguments, the backend `<pm> run <commands.devLocal | commands.devRemote>` in server/ on slots.bePorts with
+ *       the environment unchanged. No install, no environment.slot, no prepare step. A server that answers is kept, a
+ *       held port is refused with its holder named (never killed). Started chains go to .claude/.main-serve-pids
+ *       (node scripts/slot-stop.mjs --main stops only those). Prints SLOT_SERVE: main be=<port> started|kept, fe=…
  *
  * Steps: npm install when a lockfile changed or a folder's packages are missing (running servers are restarted on the new dependencies), then
  * each server is kept when this slot already runs it (a watcher that is restarting its app counts), refused
@@ -23,7 +29,8 @@ import { isSlot, slotNumber, ports, activePlanPath, startValidating } from './li
 import {
   repoRoot, portState, processTable, listeners, devChains, killTree, readSlotPids, writeSlotPids,
   stopSlotServers, waitForPort, waitForPortFree, startServer, npmInstallIfChanged, generateEnvironmentSlot,
-  hasFrontend as projectHasFrontend, frontendArgs, isFrontendCmd, installDirs, installReason
+  hasFrontend as projectHasFrontend, frontendArgs, isFrontendCmd, installDirs, installReason,
+  mainPorts, spawnPm, projectPm, BE_LOCAL_SCRIPT, BE_REMOTE_SCRIPT, MAIN_PIDS, FE_SCRIPT_NAME, subtree
 } from './lib/slot-procs.mjs'
 
 const isWin = process.platform === 'win32'
@@ -36,7 +43,82 @@ function fail(message) {
   process.exit(1)
 }
 
-if (!isSlot()) fail('not a slot - the main folder\'s dev servers are the Human\'s; start them by hand')
+// --- --main: the main folder's servers, for the orchestrator preflight -------------------------------------------
+const argValue = (name) => {
+  const at = process.argv.findIndex((a) => a === name || a.startsWith(`${name}=`))
+  if (at === -1) return null
+  const given = process.argv[at]
+  return given.includes('=') ? given.slice(given.indexOf('=') + 1) : process.argv[at + 1] ?? ''
+}
+if (process.argv.includes('--main')) {
+  if (isSlot()) fail('--main is for the main folder; in a slot run node scripts/slot-serve.mjs')
+  const wanted = (argValue('--servers') ?? 'fe,be').split(',').map((s) => s.trim()).filter(Boolean)
+  if (!wanted.length || wanted.some((s) => !['fe', 'be'].includes(s))) fail(`--servers takes fe, be or fe,be (got "${wanted.join(',')}")`)
+  const db = argValue('--db') ?? 'local'
+  if (!['local', 'remote'].includes(db)) fail(`--db takes local or remote (got "${db}")`)
+  const pm = projectPm()
+  const mp = mainPorts()
+  const present = { fe: projectHasFrontend(), be: existsSync(join(repoRoot, 'server', 'package.json')) }
+  const result = []
+  const errors = []
+  const table = processTable()
+  const lst = listeners()
+  const chains = devChains(repoRoot, table, lst)
+  // The chains this script started earlier (same process by creation time): a port held inside one of them is ours.
+  const recordedEntries = readSlotPids(repoRoot, MAIN_PIDS).filter((e) => e.t && (table.get(e.pid) || {}).t === e.t)
+  const recorded = recordedEntries.map((e) => e.pid)
+  const inRecorded = (pid) => recorded.some((r) => subtree(table, r).includes(pid))
+  const started = []
+  for (const label of ['be', 'fe'].filter((l) => wanted.includes(l))) {
+    if (!present[label]) {
+      result.push(`${label}=none`)
+      continue
+    }
+    const port = mp[label]
+    if (!port) {
+      errors.push(`${label} not started: slots.${label}Ports is not set in the kit config, so the main folder's ${label === 'fe' ? 'frontend' : 'backend'} port is unknown`)
+      continue
+    }
+    const st = portState(port, { table, lst })
+    if (st.ours || (st.pid && inRecorded(st.pid))) {
+      result.push(`${label}=${port} kept`)
+      continue
+    }
+    if (st.pid) {
+      errors.push(`${label} not started: port ${port} is held by PID ${st.pid} (${(st.cmd || '').slice(0, 80)}), which is not this folder's dev server. Free the port, then re-run — the kit never stops another program.`)
+      continue
+    }
+    // A dev server of this folder that is still booting (or restarting its app): wait for it rather than start a second one.
+    const chain = chains.find((c) => {
+      const cmds = c.pids.map((pid) => (table.get(pid) || {}).cmd || '')
+      return label === 'be' ? cmds.some((cmd) => cmd.includes(BE_LOCAL_SCRIPT) || cmd.includes(BE_REMOTE_SCRIPT)) : cmds.some(isFrontendCmd)
+    })
+    if (chain && !chain.orphan) {
+      if (waitForPort(port, 30000)) {
+        result.push(`${label}=${port} kept`)
+        continue
+      }
+      errors.push(`${label} not started: a ${label === 'fe' ? 'frontend' : 'backend'} of this folder is running (PID ${chain.root}) but does not listen on port ${port} after 30 s. Stop it (node scripts/slot-stop.mjs --main stops only what this script started), then re-run.`)
+      continue
+    }
+    const script = label === 'fe' ? FE_SCRIPT_NAME : db === 'remote' ? BE_REMOTE_SCRIPT : BE_LOCAL_SCRIPT
+    const cwd = label === 'fe' ? repoRoot : join(repoRoot, 'server')
+    const logPath = join(repoRoot, '.claude', `${label}.log`)
+    const r = startServer({ label, port, cwd, args: ['run', script], logPath, timeoutMs: START_TIMEOUT_MS[label], spawner: spawnPm })
+    if (!r.ok) {
+      errors.push(`${r.message}\nThe command was: ${pm} run ${script} (in ${cwd}); its log is ${logPath}.`)
+      continue
+    }
+    started.push(r.root)
+    result.push(`${label}=${port} started${label === 'be' ? ` (${db} database)` : ''}`)
+  }
+  if (started.length) writeSlotPids([...recorded, ...started], repoRoot, processTable(), MAIN_PIDS)
+  if (result.length) console.log(`SLOT_SERVE: main ${result.join(', ')}`)
+  if (errors.length) fail(errors.join('\n'))
+  process.exit(0)
+}
+
+if (!isSlot()) fail('not a slot - run node scripts/slot-serve.mjs --main for the main folder\'s servers')
 
 const n = slotNumber()
 // --ref <branch>: serve a branch (a run branch, a plan branch) for the Human's validation in this idle slot. The slot
@@ -141,7 +223,7 @@ for (const [label, port] of toStart) {
   if (label === 'be') {
     const env = { ...process.env, PORT: String(bePort), ALLOWED_ORIGIN: `http://localhost:${fePort}` }
     if (isolatedDb && process.env.MONGO_LOCAL_URI) env.MONGO_LOCAL_URI = withDbName(process.env.MONGO_LOCAL_URI, `{{slots.dbNameFormat}}`)
-    spec = { cwd: join(repoRoot, 'server'), args: ['run', 'dev:local'], env }
+    spec = { cwd: join(repoRoot, 'server'), args: ['run', BE_LOCAL_SCRIPT], env }
   } else {
     spec = { cwd: repoRoot, args: frontendArgs(fePort) }
   }

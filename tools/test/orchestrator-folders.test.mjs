@@ -75,6 +75,10 @@ test('config: commands.testCi is a script name, project.packageManager is npm or
   assert.match(probs({ 'project.packageManager': 'yarn' }).join(), /project\.packageManager/)
   assert.match(probs({ 'project.packageManager': 'pnpm', 'ci.install': 'npm ci' }).join(), /ci\.install/)
   assert.deepEqual(probs({ 'project.packageManager': 'npm', 'ci.install': 'npm ci' }), [])
+  // commands.devRemote (plan 058): an npm script name like the other commands.* script keys
+  assert.deepEqual(probs({ 'commands.devRemote': 'dev:remote' }), [])
+  assert.deepEqual(probs({ 'commands.devRemote': '' }), [])
+  assert.match(probs({ 'commands.devRemote': 'npm run dev:remote' }).join(), /commands\.devRemote is "npm run dev:remote" — commands\.\* take npm script names, not commands: set it to "dev:remote"/)
 })
 
 test('installCommand and lockFile follow the package manager', () => {
@@ -614,4 +618,168 @@ test('orch-state brain-commit commits docs/brain in the merge folder and pushes 
   assert.equal(sh(merge, 'show', '--name-only', '--format=', 'HEAD'), 'docs/brain/decision-grades.jsonl', 'only docs/brain is committed')
   assert.equal(sh(dir, 'rev-parse', 'origin/orch/b'), sh(merge, 'rev-parse', 'HEAD'), 'the run branch is pushed')
   assert.match(state('brain-commit', '--run=b').out, /BRAIN: nothing to commit/)
+})
+
+// ---- plan 058: the preflight starts the main folder's servers itself (slot-serve.mjs --main, slot-stop.mjs --main) ------
+const { resolveConfig, render, applyConditionals } = await import(pathToFileURL(join(kit, 'tools', 'lib', 'kit.mjs')).href)
+const net = await import('node:net')
+const freePort = () => new Promise((done) => {
+  const s = net.createServer()
+  s.listen(0, '127.0.0.1', () => {
+    const { port } = s.address()
+    s.close(() => done(port))
+  })
+})
+const answers = (port) => new Promise((done) => {
+  const s = net.connect({ port, host: '127.0.0.1' })
+  s.setTimeout(2000, () => { s.destroy(); done(false) })
+  s.once('connect', () => { s.destroy(); done(true) })
+  s.once('error', () => done(false))
+})
+const until = async (fn, ms = 20000) => {
+  const end = Date.now() + ms
+  while (Date.now() < end) {
+    if (await fn()) return true
+    await new Promise((r) => setTimeout(r, 300))
+  }
+  return false
+}
+// A stub server: listens on <port>, writes what it saw (argv mode, PORT env) to <out> and stays up.
+const STUB = "const [port, out, mode] = process.argv.slice(2); require('fs').writeFileSync(out, JSON.stringify({ mode: mode || '', PORT: process.env.PORT ?? null })); require('net').createServer(() => {}).listen(Number(port), '127.0.0.1')\n"
+/** A scratch main folder (git repo on main, no .worktree-port) with the core scripts rendered for a frontend and a backend. */
+async function mainFolder({ feScript = 'node fe.js', lockWithDeps = false } = {}) {
+  const dir = repo()
+  const fe = await freePort()
+  const be = await freePort()
+  copyScripts(dir)
+  const vals = resolveConfig({ kitRoot: kit, project: { project: { name: 'scratch' }, commands: { dev: 'start' }, slots: { fePorts: fe, bePorts: be } }, packs: [], target: dir })
+  for (const f of ['slot-serve.mjs', 'slot-stop.mjs', 'orch-preflight.mjs', 'lib/slot-procs.mjs', 'lib/done-when.mjs']) {
+    writeFileSync(join(dir, 'scripts', f), render(applyConditionals(readFileSync(join(kit, 'core', 'scripts', f), 'utf8'), vals), vals).text)
+  }
+  mkdirSync(join(dir, '.kit'), { recursive: true })
+  writeFileSync(join(dir, '.kit', 'config.json'), JSON.stringify({ commands: { dev: 'start' }, slots: { fePorts: fe, bePorts: be } }))
+  writeFileSync(join(dir, 'stub.js'), STUB)
+  writeFileSync(join(dir, 'fe.js'), `require('./stub.js')\n`)
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'scratch', private: true, scripts: { start: feScript.replace('fe.js', `stub.js ${fe} fe.json`) } }))
+  if (lockWithDeps) writeFileSync(join(dir, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages: { '': {}, 'node_modules/left-pad': { version: '1.3.0' } } }))
+  mkdirSync(join(dir, 'server'))
+  writeFileSync(join(dir, 'server', 'package.json'), JSON.stringify({ name: 'server', private: true, scripts: { 'dev:local': `node ../stub.js ${be} be.json local`, 'dev:remote': `node ../stub.js ${be} be.json remote` } }))
+  return { dir, fe, be, serve: (...a) => node(dir, 'slot-serve.mjs', '--main', ...a), stop: () => node(dir, 'slot-stop.mjs', '--main') }
+}
+
+test('slot-serve --main starts the frontend in the main folder, keeps it on a second run, and slot-stop --main stops only what it started', async () => {
+  const m = await mainFolder({ lockWithDeps: true })
+  let hand
+  try {
+    const r = m.serve('--servers', 'fe')
+    assert.equal(r.status, 0, r.stdout + r.stderr)
+    assert.match(r.stdout, new RegExp(`^SLOT_SERVE: main fe=${m.fe} started$`, 'm'))
+    assert.ok(await answers(m.fe), 'the frontend answers on the base port')
+    const pids = JSON.parse(readFileSync(join(m.dir, '.claude', '.main-serve-pids'), 'utf8')).pids
+    assert.equal(pids.length, 1)
+    const again = m.serve('--servers', 'fe')
+    assert.match(again.stdout, new RegExp(`^SLOT_SERVE: main fe=${m.fe} kept$`, 'm'), again.stdout + again.stderr)
+    assert.equal(JSON.parse(readFileSync(join(m.dir, '.claude', '.main-serve-pids'), 'utf8')).pids.length, 1, 'no second process')
+    // no install, no prepare, no environment.slot in the main folder
+    assert.equal(existsSync(join(m.dir, 'node_modules')), false, 'no package install ran')
+    assert.equal(existsSync(join(m.dir, '.claude', '.last-npm-install-hash')), false)
+    // a backend the Human started by hand in this folder survives slot-stop --main
+    // `npm run dev:local` by hand: npm's own CLI under node, detached, no pipes held (spawnSync would wait on them).
+    const npmCli = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js')
+    const { spawn } = await import('node:child_process')
+    hand = existsSync(npmCli)
+      ? spawn(process.execPath, [npmCli, 'run', 'dev:local'], { cwd: join(m.dir, 'server'), detached: true, stdio: 'ignore', windowsHide: true })
+      : spawn('npm', ['run', 'dev:local'], { cwd: join(m.dir, 'server'), detached: true, stdio: 'ignore', shell: process.platform === 'win32' })
+    hand.unref()
+    assert.ok(await until(() => answers(m.be)), 'the hand-started backend is up')
+    const stopped = m.stop()
+    assert.match(stopped.stdout, /^SLOT_STOP: stopped PID \d+ \(recorded: /m, stopped.stdout + stopped.stderr)
+    assert.ok(await until(async () => !(await answers(m.fe))), 'the recorded frontend is stopped')
+    assert.ok(await answers(m.be), 'the hand-started backend is left alone')
+    assert.equal(existsSync(join(m.dir, '.claude', '.main-serve-pids')), false)
+  } finally {
+    // the hand-started backend: stopped through a recorded start of our own is not possible, so by its port
+    const procs = await import(pathToFileURL(join(m.dir, 'scripts', 'lib', 'slot-procs.mjs')).href)
+    const pid = procs.portOwnerPid(m.be)
+    if (pid) procs.killChain(procs.processTable(), pid)
+    if (hand?.pid) procs.killTree(hand.pid)
+    m.stop()
+  }
+})
+
+test('slot-serve --main: the backend runs dev:local (or dev:remote with --db remote) in server/ with the environment unchanged', async () => {
+  const m = await mainFolder()
+  try {
+    const r = m.serve('--servers', 'be')
+    assert.equal(r.status, 0, r.stdout + r.stderr)
+    assert.match(r.stdout, new RegExp(`^SLOT_SERVE: main be=${m.be} started \\(local database\\)$`, 'm'))
+    assert.deepEqual(JSON.parse(readFileSync(join(m.dir, 'server', 'be.json'), 'utf8')), { mode: 'local', PORT: null }, 'no PORT set by the kit')
+    m.stop()
+    assert.ok(await until(async () => !(await answers(m.be))))
+    const remote = m.serve('--servers', 'be', '--db', 'remote')
+    assert.match(remote.stdout, /be=\d+ started \(remote database\)/, remote.stdout + remote.stderr)
+    assert.equal(JSON.parse(readFileSync(join(m.dir, 'server', 'be.json'), 'utf8')).mode, 'remote')
+    assert.equal(m.serve('--servers', 'be', '--db', 'cloud').status, 1, 'an unknown --db is refused')
+  } finally { m.stop() }
+})
+
+test('slot-serve --main refuses in a slot and refuses a port another program holds, naming it and never stopping it', async () => {
+  const m = await mainFolder()
+  const holder = (await import('node:child_process')).spawn(process.execPath, ['-e', `require('net').createServer(()=>{}).listen(${m.fe},'127.0.0.1')`], { stdio: 'ignore' })
+  try {
+    assert.ok(await until(() => answers(m.fe)))
+    const r = m.serve('--servers', 'fe')
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, new RegExp(`fe not started: port ${m.fe} is held by PID ${holder.pid} \\(`), r.stderr)
+    assert.ok(await answers(m.fe), 'the holder still runs')
+    writeFileSync(join(m.dir, '.worktree-port'), '1\n')
+    const inSlot = m.serve('--servers', 'fe')
+    assert.equal(inSlot.status, 1)
+    assert.match(inSlot.stderr, /SLOT_SERVE: --main is for the main folder/)
+    assert.match(node(m.dir, 'slot-stop.mjs', '--main').stderr, /SLOT_STOP: --main is for the main folder/)
+  } finally { holder.kill() }
+})
+
+test('a pnpm or dev:remote chain is a dev chain, so a failed start is killed and slot-stop --main can stop it', async () => {
+  const procs = await import(pathToFileURL(join(kit, 'scripts', 'lib', 'slot-procs.mjs')).href)
+  for (const cmd of ['"C:\\Program Files\\nodejs\\node.exe" "C:\\Users\\u\\AppData\\Roaming\\npm\\node_modules\\pnpm\\bin\\pnpm.cjs" run start', 'pnpm run dev:remote', 'pnpm.cmd run start', 'npm run dev:local', 'cmd /d /s /c "npm run dev:remote"']) assert.ok(procs.isChainCmd(cmd), cmd)
+  for (const cmd of ['node server.js', 'git status', 'node dev:localish.js']) assert.ok(!procs.isChainCmd(cmd), cmd)
+})
+
+test('preflight starts a missing frontend and says OK; the backend only for a plan with an open [auto:main] item; a failed start is a FAIL with the log tail', async () => {
+  const m = await mainFolder()
+  cpSync(join(root, 'scripts', 'node_modules'), join(m.dir, 'scripts', 'node_modules'), { recursive: true, dereference: true }) // the preflight imports picomatch
+  const pre = (...a) => spawnSync(process.execPath, [join(m.dir, 'scripts', 'orch-preflight.mjs'), ...a], { cwd: m.dir, encoding: 'utf8' })
+  try {
+    const first = pre()
+    assert.match(first.stdout, /^OK {3}dev server$/m, first.stdout)
+    assert.match(first.stdout, /^SKIP backend: no plan needs it$/m)
+    assert.ok(!/start the dev server/.test(first.stdout), 'never asks the Human to start it')
+    assert.ok(await answers(m.fe))
+    mkdirSync(join(m.dir, 'plans'))
+    writeFileSync(join(m.dir, 'plans', '001-x.plan.md'), '# Plan 001 — x\n\nStatus: draft\n\n## Goals & Success Criteria\n- [ ] [auto:main] node scripts/check-db.mjs exits 0\n\n## Atomic Sub-tasks\n- [ ] A1: x\n')
+    writeFileSync(join(m.dir, 'plans', '002-y.plan.md'), '# Plan 002 — y\n\nStatus: draft\n\n## Goals & Success Criteria\n- [ ] [auto] npm test\n\n## Atomic Sub-tasks\n- [ ] A1: y\n')
+    assert.match(pre('--plans', '002').stdout, /^SKIP backend: no plan needs it$/m)
+    const withMain = pre('--plans', '001,002', '--db', 'remote')
+    assert.match(withMain.stdout, /^OK {3}backend$/m, withMain.stdout)
+    assert.equal(JSON.parse(readFileSync(join(m.dir, 'server', 'be.json'), 'utf8')).mode, 'remote')
+    // a backend already answering is kept; with --db remote the preflight says it cannot tell its database
+    assert.match(pre('--plans', '001', '--db', 'remote').stdout, /^WARN backend: a backend already answers on port \d+ and was kept as it is/m)
+    assert.match(pre('--plans', '001').stdout, /^OK {3}backend$/m)
+    m.stop()
+    assert.ok(await until(async () => !(await answers(m.be))))
+    // an [auto:main] plan in a folder with no backend to start: FAIL now, not a failed check after builder rounds
+    rmSync(join(m.dir, 'server'), { recursive: true, force: true })
+    assert.match(pre('--plans', '001').stdout, /^FAIL backend: plan 001 has an open \[auto:main\] item, but this folder has no server\/package\.json/m)
+    m.stop() // that preflight started the frontend again
+    assert.ok(await until(async () => !(await answers(m.fe)) && !(await answers(m.be))))
+    // a frontend script that dies at once: FAIL with its log, envFailure kept
+    writeFileSync(join(m.dir, 'package.json'), JSON.stringify({ name: 'scratch', private: true, scripts: { start: "node -e \"console.error('boom: the build failed'); process.exit(1)\"" } }))
+    const failed = pre()
+    assert.match(failed.stdout, /^FAIL dev server: nothing answered on http:\/\/localhost:\d+\/; scripts\/slot-serve\.mjs did not start it \(exit 1: /m, failed.stdout)
+    assert.match(failed.stdout, /run by node scripts\/slot-serve\.mjs --main --servers fe/)
+    assert.match(failed.stdout, /boom: the build failed/, 'the server log tail is in the message')
+    assert.match(failed.stdout, /The command was: npm run start/)
+    assert.match(failed.stdout, /"envFailure":true/)
+  } finally { m.stop() }
 })

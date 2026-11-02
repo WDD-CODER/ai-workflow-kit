@@ -7,10 +7,23 @@
  * Usage:
  *   node scripts/slot-stop.mjs            # in a slot; exit 1 elsewhere
  *   node scripts/slot-stop.mjs --if-slot  # SessionEnd hook: silent no-op (exit 0) outside a slot
+ *   node scripts/slot-stop.mjs --main     # main folder: stops only the chains slot-serve.mjs --main recorded in
+ *                                         # .claude/.main-serve-pids; a server the Human started by hand is never touched
  * Cross-platform: use this instead of taskkill/kill by hand (Git Bash rewrites `/PID`).
  */
 import { isSlot, endValidating } from './lib/slot.mjs'
-import { stopSlotServers, repoRoot } from './lib/slot-procs.mjs'
+import { stopSlotServers, stopMainServers, repoRoot } from './lib/slot-procs.mjs'
+
+if (process.argv.includes('--main')) {
+  if (isSlot()) {
+    console.error('SLOT_STOP: --main is for the main folder; in a slot run node scripts/slot-stop.mjs')
+    process.exit(1)
+  }
+  const stopped = stopMainServers()
+  for (const l of stopped) console.log(`SLOT_STOP: ${l}`)
+  console.log(stopped.length ? `SLOT_STOP: ok - ${stopped.length} action(s)` : 'SLOT_STOP: ok - nothing this script started is running')
+  process.exit(0)
+}
 
 if (!isSlot()) {
   if (process.argv.includes('--if-slot')) process.exit(0)

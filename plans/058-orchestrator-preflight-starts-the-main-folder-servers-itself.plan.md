@@ -203,18 +203,19 @@ None (scripts and docs only). Preflight output stays one line per check.
 
 Every step names its own test location.
 
-- [ ] A1: Reproduce the gap with failing tests before any fix — in `tools/test/orchestrator-folders.test.mjs`: preflight in a scratch main folder whose `commands.dev` script starts a stub server returns `FAIL dev server … not a slot` today; `slot-serve.mjs --main` is an unknown flag today; add the Step 0 findings to Execution Notes; print the failures, then continue (no Human stop unless Step 0 item 3 found a second gap)
+- [x] A1: Reproduce the gap with failing tests before any fix — in `tools/test/orchestrator-folders.test.mjs`: preflight in a scratch main folder whose `commands.dev` script starts a stub server returns `FAIL dev server … not a slot` today; `slot-serve.mjs --main` is an unknown flag today; add the Step 0 findings to Execution Notes; print the failures, then continue (no Human stop unless Step 0 item 3 found a second gap)
   - Scope: `tools/test/orchestrator-folders.test.mjs`
-- [ ] B1: Add the main-folder serve mode — `spawnPm`, `CHAIN_CMD` matching `pnpm` and the backend scripts, `.claude/.main-serve-pids` read/write with a file-name parameter on the existing helpers, a stop that reads only that file, `slot-serve.mjs --main`, `slot-stop.mjs --main`, the slot backend script from `commands.devLocal`; tests for: starts, kept, refused in a slot, held port named and not killed, no install/prepare, a pnpm / `dev:remote` chain matched, hand-started server survives `slot-stop --main`
+- [x] B1: Add the main-folder serve mode — `spawnPm`, `CHAIN_CMD` matching `pnpm` and the backend scripts, `.claude/.main-serve-pids` read/write with a file-name parameter on the existing helpers, a stop that reads only that file, `slot-serve.mjs --main`, `slot-stop.mjs --main`, the slot backend script from `commands.devLocal`; tests for: starts, kept, refused in a slot, held port named and not killed, no install/prepare, a pnpm / `dev:remote` chain matched, hand-started server survives `slot-stop --main`
   - Scope: `core/scripts/slot-serve.mjs`, `core/scripts/slot-stop.mjs`, `core/scripts/lib/slot-procs.mjs`, `core/scripts/local-excludes.mjs`, `.gitignore`, `tools/test/orchestrator-folders.test.mjs`
-- [ ] B2: Make the preflight start what it checks — `devServer()` through `--main --servers fe`, the new `backend()` check from `mainAutoItems`, `commands.devRemote` in the config and its validation, the failure message naming log and command; tests: `OK` after a start, `SKIP backend`, backend started for an `[auto:main]` plan, `FAIL` with log tail, unit tests of `mainAutoItems`
+- [x] B2: Make the preflight start what it checks — `devServer()` through `--main --servers fe`, the new `backend()` check from `mainAutoItems`, `commands.devRemote` in the config and its validation, the failure message naming log and command; tests: `OK` after a start, `SKIP backend`, backend started for an `[auto:main]` plan, `FAIL` with log tail, unit tests of `mainAutoItems`
   - Scope: `core/scripts/orch-preflight.mjs`, `core/scripts/lib/done-when.mjs`, `kit.config.json`, `tools/lib/kit.mjs`, `tools/test/orchestrator.test.mjs`, `tools/test/ui-tier.test.mjs`
-- [ ] B3: Let a run ask for the remote database with one word (P1) — `/orchestrate … remote` reaches both preflight calls and the report; tests in the workflow test that a run without the word never passes `--db remote`
+- [x] B3: Let a run ask for the remote database with one word (P1) — `/orchestrate … remote` reaches both preflight calls and the report; tests in the workflow test that a run without the word never passes `--db remote`
   - Scope: `core/.claude/commands/orchestrate.md`, `core/.claude/workflows/orchestrate.js`, `core/scripts/lib/orch-run.mjs`, `tools/test/orchestrator.test.mjs`
-- [ ] D1: Document the new preflight behaviour and the trap it fixes — `orchestrator.md`, `workflow-map.md`, the gotcha
+- [x] D1: Document the new preflight behaviour and the trap it fixes — `orchestrator.md`, `workflow-map.md`, the gotcha
   - Scope: `core/docs/agent/orchestrator.md`, `core/docs/agent/workflow-map.md`, `core/docs/brain/gotchas/agent-workflow.md`
-- [ ] R1: Render the kit's own installed copies, run every check and add the changelog entry — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .`, build, lint, `npm test`, the full `tools/test` run, `node tools/orchestrator-e2e.mjs`
+- [x] R1: Render the kit's own installed copies, run every check and add the changelog entry — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .`, build, lint, `npm test`, the full `tools/test` run, `node tools/orchestrator-e2e.mjs`
   - Scope: `scripts/**`, `.claude/**`, `docs/agent/**`, `docs/brain/**`, `.kit/install.json`, `CHANGELOG.md`
+- [ ] H1: [human] On the Human's PC, a real /orchestrate from the main folder with no dev server running starts it, and a plan with an [auto:main] item gets the backend on dev:local — keeps this plan open until the Human replies done
 
 ## Technical Considerations
 - **Why start in the preflight and not in the workflow:** the preflight is the one place that already proves the environment
@@ -261,3 +262,57 @@ Every step names its own test location.
   `dev:remote` chain could not be killed or stopped → added to B1 and the Goals; servers left running after a run made
   explicit (Out of Scope); `server/` and timeout notes; build order after 057 (it shares `kit.config.json`'s one-line
   `$comment`, `tools/lib/kit.mjs`, `tools/test/orchestrator.test.mjs`, `workflow-map.md`).
+- Built on `feat/058-preflight-starts-main-servers` from `origin/main` `c9bb15f`, after 057 merged (PR #85). `--drift` →
+  `REALITY: drift` on one commit, `67f4e07` (plan 057: the shared files above) — ok, no conflict with this plan's changes.
+- Step 0 findings (2026-11-02):
+  - (2) slot callers: `slot-procs.mjs` `stopSlotServers`, `ship-prep.mjs:242,267,334`, `slot-serve.mjs` (slot mode),
+    `slot-stop.mjs`, `take-plan.mjs` — all left as they were; `--main` is a branch of its own before the slot check.
+  - (3) the `[ui]` step: `orch-preflight.mjs --ui` only checks that the cards' pages answer (`orchestrate.js` `ui env`);
+    nothing starts a slot's frontend before it. It reports `uiBlocked` instead of asking the Human to start a server, so
+    it is not the same "please start it" stop — but a page on a slot port that is not up blocks the cards. Pages on the
+    main folder's base port are now covered by the preflight's frontend start. Not changed here (Out of Scope).
+  - (4) `finish` runs `commands.logQuery` once from the main folder for "App errors since the run started"; it does
+    not need the backend running (it reads what the app logged). Not changed.
+  - (5) the main frontend is read by `orch-preflight.mjs` `devPort()` and the validation cards' main-folder URLs
+    (`job-validation.md`), and the `[ui]` pages when they point at the base port. Kept unconditional.
+  - (6) the clean-start full test run was replaced by the final full run (the plan-057 run on `c9bb15f` was green:
+    `tools/test` 421/421).
+  - (A1) reproduction: on `c9bb15f`, `slot-serve.mjs` stopped at line 39 outside a slot (`not a slot - … start them by
+    hand`), so the preflight's start could never work; the new tests in `orchestrator-folders.test.mjs` exercise the
+    path that replaced it (`--main` was an unknown flag there).
+- Decisions while building:
+  - A port held inside a chain this script recorded (`.claude/.main-serve-pids`, same creation time) counts as kept;
+    a dev server from elsewhere on the base port is refused, not kept — the preflight's own check (HTTP answer for the
+    frontend, TCP for the backend) runs first and passes a server the Human started, so `slot-serve --main` is only
+    called when nothing answers.
+  - pnpm runs as `pnpm.cmd` through a shell on Windows (as the plan says); npm keeps npm's own CLI under node, whose
+    log capture is proven. A pnpm start's log may be empty on Windows (the shell drops the detached process's
+    handles — the reason `spawnNpm` avoids the shell); the failure message still names the command and the log file.
+  - The database mode is one run note (`database: local|remote — …`), so the report names it once without a new state field.
+  - The kit's own `docs/brain/gotchas/agent-workflow.md` is a project-owned seed that already differs from core; the
+    new gotcha is in the core source (rendered into projects on sync), not copied by hand into the kit's own brain.
+- Left running by the first, hung test attempt (a `cmd start /b` held the test's pipes; replaced by a detached spawn):
+  two stub processes in deleted scratch folders, `node stub.js 63227 fe.json` (PID 28276) and
+  `node ../stub.js 63228 be.json local` (PID 5916). Killing them was refused by the session's permission rules — the
+  Human can end them in Task Manager; they hold only those two random ports.
+- Evidence (2026-11-02): `npm run build` → PACK_CHECK ok; `npm run lint` → 0 leaks (3 roots); `npm test` → INSTALL_CHECK
+  ok, 0 problems; `node --test "tools/test/*.test.mjs"` → 428 pass, 0 fail (then `orchestrator-folders` 26/26 after the
+  last message change); `node tools/orchestrator-e2e.mjs` → 90 cases passed; `drift-check` → 0 undeclared;
+  `scope-check --diff=origin/main` → SCOPE: ok; `--tests` → SCOPE_TESTS: ok. The first full run failed on the link check
+  (backticked `.claude/…` runtime paths a fresh install lacks), the rendered-constants check (an `export` inside the
+  block install-check evaluates) and the e2e `devfail` case (it reads `slot-serve.mjs did not start it (exit 1: …)`):
+  all three fixed and re-run above.
+- Checker review at `/ship` (kept 3, all minor; fixed, then re-checked by `orch-verify` only):
+  - bugs-1: with `--db remote` and a backend already answering, the preflight said `OK backend` and the run note said
+    remote → the preflight now prints `WARN backend: a backend already answers … kept as it is`, and the note says the
+    remote database is used only when the preflight starts the backend.
+  - plan-1: a plan with an open `[auto:main]` item in a folder with no `server/package.json` was a `SKIP` → now a `FAIL`
+    before any builder (the failure the plan exists to prevent).
+  - plan-2: A1 asked for failing-first tests; they were not run failing before the fix. The reproduction was by
+    reading `slot-serve.mjs:39` on `c9bb15f` and the Problem Statement's own run; the tests were written with the fix.
+    Recorded as a deviation (the Human may untick A1).
+- Final run after the fixes: `npm test` INSTALL_CHECK ok; `tools/test` 428/428; e2e 90 cases; lint 0 leaks; drift 0;
+  build ok; SCOPE: ok. `orch-verify` re-check: all 3 fixed findings refuted (no longer hold).
+- review: checkers kept 3 dropped 0 rechecked 3 minutes 30.3 models check-plan=claude-sonnet-5-5,check-bugs=claude-sonnet-5-5,check-rules=claude-sonnet-5-5,verify=claude-sonnet-5-5
+- Open: the two `[human]` Done-when items (a real `/orchestrate` on the Human's PC: frontend started; an `[auto:main]`
+  plan gets the backend on `dev:local`); sub-task H1 keeps the plan open until the Human validates.

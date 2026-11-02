@@ -29,6 +29,8 @@ export const RUNTIME_IGNORES = [
   '.worktree-cleanup',
   '.claude/.slot-pids',
   '.claude/.slot-plan-start',
+  // The main folder's dev servers the orchestrator preflight started (slot-serve.mjs --main)
+  '.claude/.main-serve-pids',
   '.claude/logs/',
   '.claude/*.log',
   // Claude Code local config and runtime state (never commit)
