@@ -108,11 +108,11 @@ append the path to the scope block above and retry.
 ## Functional Requirements
 
 ### Must Have (P0)
-- [ ] `final-gate` subcommand and `status.finalGate`; the workflow calls it; legacy `final gate …` misses removed on a pass.
-- [ ] `FINAL_GATE_ROLES` routing table and `lessonFacts` changes; final-gate misses skipped on a pass.
-- [ ] `finish` and `lessons` read `status.finalGate`; `runLogRow` and `formatReport` take the final gate from `status`.
-- [ ] Rewrite of report and run-log row when the final gate is recorded on a finished/stopped run.
-- [ ] `orchestrator.md` (status.json fact table, final gate section) and CHANGELOG entry.
+- [x] `final-gate` subcommand and `status.finalGate`; the workflow calls it; legacy `final gate …` misses removed on a pass.
+- [x] `FINAL_GATE_ROLES` routing table and `lessonFacts` changes; final-gate misses skipped on a pass.
+- [x] `finish` and `lessons` read `status.finalGate`; `runLogRow` and `formatReport` take the final gate from `status`.
+- [x] Rewrite of report and run-log row when the final gate is recorded on a finished/stopped run.
+- [x] `orchestrator.md` (status.json fact table, final gate section) and CHANGELOG entry.
 
 ### Should Have (P1)
 - [ ] `[ui]` misses route by the failed card's area (only finders that ran); unchanged unless Step 0 shows a cheap script attribution.
@@ -127,17 +127,17 @@ None (scripts and docs only).
 
 Every step names its own test location.
 
-- [ ] A1: Failing tests first — a final-gate miss reaches all finders today; a by-hand pass leaves the stale stop line and the old lesson; Step 0 findings to Execution Notes
+- [x] A1: Failing tests first — a final-gate miss reaches all finders today; a by-hand pass leaves the stale stop line and the old lesson; Step 0 findings to Execution Notes
   - Scope: `tools/test/orchestrator.test.mjs`
-- [ ] B1: `status.finalGate`, the `final-gate` subcommand, the workflow call, legacy-miss cleanup; tests
+- [x] B1: `status.finalGate`, the `final-gate` subcommand, the workflow call, legacy-miss cleanup; tests
   - Scope: `core/scripts/orch-state.mjs`, `core/.claude/workflows/orchestrate.js`, `tools/test/orchestrator.test.mjs`
-- [ ] B2: Role routing table and `lessonFacts`; `lessons`/`finish`/`runLogRow`/`formatReport` read `status.finalGate`; tests
+- [x] B2: Role routing table and `lessonFacts`; `lessons`/`finish`/`runLogRow`/`formatReport` read `status.finalGate`; tests
   - Scope: `core/scripts/lib/orch-run.mjs`, `core/scripts/orch-state.mjs`, `tools/test/orchestrator.test.mjs`
-- [ ] B3: Report and run-log rewrite after a re-run; tests
+- [x] B3: Report and run-log rewrite after a re-run; tests
   - Scope: `core/scripts/orch-state.mjs`, `core/scripts/lib/orch-run.mjs`, `tools/test/orchestrator.test.mjs`
-- [ ] D1: `orchestrator.md`
+- [x] D1: `orchestrator.md`
   - Scope: `core/docs/agent/orchestrator.md`
-- [ ] R1: Render the installed copies, run every check, add the changelog entry — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .`, build, lint, `npm test`, `node --test "tools/test/*.test.mjs"`, `node tools/orchestrator-e2e.mjs`
+- [x] R1: Render the installed copies, run every check, add the changelog entry — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .`, build, lint, `npm test`, `node --test "tools/test/*.test.mjs"`, `node tools/orchestrator-e2e.mjs`
   - Scope: `scripts/**`, `.claude/**`, `docs/agent/**`, `docs/brain/**`, `.kit/install.json`, `CHANGELOG.md`
 
 ## Technical Considerations
@@ -161,3 +161,17 @@ Every step names its own test location.
 - Source: orchestrator test run test-512-422, finding F10, plus the Human's second item (status.json must not keep a final-gate
   failure for roles that could not have caught it, and is corrected by a passing re-run). Facts from the kit at `origin/main`
   `aac496e`. Build order (Human, 2026-11-02): 063, 062, then 064.
+- Step 0: drift lists 062/063 commits (db9f3af, 0f2ef30, 4d1241e, 11e1acf): ok, all merged; the symbols this plan edits (`finish`, `learnRun`,
+  `lessons`, the final-gate block, `lessonFacts`) are where the plan says. `finish` only turns `running` into `finished`, so clearing a final-gate
+  stop (phase back to `finished`, or `running` when there is no report yet) cannot hide another stop: it is cleared only when `stopReason` starts
+  with `final gate`.
+- decision: agent-chosen (coordinator), UNGRADED: the workflow records the final gate on its existing `finish` call (`--final-gate-command`, `--final-gate-plans`) instead of calling `final-gate` — the plan says "the workflow calls it", but that would be a new per-item runner call; `final-gate` stays for the Human — reverse: add a `state(['final-gate', …])` call before `finish`
+- decision: agent-chosen (coordinator), UNGRADED: `attempt` counts changed outcomes (result, command or blamed plans differ from the stored one); an identical repeat is a retry and changes nothing — the plan says only "counting up", and a re-sent call must be idempotent — reverse: always `attempt + 1` in `applyFinalGate`
+- decision: agent-chosen (coordinator), UNGRADED: the report/row rewrite runs only when the run has `finishedAt` and phase `finished`/`stopped`; a stopped run with no `finish` yet only stores the result — rewriting there would invent a report before `finish` — reverse: drop the `finishedAt` test in `final-gate`
+- decision: agent-chosen (coordinator), UNGRADED: the report gets a `Final gate: ok|failed: <cmd> (attempt N)` line whenever `finalGate` is stored, and the by-hand rewrite does not resend to the kit brain — the plan wants the report to show the passing result — reverse: delete the line in `formatReport`; pass `brain: true` in `final-gate`
+- decision: agent-chosen (coordinator), UNGRADED: kind comes from a new `finalGateKind(command)` (no earlier command-kind helper existed; `commandTag` only sanitises); `npm|pnpm|yarn run test*|lint*|build*`, `node --test` and the kit manifest check are classified, `ciMirror` key kept in the table but always empty — reverse: edit `finalGateKind`
+- decision: agent-chosen (coordinator), UNGRADED: a legacy status with a `final gate …` miss and no stored `finalGate` is routed by the command inside the miss; `readiness` is taught without the "ran on the plan" filter (it ran on every plan) — reverse: drop the legacy branch in `lessonFacts`
+- decision: agent-chosen (coordinator), UNGRADED: `init` deletes `status.finalGate` on every launch (a relaunch that never reaches its final gate must not report or teach from the earlier launch's result) — simpler than comparing timestamps and matches how `attempts`/`phase` are reset per launch — reverse: remove the `delete status.finalGate` line in `init`
+- decision: agent-chosen (coordinator), UNGRADED: the workflow sends the failing command as `--final-gate-command-b64` (surrogate-safe `toB64`, one line, 300 chars before encoding, 200 stored) instead of the ASCII-only filter, which dropped quoted/starred commands like `node --test "tools/test/*.test.mjs"` — reverse: restore the filter and `--final-gate-command`
+- evidence R1 (re-run after review fixes): sync + drift-check ok, build ok, lint ok, npm test ok, `node --test tools/test/*.test.mjs` 448/448, orchestrator-e2e 90 cases, SCOPE_TESTS ok, SCOPE ok.
+- seen: the P1 `[ui]` routing is unchanged (Step 0 found no cheap script attribution); `[ui]` misses still go to every finder that ran.

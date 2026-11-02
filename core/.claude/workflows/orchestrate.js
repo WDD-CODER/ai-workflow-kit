@@ -1197,6 +1197,7 @@ async function run() {
   const parkedRoots = []
   let stopReason = null
   let finalGate = null
+  let finalBlamed = []
   // Whatever happens in the waves or the final gate, the run ends with `stop` (when it did not finish) and `finish`:
   // the report and the decisions list exist every time, also when every plan parked or a step threw.
   try {
@@ -1286,7 +1287,9 @@ async function run() {
       // A final-gate failure that names a file only one plan of this run changed is a miss of that plan's finders.
       if (g.fail) {
         const hits = Object.entries(CHANGED_FILES).filter(([, files]) => files.some((f) => String(g.tail ?? '').includes(f))).map(([n]) => n)
-        if (hits.length === 1) await setPlan(hits[0], { miss: `final gate failed: ${String(g.check ?? '').slice(0, 80)}` })
+        // The blame is stored in the run's finalGate (sent with `finish`), not as a free-text miss: the lesson routing reads
+        // the failing command's kind from it.
+        if (hits.length === 1) finalBlamed = hits
       }
       if (!stopReason) {
         stopReason = why.slice(0, 380)
@@ -1362,7 +1365,12 @@ async function run() {
   if (triageNote) await note(triageNote)
   phase('Report')
   // `finish` also writes the run's lessons and its run-log row (no model call) and ends the report with the trend line.
-  const fin = await withQueued(['finish', '--run', RUN, '--final-gate', finalGate ? (finalGate.ok ? 'ok' : 'failed') : 'none'], 'report')
+  // The final gate's result is recorded by `finish` itself (status.finalGate: the failing command and the blamed plan), so
+  // it rides on the one call; a command of an odd shape is left out (its kind is then unknown, no role is taught).
+  // base64 (like the notes), so a command with quotes or `*` (node --test "tools/test/*.test.mjs") reaches the script whole.
+  const gateCmd = finalGate && !finalGate.ok && String(finalGate.command ?? '').trim() ? ['--final-gate-command-b64', toB64(String(finalGate.command).replace(/\s+/g, ' ').trim().slice(0, 300))] : []
+  const gatePlans = finalGate && !finalGate.ok && finalBlamed.length ? ['--final-gate-plans', finalBlamed.join(',')] : []
+  const fin = await withQueued(['finish', '--run', RUN, '--final-gate', finalGate ? (finalGate.ok ? 'ok' : 'failed') : 'none', ...gateCmd, ...gatePlans], 'report')
   // A run that ended on a limit or an error: the command prints this line first (STUCK), before the lists.
   const LIMIT = /^(agent-call limit|same reason twice|run stopped with an error)/
   const stuckWhy = LIMIT.test(String(stopReason ?? '')) ? stopReason : outcomes.find((o) => LIMIT.test(String(o.reason ?? '')))?.reason ?? null

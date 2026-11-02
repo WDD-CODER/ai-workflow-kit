@@ -389,6 +389,7 @@ export function formatReport({ status, merged, mainShaNow, finishedAt, runBranch
     `Result: ${merged.length} merged, ${parked.length} parked, skipped or left out, ${plans.length} in the run (counted from git and status.json).`,
     `\`${mainBranch}\` untouched: ${untouched ? 'yes' : 'NO'}${adminNote} — origin/${mainBranch} is ${String(mainShaNow).slice(0, 7)}.`,
     status.stopReason ? `Stopped: ${status.stopReason}` : '',
+    status.finalGate ? `Final gate: ${status.finalGate.ok ? 'ok' : `failed${status.finalGate.command ? `: ${status.finalGate.command}` : ''}`} (attempt ${status.finalGate.attempt ?? 1})` : '',
     '',
     '## Plans',
     '',
@@ -435,6 +436,19 @@ export function formatReport({ status, merged, mainShaNow, finishedAt, runBranch
 /** The lesson roles of the orchestrator (docs/brain/agent-lessons/<role>.md); `planner` is read by /plan, not injected. */
 export const INJECTED_ROLES = ['readiness', 'builder', 'gate', 'check-plan', 'check-bugs', 'check-rules', 'security', 'verify', 'ui']
 const FINDER_ROLES = ['check-plan', 'check-bugs', 'check-rules', 'security']
+/** What kind of command failed the final gate: test, lint, build, manifest, or none (a ciMirror command and anything unknown). */
+export function finalGateKind(command) {
+  const c = String(command ?? '').trim()
+  if (/^node scripts\/kit-manifest-check\.mjs\b/.test(c)) return 'manifest'
+  const m = /^(?:npm|pnpm|yarn) (?:run )?([\w:-]+)/.exec(c)
+  const name = m ? m[1] : /^node --test\b/.test(c) ? 'test' : ''
+  return /^test(?::|$)/.test(name) ? 'test' : /^lint(?::|$)/.test(name) ? 'lint' : /^build(?::|$)/.test(name) ? 'build' : 'none'
+}
+/**
+ * The roles that could have caught a final-gate failure, by the kind of the failing command. `security` never receives one.
+ * A finder that did not run on the blamed plan gets nothing.
+ */
+export const FINAL_GATE_ROLES = { test: ['check-bugs', 'check-plan'], lint: ['check-rules'], build: ['check-bugs'], manifest: ['readiness'], ciMirror: [], none: [] }
 /** The `agent-rules.md` section each role reads (the builder reads its own file). */
 export const RULES_GROUP = { readiness: 'readiness', ui: 'ui', 'check-plan': 'checkers', 'check-bugs': 'checkers', 'check-rules': 'checkers', verify: 'checkers' }
 
@@ -531,7 +545,14 @@ export function lessonFacts(status) {
       if (FINDER_ROLES.includes(role) && v.refuted > 0 && rules.length) add(role, `${v.refuted} of ${v.candidates} candidates refuted: ${rules.join(', ')}`, new RegExp(`^\\d+ of \\d+ candidates refuted: ${esc(rules.join(', '))}$`))
     }
     const ran = FINDER_ROLES.filter((r) => Object.keys(p.models ?? {}).includes(`orch-${r}`))
-    for (const what of [...new Set((p.misses ?? []).map(missTag))]) for (const r of ran) add(r, `missed: ${what}`)
+    // A final-gate failure is a miss of the roles its command kind names, never of every finder: the stored result
+    // (status.finalGate: the failing command and the blamed plans) decides, a legacy `final gate failed: <cmd>` miss only
+    // when no result is stored, and nothing at all once the gate has passed.
+    const fg = status?.finalGate
+    const legacy = (p.misses ?? []).filter((m) => /^final gate/.test(String(m))).map((m) => String(m).replace(/^final gate (?:failed|could not run):?\s*/, ''))
+    const gateCmds = fg ? (fg.ok === false && (fg.blamed ?? []).map(String).includes(String(p.nnn)) ? [fg.command] : []) : legacy
+    if (gateCmds.length) for (const r of FINAL_GATE_ROLES[finalGateKind(gateCmds[0])] ?? []) if (r === 'readiness' || ran.includes(r)) add(r, `missed: ${missTag('final gate')}`)
+    for (const what of [...new Set((p.misses ?? []).filter((m) => !/^final gate/.test(String(m))).map(missTag))]) for (const r of ran) add(r, `missed: ${what}`)
     if ((p.verify?.lateLow ?? []).length) add('verify', `kept with a confidence below the keep threshold, then caused a fix round: ${p.verify.lateLow.map(ruleTag).join(', ')}`)
     if ((p.verify?.reappeared ?? []).length) add('verify', `refuted, but the problem reappeared in a later round: ${p.verify.reappeared.map(ruleTag).join(', ')}`)
     for (const ev of p.gateEvents ?? []) {
@@ -569,7 +590,7 @@ export function runLogRow({ status, merged = [], finalGate = 'none', date }) {
     date, run: status.run, plans: plans.map((p) => String(p.nnn)).sort().join(','), merged: String(mergedSet.size), parked: String(parked.length), reasons: kinds.join(',') || '-',
     fixRounds: String(sum((p) => p.round ?? 0)), escalations: String(sum((p) => (p.escalations ?? []).length)),
     gateFails: String(sum((p) => (p.roundCauses ?? []).filter((c) => /^round \d+:\s*gate/.test(c)).length)),
-    finalGate: finalGate === 'ok' || finalGate === 'failed' ? finalGate : '-', x: '-', misses: '-', perPlan: '-',
+    finalGate: ((g) => (g === 'ok' || g === 'failed' ? g : '-'))(status?.finalGate ? (status.finalGate.ok ? 'ok' : 'failed') : finalGate), x: '-', misses: '-', perPlan: '-',
   }
 }
 

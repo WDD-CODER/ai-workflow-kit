@@ -10,6 +10,12 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 ## [Unreleased]
 
 ### Changed
+- **A lesson from a final-gate failure now reaches only the role that could have caught it, and a by-hand re-run corrects the
+  record.** The run's `status.json` keeps the final gate's result (`finalGate`: ok, failing command, attempt, blamed plan), sent
+  with the existing `finish` call. Lessons are routed by the failing command's kind (test to `check-bugs` and `check-plan`,
+  lint to `check-rules`, build to `check-bugs`, the manifest check to `readiness`; anything else, and `security`, none) instead
+  of to every finder. New `orch-state.mjs final-gate --run <name> --result ok|failed`: after a pass it removes the old
+  `final gate` misses and stop reason and rewrites the report and the run-log row from the stored result.
 - **An orchestrator run makes far fewer model calls for plain bookkeeping.** Run notes no longer cost a runner call each:
   they are queued and ride on the plan's next state write (`orch-state.mjs set --notes-b64`), and any still queued go on
   `stop` and `finish`; the per-plan note cap counts queued notes. Every decision of a run is one call
