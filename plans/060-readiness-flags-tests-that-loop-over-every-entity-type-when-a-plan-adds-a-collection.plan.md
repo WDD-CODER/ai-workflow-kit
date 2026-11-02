@@ -9,7 +9,7 @@ Source: first orchestrator test run (test-512-422), findings F3 and D16
 
 A plan that adds a collection (an entity type) breaks a test it never mentions: a test that loops over every entity type
 (in the test run: `cross-business.test.js`). The plan's scope does not name that test, so the builder cannot update it
-(the test-file gate blocks a changed test the scope does not list, `orchestrate.js:673`), and the failure shows up late as a gate
+(the test-file gate blocks a changed test the scope does not list, `orchestrate.js:677`), and the failure shows up late as a gate
 failure or a park. Readiness (`core/.claude/agents/orch-readiness.md` "For each plan", lines 31-63) asks about claims, environment
 and `[auto]` commands but never looks for such tests, and the plan template
 (`core/.claude/references/prd-template.md`, sections at :10, :24, :91) and `/plan`'s PM review (`core/.claude/commands/plan.md`
@@ -80,13 +80,14 @@ the exact change, and why it can't be done in-scope; offer `approved: <path>`; t
 append the path to the scope block above and retry.
 
 ## Architecture Impact
+- INV-1: preserves — the readiness agent keeps its judgment-tier model (plan 063 pins it); this plan only adds a rule and an output field.
 - INV-none: preserves — readiness stays read-only; it gains a search and an output field, nothing is written.
 
 ## Step 0 — Reality Check
 
 1. Runs only when `scope-check.mjs --drift` reports `REALITY: drift`: check the listed commits by symbol, print `ok` or
    `conflict: <what>` per commit; stop for a go only on a conflict.
-2. Read `SCHEMA.readiness` and the readiness prompt (`orchestrate.js:484-488`) and the claim handling after it; report where a
+2. Read `SCHEMA.readiness` and the readiness prompt (`orchestrate.js:488-492`) and the claim handling after it; report where a
    per-plan field is read, so `allTypeTests` is carried the same way as `envNeeds`.
 3. `node tools/install-check.mjs` and `node --test "tools/test/*.test.mjs"` pass before any edit.
 
@@ -97,7 +98,7 @@ append the path to the scope block above and retry.
 
 ### Must Have (P0)
 - [ ] Readiness rule, example JSON and `SCHEMA.readiness` field `allTypeTests` (optional list; absent = none).
-- [ ] The field is carried into the builder prompt (`builder()`, `orchestrate.js:560-575`) as `ALL_TYPE_TESTS`.
+- [ ] The field is carried into the builder prompt (`builder()`, `orchestrate.js:565-579`) as `ALL_TYPE_TESTS`.
 - [ ] `prd-template.md` line and `plan.md` PM-review line; CHANGELOG entry; `orchestrator.md` readiness section names the field.
 
 ### Should Have (P1)
@@ -136,7 +137,7 @@ Every step names its own test location.
 
 ## Out of Scope
 - A generic detector of all-types tests in code.
-- Changing the test-file gate (`orchestrate.js:673`).
+- Changing the test-file gate (`orchestrate.js:677`).
 - Updating the tests for the Human.
 
 ## Critical Questions

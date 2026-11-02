@@ -7,12 +7,12 @@ Source: first orchestrator test run (test-512-422), findings F4, F7, F11
 
 ## Problem Statement
 
-1. **F4.** `kit-manifest-check.mjs` runs only in the final gate (`core/.claude/workflows/orchestrate.js:1086`, `init.kitManifest`
+1. **F4.** `kit-manifest-check.mjs` runs only in the final gate (`core/.claude/workflows/orchestrate.js:1092`, `init.kitManifest`
    from `core/scripts/orch-state.mjs:541`). A plan that adds a script, agent, command or `docs/brain/**` file (an ADR) passes its own
    gate, merges, and fails only at the end, when no builder is left to add the manifest entry. A test pins that choice:
    `tools/test/orchestrator.test.mjs:750-751` ("Never in a plan's own gate or the merge step").
 2. **F7.** Readiness (`core/.claude/agents/orch-readiness.md` "For each plan", lines 31-63) and the builder
-   (`core/.claude/agents/orch-builder.md` steps 3-4, prompt `orchestrate.js:560-575`) are not told that such a plan must also update
+   (`core/.claude/agents/orch-builder.md` steps 3-4, prompt `orchestrate.js:565-579`) are not told that such a plan must also update
    the manifest, so the plan's scope lacks `manifest.json` and the builder cannot write it.
 3. **F11.** Server tests need a generated folder (a project's `server/generated/schemas`) that a fresh worktree or the merge folder
    does not have. Nothing before the gate generates it (`ensureDeps`, `core/scripts/lib/orch-folders.mjs:43-70`, only installs
@@ -90,14 +90,15 @@ the exact change, and why it can't be done in-scope; offer `approved: <path>`; t
 append the path to the scope block above and retry.
 
 ## Architecture Impact
-- INV-none: preserves — `docs/brain/invariants.md` holds no real invariant yet; the gate still never writes the main folder and
-  never merges to main. The new `prepare` command writes only inside the gate's own folder.
+- INV-1: preserves — the readiness agent keeps its judgment-tier model (plan 063 pins it); this plan only adds a rule to its text.
+- INV-none: preserves — the gate still never writes the main folder and never merges to main. The new `prepare` command writes
+  only inside the gate's own folder.
 
 ## Step 0 — Reality Check
 
 1. Runs only when `scope-check.mjs --drift` reports `REALITY: drift`: check the listed commits by symbol, print `ok` or
    `conflict: <what>` per commit; stop for a go only on a conflict.
-2. Confirm `runPlan` (`orchestrate.js:830-847`) can see `init.kitManifest` (it is read at :1086 in `run()`); if it is out of
+2. Confirm `runPlan` (`orchestrate.js:835-852`) can see `init.kitManifest` (it is read at :1092 in `run()`); if it is out of
    scope of `runPlan`, pass it through `args`/a module constant. Report the choice in Execution Notes.
 3. Confirm the manifest check passes in a plan worktree (it reads the worktree's own `docs/workflow-kit/manifest.json`); if a
    worktree lacks `scripts/kit-manifest-check.mjs` the check must be left out, not failed.
@@ -110,8 +111,8 @@ append the path to the scope block above and retry.
 ## Functional Requirements
 
 ### Must Have (P0)
-- [ ] Per-plan gate: add `node scripts/kit-manifest-check.mjs` to `ctx.checks` (`orchestrate.js:837`) when `init.kitManifest`;
-      `mergeChecksOf` (:54) filters it out; the final list (:1086) keeps one copy (the existing `Set`).
+- [ ] Per-plan gate: add `node scripts/kit-manifest-check.mjs` to `ctx.checks` (`orchestrate.js:841`) when `init.kitManifest`;
+      `mergeChecksOf` (:54) filters it out; the final list (:1092) keeps one copy (the existing `Set`).
 - [ ] `orch-state.mjs prepare` command and `orchestrator.prepare` config (rendered into `orchestrate.js` as a constant next to
       `PROJECT_CHECKS`; one `prepare` command per entry, put first in the per-plan list and in `finalChecks`; not in
       `mergeChecksOf`, which runs on a tree the plan gate already prepared).

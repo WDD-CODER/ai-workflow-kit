@@ -8,11 +8,11 @@ Source: first orchestrator test run (test-512-422), finding F10 (+ Human additio
 ## Problem Statement
 
 1. **Wrong role gets the lesson.** `lessonFacts` (`core/scripts/lib/orch-run.mjs:535-536`) gives `missed: <tag>` to every finder that
-   ran on a plan (`FINDER_ROLES`, :438) for any miss. A final-gate miss (`orchestrate.js:1203-1205`, blamed on the single plan whose
+   ran on a plan (`FINDER_ROLES`, :438) for any miss. A final-gate miss (`orchestrate.js:1209-1211`, blamed on the single plan whose
    changed file name appears in the failure tail) therefore teaches the security reviewer about a lint failure, or `check-plan`
    about a manifest check no finder can see (`missTag`, :497-498).
-2. **Stale result.** The final gate result is never stored in `status.json`: `finalGate` is a local variable (`orchestrate.js:1115`)
-   passed once as `--final-gate` (:1277). A failed run keeps `phase: stopped`, `stopReason` and `plans[N].misses` containing
+2. **Stale result.** The final gate result is never stored in `status.json`: `finalGate` is a local variable (`orchestrate.js:1321`)
+   passed once as `--final-gate` (:1283). A failed run keeps `phase: stopped`, `stopReason` and `plans[N].misses` containing
    `final gate failed: …`. When the Human re-runs the final gate by hand and it passes, `orch-state.mjs finish` or `lessons`
    (which hard-codes `finalGate: 'none'`, `orch-state.mjs:1000`) rebuilds lesson lines from those misses, and the report
    and the run-log row (`runLogRow`, `orch-run.mjs:563-575`, value from the CLI argument) show the old failure or `-`.
@@ -22,10 +22,10 @@ Source: first orchestrator test run (test-512-422), finding F10 (+ Human additio
 passing final-gate re-run, `finish` and `lessons` write the passing result everywhere and never a wrong lesson line.
 
 - [auto] `status.json` has a run-level `finalGate: { ok, command, at, attempt }`, written by a new `orch-state.mjs final-gate
-  --run <name> --result ok|failed [--command "<failing command>"]` (the workflow calls it at `orchestrate.js:1196-1211`; the Human
+  --run <name> --result ok|failed [--command "<failing command>"]` (the workflow calls it at `orchestrate.js:1202-1217`; the Human
   can call it by hand). Test: the two results, the stored shape, `attempt` counting up.
 - [auto] A final-gate failure is no longer written as a free-text `plans[N].misses` entry; `final-gate --result failed` stores the
-  failing command and the blamed plan numbers (the existing single-plan rule at :1203-1205) in `finalGate`. A `final-gate --result ok`
+  failing command and the blamed plan numbers (the existing single-plan rule at :1209-1211) in `finalGate`. A `final-gate --result ok`
   after a failure removes legacy `final gate …` entries from `plans[*].misses` and, when `stopReason` starts with `final gate`,
   clears it and sets `phase` back so `finish` can finish the run. Test with a status.json holding the stale state.
 - [auto] Role routing is a table in `orch-run.mjs` (`FINAL_GATE_ROLES`) keyed by the kind of the failing command
@@ -97,7 +97,7 @@ append the path to the scope block above and retry.
    `conflict: <what>` per commit; stop for a go only on a conflict.
 2. Plans 062 and 063 are merged (this plan edits the same files); otherwise stop.
 3. Read `finish()` (`orch-state.mjs:1062-1147`), `learnRun()` (:447-469), `lessons()` (:994-1004), `set` miss handling (:827-829)
-   and the final-gate block (`orchestrate.js:1196-1211`) as they are after 062.
+   and the final-gate block (`orchestrate.js:1202-1217`) as they are after 062.
 4. Find how `phase` and `stopReason` are used by `watch` and `finish` (:1068) so clearing them cannot hide a real stop.
 5. `node tools/install-check.mjs` and `node --test "tools/test/*.test.mjs"` pass before any edit.
 

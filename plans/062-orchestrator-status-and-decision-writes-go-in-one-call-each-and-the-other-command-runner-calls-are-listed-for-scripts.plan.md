@@ -7,8 +7,8 @@ Source: first orchestrator test run (test-512-422), finding F8 (87 Haiku command
 
 ## Problem Statement
 
-Every shell command of an orchestrator run goes through a Haiku `kit-runner` agent: `runner()` (`core/.claude/workflows/orchestrate.js:253`)
-calls `ask(…, {agentType: 'kit-runner'})` (:260) and `state()` (:275-280) wraps it. The test run made 87 such calls. Most are
+Every shell command of an orchestrator run goes through a Haiku `kit-runner` agent: `runner()` (`core/.claude/workflows/orchestrate.js:257`)
+calls `ask(…, {agentType: 'kit-runner'})` (:264) and `state()` (:280-284) wraps it. The test run made 87 such calls. Most are
 deterministic `node scripts/orch-state.mjs <subcommand>` calls whose output the script only parses, or whose output it ignores
 (write-only), so each costs a model call for no judgment.
 
@@ -18,7 +18,7 @@ deterministic `node scripts/orch-state.mjs <subcommand>` calls whose output the 
 - The script receives only `agent, parallel, pipeline, phase, log, args, budget, workflow` (the test harnesses build it with exactly
   these: `tools/orchestrator-e2e.mjs:303`, `tools/test/orchestrator.test.mjs:234`); `require` and `process` are passed as
   `undefined` (`tools/orchestrator-e2e.mjs:305`), `Date`/`Math` throw (:288, :297).
-- The script says so itself: `orchestrate.js:11` ("This script has no file, git or clock access: every file, git and time step is a
+- The script says so itself: `orchestrate.js:13` ("This script has no file, git or clock access: every file, git and time step is a
   kit script … run by the mechanical runner agent"), `orchestrate.js:40` ("no clock"), `core/scripts/orch-state.mjs:3`,
   `core/docs/agent/orchestrator.md:210`.
 - No agent file has a no-model or script mode (all 16 under `core/.claude/agents/`); `kit-runner.md` is `tools: Bash, Read`,
@@ -34,11 +34,11 @@ So the plan is **batching first**, then a list of what else can become a script.
 groups are listed with a recommendation for the Human.
 
 - [auto] `note(text, nnn)` no longer calls the runner: it queues the text; the queued notes of a plan ride on that plan's next
-  `set` call (`--note "a || b"`, like the facts, `orchestrate.js:305-335`) and are flushed at `stop` and `finish`; the per-plan
+  `set` call (`--note "a || b"`, like the facts, `orchestrate.js:313-338`) and are flushed at `stop` and `finish`; the per-plan
   cap `MAX_NOTES` still counts queued notes. Test in `tools/test/orchestrator.test.mjs`: a flow with 10 notes makes no runner call
   whose argv starts with `note`, and `status.json` holds all 10, in order, after the run.
 - [auto] `orch-state.mjs decisions --run <name> --b64 <base64 of a JSON list>` records every decision (and its repeat marker) in one
-  call; the loop at `orchestrate.js:1265-1273` makes one runner call for N decisions. Test: N decisions → one runner call; the same
+  call; the loop at `orchestrate.js:1271-1278` makes one runner call for N decisions. Test: N decisions → one runner call; the same
   rows in `status.json` as N single `decision` calls; a malformed payload exits 1 and writes nothing.
 - [auto] Notes are not lost when the run dies between flushes beyond the documented window: `orch-state.mjs watch` still prints
   `STUCK` from `status.json` updates (flush happens at every `set`), and a test shows a stopped run keeps its queued notes.
@@ -103,8 +103,8 @@ append the path to the scope block above and retry.
 2. Re-confirm the feasibility answer: list the globals the installed Workflow runtime gives a script (the harness list at
    `tools/orchestrator-e2e.mjs:303`); report in Execution Notes with file and line. Stop for the Human only if a direct-exec
    global exists.
-3. Count the runner sites in `orchestrate.js` (`runner(` 5, `state(` 26 on `aac496e`) and read `note()` (:340-347), `setPlan`
-   (:327-335) and the decision loop (:1265-1273) before editing.
+3. Count the runner sites in `orchestrate.js` (`runner(` 5, `state(` 26 when counted, before plan 058 merged; recount on `aac496e`) and read `note()` (:344-351), `setPlan`
+   (:324-338) and the decision loop (:1271-1278) before editing.
 4. `node tools/install-check.mjs` and `node --test "tools/test/*.test.mjs"` pass before any edit.
 
 ## User Stories

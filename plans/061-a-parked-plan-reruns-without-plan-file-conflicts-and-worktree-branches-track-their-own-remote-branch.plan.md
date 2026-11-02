@@ -12,13 +12,13 @@ Two git-handling faults in how a plan branch is made and reused.
 1. **F6.** A parked plan's old branch is reused, never recreated (`core/scripts/orch-state.mjs:670`, `exists ? worktree add branch :
    worktree add -b branch base`; slot path `core/scripts/lib/orch-folders.mjs:87`). On a rerun the run branch is merged into it
    (`orch-state.mjs:693-700`); a conflict aborts the merge and parks the plan again with
-   `merging origin/<run> into <branch> conflicts` (:697, parked at `orchestrate.js:895`). The conflicting file is the plan's own
+   `merging origin/<run> into <branch> conflicts` (:697, parked at `orchestrate.js:899`). The conflicting file is the plan's own
    file: the builder committed ticks and `## Execution Notes` lines to it (`orch-builder.md:26,46-47`) and the run branch holds
    a newer text of it. Nothing in the builder or merge agents may resolve it (`orch-merge.md:20-21` aborts and returns
    `merged: false`).
 2. **D10.** The plan branch is created from `origin/<run branch>` (`orch-state.mjs:670`, `orch-folders.mjs:87`). With git's
    default `branch.autoSetupMerge` the new branch takes `origin/<run branch>` as its upstream, so a bare `git push` by the
-   builder (`orch-builder.md:47`, `orchestrate.js:570` give no command) errors or pushes to the wrong ref. The run branch itself
+   builder (`orch-builder.md:47`, `orchestrate.js:574` give no command) errors or pushes to the wrong ref. The run branch itself
    is created with `--no-track` (`orch-state.mjs:486`), which shows the intent.
 
 ## Goals & Success Criteria
@@ -28,7 +28,7 @@ run branch.
 - [auto] A worktree made by `orch-state.mjs worktree` and a slot branch made by `orch-folders.mjs` have no
   `branch.<name>.merge` set (`git config --get` exits 1), and a reused local branch that already inherited the run branch as
   upstream has it removed. Tests next to `orchestrator-folders.test.mjs:347` (worktree) and the slot helper tests near :177-186.
-- [auto] `orch-builder.md` step 7 and the builder prompt (`orchestrate.js:570`) say `git push -u origin <branch>`; string assertions.
+- [auto] `orch-builder.md` step 7 and the builder prompt (`orchestrate.js:574`) say `git push -u origin <branch>`; string assertions.
 - [auto] Rerun of a parked plan whose branch has builder commits touching `plans/NNN-*.plan.md` and whose run branch has a newer
   text of that file: `orch-state.mjs worktree` returns ok, the merge commit exists, the plan file has the run branch's text with
   the builder's ticked sub-tasks and its added Execution Notes lines kept, and no other file is resolved by the script. A conflict in
@@ -104,7 +104,7 @@ append the path to the scope block above and retry.
 ### Must Have (P0)
 - [ ] `--no-track` on both branch creations (`orch-state.mjs:670`, `orch-folders.mjs:87`); for a reused branch whose
       `branch.<b>.merge` equals the run branch, unset `branch.<b>.merge` and `branch.<b>.remote`.
-- [ ] `git push -u origin <branch>` in `orch-builder.md` step 7 and `orchestrate.js:570`.
+- [ ] `git push -u origin <branch>` in `orch-builder.md` step 7 and `orchestrate.js:574`.
 - [ ] Plan-file-only conflict handling in `worktree()` (`orch-state.mjs:695-697`): when the merge conflicts and the only
       conflicted path is `plans/NNN-*.plan.md`, resolve it with a pure function `mergePlanFile({ ours, theirs })` in
       `orch-run.mjs`: take `theirs` (the run branch's text), tick every sub-task line whose id is `[x]` in `ours`, append the
