@@ -482,6 +482,31 @@ test('triage-prior: the agreement per decision kind over every project’s grade
   } finally { t.done(); gone(resolve(out, '..')) }
 })
 
+test('grades from a /ship run (run ship-<NNN>, no runs document, triage none) pass collect and triage-prior and are not counted', () => {
+  const ship = (id, kind, humanVerdict) => ({ _id: `alpha-app:ship-${id}`, project: 'alpha-app', run: 'ship-057', plan: '057', id, kind, type: 'seen', triageVerdict: 'none', humanVerdict, kitVersion: '1.13.0' })
+  const base = setup()
+  const t = setup((d) => ({ ...d, grades: [...d.grades, ship('D1', 'ship-only', 'ok'), ship('D2', 'ship-only', '✗'), ship('D3', 'sort-order', '✗')] }))
+  try {
+    const before = base.run(['collect', '--dry-run'])
+    const r = t.run(['collect', '--dry-run'])
+    assert.equal(r.status, 0, r.stderr)
+    assert.equal(r.lines[0], before.lines[0], 'a ship run brings no run, issue or change of its own')
+    const dry = t.run(['triage-prior', '--dry-run'])
+    assert.equal(dry.status, 0, dry.stderr)
+    assert.ok(!/\| ship-only \|/.test(dry.stdout), 'a kind graded only with triage none has no row')
+    assert.match(dry.stdout, /\| sort-order \| 4 \| 75% \|/, 'the none row of a known kind is not counted either')
+    assert.equal(t.run(['trend']).stdout, base.run(['trend']).stdout, 'ship ✗ grades do not raise the orchestrator ✗/plan')
+  } finally { base.done(); t.done() }
+})
+
+test('trendRows: a ✗ grade from a ship-<NNN> run is not counted toward ✗/plan; an orchestrator run\'s ✗ still is', async () => {
+  const { trendRows } = await import(pathToFileURL(join(kit, 'tools', 'brain-query.mjs')).href)
+  const runs = [{ kitVersion: '1', counts: { plans: 2 } }]
+  const wrong = (run) => ({ run, humanVerdict: '✗', kitVersion: '1' })
+  assert.equal(trendRows(runs, [wrong('ship-057'), wrong('ship-057')], 'kitVersion')[0].wrongPerPlan, 0)
+  assert.equal(trendRows(runs, [wrong('run-a1'), wrong('ship-057')], 'kitVersion')[0].wrongPerPlan, 0.5)
+})
+
 test('the kit-learn tools do not exist in a project: no copy under core/, and the command file has no source in core/', () => {
   assert.ok(!existsSync(join(kit, 'core', 'scripts', 'kit-learn.mjs')))
   assert.ok(!existsSync(join(kit, 'core', '.claude', 'commands', 'kit-learn.md')))

@@ -87,6 +87,7 @@ export function commandProblems(vals) {
   if (asList(vals['mods.enabled']).length && !/^[\w.-]+\/[\w.-]+$/.test(String(vals['mods.marketplaceRepo'] ?? ''))) out.push(`mods.marketplaceRepo is "${vals['mods.marketplaceRepo'] ?? ''}" — it must be <owner>/<repo>`)
   out.push(...orchestratorProblems(vals))
   out.push(...brainProblems(vals))
+  out.push(...reviewProblems(vals))
   // ownership.upstreamPaths is read by the kit's own glob matcher and by the scope guard's (picomatch): only the syntax
   // both read alike (`**`, `*`, `?`, a trailing `/`).
   for (const g of asList(vals['ownership.upstreamPaths'])) {
@@ -138,6 +139,17 @@ export function brainProblems(vals) {
   const on = vals['brain.enabled']
   if (on !== undefined && typeof on !== 'boolean') out.push(`brain.enabled is ${JSON.stringify(on)} — it must be true or false`)
   return out
+}
+
+/**
+ * review.ship (docs/agent/ship-regular.md Phase 2): what a REGULAR /ship on a plan branch reviews with — "checkers"
+ * (the /review-it checker pipeline, the default) or "light" (/review). Unset takes the kit.config.json default.
+ */
+export function reviewProblems(vals) {
+  const v = vals['review.ship']
+  return v !== undefined && !['checkers', 'light'].includes(v)
+    ? [`review.ship is ${JSON.stringify(v)} — it must be "checkers" (a REGULAR /ship on a plan branch runs the checker pipeline) or "light" (it runs /review)`]
+    : []
 }
 
 /**

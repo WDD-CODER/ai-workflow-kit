@@ -10,10 +10,16 @@
  *       reply: `decisions: ok`, or `D<n> ✗ <what I'd choose>` items (several: comma-separated; `C<n>` for a failed
  *       card). The list file is a JSON array of { id, plan, text }. Only ✗ items are written (one row each) to
  *       docs/brain/decision-log.md; a malformed reply is refused (exit 2) and nothing is written.
- *   node scripts/decision-log.mjs grade   --run <name> --reply "<graded reply>" --decisions <list.json|-> [--date YYYY-MM-DD] [--dir <folder>]
+ *   node scripts/decision-log.mjs pending --plan <plan file> --out <list.json> [--dir <folder>]
+ *       the plan's `- decision:` lines (## Execution Notes) with no `[graded D<n> ok|✗ YYYY-MM-DD]` tag, ordered removes,
+ *       behaviour, seen and numbered on from the highest graded D<n>: one `D<n> · <text>` line each, then
+ *       `DECISIONS: <n> to grade` or `DECISIONS: none to grade`; the list file is what `grade --decisions` reads (/ship).
+ *   node scripts/decision-log.mjs grade   --run <name> --reply "<graded reply>" --decisions <list.json|-> [--date YYYY-MM-DD]
+ *                                         [--mark <plan file>] [--dir <folder>]
  *       one JSON line per listed decision (ok ones too) in docs/brain/decision-grades.jsonl — never twice for one run + id;
  *       the seen: items (and a behaviour: item the triage called follow-up) also go to docs/brain/follow-ups.md.
- *       The list is the orchestrator's decisions with their triage fields; a malformed reply is refused (exit 2).
+ *       The list is the orchestrator's decisions with their triage fields, or /ship's `pending` list (no triage: `none`);
+ *       --mark tags each graded line of the plan `[graded D<n> ok|✗ date]`, never twice. A malformed reply exits 2.
  *   node scripts/decision-log.mjs stats   [--kind K] [--last N] [--write] [--dir <folder>]
  *       agreement between the triage agent and the Human per kind; --write keeps docs/brain/triage-calibration.md
  *       (at most 40 lines / 3,000 characters)
@@ -103,6 +109,74 @@ export function parseReply(reply, knownIds) {
   const ids = items.map((i) => i.id)
   if (new Set(ids).size !== ids.length) return { error: 'a decision is graded twice' }
   return { ok: false, items }
+}
+
+// ---- a plan's decisions: the `- decision:` lines of its `## Execution Notes` ---------------------------------
+const GRADED_TAG = /\s*\[graded (D\d+) (ok|✗) \d{4}-\d{2}-\d{2}\]\s*$/
+const TYPE_ORDER = ['removes', 'behaviour', 'seen']
+const squash = (s) => String(s ?? '').replace(/\s+/g, ' ').trim()
+
+/**
+ * The `- decision:` items under `## Execution Notes` of a plan's text: { first, last, text, graded: { id, verdict } | null }
+ * per item, `first` / `last` its line numbers (0-based; an indented line that does not start a new list item continues
+ * it). `text` is the decision without the `- decision:` prefix and without its `[graded D<n> ok|✗ YYYY-MM-DD]` tag.
+ */
+export function planDecisions(planText) {
+  const lines = String(planText ?? '').split(/\r?\n/)
+  const out = []
+  let inNotes = false
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i]
+    if (/^## /.test(l)) {
+      inNotes = /^## Execution Notes\s*$/.test(l)
+      continue
+    }
+    if (!inNotes) continue
+    const m = /^- decision:\s*(.*)$/.exec(l)
+    if (m) {
+      out.push({ first: i, last: i, parts: [m[1]] })
+      continue
+    }
+    const cur = out[out.length - 1]
+    if (cur && cur.last === i - 1 && /^\s+\S/.test(l) && !/^\s*- /.test(l)) {
+      cur.last = i
+      cur.parts.push(l.trim())
+    }
+  }
+  return out.map(({ first, last, parts }) => {
+    const whole = squash(parts.join(' '))
+    const tag = GRADED_TAG.exec(whole)
+    return { first, last, text: squash(whole.replace(GRADED_TAG, '')), graded: tag ? { id: tag[1], verdict: tag[2] } : null }
+  })
+}
+
+/** The ungraded decisions as a grade list, numbered on from the highest graded D<n>: removes, then behaviour, then seen. */
+export function pendingDecisions(planText, plan = '') {
+  const items = planDecisions(planText)
+  let next = Math.max(0, ...items.filter((d) => d.graded).map((d) => Number(d.graded.id.slice(1)))) + 1
+  const typeOf = (t) => /^\s*(behaviour|seen|removes):/i.exec(t)?.[1].toLowerCase() ?? 'behaviour'
+  return items.filter((d) => !d.graded)
+    .map((d, i) => ({ d, i, rank: TYPE_ORDER.indexOf(typeOf(d.text)) }))
+    .sort((a, b) => a.rank - b.rank || a.i - b.i)
+    .map(({ d }) => ({ id: `D${next++}`, plan: String(plan), text: d.text }))
+}
+
+/** The plan text with `[graded D<n> ok|✗ date]` appended to each ungraded item whose text matches a graded one; never twice. */
+export function markGraded(planText, graded, date) {
+  const lines = String(planText ?? '').split(/(?<=\n)/)
+  // Same text twice in the plan: the items are taken in id order, one per line.
+  const left = new Map()
+  for (const g of [...graded].sort((a, b) => Number(String(a.id).slice(1)) - Number(String(b.id).slice(1)))) {
+    const k = squash(g.text)
+    left.set(k, [...(left.get(k) ?? []), g])
+  }
+  for (const d of planDecisions(planText)) {
+    const g = !d.graded && left.get(d.text)?.shift()
+    if (!g) continue
+    const eol = /\r?\n$/.exec(lines[d.last])?.[0] ?? ''
+    lines[d.last] = `${lines[d.last].slice(0, lines[d.last].length - eol.length).replace(/\s+$/, '')} [graded ${g.id} ${g.verdict} ${date}]${eol}`
+  }
+  return lines.join('')
 }
 
 // ---- lessons: docs/brain/agent-lessons/<role>.md  -------------------------------------------------------------
@@ -479,6 +553,21 @@ function main(argv) {
     }
     const x = rowsOut.filter((l) => JSON.parse(l).humanVerdict === '✗').length
     process.stdout.write(`DECISION_LOG: graded ${rowsOut.length} item(s) (${x} ✗) → ${GRADES}; ${followOut.length} follow-up(s) → ${FOLLOWUPS}\n`)
+    // --mark <plan>: the graded lines of the plan get `[graded D<n> ok|✗ date]`, so a later /ship lists only new ones.
+    if (typeof flags.mark === 'string') {
+      const planFile = resolve(dir, flags.mark)
+      if (!existsSync(planFile)) {
+        process.stderr.write(`DECISION_LOG: --mark: no plan file ${flags.mark}\n`)
+        process.exit(1)
+      }
+      const stored = new Map(gradeRows().filter((r) => r.run === flags.run).map((r) => [r.id, r.humanVerdict]))
+      const graded = list.filter((d) => String(d.id).startsWith('D') && stored.has(d.id)).map((d) => ({ id: d.id, text: d.text, verdict: stored.get(d.id) === '✗' ? '✗' : 'ok' }))
+      const before = readFileSync(planFile, 'utf8')
+      const after = markGraded(before, graded, date)
+      if (after !== before) writeFileSync(planFile, after)
+      const n = planDecisions(after).filter((d) => d.graded).length - planDecisions(before).filter((d) => d.graded).length
+      process.stdout.write(`DECISION_LOG: marked ${n} line(s) graded in ${flags.mark}\n`)
+    }
     // The rows just written — ok and ✗ alike, they are the triage calibration data — go to the kit brain
     // (docs/agent/kit-brain.md). A child process killed after 15 s; whatever it does, this command's result is unchanged.
     const brain = join(dirname(fileURLToPath(import.meta.url)), 'brain.mjs')
@@ -647,7 +736,26 @@ function main(argv) {
   }
   const relPath = (p) => p.slice(dir.length + 1).replace(/\\/g, '/')
 
+  // The decisions of a plan not graded yet, numbered on from the highest graded one; the list `grade --decisions` reads.
+  const pendingCmd = () => {
+    if (typeof flags.plan !== 'string') usage('--plan <plan file> is required')
+    if (typeof flags.out !== 'string') usage('--out <list.json> is required')
+    const planFile = resolve(dir, flags.plan)
+    if (!existsSync(planFile)) {
+      process.stderr.write(`DECISION_LOG: no plan file ${flags.plan}\n`)
+      process.exit(1)
+    }
+    const nnn = /(?:^|[\\/])(\d{3})-[^\\/]*\.plan\.md$/.exec(planFile)?.[1] ?? ''
+    const list = pendingDecisions(readFileSync(planFile, 'utf8'), nnn)
+    const out = resolve(flags.out)
+    mkdirSync(dirname(out), { recursive: true })
+    writeFileSync(out, `${JSON.stringify(list, null, 2)}\n`)
+    for (const d of list) process.stdout.write(`${d.id} · ${d.text}\n`)
+    process.stdout.write(list.length ? `DECISIONS: ${list.length} to grade\n` : 'DECISIONS: none to grade\n')
+  }
+
   if (cmd === 'add') add()
+  else if (cmd === 'pending') pendingCmd()
   else if (cmd === 'grade') grade()
   else if (cmd === 'stats') statsCmd()
   else if (cmd === 'follow-ups') followUpsCmd()

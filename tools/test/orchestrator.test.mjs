@@ -8,7 +8,7 @@ import { spawnSync, spawn } from 'child_process'
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, cpSync, utimesSync, readdirSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
 import { pathToFileURL, fileURLToPath } from 'url'
-import { orchestratorProblems, commandProblems, ciCommandProblem } from '../lib/kit.mjs'
+import { orchestratorProblems, commandProblems, ciCommandProblem, reviewProblems } from '../lib/kit.mjs'
 import { DECISIONS as RUN_499_502, PASS_1_LAST, DUPLICATES as REAL_DUPLICATES, SYNTHETIC_REPEAT } from '../fixtures/orchestrator/decisions-499-502.mjs'
 import { SILENT_PLAN, COVERED_PLAN, PARTLY_PLAN, STYLE_PLAN, BACKEND_PLAN, behaviourGaps, FALSE_COUNT_PLAN, FALSE_COUNT_FILES, EVERY_PLAN, EVERY_FILES, claimGaps } from '../fixtures/orchestrator/readiness.mjs'
 
@@ -405,6 +405,18 @@ test('orchestrator.onPark: dependents and all pass, anything else names the key'
   const ok = { 'orchestrator.runBranchPrefix': 'orch/', 'git.mainBranch': 'main' }
   for (const v of ['dependents', 'all']) assert.deepEqual(orchestratorProblems({ ...ok, 'orchestrator.onPark': v }), [])
   for (const v of ['none', '', 'ALL', true, null]) assert.match(orchestratorProblems({ ...ok, 'orchestrator.onPark': v })[0], /^orchestrator\.onPark is .* — it must be "dependents" .* or "all" /)
+})
+
+test('review.ship: absent, checkers and light pass; the scaffold default is checkers; anything else is refused by install and sync', () => {
+  assert.deepEqual(reviewProblems({}), [], 'absent takes the scaffold default')
+  for (const v of ['checkers', 'light']) assert.deepEqual(reviewProblems({ 'review.ship': v }), [])
+  for (const v of ['full', '', 'Checkers', true, null]) {
+    assert.match(reviewProblems({ 'review.ship': v })[0], /^review\.ship is .* — it must be "checkers" .* or "light" /)
+    assert.ok(commandProblems({ 'review.ship': v }).some((m) => m.startsWith('review.ship is ')), 'install and sync read commandProblems')
+  }
+  const scaffold = JSON.parse(readFileSync(join(kit, 'kit.config.json'), 'utf8'))
+  assert.equal(scaffold.review.ship, 'checkers')
+  assert.match(scaffold.$comment, /review\.ship \(default checkers\)/)
 })
 
 test('orchestrator.* config: defaults pass, bad values name the key', () => {

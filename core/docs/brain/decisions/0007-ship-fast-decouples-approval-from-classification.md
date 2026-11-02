@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by 0015
 date: 2026-09-15
 review-by: 2027-03-15
 ---

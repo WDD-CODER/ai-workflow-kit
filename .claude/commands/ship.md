@@ -5,7 +5,7 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write, Agent
 
 # /ship — Session end (inline pipeline)
 
-Closes the current session. Repo root = **workspace cwd**. One sub-agent only: `kit-runner` runs the Phase 1 build gate (`docs/agent/model-routing.md`). Review, staging, approvals and every decision run inline.
+Closes the current session. Repo root = **workspace cwd**. Sub-agents: `kit-runner` runs the Phase 1 build gate, and a REGULAR ship on a plan branch with the checker review (`docs/agent/ship-regular.md` Phase 2) also starts the `/review-it` finders and `orch-verify` (`docs/agent/model-routing.md`). Staging, approvals and every decision run inline.
 
 **Aliases:** `/ship`, `/end-session`, "wrap up", "ship", "ship it".
 
@@ -22,7 +22,7 @@ Invoking `/ship` authorizes commit of this chat's files after explicit **Y** (un
 | `/ship --yes` | Confirmation block, commit without waiting (review still runs) |
 | `/ship --skip-review "reason"` | Bypass Phase 2; reason required; logs `[review-skipped: {reason}]` |
 
-`fast` (or an auto-FAST/ULTRA-TRIVIAL diff): one reply answers commit + push + PR at once. `Y` stops there — PR open, not merged. Only the literal word `merge` also merges — either in the `/ship` request itself (`/ship fast merge`, "ship fast y merge") or in the gate reply (`merge`, `Y merge`); `later` / `open-pr-only` / `abort` as usual. Doesn't change lane classification or review depth. Works on any lane. `--yes` and "ship fast y" without the word `merge` never imply merge. Chat "ship fast" ≡ `/ship fast`.
+`fast` (or an auto-FAST/ULTRA-TRIVIAL diff): one reply answers commit + push + PR at once. `Y` stops there — PR open, not merged. Only the literal word `merge` also merges — either in the `/ship` request itself (`/ship fast merge`, "ship fast y merge") or in the gate reply (`merge`, `Y merge`); `later` / `open-pr-only` / `abort` as usual. Doesn't change lane classification. On a REGULAR plan branch it picks the light review (`/review`) instead of the checker pipeline, unless the diff touches a sensitive path — then the checkers still run (ADR 0015; `docs/agent/ship-regular.md` Phase 2). `--skip-review` is unchanged. Works on any lane. `--yes` and "ship fast y" without the word `merge` never imply merge. Chat "ship fast" ≡ `/ship fast`.
 
 ---
 
@@ -51,7 +51,7 @@ node scripts/override-check.mjs
 
 ## Phase 2 — Review (unless `--skip-review`, or Lane = FAST/ULTRA-TRIVIAL)
 
-**REGULAR:** Read `docs/agent/ship-regular.md` → "Phase 2 — REGULAR review procedure" and follow it.
+**REGULAR:** Read `docs/agent/ship-regular.md` → "Phase 2 — REGULAR review procedure" and follow it. It picks the review: the checker pipeline on a plan branch when `review.ship` is `checkers` (this project: `checkers`) — except that `fast` picks `/review` unless the diff touches a sensitive path — and `/review` everywhere else.
 
 **FAST/ULTRA-TRIVIAL:** skip full `/review` (Phase 0 already confirmed small + no sensitive path). Instead: `npx eslint --fix`, one read of the diff for obvious correctness issues, record `Review: SKIPPED (fast-lane: {n} files/{m} lines, no sensitive paths)` + `[review-skipped: fast-lane]` in the commit body.
 
@@ -93,7 +93,11 @@ Proposed commit:
   type(scope): subject
 
   body (why, not what)
+  Review: checkers APPROVE — kept 0, dropped 2   # REGULAR; or `Review: light PASS`, `Review: light (fast) PASS`
   [review-skipped: reason]   # only when --skip-review was used
+
+Review (checkers):            # REGULAR plan branch with the checkers: one line per lens, from the /review-it table
+  Plan-match PASS · Bugs PASS · Rules PASS · Security SKIPPED · Architecture PASS · Checks PASS
 
 Files to stage:
   ├── file1
@@ -153,7 +157,7 @@ Matching open todos: list *before* Y (still `[ ]`). On **Y**, mark `[x]` and sta
 
 A proposed brain entry: print its **full draft body** fenced below the tree (tree line carries only path + title).
 
-**Decisions to grade (Worker plan only):** when the plan's `## Execution Notes` hold `- decision:` lines and the Human has not graded them in this session, print them under the tree as `D1…Dn` — `removes:` first, then `behaviour:`, then `seen:`, one line each (`D2 · behaviour: … — reverse: …`) — and end with the reply format: `decisions: ok` or `D<n> ✗ <what I'd choose>` (several on one line, comma-separated). The grade may ride on the `Y` reply (`Y, D2 ✗ no dialog`). No decisions, or already graded → print nothing.
+**Decisions to grade (Worker plan only):** run `node scripts/decision-log.mjs pending --plan <the plan file> --out <scratch>/decisions.json` (`<scratch>` = a temporary folder outside the repo). It lists the plan's `## Execution Notes` `- decision:` lines that carry no `[graded D<n> ok|✗ YYYY-MM-DD]` tag — graded in this session or any earlier one — as `D<n> · …` lines, `removes:` first, then `behaviour:`, then `seen:`, numbered on from the highest graded `D<n>`, so an id never repeats within the plan. Print those lines under the tree as they are and end with the reply format: `decisions: ok` or `D<n> ✗ <what I'd choose>` (several on one line, comma-separated). The grade may ride on the `Y` reply (`Y, D2 ✗ no dialog`). `DECISIONS: none to grade` → print nothing.
 
 ### Brain-entry capture (no new gate)
 
@@ -171,6 +175,7 @@ Approve **Y** (or `--yes`) = commit/push consent. It validates `[human]` items o
 
 1. **Todo sync (when items match):** mechanics (wt-N slot vs outside, exact commands, never-invent rule) → `docs/agent/job-validation.md` Path A step 2.
 2. **Write brain drafts** (if proposed, not dropped) — verbatim to `docs/brain/**`.
+   **Grade step (no command from the Human; only when decisions were shown):** for every grade reply — `decisions: ok` included — run `node scripts/decision-log.mjs grade --run ship-<NNN> --reply "<the Human's grade reply>" --decisions <scratch>/decisions.json --mark <the plan file>` (`<NNN>` = the plan number; the run name stays the same across sessions and checkpoints). It stores one row per decision, `ok` ones too, in `decision-grades.jsonl` (in `docs/brain/`; created on the first grade), adds the `seen:` items to `docs/brain/follow-ups.md`, and tags the graded plan lines, so a later `/ship` does not list them again. The plan file and both `docs/brain` files join the commit in step 3. Then the learning step, unchanged:
    **Learning step (no command from the Human):** run `node scripts/decision-log.mjs learn --reply "<the Human's replies this session>"`. `LEARNING: nothing to record` → one line, no model call, go on. `LEARNING: record` → follow `docs/agent/decision-review.md` §3: log every `✗` decision and every `failed:` card to `docs/brain/decision-log.md`, start a rule in `docs/brain/agent-rules.md` at the first `✗` of a kind (marked `(pending — seen once)`; the second one promotes it) or an `enforce:` line when a check, a hook or a test could catch the mistake instead (`no rule` in the reply skips it), add a `## checkers` rule and scaffold the eval case (`node scripts/decision-log.mjs case --from D<n> --run <name>`, no model call) for each `checker-miss: yes`, and send each generic lesson to the kit (`scripts/kit-feedback.mjs`). The `docs/brain` files and any new `docs/agent-evals/cases/<checker>/<case>` folder join the commit in step 3; the wrap-up lists new rules, case paths and the enforce candidates.
 3. **`git add` only listed paths** (todo/plan/brain included) — one commit with job + todos (+ brain), never job-then-todos-later. One `git add -- <paths>` call, and **stop on a non-zero exit** before any commit: a path that no longer exists (a deletion `git rm` already staged, a typo) aborts the whole add, and a commit that follows anyway holds only what was staged before. Never relist a path `git rm` staged.
 4. **`git commit`** (Conventional Commit; Cursor trailer `Co-authored-by: Cursor <cursoragent@cursor.com>` when applicable).
