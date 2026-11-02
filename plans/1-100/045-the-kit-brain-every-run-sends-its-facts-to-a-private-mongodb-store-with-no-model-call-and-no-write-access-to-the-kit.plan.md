@@ -1,6 +1,6 @@
 # Plan 045 — The kit brain: every run sends its facts to a private MongoDB store, with no model call and no write access to the kit
 
-Status: built and merged (PR #80, 9ffa75f); H1 [human] check open until the first sync into FoodVibe
+Status: done
 Depends-on: 030, 041, 049
 Snapshot: a363b42
 
@@ -197,7 +197,7 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 - [x] C1: Document the brain — new `core/docs/agent/kit-brain.md`: what goes where (project files vs brain vs kit repo — the table from the Human's 2026-10-30 discussion), §Schema (collections, fields, `_id`, signature rule), §Setup (Atlas free cluster, the `brainInsert` custom role with `INSERT` on `runs plans grades events toil lessonsIn`, users `kit-brain-writer` and `kit-brain-reader`, the IP entry, the two environment variables in PowerShell, one admin step that creates the indexes with a Temporary User), §Limits (0.5 GB, 100 ops/s, a cluster with no connection for 30 days is paused — the nightly 047 run keeps it awake), §Privacy (redaction, no code, the kit repo stays public); `workflow-map.md`, `orchestrator.md`, `decision-review.md`, `templates/docs/brain/index.md` point to it; CHANGELOG Unreleased — core/docs/agent/kit-brain.md, core/docs/agent/workflow-map.md, core/docs/agent/orchestrator.md, core/docs/agent/decision-review.md, templates/docs/brain/index.md, CHANGELOG.md, README.md
 - [x] T1: Prove each behaviour with tests that fail on today's code — the Goals' test items, all with the stub driver; no test opens a network connection (the test asserts the real driver is never loaded) — tools/test/brain.test.mjs, tools/test/orchestrator.test.mjs, tools/test/kit-feedback.test.mjs
 - [x] R1: Render the kit's own installed copies and check drift — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .` — scripts/, .claude/, docs/agent/, docs/brain/, .kit/install.json
-- [ ] H1: [human] After a kit release and a sync into FoodVibe: `node scripts/brain.mjs setup`, `check` (`BRAIN: ok`), `backfill`, and `node tools/brain-query.mjs runs --last 3` in the kit — the Done-when [human] item; keeps this plan open until the Human confirms
+- [x] H1: [human] (validated by the Human 2026-11-02: FoodVibe backfill sent 32 documents; `brain-query runs --last 3` returned 3 runs through the reader) After a kit release and a sync into FoodVibe: `node scripts/brain.mjs setup`, `check` (`BRAIN: ok`), `backfill`, and `node tools/brain-query.mjs runs --last 3` in the kit — the Done-when [human] item; keeps this plan open until the Human confirms
 
 ## Technical Considerations
 - Dependencies: `orch-state.mjs` `finish()` (writes the local report, then commits on the run branch — the send goes
