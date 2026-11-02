@@ -337,17 +337,14 @@ async function setPlan(nnn, fields, results = []) {
   // Lesson facts queued for this plan go with this call.
   for (const [k, v] of Object.entries(FACTS[nnn] ?? {})) if (fields[k] === undefined) argv.push(`--${k}`, v)
   delete FACTS[nnn]
-  // Run notes queued for this plan go with this call too; a failed call puts them back.
+  // Run notes and flakes queued for this plan go with this call too; a failed call puts them back (each note has an id, so
+  // a call that did write them and is sent again records them once).
   const queued = NOTES[nnn] ?? []
-  if (queued.length) {
-    argv.push('--notes-b64', toB64(JSON.stringify(queued.map((text) => ({ text })))))
-    delete NOTES[nnn]
-  }
   const flakes = FLAKES[nnn] ?? []
-  if (flakes.length) {
-    argv.push('--flakes-b64', toB64(JSON.stringify(flakes)))
-    delete FLAKES[nnn]
-  }
+  delete NOTES[nnn]
+  delete FLAKES[nnn]
+  if (queued.length) argv.push('--notes-b64', toB64(JSON.stringify(noteItems(queued))))
+  if (flakes.length) argv.push('--flakes-b64', toB64(JSON.stringify(flakes)))
   const r = await state(argv, `state ${nnn} ${fields.state ?? ''}`, nnn)
   if (!r?.ok) {
     if (queued.length) NOTES[nnn] = [...queued, ...(NOTES[nnn] ?? [])]
@@ -358,15 +355,21 @@ async function setPlan(nnn, fields, results = []) {
 // A run note makes no agent call of its own: it is queued, and the queued notes of a plan ride on that plan's next `set`
 // call (`--notes-b64`, the same base64 JSON list as on stop / finish: q cuts a plain argument at 400 characters); the run-level notes and any still queued go on `stop` and `finish` (`--notes-b64`).
 // MAX_NOTES per plan (run-level notes count under "run") still counts queued notes, then one last note says so.
+// Every queued note has an id (launch, plan, number) that the script records: the same note sent twice (a runner rerun, a
+// re-sent queue) is written once.
 const NOTES = {}
+let LAUNCH = '0'
+const noteItems = (list) => list.map((n) => ({ id: `${LAUNCH}:${n.id}`, text: n.text }))
+// Text for a command line: no lone surrogate (a cut through an emoji), which encodeURIComponent throws on.
+const wellFormed = (s) => String(s).replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
 async function note(text, nnn) {
   const key = nnn ?? 'run'
   const n = (COUNT.notes[key] ?? 0) + 1
   if (n > MAX_NOTES) return { ok: true, capped: true }
   COUNT.notes[key] = n
   const line = n === MAX_NOTES ? `notes capped: ${MAX_NOTES} notes written for ${nnn ? `plan ${nnn}` : 'the run'} (orchestrator.maxNotesPerPlan), later notes are dropped` : text
-  const one = String(line).trim()
-  if (one) (NOTES[key] ??= []).push(one)
+  const one = wellFormed(line).trim()
+  if (one) (NOTES[key] ??= []).push({ id: `${key}-${n}`, text: one })
   return { ok: true, queued: true }
 }
 // Base64 of a UTF-8 string, by hand: the script has no Buffer. The runner re-types a command, and base64 has no quote,
@@ -374,7 +377,7 @@ async function note(text, nnn) {
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 function toB64(str) {
   const bytes = []
-  const e = encodeURIComponent(str)
+  const e = encodeURIComponent(wellFormed(str))
   for (let i = 0; i < e.length; i++) {
     if (e[i] === '%') { bytes.push(parseInt(e.slice(i + 1, i + 3), 16)); i += 2 } else bytes.push(e.charCodeAt(i))
   }
@@ -385,24 +388,35 @@ function toB64(str) {
   }
   return out
 }
-// Every queued note (plan and run level), taken off the queue as { plan?, text } for `stop` / `finish`.
-function takeNotes() {
-  const list = []
-  for (const [key, texts] of Object.entries(NOTES)) for (const text of texts) list.push({ ...(key === 'run' ? {} : { plan: key }), text })
-  for (const key of Object.keys(NOTES)) delete NOTES[key]
-  return list
-}
-// Flakes are write-only too: queued per plan ('run' = the final gate's) and sent the same way as the notes.
+// Flakes are write-only too: queued per plan ('run' = the final gate's) and sent the same way as the notes. The command is
+// made fit for `flake` here (one line, at most 300 characters), so one odd command cannot fail a whole batch.
 const FLAKES = {}
-const queueFlake = (nnn, f) => (FLAKES[nnn ?? 'run'] ??= []).push(f)
-const notesArgs = () => {
-  const list = takeNotes()
-  const flakes = []
-  for (const [key, items] of Object.entries(FLAKES)) for (const f of items) flakes.push(key === 'run' ? f : { ...f, plan: key })
-  for (const key of Object.keys(FLAKES)) delete FLAKES[key]
-  return [...(list.length ? ['--notes-b64', toB64(JSON.stringify(list))] : []), ...(flakes.length ? ['--flakes-b64', toB64(JSON.stringify(flakes))] : [])]
+const queueFlake = (nnn, f) => (FLAKES[nnn ?? 'run'] ??= []).push({ ...f, command: wellFormed(f.command).replace(/\s+/g, ' ').trim().slice(0, 300) })
+// Everything queued (plan and run level) for `stop` / `finish`: { args, restore }; `restore` puts it back after a failed call.
+function takeQueued() {
+  const snap = { notes: { ...NOTES }, flakes: { ...FLAKES } }
+  const noteList = []
+  for (const [key, list] of Object.entries(NOTES)) for (const n of list) noteList.push({ ...noteItems([n])[0], ...(key === 'run' ? {} : { plan: key }) })
+  const flakeList = []
+  for (const [key, list] of Object.entries(FLAKES)) for (const f of list) flakeList.push(key === 'run' ? f : { ...f, plan: key })
+  for (const k of Object.keys(NOTES)) delete NOTES[k]
+  for (const k of Object.keys(FLAKES)) delete FLAKES[k]
+  return {
+    args: [...(noteList.length ? ['--notes-b64', toB64(JSON.stringify(noteList))] : []), ...(flakeList.length ? ['--flakes-b64', toB64(JSON.stringify(flakeList))] : [])],
+    restore() {
+      for (const [k, list] of Object.entries(snap.notes)) NOTES[k] = [...list, ...(NOTES[k] ?? [])]
+      for (const [k, list] of Object.entries(snap.flakes)) FLAKES[k] = [...list, ...(FLAKES[k] ?? [])]
+    },
+  }
 }
-const stopRun = (reason) => state(['stop', '--run', RUN, '--reason', reason, ...notesArgs()], 'stop')
+// stop / finish with the queues; a failed call puts them back (a re-send is safe: notes carry ids).
+async function withQueued(argv, label) {
+  const q = takeQueued()
+  const r = await state([...argv, ...q.args], label)
+  if (!r?.ok) q.restore()
+  return r
+}
+const stopRun = (reason) => withQueued(['stop', '--run', RUN, '--reason', reason], 'stop')
 
 let mergeFolder = null
 // The files of each plan's last checked diff, for the triage agent (no extra call).
@@ -1129,6 +1143,7 @@ async function run() {
   // No start time is passed: init reads its own clock (a value the model wrote was invented) and returns it.
   const init = await state(['init', '--run', RUN], 'start run')
   if (!init.ok) return { mode: 'run', run: RUN, ok: false, stopped: 'init', problems: [init.error] }
+  LAUNCH = String(init.attempt ?? 0) // note ids are per launch: a relaunch of the run numbers its notes again
   // The run report names the database mode once (a run note): local unless the request said `remote`.
   await note(`database: ${DB} — when a plan needs the main folder's backend and none answers, the preflight starts ${DB === 'remote' ? 'commands.devRemote (the remote database), asked for this run' : 'commands.devLocal (the local database)'}; a backend already running is kept on whatever database it uses`)
   mergeFolder = init.mergeFolder
@@ -1332,14 +1347,14 @@ async function run() {
   // Every decision is one record in status.json (never cut by maxNotesPerPlan: these calls count under "run"), then its
   // differently worded repeats; a new repeat of an earlier launch's decision is filed under that one.
   // All of them go in ONE `decisions --b64` call (a base64 JSON list, the items in this order; all-or-nothing).
-  const dupRow = (d, a) => ({ plan: d.plan, 'dup-of': d.id, text: a.text.slice(0, 380), role: a.role ?? 'agent', round: String(a.round ?? 0) })
+  const dupRow = (d, a) => ({ plan: d.plan, 'dup-of': d.id, text: wellFormed(a.text.slice(0, 380)), role: a.role ?? 'agent', round: String(a.round ?? 0) })
   const rows = []
   for (const d of DECISIONS) {
     if (d.prior) {
       for (const a of d.alsoFrom.filter((x) => x.fresh)) rows.push(dupRow(d, a))
       continue
     }
-    rows.push({ plan: d.plan, id: d.id, text: d.text.slice(0, 380), verdict: d.verdict, kind: d.kind, confidence: d.confidence === null ? '' : String(d.confidence), rec: d.rec, why: d.why })
+    rows.push({ plan: d.plan, id: d.id, text: wellFormed(d.text.slice(0, 380)), verdict: d.verdict, kind: d.kind, confidence: d.confidence === null ? '' : String(d.confidence), rec: d.rec, why: d.why })
     for (const a of d.alsoFrom) rows.push(dupRow(d, a))
   }
   const valid = rows.filter((r) => String(r.text ?? '').trim()) // an empty text would fail the whole batch
@@ -1347,7 +1362,7 @@ async function run() {
   if (triageNote) await note(triageNote)
   phase('Report')
   // `finish` also writes the run's lessons and its run-log row (no model call) and ends the report with the trend line.
-  const fin = await state(['finish', '--run', RUN, '--final-gate', finalGate ? (finalGate.ok ? 'ok' : 'failed') : 'none', ...notesArgs()], 'report')
+  const fin = await withQueued(['finish', '--run', RUN, '--final-gate', finalGate ? (finalGate.ok ? 'ok' : 'failed') : 'none'], 'report')
   // A run that ended on a limit or an error: the command prints this line first (STUCK), before the lists.
   const LIMIT = /^(agent-call limit|same reason twice|run stopped with an error)/
   const stuckWhy = LIMIT.test(String(stopReason ?? '')) ? stopReason : outcomes.find((o) => LIMIT.test(String(o.reason ?? '')))?.reason ?? null

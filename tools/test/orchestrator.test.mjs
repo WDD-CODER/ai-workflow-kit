@@ -2225,9 +2225,51 @@ test('orch-state set --flakes-b64: flakes ride on set, the same command and roun
   withRunDir('f1', { plans: { 101: { nnn: '101', state: 'building', round: 0, models: {} } } }, ({ sh, read }) => {
     assert.equal(sh('set', '--plan=101', `--flakes-b64=${b64(items)}`).status, 0)
     assert.equal(read().plans['101'].flakes.length, 1, 'the same command and round is one entry')
-    assert.equal(sh('set', '--plan=101', `--flakes-b64=${b64([{ command: 'x', via: 'bogus', where: 'gate', round: 1 }])}`).status, 1, 'a bad flake writes nothing')
-    assert.equal(read().plans['101'].flakes.length, 1)
+    // A bad flake in a batch is skipped with a warning; the set still writes its state and the good flakes.
+    const mixed = [{ command: 'a\nb', via: 'rerun', where: 'gate', round: 2 }, { command: 'x'.repeat(301), via: 'rerun', where: 'gate', round: 2 }, { command: 'npm run lint', via: 'rerun', where: 'gate', round: 2 }]
+    const r = sh('set', '--plan=101', '--state=gate', `--flakes-b64=${b64(mixed)}`)
+    assert.equal(r.status, 0, r.stdout + r.stderr)
+    assert.match(r.stdout, /WARN — flake skipped/)
+    assert.equal(read().plans['101'].state, 'gate')
+    assert.deepEqual(read().plans['101'].flakes.map((f) => f.command), ['npm run test', 'npm run lint'])
+    assert.equal(sh('stop', '--reason=x', `--flakes-b64=${b64([{ command: 'x'.repeat(301), via: 'rerun', where: 'gate', round: 2, plan: '101' }])}`).status, 0, 'stop with a bad flake still stops')
+    assert.equal(read().phase, 'stopped')
   })
+})
+
+test('notes carry ids: the same --notes-b64 sent twice (a runner rerun, a re-sent queue) records each note once', () => {
+  withRunDir('n3', { plans: { 101: { nnn: '101', state: 'building', round: 0, models: {} } } }, ({ sh, read }) => {
+    const payload = b64([{ id: '1:101-1', text: 'first' }, { id: '1:101-2', text: 'second' }])
+    assert.equal(sh('set', '--plan=101', `--notes-b64=${payload}`).status, 0)
+    assert.equal(sh('set', '--plan=101', `--notes-b64=${payload}`).status, 0)
+    const more = b64([{ id: '1:101-2', text: 'second' }, { id: '1:101-3', text: 'third' }, { id: '1:run-1', text: 'run level' }])
+    assert.equal(sh('stop', '--reason=x', `--notes-b64=${more}`).status, 0)
+    assert.equal(sh('stop', '--reason=x', `--notes-b64=${more}`).status, 0)
+    assert.deepEqual(read().notes.map((n) => n.text), ['first', 'second', 'third', 'run level'])
+  })
+})
+
+test('a note or decision with an emoji cut in half by slice() does not kill the run; a failed finish keeps its notes in the call', async () => {
+  const half = `${'a'.repeat(379)}😀tail`
+  const odd = `behaviour: ${'b'.repeat(368)}😀 more — reverse: x`
+  const { result, commands, rawCommands } = await runFlow({ plans: ['101'], pilot: false }, { builder: () => ({ decisions: [odd] }), source: (s) => s.replace('await note(`database:', `await note(${JSON.stringify(half)}.slice(0, 380))\n  await note(\`database:`) })
+  assert.equal(result.ok, true)
+  assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(commands.join('\n')), 'no lone surrogate reaches a command')
+  assert.equal(result.decisions.length, 1)
+  assert.ok(rawCommands.some((c) => /--notes-b64=/.test(c)))
+})
+
+test('flake commands are made fit before they are queued: one line, at most 300 characters', async () => {
+  const { rawCommands } = await runFlow({ plans: ['101'], pilot: false }, {
+    passTail: (folder, n) => (n === 1 ? 'rerun after env-fail: x' : undefined),
+    source: (s) => s.replace('const flake = async (command, round, via) => {', "const flake = async (command, round, via) => {\n      command = 'x\\n' + 'z'.repeat(400)"),
+  })
+  const sent = rawCommands.filter((c) => /--flakes-b64=/.test(c))
+  assert.ok(sent.length > 0, 'a flake was queued and sent')
+  for (const c of sent) {
+    const items = JSON.parse(Buffer.from(/--flakes-b64=(\S+)/.exec(c)[1], 'base64').toString('utf8'))
+    for (const f of items) assert.ok(f.command.length <= 300 && !/[\r\n]/.test(f.command), f.command.length)
+  }
 })
 
 // The inventory in docs/agent/orchestrator.md: one table row group per kind of runner call, and the number of call sites of

@@ -149,9 +149,17 @@ if (parsed.problem) fail(parsed.problem)
 // base64 JSON list of { plan?, text }); a malformed list exits 1 before anything is written.
 function addNotes(status, items) {
   status.notes ??= []
+  // An item with an id is recorded once: a rerun or a re-sent queue carries the same ids (status.noteIds).
+  const seen = new Set(status.noteIds ?? [])
   for (const it of items) {
     const text = String(it.text ?? '').trim()
-    if (text) status.notes.push({ at: nowIso(), ...(it.plan ? { plan: it.plan } : {}), text })
+    const id = it.id === undefined ? null : String(it.id)
+    if (!text || (id && seen.has(id))) continue
+    if (id) {
+      seen.add(id)
+      ;(status.noteIds ??= []).push(id)
+    }
+    status.notes.push({ at: nowIso(), ...(it.plan ? { plan: it.plan } : {}), text })
   }
 }
 function notesB64() {
@@ -163,23 +171,29 @@ function notesB64() {
     fail(`--notes-b64 is not base64 of a JSON list: ${e.message}`)
   }
   if (!Array.isArray(items) || items.some((i) => !i || typeof i !== 'object')) fail('--notes-b64 must hold a JSON list of { plan?, text }')
-  return items.map((i) => ({ plan: i.plan ? planNumber(String(i.plan)) : undefined, text: i.text }))
+  return items.map((i) => ({ id: i.id, plan: i.plan ? planNumber(String(i.plan)) : undefined, text: i.text }))
 }
 
 // One flake entry (shared by `flake` and the --flakes-b64 lists on set / stop / finish); `a` has the flags of a `flake`
 // call as keys. Returns { dup, text, flakes }.
-function applyFlake(status, a) {
+// `soft` (a batch): an invalid entry throws a FlakeSkip the caller turns into a warning line, instead of failing the call.
+class FlakeSkip extends Error {}
+function applyFlake(status, a, soft = false) {
+  const bad = (m) => {
+    if (soft) throw new FlakeSkip(m)
+    return fail(m)
+  }
   const command = a.command && a.command !== true ? String(a.command).trim() : ''
-  if (!command || /[\r\n]/.test(command) || command.length > 300) fail('--command takes one check command (one line, at most 300 characters)')
+  if (!command || /[\r\n]/.test(command) || command.length > 300) bad('--command takes one check command (one line, at most 300 characters)')
   const via = String(a.via ?? '')
-  if (!['rerun', 'same-commit'].includes(via)) fail(`--via "${via}" — allowed: rerun, same-commit`)
+  if (!['rerun', 'same-commit'].includes(via)) bad(`--via "${via}" — allowed: rerun, same-commit`)
   const where = String(a.where ?? '')
-  if (!['gate', 'main', 'final'].includes(where)) fail(`--where "${where}" — allowed: gate, main, final`)
-  if (a.round !== undefined && !/^\d+$/.test(String(a.round))) fail('--round takes a whole number')
+  if (!['gate', 'main', 'final'].includes(where)) bad(`--where "${where}" — allowed: gate, main, final`)
+  if (a.round !== undefined && !/^\d+$/.test(String(a.round))) bad('--round takes a whole number')
   const round = a.round !== undefined ? Number(a.round) : undefined
   const nnn = a.plan !== undefined ? planNumber(String(a.plan)) : null
-  if (a.plan !== undefined && !nnn) fail('--plan takes a plan number')
-  if (nnn && round === undefined) fail('--round is needed with --plan')
+  if (a.plan !== undefined && !nnn) bad('--plan takes a plan number')
+  if (nnn && round === undefined) bad('--round is needed with --plan')
   const holder = nnn ? (status.plans[nnn] ??= { nnn, round: 0, models: {}, state: 'queued' }) : status
   holder.flakes ??= []
   const text = nnn ? `flake: ${command} (plan ${nnn}, round ${round})` : `flake: ${command} (final gate)`
@@ -197,7 +211,15 @@ function addFlakes(status, defaultPlan) {
     fail(`--flakes-b64 is not base64 of a JSON list: ${e.message}`)
   }
   if (!Array.isArray(items) || items.some((i) => !i || typeof i !== 'object')) fail('--flakes-b64 must hold a JSON list of flake objects')
-  for (const i of items) applyFlake(status, { ...i, ...(i.plan === undefined && defaultPlan ? { plan: defaultPlan } : {}) })
+  // A flake that cannot be recorded is skipped with a warning line; the state it rode on is still written.
+  for (const i of items) {
+    try {
+      applyFlake(status, { ...i, ...(i.plan === undefined && defaultPlan ? { plan: defaultPlan } : {}) }, true)
+    } catch (e) {
+      if (!(e instanceof FlakeSkip)) throw e
+      console.log(`ORCH_STATE: WARN — flake skipped: ${e.message}`)
+    }
+  }
 }
 
 // The rules of one decision (shared by `decision` and `decisions`); `a` has the flags of a `decision` call as keys.
@@ -949,7 +971,7 @@ const commands = {
     // --note "a || b": the run notes the workflow queued for this plan, in order (one call instead of one per note).
     // --notes-b64 is the same list as on stop / finish (the workflow sends this one: a plain argument is cut at 400 characters).
     if (args.note !== undefined) addNotes(status, text('note').split(' || ').map((t) => ({ plan: nnn, text: t })))
-    addNotes(status, notesB64().map((i) => ({ plan: nnn, text: i.text })))
+    addNotes(status, notesB64().map((i) => ({ id: i.id, plan: nnn, text: i.text })))
     addFlakes(status, nnn)
     p.freeDiskGb = diskGb()
     status.freeDiskGb = p.freeDiskGb

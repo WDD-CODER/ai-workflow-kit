@@ -340,7 +340,11 @@ calls is the lever. What already saves calls:
 - **Decisions** are one call: `orch-state.mjs decisions --run <run> --b64 <base64 of a JSON list>` records every
   decision and every repeat marker in order, with the rules of `decision` for each item, all-or-nothing (a bad item
   exits 1 and writes nothing).
-- **Flakes** are queued like notes and ride on `set` / `stop` / `finish` (`--flakes-b64`).
+  Every queued note has an id (launch, plan, number) that the script records, so the same note sent twice (a runner
+  rerun, a queue re-sent after a failed call) is written once.
+- **Flakes** are queued like notes and ride on `set` / `stop` / `finish` (`--flakes-b64`). The workflow makes the command
+  one line of at most 300 characters before queueing, and a flake the script cannot record is skipped with a
+  `WARN — flake skipped` line instead of failing the `set` / `stop` / `finish` it rode on.
 - **`plan-info --with-worktree`** answers for the plan's folder too (`wt`, what `worktree` prints) in one call; the
   separate `worktree` call remains for the retry after an environment failure.
 
@@ -352,7 +356,7 @@ to the number of sites in the file). `parsed` = the script reads the answer to b
 | --- | --- | --- | --- | --- |
 | Learning context | `context` | 1 | parsed | keep: one call per launch |
 | Plan state | `set` (setPlan) | 1 | write-only (the answer is only checked for ok) | merge: the sets that change no state (round, roles, facts, card) could ride on the next state-changing set; the state-changing ones are the `watch` progress signal and stay separate |
-| Stop | `stop` | 1 | write-only | done: carries the queued notes and flakes |
+| Stop and report | `stop`, `finish` (one helper) | 1 | stop write-only, finish parsed | done: both carry the queued notes and flakes; a failed call puts the queue back, and note ids make a re-send safe |
 | Plan order | `order` | 2 | parsed | keep: the order decides the waves |
 | Preflight | `orch-preflight.mjs` (run, ui env, env check) | 4 | parsed | keep: the preflight is its own script |
 | Readiness file check | `check-files` | 1 | parsed | keep |
@@ -365,7 +369,6 @@ to the number of sites in the file). `parsed` = the script reads the answer to b
 | Main tries | `main-tries` | 1 | parsed | merge: into `init` when the run delegates main-folder checks (follow-up) |
 | Slot give-back | `release` | 1 | write-only | merge: into the plan's last `set` (follow-up) |
 | Decisions | `decisions` | 1 | write-only | done: one call for N decisions |
-| Report | `finish` | 1 | parsed | keep: carries the queued notes and flakes |
 
 No call is `script-only` yet: until the workflow runtime can run a script without a model, every row that stays needs
 the runner. The one row to watch is `set` — see its recommendation.
