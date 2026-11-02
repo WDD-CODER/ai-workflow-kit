@@ -23,8 +23,9 @@
  *                                          [--gate-event "<text>"] [--asked "q1 || q2" --ready yes|no]
  *   node scripts/orch-state.mjs flake     --run <name> [--plan <NNN>] --command "<cmd>" [--round n] --via rerun|same-commit --where gate|main|final [--sha x]
  *                                          records a check that passed only on a rerun (plans[NNN].flakes[], run-level flakes[])
- *   node scripts/orch-state.mjs handoff    --run <name> --plan <NNN> --step s --check c --tail t --tried x [--replan yes|no --replan-why t --not-done t]
- *                                          the hand-off file a fresh judgment-tier builder reads (the escalation is recorded)
+ *   node scripts/orch-state.mjs handoff    --run <name> --plan <NNN> --step s --check c --tail t --tried x [--failed t] [--replan yes|no --replan-why t --not-done t]
+ *                                          the hand-off file a fresh judgment-tier builder reads (the escalation is recorded);
+ *                                          its Done: line is derived here (ticked sub-task ids in the plan + the branch diff)
  *   node scripts/orch-state.mjs context    [--run <name>]                   LESSONS / RULES / RECENT_RUNS for the roles (read-only) and their size
  *   node scripts/orch-state.mjs lessons    --run <name>                     lesson lines from status.json into docs/brain/agent-lessons/ (no model call)
  *   node scripts/orch-state.mjs trend      [--run <name>] [--last n]        ✗ / fix rounds per plan and parked per run from docs/brain/run-log.md
@@ -54,7 +55,7 @@
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync, statfsSync, openSync, closeSync, statSync, unlinkSync, renameSync, linkSync } from 'fs'
 import { spawnSync } from 'child_process'
-import { resolve, dirname, join } from 'path'
+import { resolve, dirname, join, relative } from 'path'
 import { fileURLToPath } from 'url'
 import { createRequire } from 'module'
 import { findOpenPlan } from './lib/plan-paths.mjs'
@@ -101,7 +102,7 @@ const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tie
   // facts the workflow records for the lessons (docs/agent/orchestrator.md "status.json"), and `trend` / `finish` options
   'candidates', 'refuted', 'refuted-rules', 'verify-by', 'late-low', 'reappeared', 'miss', 'round-cause', 'gate-event', 'asked', 'ready', 'final-gate', 'last',
   // the hand-off's replan verdict and the builder's receipt
-  'replan', 'replan-why', 'not-done'])
+  'replan', 'replan-why', 'not-done', 'failed'])
 function parseArgs(argv) {
   const out = { _: [] }
   for (let i = 0; i < argv.length; i++) {
@@ -877,6 +878,17 @@ const commands = {
     const files = git(root, 'diff', '--name-only', `origin/${runBranch(run)}...${head}`).out.split('\n').filter(Boolean)
     const val = (k) => (args[k] && args[k] !== true ? String(args[k]) : '(not given)')
     const rel = `.claude/sessions/orch-${run}/handoff-${nnn}.md`
+    // Done: derived here from run facts, never from the builder's receipt (Human amendment 1): the sub-task ids ticked
+    // `[x]` in the plan file on the plan branch (the copy on disk when the branch has none) and the files in the branch diff.
+    const planRel = relative(root, resolve(root, planPath(nnn))).replace(/\\/g, '/')
+    const onBranch = git(root, 'show', `${head}:${planRel}`)
+    const planText = onBranch.status === 0 ? onBranch.out : readFileSync(resolve(root, planPath(nnn)), 'utf8')
+    const ticked = []
+    for (const line of planText.replace(/\r\n/g, '\n').split('\n')) {
+      const m = /^\s*[-*]\s*\[x\]\s*([A-Za-z]\d+[A-Za-z]?)\b/i.exec(line)
+      if (m && !ticked.includes(m[1])) ticked.push(m[1])
+    }
+    const done = `sub-tasks ticked: ${ticked.join(', ') || '(none)'}; files changed: ${files.join(', ') || '(none)'}`
     // Does the plan itself have to change? yes | no; anything else is "no".
     const replan = args.replan === 'yes' ? 'yes' : 'no'
     const replanWhy = args['replan-why'] && args['replan-why'] !== true ? String(args['replan-why']) : '(not given)'
@@ -884,6 +896,8 @@ const commands = {
     writeFileSync(join(root, rel), [
       `Step:            ${val('step')} of plan ${nnn} (run ${run}, branch ${branch})`,
       `Files changed:   ${files.join(', ') || '(none)'}`,
+      `Done:            ${done}`,
+      `Failed:          ${val('failed')}`,
       `Tried:           ${val('tried')}`,
       `Failing check:   ${val('check')}`,
       `Output tail:     ${val('tail')}`,

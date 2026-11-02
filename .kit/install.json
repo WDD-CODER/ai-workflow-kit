@@ -3,7 +3,7 @@
     "version": "1.13.0"
   },
   "source": "local:.",
-  "commit": "f3a2e1bd77d168659d31fe2f1cc6c241424921e7",
+  "commit": "db9f3af6d8456f6aff5a96e28c1c40948f23126f",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -25,7 +25,7 @@
       "source": "core/.claude/agents/kit-runner.md"
     },
     ".claude/agents/orch-builder.md": {
-      "sha256": "233a7f2faeb6e3341b4e1fb6b6355ae6d58e5c2ae2a349ecf0a769ea116e4a21",
+      "sha256": "e20bdcf3955b73af2b57447b595baa10a41aeec2de2f66dbcb17be6a910e6f59",
       "kind": "managed",
       "source": "core/.claude/agents/orch-builder.md"
     },
@@ -55,7 +55,7 @@
       "source": "core/.claude/agents/orch-merge.md"
     },
     ".claude/agents/orch-readiness.md": {
-      "sha256": "df47a6c783ff8efd3d8ba463930ccdaba3edcae3f9f99f87920b027d0818aa09",
+      "sha256": "7c29cc194a9441c8abde1603edd359486a27416e2515bfdceffdad0b34c01319",
       "kind": "managed",
       "source": "core/.claude/agents/orch-readiness.md"
     },
@@ -275,7 +275,7 @@
       "source": "core/.claude/skills/worktree-setup/SKILL.md"
     },
     ".claude/workflows/orchestrate.js": {
-      "sha256": "7c6c96a19048fb126ab3d89de2e6801b61ecc2bb10992631d678082af6cbddfa",
+      "sha256": "8c9f00bcbe4d0d4885408afd35373ab11a31c7d9bd2ebc0ba34af1583122c689",
       "kind": "managed",
       "source": "core/.claude/workflows/orchestrate.js"
     },
@@ -410,12 +410,12 @@
       "source": "core/docs/agent/kit-lessons/verify.md"
     },
     "docs/agent/model-routing.md": {
-      "sha256": "4763bc70f94ab986f5807f25afaee5f3d7c5f5e5a9e38311575f834fe083c0ae",
+      "sha256": "a0dc794da208fa2f921cd8605c6390d50ff5512f5e9c9aa38ccedf426662e841",
       "kind": "managed",
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "e44454bcf39e08ec3fc758e6dbbe6cb27aaf0cb86a9336096a6f377707efc2c0",
+      "sha256": "9a704c0978cdd023a1efda406c28f2fe4d4254ac7c63eaf6dab9a99b84b75f28",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -735,7 +735,7 @@
       "source": "core/scripts/lib/orch-folders.mjs"
     },
     "scripts/lib/orch-run.mjs": {
-      "sha256": "b6d0deeb0ef4d81ccbf13364787894246882e58308252b734e76b293da5ac918",
+      "sha256": "8c90e4ba16e8da2fc3c5939cfe5568e876fc19f69d60dab7e3f60560ffa5e913",
       "kind": "managed",
       "source": "core/scripts/lib/orch-run.mjs"
     },
@@ -805,7 +805,7 @@
       "source": "core/scripts/orch-preflight.mjs"
     },
     "scripts/orch-state.mjs": {
-      "sha256": "a383945ac2142d253b952f34ced8c0433f2f78cbfc377be2019b4a42740ce39c",
+      "sha256": "7780ec14d22abba8bc19dd871ac0377926e5dabfb9fbc0086673387c63f60599",
       "kind": "managed",
       "source": "core/scripts/orch-state.mjs"
     },

@@ -15,7 +15,7 @@ export const meta = {
 // agent, and git stays the ledger. Role agents are the .claude/agents/orch-*.md files; a model's own pass flag is never
 // used: pass is computed here from the verified problem lists.
 
-const MODELS = { build: "sonnet", judgment: "inherit" }
+const MODELS = { build: "sonnet", judgment: "opus" }
 const MAX_FIX_ROUNDS = 2
 const RUN_PREFIX = "orch/"
 const PILOT_SIZE = 3
@@ -489,7 +489,7 @@ async function readiness() {
   const results = await parallel(plans.map((nnn) => () => ask([
     `Readiness check for one plan of orchestrator run ${RUN}. Follow .claude/agents/orch-readiness.md; return one entry in plans.`,
     task({ PLAN: order.plans[nnn]?.path ?? nnn, RUN_ORDER: order.waves, RUN_PLANS: plans, LESSONS: lessonsOf('readiness'), RULES: rulesOf('readiness'), RECENT_RUNS: LEARN.recent }),
-  ].join('\n\n'), { agentType: 'orch-readiness', schema: SCHEMA.readiness, label: `readiness ${nnn}`, phase: 'Readiness', plan: nnn })))
+  ].join('\n\n'), { agentType: 'orch-readiness', model: MODELS.judgment, schema: SCHEMA.readiness, label: `readiness ${nnn}`, phase: 'Readiness', plan: nnn })))
   const pre = await runner('orch-preflight.mjs', ['--run', RUN, '--plans', PLANS.join(','), ...PRE_DB], 'preflight')
   // A check whose file does not exist (and that the plan does not create) can never pass: a run once spent fix rounds
   // and a stronger builder on `node tools/<kit script>.mjs` in a project that has no such file. Dropped here, shown to
@@ -568,7 +568,8 @@ async function builder(ctx, mode, findings) {
     `Build plan ${ctx.nnn} of orchestrator run ${RUN} (mode: ${mode}). Follow .claude/agents/orch-builder.md and docs/agent/agent-roles.md.`,
     task({
       PLAN: ctx.info.path, BRANCH: ctx.info.branch, WORKTREE: ctx.wt.path, RUN_BRANCH: RUN_BRANCH, MODE: mode, TIER: ctx.tier,
-      ROUND: ctx.round, CHECKS: ctx.checks, FINDINGS: findings.length ? findings : undefined,
+      // A fresh builder reads the hand-off file (its Failed: line holds the open findings), the plan and the branch diff only.
+      ROUND: ctx.round, CHECKS: ctx.checks, FINDINGS: mode !== 'handoff' && findings.length ? findings : undefined,
       HANDOFF: mode === 'handoff' ? ctx.handoff : undefined, LESSONS: lessonsOf('builder'),
     }),
     mode === 'fix' ? 'Fix exactly the FINDINGS, rerun the checks, commit and push your branch.' : '',
@@ -579,9 +580,8 @@ async function builder(ctx, mode, findings) {
   ].filter(Boolean).join('\n\n')
   const opts = { schema: SCHEMA.builder, label: `builder ${ctx.nnn} ${ctx.tier} ${mode}`, phase: 'Build', plan: ctx.nnn }
   if (!judgment) return ask(prompt, { ...opts, agentType: 'orch-builder' })
-  // The judgment tier: the role agent file on the judgment model; "inherit" = the main session's model, so the role
-  // file is given as instructions to a default agent (an agentType would pin the build model).
-  if (MODELS.judgment === 'inherit') return ask(`Read .claude/agents/orch-builder.md and follow it as your instructions.\n\n${prompt}`, { ...opts, effort: 'high' })
+  // The judgment tier (INV-1): always the role agent file on the pinned judgment model, never inherit (the explicit
+  // model overrides the build model the orch-builder file pins by default).
   return ask(prompt, { ...opts, agentType: 'orch-builder', model: MODELS.judgment, effort: 'high' })
 }
 
@@ -1030,7 +1030,10 @@ async function runPlan(nnn) {
     const why = String(failure.fingerprint ?? failure.why ?? '').trim().slice(0, 240)
     if (why && why === lastWhy) return park(`same reason twice: ${String(failure.why ?? '').trim().slice(0, 120)}`)
     lastWhy = why
-    if (ctx.round >= MAX_FIX_ROUNDS || (ctx.tier === 'judgment' && ctx.escalated)) return park(`${failure.why} (fix rounds used: ${ctx.round} of ${MAX_FIX_ROUNDS})`)
+    // INV-1: the judgment-tier builder that took over is the last one: its failure stops the plan for the Human. A failed
+    // fix round (ctx.round >= 1) hands over to it whatever maxFixRounds is (maxFixRounds >= 1, so round 0 never parks here
+    // and the park cannot pre-empt the escalation).
+    if (ctx.tier === 'judgment' && ctx.escalated) return park(`${failure.why} (fix rounds used: ${ctx.round} of ${MAX_FIX_ROUNDS}) — needs the Human`)
     ctx.round += 1
     queueFact(nnn, 'round-cause', `round ${ctx.round}: ${String(failure.why ?? '').slice(0, 280)}`)
     findings = failure.findings ?? []
@@ -1038,6 +1041,11 @@ async function runPlan(nnn) {
     if (failure.escalate || ctx.round >= 2) {
       // A persisting failure, an ESCALATE / blocked builder or a second finding: a fresh builder on the judgment tier.
       const w = await state(['handoff', '--run', RUN, '--plan', nnn, '--step', `round ${ctx.round}`, '--check', failure.check ?? failure.why, '--tail', failure.tail ?? failure.why, '--tried', `${ctx.tier} builder, mode ${mode}`,
+        // Failed: the failing check with its tail and the round's open findings (id file:line rule), from gate and checker
+        // results. Done: is derived by the script itself (ticked sub-task ids in the plan file + the branch diff), never
+        // from the builder's receipt (Human amendment 1: run facts are written by scripts, not agents).
+        '--failed', plainQuotes([`${failure.check ?? failure.why}: ${String(failure.tail ?? failure.why).split(/\r?\n/).slice(-5).join(' / ')}`,
+          ...(failure.findings ?? []).slice(0, 10).map((f) => `${f.id} ${f.file}:${f.line ?? '?'} ${f.rule ?? ''}`.trim())].join(' | ').slice(0, 390)),
         // Does the plan itself need a change? The last builder's own answer (none given = no).
         // Builder text: curly quotes (shell quote characters in some shells) become plain ones before it reaches a command.
         '--replan', ctx.lastBuilder?.planChange?.needed === true ? 'yes' : 'no', '--replan-why', plainQuotes(String(ctx.lastBuilder?.planChange?.why ?? 'the builder gave no planChange').slice(0, 240)),

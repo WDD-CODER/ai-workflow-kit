@@ -8,7 +8,7 @@
  *     104  its first bug finder says pass: true next to a major problem → treated as a fail, fixed in round 1
  *   run "beta" — fix rounds, escalation, the wave gate and a relaunch
  *     201  is a deviation from INV-1 in Architecture Impact → its builder starts on the judgment tier
- *     202  only preserves INV-1 → starts on build; its gate fails on every build in the first launch (a new error each
+ *     202  INV-none (a named invariant, even only preserved, starts on judgment) → starts on build; its gate fails on every build in the first launch (a new error each
  *          round) → parked after maxFixRounds; passes on the relaunch
  *     205  run "theta" (plan 029): its gate fails the same way twice → parked at once as "same reason twice"
  *     206  run "iota" (plan 032): one [auto:main] item → its command runs in a second gate from the main folder,
@@ -69,7 +69,7 @@ export const PLANS = {
   '103': plan({ nnn: '103', title: 'Diamond right, environment failure', deps: ['101'] }),
   '104': plan({ nnn: '104', title: 'Diamond bottom, pass true with a major', deps: ['102', '103'] }),
   '201': plan({ nnn: '201', title: 'Starts on judgment', inv: 'INV-1: deviation until the toy follow-up — touches the toy invariant' }),
-  '202': plan({ nnn: '202', title: 'Keeps failing then passes', inv: 'INV-1: preserves — a plan that only preserves starts on build' }),
+  '202': plan({ nnn: '202', title: 'Keeps failing then passes' }),
   '203': plan({ nnn: '203', title: 'Second wave', deps: ['201', '202'] }),
   '204': plan({ nnn: '204', title: 'Escalates' }),
   '205': plan({ nnn: '205', title: 'Same gate failure twice' }),

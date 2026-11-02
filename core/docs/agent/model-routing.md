@@ -14,17 +14,20 @@ a step whose outcome decides code quality never moves to a cheaper model.
 | `build` | `{{models.build}}` | Writes the code of one plan on its own branch (`orch-builder`) | Review its own work, merge, message the coordinator |
 | `review` | `{{models.review}}` | Validates: the checkers, the verifier, the security and UI validators — finds and proves problems with `file:line` | Run on Haiku — install and sync refuse `haiku` or a `claude-haiku-*` id for this key |
 
-`inherit` means the main session's model. All five set to `inherit` turns the routing off; a project that set the
-older four to `inherit` and not `review` stays off too, because an unset `review` takes the project's own `analysis`
-value (a Haiku `analysis` gives `sonnet`). The `review` tier exists
+`inherit` means the main session's model. The other four tiers may be `inherit`; `models.judgment` may not (INV-1,
+`docs/brain/invariants.md`): it names a model (default `opus`, a non-Haiku `claude-` id is fine), so the roles that
+decide never run on whatever model the session happens to use. Install and sync refuse `inherit` and any Haiku value
+for it. An unset `review` takes the project's own `analysis` value (a Haiku `analysis` gives `sonnet`). The `review` tier exists
 so a validation is never done by the weakest model: lowering `models.analysis` or `models.mechanical` never moves a
 checker. The measured recall, precision and cost per model are in the kit repository's agent-eval baseline
 (BASELINE.md next to its eval cases).
 
-**Builder escalation.** A builder never switches model inside its session. The first checker finding goes back to
-the same `build`-tier builder. A fresh builder on the `judgment` tier continues — from the hand-off file (rule 5), the
-plan and `git diff` — when the checks still fail after that fix, when the builder returns `ESCALATE`, or when a second
-finding comes. A failure of the `judgment`-tier builder parks the plan for the Human.
+**Builder escalation.** A builder never switches model inside its session. The first failure goes back to the same
+`build`-tier builder as one fix round. A fresh builder on the `judgment` tier continues — from the hand-off file (rule 5),
+the plan and `git diff` — when that fix round fails too (whatever `orchestrator.maxFixRounds` is), or when the builder
+returns `ESCALATE`/`blocked`. A plan whose Architecture Impact names an invariant (anything but `INV-none`) starts on the
+`judgment` tier. A failure of the `judgment`-tier builder that took over parks the plan for the Human (`needs the Human`);
+no third builder is started.
 
 **Checkers never decide pass/fail.** The `review`-tier finders and verifier return problems with evidence; the
 pass/fail of a role result is computed from its verified problems by the shared result validator, never taken from
@@ -75,13 +78,16 @@ outside the orchestrator (`take-plan`, `auto-solve` Phase 3), and every verdict.
    ```text
    Step:            <plan step or task>
    Files changed:   <paths>
+   Done:            <sub-tasks ticked in the plan file; files changed — read by the script, not the agent's receipt>
+   Failed:          <the failing check(s) with their tail; the open findings as `id file:line rule`>
    Tried:           <what was attempted, in order>
    Failing check:   <command> → exit <n>
    Output tail:     <last lines of that command's output, verbatim>
    Suspected cause: <the agent's guess — marked as a guess>
    ```
 
-   The next agent reads this file, the plan and `git diff` — never the failed agent's transcript. The diff and a
+   The orchestrator script writes the orchestrator's hand-off file (`orch-state.mjs handoff`), so `Done:` and
+   `Failed:` come from run facts (the plan file's ticks, the branch diff, gate and checker results). The next agent reads this file, the plan and `git diff` — never the failed agent's transcript. The diff and a
    fresh run of the failing check are the truth; the suspected cause is only a hint.
 6. **Environment overrides.** `CLAUDE_CODE_SUBAGENT_MODEL` (on Claude Code before v2.1.251) or
    `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` overrides every agent file's `model:`. SessionStart prints a

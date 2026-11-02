@@ -79,6 +79,8 @@ export function commandProblems(vals) {
   for (const key of MODEL_KEYS) {
     const v = vals[key]
     if (isEmpty(v) || !MODEL_VALUE.test(v)) out.push(`${key} is "${isEmpty(v) ? '' : v}" — allowed: "haiku", "sonnet", "opus", "fable", "inherit" or a full model id starting "claude-"`)
+    // INV-1 (docs/brain/invariants.md): the roles that decide run on a named strong model, never on whatever the session uses.
+    else if (key === 'models.judgment' && (v === 'inherit' || /haiku/i.test(v))) out.push(`models.judgment is "${v}" — INV-1: the judgment tier is a pinned strong model, never inherit or Haiku: set it to "opus" (default), "sonnet", "fable" or a non-Haiku "claude-" id`)
     // models.review runs every validating agent (checkers, verifier, security, UI): a review is never done by Haiku.
     else if (key === 'models.review' && /haiku/i.test(v)) out.push(`models.review is "${v}" — validating agents never run on Haiku: set it to "sonnet", "opus", "fable", "inherit" or a non-Haiku "claude-" id`)
   }

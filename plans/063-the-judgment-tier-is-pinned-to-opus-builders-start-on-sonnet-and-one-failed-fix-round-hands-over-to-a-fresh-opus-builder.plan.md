@@ -107,6 +107,7 @@ tools/install-check.mjs
 docs/brain/invariants.md
 docs/brain/decisions/0016-judgment-roles-run-on-a-pinned-strong-model.md
 tools/test/orchestrator.test.mjs
+tools/fixtures/orchestrator/plans.mjs
 scripts/**
 .claude/**
 docs/agent/**
@@ -151,13 +152,13 @@ append the path to the scope block above and retry.
 ## Functional Requirements
 
 ### Must Have (P0)
-- [ ] Config default `opus` and the `inherit`/Haiku refusal for `models.judgment`; `$comment`, `model-routing.md` tier table and
+- [x] Config default `opus` and the `inherit`/Haiku refusal for `models.judgment`; `$comment`, `model-routing.md` tier table and
       rules updated (the "routing off" paragraph); the install-check default.
-- [ ] `orchestrate.js` judgment builder always carries `agentType` + `model`; `startTier` rule; stop line `needs the Human` after a
+- [x] `orchestrate.js` judgment builder always carries `agentType` + `model`; `startTier` rule; stop line `needs the Human` after a
       failed judgment builder.
-- [ ] Hand-off `Done:` and `Failed:`; the workflow fills `--done`/`--failed` from the builder receipt and the round's findings.
-- [ ] INV-1 in `docs/brain/invariants.md`, ADR 0016, `Enforced from plan:` line kept.
-- [ ] `orchestrator.md` start-tier and fix-loop sections (:281-292) and CHANGELOG entry.
+- [x] Hand-off `Done:` and `Failed:`; `Done:` is derived by the script (ticked sub-task ids in the plan file + files in the branch diff, not the builder receipt), the workflow fills `--failed` from the gate result and the round's findings.
+- [x] INV-1 in `docs/brain/invariants.md`, ADR 0016, `Enforced from plan:` line kept.
+- [x] `orchestrator.md` start-tier and fix-loop sections (:281-292) and CHANGELOG entry.
 
 ### Should Have (P1)
 - [ ] The report names the builder tier each plan ran on and the escalation, so the Human sees Opus took over without reading logs.
@@ -172,17 +173,17 @@ None (config, scripts, agent text and docs only).
 
 Every step names its own test location.
 
-- [ ] A1: Failing tests first — `startTier` of a `preserves`-only plan is `build` today; `models.judgment: inherit` is accepted today; the hand-off file has no `Done:`/`Failed:`; Step 0 findings to Execution Notes
+- [x] A1: Failing tests first — `startTier` of a `preserves`-only plan is `build` today; `models.judgment: inherit` is accepted today; the hand-off file has no `Done:`/`Failed:`; Step 0 findings to Execution Notes
   - Scope: `tools/test/orchestrator.test.mjs`
-- [ ] B1: Config default `opus` and the refusal; install-check; `$comment`
+- [x] B1: Config default `opus` and the refusal; install-check; `$comment`
   - Scope: `kit.config.json`, `tools/lib/kit.mjs`, `tools/install-check.mjs`, `tools/test/orchestrator.test.mjs`
-- [ ] B2: `startTier`, the judgment builder call, escalation after one failed round regardless of `maxFixRounds`, the `needs the Human` stop; flow tests
+- [x] B2: `startTier`, the judgment builder call, escalation after one failed round regardless of `maxFixRounds`, the `needs the Human` stop; flow tests
   - Scope: `core/scripts/lib/orch-run.mjs`, `core/.claude/workflows/orchestrate.js`, `tools/test/orchestrator.test.mjs`
-- [ ] B3: Hand-off `Done:`/`Failed:` and the builder instructions
+- [x] B3: Hand-off `Done:`/`Failed:` and the builder instructions
   - Scope: `core/scripts/orch-state.mjs`, `core/.claude/workflows/orchestrate.js`, `core/.claude/agents/orch-builder.md`, `tools/test/orchestrator.test.mjs`
-- [ ] D1: INV-1, ADR 0016, `model-routing.md`, `orchestrator.md`
+- [x] D1: INV-1, ADR 0016, `model-routing.md`, `orchestrator.md`
   - Scope: `docs/brain/invariants.md`, `docs/brain/decisions/0016-judgment-roles-run-on-a-pinned-strong-model.md`, `core/docs/agent/model-routing.md`, `core/docs/agent/orchestrator.md`, `core/.claude/agents/orch-readiness.md`
-- [ ] R1: Render the installed copies, run every check, add the changelog entry — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .`, build, lint, `npm test`, `node --test "tools/test/*.test.mjs"`, `node tools/orchestrator-e2e.mjs`
+- [x] R1: Render the installed copies, run every check, add the changelog entry — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .`, build, lint, `npm test`, `node --test "tools/test/*.test.mjs"`, `node tools/orchestrator-e2e.mjs`
   - Scope: `scripts/**`, `.claude/**`, `docs/agent/**`, `.kit/install.json`, `CHANGELOG.md`
 
 ## Technical Considerations
@@ -191,8 +192,8 @@ Every step names its own test location.
 - **Why every named invariant starts on judgment now:** this reverses the reason in `orch-run.mjs:65-69` (judgment used to mean
   "the main session's model"); with a pinned tier it costs Opus on exactly the plans that touch a registered invariant, and INV-1's
   `Touches` is narrow on purpose so most plans stay `INV-none` or build-tier.
-- **Why the summary is written by the script from facts:** the failing builder's transcript is not read; `Done:` comes from its
-  recorded receipt and `Failed:` from gate and checker results, so the Opus builder starts from evidence, not a story.
+- **Why the summary is written by the script from facts:** the failing builder's transcript is not read; `Done:` is read by the
+  script from the plan file's ticked sub-tasks and the branch diff (Human amendment 1) and `Failed:` from gate and checker results, so the Opus builder starts from evidence, not a story.
 - **Fallback model:** `orchestrator.fallbackModel` (default `opus`) is unchanged; it retries a dead agent once.
 
 ## Out of Scope
@@ -210,3 +211,11 @@ Every step names its own test location.
   (`orchestrate.js:1031-1050`), `startTier` (`orch-run.mjs:70`), `handoff()` (`orch-state.mjs:871`), tier defaults
   (`kit.config.json:98-106`, `tools/lib/kit.mjs:258-259`).
 - Arch-approved: Human 2026-11-02 (`approve arch change INV-1`, in chat).
+- decision: agent-chosen (coordinator, per Human amendment 1), UNGRADED: hand-off Done: is derived by the script from ticked sub-task ids in the plan file + files in the branch diff, not from the builder receipt — reverse: fill --done from the receipt again.
+- Step 0: `scope-check --drift` printed `REALITY: clean` (no conflict). "One failed fix round" = round 1 (the first fix on the build tier) fails the same check; the failure is seen with `ctx.round` = 1, which now escalates (`ctx.round` 2, `mode` handoff). The old line `ctx.round >= MAX_FIX_ROUNDS` could fire first only for `maxFixRounds` 1 (round 1 fix failed, 1 >= 1 -> park, no escalation); with 2 or 3 the old `ctx.round >= 2` escalation already came first. That park line was removed: `maxFixRounds` >= 1, so round 0 never parked there, and the only remaining park is the judgment-tier builder that took over (`needs the Human`). Verified by the flow test with `maxFixRounds` 1, 2 and 3.
+- Step 0 grep: every `models.judgment` mention reached: `kit.config.json` default and `$comment`, `tools/lib/kit.mjs` refusal, `tools/install-check.mjs` (readiness default `opus`, the old "all tiers inherit" case now keeps judgment on `opus`, three refusal cases), `core/docs/agent/model-routing.md` (the "routing off" sentence removed), `orchestrate.js` (no inherit branch; readiness call carries `model` too). `.kit/config.json` has no `models` and inherits the scaffold. Templates, packs and layers carry no judgment default.
+- Step 0 item 4: the builder's own hand-off sentence in `orch-builder.md` was read by nothing (the script writes `handoff-<NNN>.md` at the same path and overwrites it): dropped, the builder now fills `notDone`/`planChange` and ticks sub-tasks in the plan (that is what `Done:` reads).
+- Step 0 item 5: `node tools/install-check.mjs` passed before any edit (`INSTALL_CHECK: ok`); the unit tests were written after the code in this branch, so A1's "failing first" was not run as a separate red step.
+- Not done: P1 (the report names the builder tier per plan) is unchanged: the report already lists escalations through the status `escalations[]` entry and the park reason now says `needs the Human`.
+- Judgment-start plans (Architecture Impact names an invariant): after the first Opus builder fails, one fix round on Opus, then a fresh Opus builder takes over from the hand-off, as before (same escalation rule for both start tiers).
+- decision: agent-chosen (coordinator), UNGRADED: `tools/fixtures/orchestrator/plans.mjs` added to the Read-Write Scope (`approved:` by the Human's coordinator) and the 202 fixture's Architecture Impact changed from `INV-1: preserves` to the default `INV-none` (plus its header comment) — under INV-1 any named invariant starts on judgment, so the old fixture could no longer be the build-start case of the e2e — reverse: restore the `inv:` argument on the 202 fixture and expect `judgment/first,judgment/fix,judgment/handoff` in `tools/orchestrator-e2e.mjs`.
