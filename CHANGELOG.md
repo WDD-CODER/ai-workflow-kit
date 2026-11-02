@@ -9,6 +9,12 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-02
+
+**Action for projects (major):** a project whose config sets `models.judgment` to `inherit` or a Haiku value is refused
+by sync (`KIT_SYNC: STOP`, nothing written). Set it to `"opus"` (the new default), `"sonnet"`, `"fable"` or a non-Haiku
+`claude-` id before syncing. A config with no `models.judgment` key needs nothing.
+
 ### Changed
 - **The orchestrator's gate runs the kit manifest check for every plan, and can prepare generated files before the tests.** A plan that adds a script, agent, command, skill or ADR now fails its own gate with `unclassified: <path>`
   until the manifest lists it, instead of failing the final gate with no builder left; the merge step still never runs it.
@@ -22,7 +28,8 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
   with the existing `finish` call. Lessons are routed by the failing command's kind (test to `check-bugs` and `check-plan`,
   lint to `check-rules`, build to `check-bugs`, the manifest check to `readiness`; anything else, and `security`, none) instead
   of to every finder. New `orch-state.mjs final-gate --run <name> --result ok|failed`: after a pass it removes the old
-  `final gate` misses and stop reason and rewrites the report and the run-log row from the stored result.
+  `final gate` misses and stop reason and rewrites the report and the run-log row from the stored result (a lesson line
+  already written at the failure stays, for the role the routing named).
 - **An orchestrator run makes far fewer model calls for plain bookkeeping.** Run notes no longer cost a runner call each:
   they are queued and ride on the plan's next state write (`orch-state.mjs set --notes-b64`), and any still queued go on
   `stop` and `finish`; the per-plan note cap counts queued notes. Every decision of a run is one call
@@ -1220,7 +1227,8 @@ Phases 4 to 6A, never tagged. Projects installed from a local kit folder.
 Phases 1 and 2, before this repository existed: the workflow was extracted from its source project into a
 stack-neutral `core/` with `{{placeholder}}` config keys and a leak check.
 
-[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v1.13.0...HEAD
+[Unreleased]: https://github.com/WDD-CODER/ai-workflow-kit/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v2.0.0
 [1.13.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.13.0
 [1.12.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.12.0
 [1.11.0]: https://github.com/WDD-CODER/ai-workflow-kit/releases/tag/v1.11.0
