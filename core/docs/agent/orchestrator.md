@@ -28,7 +28,7 @@ branch himself.
 | `onPark` | `{{orchestrator.onPark}}` | What a parked plan stops: `dependents` = only the later plans that depend on it or share its files (each is `skipped` with the reason), `all` = every later plan, the earlier behaviour |
 | `fallbackModel` | `{{orchestrator.fallbackModel}}` | The model a dead agent (one that returned nothing: a terminal API error, a blocked model) is retried on, once; `inherit` = no retry. Never Haiku: the retry may be a review agent |
 | `staleMin` | `{{orchestrator.staleMin}}` | Minutes without a `status.json` update after which `orch-state.mjs watch` prints `STUCK` |
-| `maxNotesPerPlan` | `{{orchestrator.maxNotesPerPlan}}` | Run notes one plan may write (every note is one runner agent call); the last one says `notes capped` |
+| `maxNotesPerPlan` | `{{orchestrator.maxNotesPerPlan}}` | Run notes one plan may write (queued notes count; they ride on the plan's next `set`); the last one says `notes capped` |
 | `maxAgentCallsPerPlan` | `{{orchestrator.maxAgentCallsPerPlan}}` | Agent calls one plan may make before it is parked (`agent-call limit`) |
 | `triage` | `{{orchestrator.triage}}` | How a run sorts the decisions agents took: `off` = no triage call, `shadow` = one `orch-triage` call recommends a verdict per decision and the Human still sees every decision, `filter` = a kind with enough graded agreement is listed on one line only (`docs/agent/decision-review.md` §5) |
 | `triageMinAgreement` | `{{orchestrator.triageMinAgreement}}` | Agreement with the Human a kind needs before `filter` collapses it (0.5–1) |
@@ -220,9 +220,10 @@ input tokens per plan for the Grep and scope calls.
   message, the first non-ASCII character (`non-ASCII U+201C at 11`) and the raw line, JSON-escaped. A second bad copy
   parks the plan with that error and `after 2 attempts`. `note` and `finish` are never retried (a note would be written
   twice; `finish` commits the report); every other command is idempotent — `worktree` reuses the folder or slot the
-  plan already holds. A `\r`, backticks around the line and text after the closing brace parse without a retry.
-- **Limits per plan**, counted in the workflow (it has no clock): at most `maxNotesPerPlan` run notes (every note is
-  one runner agent call — a run once wrote about 30 closing notes in 4.5 minutes), then one last `notes capped` note;
+  plan already holds (`plan-info --with-worktree` makes it in the same call). A `\r`, backticks around the line and text after the closing brace parse without a retry.
+- **Limits per plan**, counted in the workflow (it has no clock): at most `maxNotesPerPlan` run notes (a note makes no
+  agent call of its own — it is queued and rides on the plan's next `set`; a run once wrote about 30
+  closing notes in 4.5 minutes as 30 calls), then one last `notes capped` note;
   the same failure reason twice in a row at the same step (`gate: …`, `checker: …`, `ui: …`, `merge: …`, trimmed to
   120 characters) parks the plan at once as `same reason twice: <why>`; at most `maxAgentCallsPerPlan` agent calls, then
   the plan is parked as `agent-call limit`. A parked plan closes with one state write, not a note per step.
@@ -324,6 +325,53 @@ With the UI step off, a failed script is a finding for the builder, and a card n
   a database that is down, a temp folder in use) pauses the plan (`env-paused`), runs `orch-preflight.mjs --env-only`,
   and retries once when it passes. A failing check or a second environment failure parks the plan with the reason,
   and the wave gate skips what depends on it (the whole run with `onPark` = `all`).
+
+## Runner calls
+
+Every shell command of a run goes through a `kit-runner` agent (a model call), because the workflow script has no file,
+git or clock access and no way to run a script itself (checked against the harness globals). So the count of runner
+calls is the lever. What already saves calls:
+
+- **Notes** are queued, not called: the queued notes of a plan ride on that plan's next `set` (`--notes-b64`, a base64
+  JSON list — the runner re-types a command, and a plain argument is cut at 400 characters), and any still queued go on
+  `stop` and `finish`. A note therefore reaches `status.json` at the plan's next state write, not at once; a run that
+  dies between two writes loses the notes queued since the last one (the `STUCK` check reads the state and `updatedAt`,
+  which every `set` refreshes, so it is not affected).
+- **Decisions** are one call: `orch-state.mjs decisions --run <run> --b64 <base64 of a JSON list>` records every
+  decision and every repeat marker in order, with the rules of `decision` for each item, all-or-nothing (a bad item
+  exits 1 and writes nothing).
+  Every queued note has an id (launch, plan, number) that the script records, so the same note sent twice (a runner
+  rerun, a queue re-sent after a failed call) is written once.
+- **Flakes** are queued like notes and ride on `set` / `stop` / `finish` (`--flakes-b64`). The workflow makes the command
+  one line of at most 300 characters before queueing, and a flake the script cannot record is skipped with a
+  `WARN — flake skipped` line instead of failing the `set` / `stop` / `finish` it rode on.
+- **`plan-info --with-worktree`** answers for the plan's folder too (`wt`, what `worktree` prints) in one call; the
+  separate `worktree` call remains for the retry after an environment failure.
+
+The inventory (every `state(` / `runner(` call site of `orchestrate.js`; a test checks that the `Sites` column adds up
+to the number of sites in the file). `parsed` = the script reads the answer to branch; `write-only` = it only records.
+`done` = already one call; `merge` / `keep` = recommendation for a follow-up.
+
+| Group | Commands | Sites | Parsed or write-only | Recommendation |
+| --- | --- | --- | --- | --- |
+| Learning context | `context` | 1 | parsed | keep: one call per launch |
+| Plan state | `set` (setPlan) | 1 | write-only (the answer is only checked for ok) | merge: the sets that change no state (round, roles, facts, card) could ride on the next state-changing set; the state-changing ones are the `watch` progress signal and stay separate |
+| Stop and report | `stop`, `finish` (one helper) | 1 | stop write-only, finish parsed | done: both carry the queued notes and flakes; a failed call puts the queue back, and note ids make a re-send safe |
+| Plan order | `order` | 2 | parsed | keep: the order decides the waves |
+| Preflight | `orch-preflight.mjs` (run, ui env, env check) | 4 | parsed | keep: the preflight is its own script |
+| Readiness file check | `check-files` | 1 | parsed | keep |
+| Package scripts | `scripts` | 1 | parsed | keep: once per run |
+| Diff | `diff` | 1 | parsed | keep: once per round |
+| Merge folder | `clean` | 1 | parsed | keep |
+| Plan start | `plan-info`, `worktree` (first call, retry) | 3 | parsed | done: `plan-info --with-worktree` is one call; `worktree` stays only as the retry after an environment failure |
+| Hand-off | `handoff` | 1 | parsed | keep: the path comes from the script |
+| Run start | `init` | 1 | parsed | keep |
+| Main tries | `main-tries` | 1 | parsed | merge: into `init` when the run delegates main-folder checks (follow-up) |
+| Slot give-back | `release` | 1 | write-only | merge: into the plan's last `set` (follow-up) |
+| Decisions | `decisions` | 1 | write-only | done: one call for N decisions |
+
+No call is `script-only` yet: until the workflow runtime can run a script without a model, every row that stays needs
+the runner. The one row to watch is `set` — see its recommendation.
 
 ## State rules
 

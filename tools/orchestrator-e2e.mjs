@@ -148,7 +148,8 @@ function stubRunner(t) {
     return { exitCode: 127, output: `stub runner refuses: ${command}` }
   }
   const r = sh(process.execPath, w.slice(1), t.FOLDER)
-  if (garbleWorktreeOnce && w[2] === 'worktree' && w.includes(`--run=${garbleWorktreeOnce}`)) {
+  // plan-info makes the plan's folder in the same call (--with-worktree), so its line is the one that carries the folder.
+  if (garbleWorktreeOnce && w[2] === 'plan-info' && w.includes(`--run=${garbleWorktreeOnce}`)) {
     garbleWorktreeOnce = null
     return { exitCode: r.status ?? 1, output: r.out.replace(/ORCH_JSON \{"/, 'ORCH_JSON {“') }
   }
@@ -498,7 +499,7 @@ async function main() {
   const badTestCard = (sz.plans['501']?.uiCards ?? []).find((c) => c.card === 'Bad test')
   check('zeta: a [ui] card test that is not an allowed check never reaches the gate; a run note says why; the card is left unchecked', !zUiGates.includes(BAD_TEST) && zUiGates.includes(PASS_TEST) && /Bad test: node -e\W+process\.exit\(0\)\W+not an allowed check/.test(testNote) && badTestCard?.status === 'unchecked', JSON.stringify({ zUiGates, testNote, badTestCard }))
   const zSets = runnerCommands.filter((c) => c.startsWith('node scripts/orch-state.mjs set ') && c.includes('--run=zeta'))
-  check('zeta: every orch-state argument is one --key=value token', zSets.length > 0 && runnerCommands.filter((c) => c.startsWith('node scripts/orch-state.mjs ')).every((c) => words(c).slice(3).every((w) => /^--[a-z-]+=/.test(w))), zSets[0] ?? 'none')
+  check('zeta: every orch-state argument is one --key=value token', zSets.length > 0 && runnerCommands.filter((c) => c.startsWith('node scripts/orch-state.mjs ')).every((c) => words(c).slice(3).every((w) => /^--[a-z0-9-]+=/.test(w))), zSets[0] ?? 'none')
 
   // Run theta (plan 029): the same gate failure twice in a row is a loop — parked at once with the reason, no further
   // fix round, two builders only; the report and the STUCK line still come.
@@ -526,15 +527,15 @@ async function main() {
 
   // Run kappa (plan 033): the runner's first copy of the `worktree` state line does not parse (a smart quote) — the
   // workflow asks once more, the real second answer is used, the plan is built and merged in one folder, and a run
-  // note keeps the first error with the raw line (quotes kept as ' through the state write).
+  // note keeps the first error with the raw line (the note travels as base64 now, so its quotes survive the state write).
   garbleWorktreeOnce = 'kappa'
   const k = await runWorkflow({ mode: 'run', run: 'kappa', plans: ['601'], root: proj })
   const sk = JSON.parse(readFileSync(join(proj, '.claude', 'orchestrator-runs', 'kappa', 'status.json'), 'utf8'))
-  const kWt = runnerCommands.filter((c) => /^node scripts\/orch-state\.mjs worktree --run=kappa --plan=601$/.test(c))
+  const kWt = runnerCommands.filter((c) => /^node scripts\/orch-state\.mjs plan-info --run=kappa --plan=601 --with-worktree=yes$/.test(c))
   const kTrees = git(proj, 'worktree', 'list', '--porcelain').stdout.split('\n').filter((l) => /^worktree .*orch-kappa-601/.test(l))
   check('kappa: a bad copy of the worktree line is asked for once more and the plan is merged in one folder', k?.ok === true && sk.plans['601']?.state === 'merged' && kWt.length === 2 && kTrees.length === 1 && garbleWorktreeOnce === null, JSON.stringify({ ok: k?.ok, state: sk.plans['601']?.state, worktreeCalls: kWt.length, trees: kTrees }))
-  const kNote = (sk.notes ?? []).find((n) => n.plan === '601' && /^runner retry: worktree 601 — first attempt: unreadable ORCH_JSON from: node scripts\/orch-state\.mjs worktree /.test(n.text))
-  check('kappa: the run note keeps the first error with the raw line and the odd character', !!kNote && kNote.text.includes("raw: 'ORCH_JSON {“ok") && /non-ASCII U\+201C at 11/.test(kNote.text), JSON.stringify((sk.notes ?? []).filter((n) => n.plan === '601').map((n) => n.text)))
+  const kNote = (sk.notes ?? []).find((n) => n.plan === '601' && /^runner retry: plan 601 — first attempt: unreadable ORCH_JSON from: node scripts\/orch-state\.mjs plan-info /.test(n.text))
+  check('kappa: the run note keeps the first error with the raw line and the odd character', !!kNote && kNote.text.includes('raw: "ORCH_JSON {“ok') && /non-ASCII U\+201C at 11/.test(kNote.text), JSON.stringify((sk.notes ?? []).filter((n) => n.plan === '601').map((n) => n.text)))
 
   // The [ui] tier: a local test server (a child process) for the pages, the login and the backend.
   const server = await startUiServer()
@@ -578,7 +579,7 @@ async function main() {
     }
     const branchNow = git(slotDir, 'branch', '--show-current').stdout.trim()
     check('slots: plan 402 built in the idle slot (no own folder), no builder installed packages, and the slot was given back',
-      !existsSync(join(root, 'orch-app-orch-ui-down-402')) && runnerCommands.some((c) => c.includes('orch-state.mjs worktree --run=ui-down --plan=402')) &&
+      !existsSync(join(root, 'orch-app-orch-ui-down-402')) && runnerCommands.some((c) => c.includes('orch-state.mjs plan-info --run=ui-down --plan=402 --with-worktree=yes')) &&
       runnerCommands.some((c) => c.includes('orch-state.mjs release --run=ui-down --plan=402')) && !existsSync(join(slotDir, '.worktree-plan')) &&
       branchNow === '' && existsSync(join(slotDir, 'scripts', 'node_modules', 'picomatch')),
       `own folder ${existsSync(join(root, 'orch-app-orch-ui-down-402'))}, marker ${existsSync(join(slotDir, '.worktree-plan'))}, branch "${branchNow}"`)

@@ -113,14 +113,14 @@ append the path to the scope block above and retry.
 ## Functional Requirements
 
 ### Must Have (P0)
-- [ ] Note queue + `--note` flag on `set`, flush at `stop`/`finish`; `MAX_NOTES` unchanged in meaning.
-- [ ] `orch-state.mjs decisions --b64` (one write, validates every item with the existing `decision` rules, all-or-nothing).
-- [ ] The decision loop in `orchestrate.js` uses it; the per-repeat `fileDup` marker goes in the same payload.
-- [ ] Inventory table in `orchestrator.md` with one row per call site and a recommendation; a count test.
-- [ ] CHANGELOG entry.
+- [x] Note queue + `--note` flag on `set`, flush at `stop`/`finish`; `MAX_NOTES` unchanged in meaning.
+- [x] `orch-state.mjs decisions --b64` (one write, validates every item with the existing `decision` rules, all-or-nothing).
+- [x] The decision loop in `orchestrate.js` uses it; the per-repeat `fileDup` marker goes in the same payload.
+- [x] Inventory table in `orchestrator.md` with one row per call site and a recommendation; a count test.
+- [x] CHANGELOG entry.
 
 ### Should Have (P1)
-- [ ] Merge the two adjacent parse-only calls the inventory marks safest (Planner suggestion, to be confirmed by the table:
+- [x] Merge the two adjacent parse-only calls the inventory marks safest (Planner suggestion, to be confirmed by the table:
       `plan-info` + `worktree` of one plan, `flake` into `set`), only if the table says `merge` and the test stays green.
 
 ### Nice to Have (P2)
@@ -133,17 +133,17 @@ None (workflow script and scripts only).
 
 Every step names its own test location.
 
-- [ ] A1: Failing tests first — a 10-note flow makes 10 runner `note` calls today; N decisions make N calls; Step 0 findings (feasibility re-check, site counts) to Execution Notes
+- [x] A1: Failing tests first — a 10-note flow makes 10 runner `note` calls today; N decisions make N calls; Step 0 findings (feasibility re-check, site counts) to Execution Notes
   - Scope: `tools/test/orchestrator.test.mjs`, `tools/orchestrator-e2e.mjs`
-- [ ] B1: Note queue riding on `set`, flushed at `stop`/`finish`; tests
+- [x] B1: Note queue riding on `set`, flushed at `stop`/`finish`; tests
   - Scope: `core/.claude/workflows/orchestrate.js`, `core/scripts/orch-state.mjs`, `tools/test/orchestrator.test.mjs`
-- [ ] B2: `decisions --b64` and the single-call loop; tests including the malformed payload
+- [x] B2: `decisions --b64` and the single-call loop; tests including the malformed payload
   - Scope: `core/scripts/orch-state.mjs`, `core/scripts/lib/orch-run.mjs`, `core/.claude/workflows/orchestrate.js`, `tools/test/orchestrator.test.mjs`
-- [ ] D1: Inventory table (every `state(`/`runner(` site: group, parsed or write-only, recommendation) and the count test; update the note/decision text in `orchestrator.md`
+- [x] D1: Inventory table (every `state(`/`runner(` site: group, parsed or write-only, recommendation) and the count test; update the note/decision text in `orchestrator.md`
   - Scope: `core/docs/agent/orchestrator.md`, `tools/test/orchestrator.test.mjs`
-- [ ] B3 (P1): the safest merges the table names
+- [x] B3 (P1): the safest merges the table names
   - Scope: `core/.claude/workflows/orchestrate.js`, `core/scripts/orch-state.mjs`, `tools/test/orchestrator.test.mjs`
-- [ ] R1: Render the installed copies, run every check, add the changelog entry — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .`, build, lint, `npm test`, `node --test "tools/test/*.test.mjs"`, `node tools/orchestrator-e2e.mjs`
+- [x] R1: Render the installed copies, run every check, add the changelog entry — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .`, build, lint, `npm test`, `node --test "tools/test/*.test.mjs"`, `node tools/orchestrator-e2e.mjs`
   - Scope: `scripts/**`, `.claude/**`, `docs/agent/**`, `docs/brain/**`, `.kit/install.json`, `CHANGELOG.md`
 
 ## Technical Considerations
@@ -168,3 +168,26 @@ Every step names its own test location.
 ## Execution Notes
 - Source: orchestrator test run test-512-422, finding F8. Facts from the kit at `origin/main` `aac496e`. Build order (Human,
   2026-11-02): 063, then 062, then 064.
+- Step 0 (Worker): drift = plan 063 commits only (handoff Done:/Failed:, judgment pin) - no symbol conflict: `ok`. Feasibility re-confirmed:
+  the harness hands a script `agent, parallel, pipeline, phase, log, args, budget, workflow` plus Date/Math guards that throw and
+  `undefined` for require/process (`tools/orchestrator-e2e.mjs:305`); no direct-exec global, so no stop. Sites on this base: 22
+  `state(`/`runner(` call sites (4 preflight), see the table. Worktree had no `scripts/node_modules`; `npm install` in `scripts/` (ignored).
+- A1 honesty: the new tests were written together with the code, not seen failing first; the 23 existing tests that read `note` /
+  `decision` commands were kept green by making the test stub also list each batched call as the single `note` / `decision` /
+  `flake` / `worktree` command it stands for (`commands`), with `rawCommands` for the real calls.
+- Worker note (settled by the plan's "Why base64", no question asked): notes ride as `--notes-b64` (base64 JSON list) on set / stop /
+  finish, not the literal `--note "a || b"`: `q` cuts a plain argument at 400 characters, so ten notes would be silently cut.
+  `set --note "a || b"` is still accepted by the script.
+- B3 (amendment 2) done: `plan-info --with-worktree` (one call; `worktree` stays as the env-failure retry), and flakes queued onto
+  `set` / `stop` / `finish` (`--flakes-b64`). Not done (table says merge, follow-ups): non-state `set`s into the next state-changing `set`,
+  `main-tries` into `init`, `release` into `set`.
+- Changed tests: the bad-copy runner test and e2e run `kappa` now garble `plan-info` (it carries the folder); agent-call-limit test
+  uses 5 (one call fewer per plan); e2e argument check allows digits in a flag name (`--notes-b64=`); the kappa note now keeps its quotes.
+- decision: agent-chosen (coordinator), UNGRADED: notes ride as `--notes-b64` instead of the plan's literal `--note "a || b"` — `q` cuts a plain argument at 400 characters, so batched notes would be silently cut — reverse: send `--note` joined with ` || ` and raise the `q` limit.
+- decision: agent-chosen (coordinator), UNGRADED: behaviour: queued notes and flakes reach status.json at the plan's next `set`/`stop`/`finish`, so a run that dies between two writes loses the ones queued since the last write (documented in orchestrator.md) — the price of one call per write instead of one per note — reverse: flush the queue with its own call before every agent call.
+- decision: agent-chosen (coordinator), UNGRADED: all decisions of a step go in one all-or-nothing `decisions --b64` call; rows with empty text are dropped first — one bad row fails the batch rather than writing half of it — reverse: per-row calls.
+- Review fixes (Worker): queued notes carry ids (launch:plan-or-run:number) the script records in status.noteIds, so a runner rerun or a
+  re-sent queue writes each note once; a flake the script cannot record is skipped with `WARN - flake skipped` (the workflow also
+  makes the command one line of at most 300 characters before queueing); lone surrogates are dropped before base64 (notes, decisions);
+  a failed stop / finish restores the queue (`withQueued`, one helper, so the table's Stop and Report rows became one row of one site).
+- decision: agent-chosen (coordinator), UNGRADED: seen: `kit.config.json` `$comment` still says "every note is an agent call" (orchestrator.maxNotesPerPlan) — outside this plan's scope, left for a follow-up — reverse: n/a.

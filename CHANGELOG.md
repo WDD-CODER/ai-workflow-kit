@@ -10,6 +10,12 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 ## [Unreleased]
 
 ### Changed
+- **An orchestrator run makes far fewer model calls for plain bookkeeping.** Run notes no longer cost a runner call each:
+  they are queued and ride on the plan's next state write (`orch-state.mjs set --notes-b64`), and any still queued go on
+  `stop` and `finish`; the per-plan note cap counts queued notes. Every decision of a run is one call
+  (`orch-state.mjs decisions --b64`, all-or-nothing). Flakes are queued the same way, and `plan-info --with-worktree`
+  makes the plan's folder in the same call. `orchestrator.md` lists every runner call site with a recommendation. No
+  action needed; a run that dies between two state writes loses the notes queued since the last one.
 - **The orchestrator's judgment tier is pinned to a strong model (INV-1).** `models.judgment` now defaults to
   `opus`; install and sync refuse `inherit` and any Haiku value for it, naming INV-1 - a project that set it to `inherit`
   (or all tiers to `inherit` to turn routing off) must name a model. Readiness and the fresh builder always run on it. A plan
