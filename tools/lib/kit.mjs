@@ -122,6 +122,20 @@ export function ciCommandProblem(cmd) {
   return `${c}: not an allowed check (npm run <script>, pnpm run <script>, node scripts/<file>.mjs or node tools/<file>.mjs)`
 }
 
+const PREPARE_PATH = /^[A-Za-z0-9_./@-]+$/ // @ for scoped packages (node_modules/@scope/pkg)
+const PREPARE_PATH_WHY = 'a repo-relative path of letters, digits and _ . / @ - only (no absolute path, no "..")'
+/** Why an orchestrator.prepare entry is refused (shape, absolute path, "..", a script that is a command, an unknown field), or null. */
+export function prepareProblem(item) {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return 'it must be an object { "missing", "script", "in" }'
+  const unknown = Object.keys(item).find((k) => !['missing', 'script', 'in'].includes(k))
+  if (unknown) return `unknown field "${unknown}" (allowed: missing, script, in)`
+  const okPath = (p) => typeof p === 'string' && p !== '' && PREPARE_PATH.test(p) && !p.startsWith('/') && !/^[A-Za-z]:/.test(p) && !p.split('/').includes('..')
+  if (!okPath(item.missing)) return `"missing" must be ${PREPARE_PATH_WHY}`
+  if (typeof item.script !== 'string' || !/^[A-Za-z0-9:_-]+$/.test(item.script)) return '"script" must be one npm script name, not a command'
+  if (item.in !== undefined && !okPath(item.in)) return `"in" must be ${PREPARE_PATH_WHY}`
+  return null
+}
+
 /**
  * brain.* (the kit brain, docs/agent/kit-brain.md): projectId is a slug, enabled a boolean, and no value under brain.* may
  * look like a connection string — the string is a secret and lives in the KIT_BRAIN_URI environment variable, never in a
@@ -230,6 +244,17 @@ export function orchestratorProblems(vals) {
       for (const item of mirror) {
         const why = typeof item === 'string' ? ciCommandProblem(item) : `${JSON.stringify(item)} is not a string`
         if (why) out.push(`orchestrator.ciMirror item ${JSON.stringify(item)} — ${why}`)
+      }
+    }
+  }
+  // Files the gate generates before the tests (orchestrator.prepare): { missing, script, in? }, repo-relative, one npm script.
+  const prep = vals['orchestrator.prepare']
+  if (prep !== undefined) {
+    if (!Array.isArray(prep)) out.push(`orchestrator.prepare is ${JSON.stringify(prep)} — it must be a list of { "missing": "<path>", "script": "<npm script>", "in": "<folder>" }`)
+    else {
+      for (const item of prep) {
+        const why = prepareProblem(item)
+        if (why) out.push(`orchestrator.prepare item ${JSON.stringify(item)} — ${why}`)
       }
     }
   }

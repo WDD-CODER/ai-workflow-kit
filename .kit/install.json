@@ -3,7 +3,7 @@
     "version": "1.13.0"
   },
   "source": "local:.",
-  "commit": "8f97aa46b865bcd08eb60fd7ea01240347079961",
+  "commit": "b90153e06d949e4b85a6593f643d53785975ff1d",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -25,7 +25,7 @@
       "source": "core/.claude/agents/kit-runner.md"
     },
     ".claude/agents/orch-builder.md": {
-      "sha256": "e20bdcf3955b73af2b57447b595baa10a41aeec2de2f66dbcb17be6a910e6f59",
+      "sha256": "c9073eadf14b8362e90ab2ea1b35961a93e504b215b267bd482cfb0376f7e599",
       "kind": "managed",
       "source": "core/.claude/agents/orch-builder.md"
     },
@@ -55,7 +55,7 @@
       "source": "core/.claude/agents/orch-merge.md"
     },
     ".claude/agents/orch-readiness.md": {
-      "sha256": "7c29cc194a9441c8abde1603edd359486a27416e2515bfdceffdad0b34c01319",
+      "sha256": "031f7b9936c963ed7a800a3cb884dd5515e7d79be2d94b09eaad083296ccdce3",
       "kind": "managed",
       "source": "core/.claude/agents/orch-readiness.md"
     },
@@ -275,7 +275,7 @@
       "source": "core/.claude/skills/worktree-setup/SKILL.md"
     },
     ".claude/workflows/orchestrate.js": {
-      "sha256": "1f70b9457b76425af189f0224ed9bd52eb80f012d789d2274e123185eed8d750",
+      "sha256": "c9e50414c7005b9947fb139ce69fa6d995795100d00f46d435ed9f5ba76c0334",
       "kind": "managed",
       "source": "core/.claude/workflows/orchestrate.js"
     },
@@ -415,7 +415,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "01e1e14afc84c18215f632df673c9238acdc26fe2c91c2cc2dc1ac79501351af",
+      "sha256": "67d73fff9461ecdec196785d6dcd7e4e328be8518909edd1c45906633ad7444f",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -805,7 +805,7 @@
       "source": "core/scripts/orch-preflight.mjs"
     },
     "scripts/orch-state.mjs": {
-      "sha256": "469adc7c309a400d8255764470987730e217aab0f516d0b466c27017ed07ee56",
+      "sha256": "aa6c853ac1cce35127b2a34c364861d278633b37ecc0fa79bea7ad45ce249c51",
       "kind": "managed",
       "source": "core/scripts/orch-state.mjs"
     },

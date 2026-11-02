@@ -790,3 +790,57 @@ test('preflight starts a missing frontend and says OK; the backend only for a pl
     assert.match(failed.stdout, /"envFailure":true/)
   } finally { m.stop() }
 })
+
+// ---- plan 059: orch-state.mjs prepare and the orchestrator.prepare config shape ----------------------------------------
+test('orch-state.mjs prepare: present runs nothing, absent runs the script, a script that makes nothing fails with the tail and the entry', () => {
+  const dir = tmp()
+  try {
+    cpSync(join(root, 'scripts'), join(dir, 'scripts'), { recursive: true, dereference: true })
+    mkdirSync(join(dir, 'sub'), { recursive: true })
+    const stub = (body) => `node -e "${body}"`
+    writeFileSync(join(dir, 'sub', 'package.json'), JSON.stringify({ name: 's', private: true, scripts: {
+      gen: stub("require('fs').mkdirSync('../gen/out',{recursive:true});require('fs').writeFileSync('../ran.txt','x')"),
+      nothing: stub("console.log('line-one');console.error('boom: no output made');process.exit(3)"),
+    } }))
+    const prep = (...a) => spawnSync(process.execPath, [join(dir, 'scripts', 'orch-state.mjs'), 'prepare', ...a], { cwd: dir, encoding: 'utf8' })
+    // absent: runs the script in --in, then the path exists
+    let r = prep('--missing', 'gen/out', '--script', 'gen', '--in', 'sub')
+    assert.equal(r.status, 0, r.stdout + r.stderr)
+    assert.match(r.stdout, /^PREPARE: ok \(generated\)$/m)
+    assert.ok(existsSync(join(dir, 'gen', 'out')))
+    // present: nothing runs
+    rmSync(join(dir, 'ran.txt'))
+    r = prep('--missing', 'gen/out', '--script', 'gen', '--in', 'sub')
+    assert.equal(r.status, 0)
+    assert.match(r.stdout, /^PREPARE: ok \(present\)$/m)
+    assert.ok(!existsSync(join(dir, 'ran.txt')), 'a present path runs no script')
+    // still missing: exit 1, the last lines of output, the entry
+    r = prep('--missing', 'never/made', '--script', 'nothing', '--in', 'sub')
+    assert.equal(r.status, 1)
+    assert.match(r.stdout, /boom: no output made/)
+    assert.match(r.stdout, /PREPARE: FAIL — never\/made is missing after `npm run nothing` in sub \(exit \d+\); repeat by hand: \{ "missing": "never\/made", "script": "nothing", "in": "sub" \}/)
+    // a scoped package path is accepted (present here, so nothing runs)
+    mkdirSync(join(dir, 'node_modules', '@prisma', 'client'), { recursive: true })
+    r = prep('--missing', 'node_modules/@prisma/client', '--script', 'gen')
+    assert.equal(r.status, 0, r.stdout)
+    assert.match(r.stdout, /^PREPARE: ok \(present\)$/m)
+    // refused shapes run nothing
+    for (const bad of [['--missing', '/abs/x', '--script', 'gen'], ['--missing', '../x', '--script', 'gen'], ['--missing', 'x', '--script', 'npm run gen'], ['--missing', 'x', '--script', 'gen', '--in', '..'], ['--missing', 'x', '--script', 'gen', '--pm', 'yarn']]) {
+      r = prep(...bad)
+      assert.equal(r.status, 1, bad.join(' '))
+      assert.match(r.stdout, /^ORCH_STATE: FAIL — prepare: /m)
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('config: orchestrator.prepare must be a list of { missing, script, in? } with repo-relative paths and one script name', () => {
+  assert.deepEqual(orchestratorProblems({ 'orchestrator.prepare': [] }), [])
+  assert.deepEqual(orchestratorProblems({ 'orchestrator.prepare': [{ missing: 'server/generated/schemas', script: 'build:schemas', in: 'server' }, { missing: 'gen', script: 'gen' }] }), [])
+  assert.deepEqual(orchestratorProblems({ 'orchestrator.prepare': [{ missing: 'node_modules/@prisma/client', script: 'gen' }] }), [], 'a scoped package path is allowed')
+  assert.match(orchestratorProblems({ 'orchestrator.prepare': [{ missing: 'a b', script: 'gen' }] })[0], /letters, digits and _ \. \/ @ - only/, 'the refusal names the allowed characters')
+  assert.match(orchestratorProblems({ 'orchestrator.prepare': 'gen' })[0], /^orchestrator\.prepare is "gen" — it must be a list/)
+  const bad = orchestratorProblems({ 'orchestrator.prepare': [{ missing: '/abs/x', script: 'gen' }, { missing: 'C:/x', script: 'gen' }, { missing: '../x', script: 'gen' }, { missing: 'a/../x', script: 'gen' }, { missing: 'x', script: 'npm run gen' }, { missing: 'x', script: 'gen', in: '..' }, { missing: 'x', script: 'gen', extra: 1 }, 'gen', { script: 'gen' }] })
+  assert.equal(bad.length, 9, bad.join('\n'))
+  assert.match(bad.join('\n'), /unknown field "extra"/)
+  assert.match(bad.join('\n'), /"script" must be one npm script name, not a command/)
+})

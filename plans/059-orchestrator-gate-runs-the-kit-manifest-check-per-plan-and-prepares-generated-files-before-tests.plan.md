@@ -135,17 +135,17 @@ None (scripts, agent text and docs only).
 
 Every step names its own test location.
 
-- [ ] A1: Reproduce with failing tests — in `tools/test/orchestrator.test.mjs`: a per-plan gate list with `init.kitManifest: true` has no manifest check today; in `tools/test/orchestrator-folders.test.mjs`: `orch-state.mjs prepare` is an unknown command today; add Step 0 findings to Execution Notes
+- [x] A1: Reproduce with failing tests — in `tools/test/orchestrator.test.mjs`: a per-plan gate list with `init.kitManifest: true` has no manifest check today; in `tools/test/orchestrator-folders.test.mjs`: `orch-state.mjs prepare` is an unknown command today; add Step 0 findings to Execution Notes
   - Scope: `tools/test/orchestrator.test.mjs`, `tools/test/orchestrator-folders.test.mjs`
-- [ ] B1: Add `prepare` to `orch-state.mjs` and `orchestrator.prepare` to the config and its validation; tests for present / generated / failed and the config shapes
+- [x] B1: Add `prepare` to `orch-state.mjs` and `orchestrator.prepare` to the config and its validation; tests for present / generated / failed and the config shapes
   - Scope: `core/scripts/orch-state.mjs`, `kit.config.json`, `tools/lib/kit.mjs`, `tools/test/orchestrator-folders.test.mjs`
-- [ ] B2: Put the manifest check and the `prepare` commands into the per-plan and final gate lists; rewrite the test at :741; tests for merge step exclusion and empty `prepare`
+- [x] B2: Put the manifest check and the `prepare` commands into the per-plan and final gate lists; rewrite the test at :741; tests for merge step exclusion and empty `prepare`
   - Scope: `core/.claude/workflows/orchestrate.js`, `tools/test/orchestrator.test.mjs`
-- [ ] B3: Tell readiness and the builder (agent files and builder prompt) with string-assertion tests
+- [x] B3: Tell readiness and the builder (agent files and builder prompt) with string-assertion tests
   - Scope: `core/.claude/agents/orch-readiness.md`, `core/.claude/agents/orch-builder.md`, `core/.claude/workflows/orchestrate.js`, `tools/test/orchestrator.test.mjs`
-- [ ] D1: Document in `orchestrator.md` and the config comment
+- [x] D1: Document in `orchestrator.md` and the config comment
   - Scope: `core/docs/agent/orchestrator.md`, `kit.config.json`
-- [ ] R1: Render the installed copies, run every check, add the changelog entry — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .`, build, lint, `npm test`, `node --test "tools/test/*.test.mjs"`, `node tools/orchestrator-e2e.mjs`
+- [x] R1: Render the installed copies, run every check, add the changelog entry — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .`, build, lint, `npm test`, `node --test "tools/test/*.test.mjs"`, `node tools/orchestrator-e2e.mjs`
   - Scope: `scripts/**`, `.claude/**`, `docs/agent/**`, `docs/brain/**`, `.kit/install.json`, `CHANGELOG.md`
 
 ## Technical Considerations
@@ -170,3 +170,14 @@ Every step names its own test location.
 - Source: orchestrator test run test-512-422, findings F4+F7 (gate/readiness) and F11 (generated schemas). Planner read the kit
   at `origin/main` `aac496e`; FoodVibe was not read (its `server/generated/schemas` and `build:schemas` are from the Human's words).
 - Architect + PM review: see the block printed when this plan was saved (summary kept in the commit message).
+- Step 0 (Worker): drift reported 062/063/064 commits; none touches the gate list, `init.kitManifest` or `finalGateKind`'s
+  `manifest` kind (already routes manifest to readiness, so a per-plan manifest failure needs no routing change). `runPlan`
+  cannot see `init` (a local of `run()`), so a module-level `KIT_MANIFEST` is set right after `init` (next to `mergeFolder`).
+  `init.kitManifest` already requires `scripts/kit-manifest-check.mjs` in the merge folder, plan worktrees branch from it.
+- A1 note: the tests were written together with the code, not run red first.
+- decision: agent-chosen (coordinator), UNGRADED: in `mergeChecks: "full"` mode the merge list drops the manifest check but keeps the `prepare` commands — a full-mode merge runs the tests on the merge folder, which only the final gate prepares otherwise (the plan text says "not in mergeChecksOf"; `build` mode, the default, has neither) — reverse: filter `PREPARE_CHECKS` out in `mergeChecksOf`.
+- decision: agent-chosen (coordinator), UNGRADED: the readiness rule is item 6 and `state` became item 7 (the plan said "item 7") — the rule belongs before the `state` verdict — reverse: swap the two items.
+- decision: agent-chosen (coordinator), UNGRADED: the agent texts say "the manifest.json under docs/workflow-kit" and not the literal path — the link check fails a backticked path that a scaffold lacks — reverse: use the literal path and exempt it in the link check.
+- decision: agent-chosen (coordinator), UNGRADED: the builder prompt carries the manifest sentence only when the run has a manifest (`KIT_MANIFEST`); `orch-builder.md` carries it always, worded "when the project has a kit manifest" — reverse: make the prompt line unconditional.
+- decision: agent-chosen (coordinator), UNGRADED: `@` is allowed in `orchestrator.prepare` paths (install/sync check and `prepare`), so `node_modules/@prisma/client` is accepted; the refusal now names the allowed characters — reverse: drop `@` from `PREPARE_PATH` and `safePath`.
+- seen: `orch-state.mjs` whitelists flags in `FLAGS`; `prepare` needed `missing`, `script`, `in`, `pm` added there.

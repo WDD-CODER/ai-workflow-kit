@@ -850,9 +850,46 @@ test('final gate: runs the kit manifest check when init reports a manifest, and 
   assert.ok(finalOf(withManifest.calls).includes('node scripts/kit-manifest-check.mjs'))
   const without = await runFlow({ plans: ['101'], pilot: false })
   assert.ok(!finalOf(without.calls).includes('node scripts/kit-manifest-check.mjs'))
-  // Never in a plan's own gate or the merge step.
-  const planGate = JSON.parse(withManifest.calls.find((c) => c.type === 'orch-gate' && c.label === 'gate 101').task.COMMANDS)
-  assert.ok(!planGate.includes('node scripts/kit-manifest-check.mjs'))
+  // Plan 059: each plan's own gate has it once; the merge step (build mode and full mode) never does; without a manifest nothing changes.
+  const gateOf = (calls) => JSON.parse(calls.find((c) => c.type === 'orch-gate' && c.label === 'gate 101').task.COMMANDS)
+  const M = 'node scripts/kit-manifest-check.mjs'
+  assert.equal(gateOf(withManifest.calls).filter((c) => c === M).length, 1)
+  assert.equal(finalOf(withManifest.calls).filter((c) => c === M).length, 1)
+  assert.ok(!gateOf(without.calls).includes(M))
+  const mergeCall = (calls) => calls.find((c) => c.type === 'orch-merge')
+  assert.ok(!String(mergeCall(withManifest.calls).task.CHECKS).includes('kit-manifest-check'), 'merge step (build mode) has no manifest check')
+  const full = await runFlow({ plans: ['101'], pilot: false }, { init: { kitManifest: true }, source: (s) => s.replace('const MERGE_CHECKS_MODE = "build"', 'const MERGE_CHECKS_MODE = "full"') })
+  assert.ok(gateOf(full.calls).includes(M), 'full mode: the plan gate still has it')
+  assert.ok(!String(mergeCall(full.calls).task.CHECKS).includes('kit-manifest-check'), 'merge step (full mode) has no manifest check')
+  // The plan's own Done-when listing the same command does not run it twice.
+  const dup = await runFlow({ plans: ['101'], pilot: false, checks: { 101: [M] } }, { init: { kitManifest: true } })
+  assert.equal(gateOf(dup.calls).filter((c) => c === M).length, 1)
+})
+
+// ---- plan 059: orchestrator.prepare commands and the agent texts -------------------------------------------------------
+const withPrepare = (list) => (s) => {
+  assert.match(s, /const PREPARE = \[[^\n]*\]\n/, 'orchestrate.js renders orchestrator.prepare as PREPARE')
+  return s.replace(/const PREPARE = \[[^\n]*\]\n/, 'const PREPARE = ' + JSON.stringify(list) + '\n')
+}
+test('orchestrator.prepare: one prepare command first in every plan gate and in the final gate; [] changes nothing', async () => {
+  const base = await runFlow({ plans: ['101'], pilot: false }, { init: { kitManifest: true } })
+  const entries = [{ missing: 'server/generated/schemas', script: 'build:schemas', in: 'server' }, { missing: 'gen/out', script: 'gen' }]
+  const r = await runFlow({ plans: ['101'], pilot: false }, { init: { kitManifest: true }, source: withPrepare(entries) })
+  const want = ['node scripts/orch-state.mjs prepare --missing server/generated/schemas --script build:schemas --in server' + (PM_RUN === 'pnpm' ? ' --pm pnpm' : ''), 'node scripts/orch-state.mjs prepare --missing gen/out --script gen' + (PM_RUN === 'pnpm' ? ' --pm pnpm' : '')]
+  const planBase = JSON.parse(base.calls.find((c) => c.type === 'orch-gate' && c.label === 'gate 101').task.COMMANDS)
+  assert.deepEqual(JSON.parse(r.calls.find((c) => c.type === 'orch-gate' && c.label === 'gate 101').task.COMMANDS), [...want, ...planBase])
+  assert.deepEqual(finalCommands(r.calls), [...want, ...finalCommands(base.calls)])
+  const merge = r.calls.find((c) => c.type === 'orch-merge')
+  assert.ok(!String(merge.task.CHECKS).includes('orch-state.mjs prepare'), 'not in the merge step (build mode)')
+  assert.deepEqual(finalCommands((await runFlow({ plans: ['101'], pilot: false }, { init: { kitManifest: true }, source: withPrepare([]) })).calls), finalCommands(base.calls))
+})
+
+test('the readiness agent, the builder agent and the builder prompt name the manifest', () => {
+  const readiness = readFileSync(join(root, '.claude', 'agents', 'orch-readiness.md'), 'utf8')
+  assert.match(readiness, /\*\*Manifest\.\*\* When the plan adds a file under the manifest inventory[\s\S]*the manifest\.json under docs\/workflow-kit[\s\S]*node scripts\/kit-manifest-check\.mjs[\s\S]*`questions` entry/)
+  const builder = readFileSync(join(root, '.claude', 'agents', 'orch-builder.md'), 'utf8')
+  assert.match(builder, /the per-plan gate runs `node scripts\/kit-manifest-check\.mjs`/)
+  assert.match(wfSource, /The per-plan gate runs node scripts\/kit-manifest-check\.mjs: a file you add under the manifest inventory/)
 })
 
 test('the report: main stays untouched when only plan files and the todo list changed there', () => {

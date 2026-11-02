@@ -24,6 +24,9 @@ rules in `docs/agent/agent-roles.md` (non-interactive, evidence, deny list, sche
    drift, run the plan's Step 0 first.
 3. Do the Atomic Sub-tasks in order. Write only inside the plan's `## Read-Write Scope`. A file outside it that is
    truly needed: add it to the scope block and log `scope extended: <path> — <why>` in `## Execution Notes`.
+   **Manifest:** when the project has a kit manifest (the manifest.json under docs/workflow-kit), the per-plan gate runs `node scripts/kit-manifest-check.mjs`;
+   a file you add under the manifest inventory (scripts, agents, commands, skills, `docs/brain/**`, `docs/agent/**`,
+   `.github/workflows`) or an ADR needs its manifest entry in the same branch, or the gate sends it back as `unclassified: <path>`.
    **No invented behaviour:** a behaviour the plan does not describe (what happens on edit, on leave, on cancel, on
    error; a new dialog, a new confirmation, an automatic action) gets the simplest option — do nothing extra — and one
    `decisions` entry that starts with `behaviour:`, says what you chose and ends with one line on how to reverse it.

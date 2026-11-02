@@ -10,6 +10,7 @@
  *   node scripts/orch-state.mjs scripts                                      package.json scripts as { name: body } (readiness maps npx checks)
  *   node scripts/orch-state.mjs main-try   --run <name> --plan <NNN> --cmd "<command>"   runs a main-folder check once, records its exit
  *   node scripts/orch-state.mjs main-tries --run <name>                     main-folder checks that exited 0 in the last 2 hours, per plan
+ *   node scripts/orch-state.mjs prepare    --missing <path> --script <name> [--in <folder>] [--pm npm|pnpm]   runs the script when <path> is absent (orchestrator.prepare)
  *   node scripts/orch-state.mjs plan-info  --run <name> --plan <NNN>        path, branch, start tier, [human] and [ui] items
  *   node scripts/orch-state.mjs worktree   --run <name> --plan <NNN>        the builder's folder on its plan branch: an idle
  *                                          wt-N slot first (orchestrator.useSlots), else its own folder; packages installed
@@ -105,7 +106,9 @@ const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tie
   // the hand-off's replan verdict and the builder's receipt
   'replan', 'replan-why', 'not-done', 'failed',
   // queued run notes riding on set / stop / finish, and the one-call decisions list
-  'note', 'notes-b64', 'b64', 'flakes-b64', 'with-worktree'])
+  'note', 'notes-b64', 'b64', 'flakes-b64', 'with-worktree',
+  // `prepare`: the generated path, the npm script, the folder it runs in and the package manager
+  'missing', 'script', 'in', 'pm'])
 function parseArgs(argv) {
   const out = { _: [] }
   for (let i = 0; i < argv.length; i++) {
@@ -768,6 +771,27 @@ const commands = {
     writeFileSync(mainTriesPath(run), JSON.stringify([...readMainTries(run), { plan: nnn, cmd: command, exit, at: nowIso() }], null, 2))
     const tail = `${r.stdout ?? ''}\n${r.stderr ?? ''}`.split('\n').map((l) => l.trimEnd()).filter((l) => l.trim()).slice(-5)
     emit({ ok: true, nnn, cmd: command, exit }, [...tail, `MAIN_TRY: ${command} exit ${exit}`])
+  },
+
+  // A gate command (orchestrator.prepare): makes a generated file the project can generate. Runs in THIS folder (the
+  // worktree or merge folder the gate runs in), writes only what the project's own script writes, touches no run state.
+  prepare() {
+    const missing = String(args.missing ?? '').trim()
+    const script = String(args.script ?? '').trim()
+    const inDir = String(args.in ?? '.').trim() || '.'
+    const pm = String(args.pm ?? 'npm').trim()
+    const entry = `{ "missing": ${JSON.stringify(missing)}, "script": ${JSON.stringify(script)}, "in": ${JSON.stringify(inDir)} }`
+    const safePath = (p) => p !== '' && !/^([A-Za-z]:|[\\/])/.test(p) && !p.split(/[\\/]/).includes('..') && /^[A-Za-z0-9_./@\\-]+$/.test(p)
+    const allowed = 'a repo-relative path of letters, digits and _ . / @ - only (no absolute path, no "..")'
+    if (!safePath(missing)) fail(`prepare: --missing must be ${allowed}: ${entry}`)
+    if (!safePath(inDir)) fail(`prepare: --in must be ${allowed}: ${entry}`)
+    if (!/^[A-Za-z0-9:_-]+$/.test(script)) fail(`prepare: --script must be one npm script name, not a command: ${entry}`)
+    if (pm !== 'npm' && pm !== 'pnpm') fail(`prepare: --pm must be npm or pnpm: ${entry}`)
+    if (existsSync(join(root, missing))) emit({ ok: true, state: 'present', missing }, ['PREPARE: ok (present)'])
+    const r = spawnSync(pm, ['run', script], { cwd: join(root, inDir), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: GATE_TIMEOUT_MIN * 60000, shell: process.platform === 'win32' })
+    if (existsSync(join(root, missing))) emit({ ok: true, state: 'generated', missing }, ['PREPARE: ok (generated)'])
+    const tail = `${r.stdout ?? ''}\n${r.stderr ?? ''}${r.error ? `\n${r.error.message}` : ''}`.split('\n').map((l) => l.trimEnd()).filter((l) => l.trim()).slice(-20)
+    emit({ ok: false, error: `prepare: ${missing} still missing after ${pm} run ${script}`, entry }, [...tail, `PREPARE: FAIL — ${missing} is missing after \`${pm} run ${script}\` in ${inDir} (exit ${r.status ?? 'none'}); repeat by hand: ${entry}`])
   },
 
   'main-tries'() {

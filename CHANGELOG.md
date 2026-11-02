@@ -10,6 +10,13 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 ## [Unreleased]
 
 ### Changed
+- **The orchestrator's gate runs the kit manifest check for every plan, and can prepare generated files before the tests.** A plan that adds a script, agent, command, skill or ADR now fails its own gate with `unclassified: <path>`
+  until the manifest lists it, instead of failing the final gate with no builder left; the merge step still never runs it.
+  New optional `orchestrator.prepare` (list of `{ missing, script, in }`, default `[]`): each entry is a first gate command
+  (`node scripts/orch-state.mjs prepare`) of every plan gate and of the final gate that runs the project's npm script only
+  when the path is absent, so server tests no longer fail in a fresh worktree. Install and sync refuse an absolute path,
+  a `..`, a script that is a full command or an unknown field. The readiness agent asks when a plan adds an inventoried
+  file without `manifest.json` in scope, and the builder is told the per-plan gate runs the check.
 - **A lesson from a final-gate failure now reaches only the role that could have caught it, and a by-hand re-run corrects the
   record.** The run's `status.json` keeps the final gate's result (`finalGate`: ok, failing command, attempt, blamed plan), sent
   with the existing `finish` call. Lessons are routed by the failing command's kind (test to `check-bugs` and `check-plan`,
