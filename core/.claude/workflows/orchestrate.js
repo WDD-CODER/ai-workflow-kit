@@ -1367,7 +1367,8 @@ async function run() {
   // `finish` also writes the run's lessons and its run-log row (no model call) and ends the report with the trend line.
   // The final gate's result is recorded by `finish` itself (status.finalGate: the failing command and the blamed plan), so
   // it rides on the one call; a command of an odd shape is left out (its kind is then unknown, no role is taught).
-  const gateCmd = finalGate && !finalGate.ok && /^[\w ./:=@,+-]{1,200}$/.test(String(finalGate.command ?? '')) ? ['--final-gate-command', String(finalGate.command)] : []
+  // base64 (like the notes), so a command with quotes or `*` (node --test "tools/test/*.test.mjs") reaches the script whole.
+  const gateCmd = finalGate && !finalGate.ok && String(finalGate.command ?? '').trim() ? ['--final-gate-command-b64', toB64(String(finalGate.command).replace(/\s+/g, ' ').trim().slice(0, 300))] : []
   const gatePlans = finalGate && !finalGate.ok && finalBlamed.length ? ['--final-gate-plans', finalBlamed.join(',')] : []
   const fin = await withQueued(['finish', '--run', RUN, '--final-gate', finalGate ? (finalGate.ok ? 'ok' : 'failed') : 'none', ...gateCmd, ...gatePlans], 'report')
   // A run that ended on a limit or an error: the command prints this line first (STUCK), before the lists.

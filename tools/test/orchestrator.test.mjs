@@ -1883,7 +1883,9 @@ test('facts ride on the plan\'s own set calls: round causes, the verifier\'s tot
   assert.match(failedFinal.commands.find((c) => /orch-state\.mjs finish/.test(c)), /--final-gate=failed/)
   const fin = failedFinal.commands.find((c) => /orch-state\.mjs finish/.test(c))
   assert.match(fin, /--final-gate-plans=101/, 'the one plan that changed the named file is blamed in the stored final gate')
-  assert.match(fin, /--final-gate-command=/, 'the failing command rides on finish')
+  const sent = /--final-gate-command-b64=(\S+)/.exec(fin)
+  assert.ok(sent, 'the failing command rides on finish, base64-encoded')
+  assert.match(Buffer.from(sent[1], 'base64').toString('utf8'), /^\S+/, 'it decodes to the command')
   assert.ok(!failedFinal.commands.some((c) => /--miss=final gate/.test(c)), 'no free-text miss any more')
   const ambiguous = await runFlow({ plans: ['101', '102'], pilot: false, waves: [['101', '102']] }, { gateFails: (f) => f === '/merge', gateTail: () => 'Error at src/x.js:3', diff: () => ({ files: ['src/x.js'] }) })
   assert.ok(!ambiguous.commands.some((c) => /orch-state\.mjs finish/.test(c) && /--final-gate-plans=/.test(c)), 'two plans changed it: no plan is blamed')
@@ -2406,4 +2408,41 @@ test('orch-state final-gate on a finished run: the local report is rewritten fro
     assert.equal(p.report(), rep, 'a second identical call changes nothing')
     assert.equal(JSON.parse(readFileSync(f, 'utf8')).finalGate.attempt, 2)
   } finally { p.clean() }
+})
+
+test('final gate: a command with quotes and a star survives (base64) and teaches check-bugs and check-plan; an odd command cannot break the call', () => {
+  const cmd = 'node --test "tools/test/*.test.mjs"'
+  const b64 = Buffer.from(cmd, 'utf8').toString('base64')
+  const t = learnDir({ run: 'gq', phase: 'finished', plans: { 101: { nnn: '101', state: 'merged', round: 0, models: ALL_RAN } } })
+  try {
+    const r = t.orch('lessons', '--final-gate=failed', `--final-gate-command-b64=${b64}`, '--final-gate-plans=101')
+    assert.equal(r.status, 0, r.stdout + r.stderr)
+    assert.equal(t.status().finalGate.command, cmd)
+    assert.ok(t.lessons('check-bugs').some((l) => /missed: the final gate failed/.test(l)))
+    assert.ok(t.lessons('check-plan').some((l) => /missed: the final gate failed/.test(l)))
+    assert.deepEqual(t.lessons('check-rules'), [])
+    assert.deepEqual(t.lessons('security'), [])
+  } finally { t.clean() }
+})
+
+test('final gate: a relaunch that never reaches its final gate does not inherit the earlier launch\'s failed result', () => {
+  const p = finishProject()
+  // init makes the run's merge folder next to the project; a stale one from an earlier run of this test would be on the wrong branch
+  const repo = /const REPO = '([^']*)'/.exec(readFileSync(join(p.dir, 'scripts', 'orch-state.mjs'), 'utf8'))?.[1] || basename(p.dir)
+  const mf = join(dirname(p.dir), `${repo}-orch-merge-fin`)
+  rmSync(mf, { recursive: true, force: true })
+  try {
+    const f = join(p.dir, '.claude', 'orchestrator-runs', 'fin', 'status.json')
+    const s = JSON.parse(readFileSync(f, 'utf8'))
+    Object.assign(s, { phase: 'stopped', stopReason: 'x', attempts: 1, finalGate: { ok: false, command: 'npm run lint', at: 'T', attempt: 1, blamed: ['101'] } })
+    writeFileSync(f, `${JSON.stringify(s, null, 2)}\n`)
+    const run = (...a) => spawnSync(process.execPath, [join(p.dir, 'scripts', 'orch-state.mjs'), ...a, '--run=fin'], { cwd: p.dir, encoding: 'utf8', timeout: 120000 })
+    const i = run('init')
+    assert.equal(i.status, 0, i.stdout + i.stderr)
+    assert.equal(JSON.parse(readFileSync(f, 'utf8')).finalGate, undefined, 'init clears the earlier result')
+    run('finish', '--final-gate=none')
+    const rep = p.report()
+    assert.ok(!/Final gate:/.test(rep), rep)
+    assert.deepEqual(lib.lessonFacts(JSON.parse(readFileSync(f, 'utf8'))).filter((x) => /final gate/.test(x.text)), [])
+  } finally { p.clean(); rmSync(mf, { recursive: true, force: true }) }
 })

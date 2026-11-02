@@ -101,7 +101,7 @@ const SENSITIVE_CODE_RE = /auth|permission|password|jwt|session[_-]?id|tokens?\b
 // folder is always this script's own project) or a second positional word stops the command.
 const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tier', 'sha', 'role', 'model', 'effort', 'roles', 'reason', 'card', 'card-status', 'page', 'shots', 'via', 'step', 'check', 'tail', 'tried', 'text', 'min', 'stale-min', 'files', 'cmd', 'id', 'verdict', 'kind', 'confidence', 'rec', 'why', 'forced', 'dup-of', 'command', 'where',
   // facts the workflow records for the lessons (docs/agent/orchestrator.md "status.json"), and `trend` / `finish` options
-  'candidates', 'refuted', 'refuted-rules', 'verify-by', 'late-low', 'reappeared', 'miss', 'round-cause', 'gate-event', 'asked', 'ready', 'final-gate', 'final-gate-command', 'final-gate-plans', 'result', 'last',
+  'candidates', 'refuted', 'refuted-rules', 'verify-by', 'late-low', 'reappeared', 'miss', 'round-cause', 'gate-event', 'asked', 'ready', 'final-gate', 'final-gate-command', 'final-gate-command-b64', 'final-gate-plans', 'result', 'last',
   // the hand-off's replan verdict and the builder's receipt
   'replan', 'replan-why', 'not-done', 'failed',
   // queued run notes riding on set / stop / finish, and the one-call decisions list
@@ -418,7 +418,13 @@ function applyFinalGate(status, result, { command = '', plans = '' } = {}) {
   }
   return changed
 }
-const fgArgs = () => ({ result: String(args['final-gate'] ?? ''), command: args['final-gate-command'], plans: args['final-gate-plans'] })
+// The command may come base64-encoded (the workflow's way: any real command, quotes and `*` included, survives the runner's
+// shell); applyFinalGate makes it one line of at most 200 characters.
+const fgArgs = () => ({
+  result: String(args['final-gate'] ?? ''),
+  command: args['final-gate-command-b64'] !== undefined ? Buffer.from(String(args['final-gate-command-b64']), 'base64').toString('utf8') : args['final-gate-command'],
+  plans: args['final-gate-plans'],
+})
 
 function diskGb() {
   if (process.env.ORCH_FREE_GB !== undefined && process.env.ORCH_FREE_GB !== '') return Number(process.env.ORCH_FREE_GB)
@@ -683,6 +689,7 @@ const commands = {
     const prev = readStatus(run)
     const status = prev ?? { run, branch, base: MAIN, startedAt: args.started || nowIso(), mainShaAtStart: git(root, 'rev-parse', `origin/${MAIN}`).out, plans: {}, notes: [], attempts: 0 }
     status.attempts = (status.attempts ?? 0) + 1
+    delete status.finalGate // per launch: an earlier launch's result must not stand for this one
     status.phase = 'running'
     delete status.stopReason
     if (args.started) status.lastStartedAt = args.started
