@@ -781,9 +781,10 @@ const commands = {
     const inDir = String(args.in ?? '.').trim() || '.'
     const pm = String(args.pm ?? 'npm').trim()
     const entry = `{ "missing": ${JSON.stringify(missing)}, "script": ${JSON.stringify(script)}, "in": ${JSON.stringify(inDir)} }`
-    const safePath = (p) => p !== '' && !/^([A-Za-z]:|[\\/])/.test(p) && !p.split(/[\\/]/).includes('..') && /^[A-Za-z0-9_./\\-]+$/.test(p)
-    if (!safePath(missing)) fail(`prepare: --missing must be a repo-relative path (no .., no absolute path): ${entry}`)
-    if (!safePath(inDir)) fail(`prepare: --in must be a repo-relative folder (no .., no absolute path): ${entry}`)
+    const safePath = (p) => p !== '' && !/^([A-Za-z]:|[\\/])/.test(p) && !p.split(/[\\/]/).includes('..') && /^[A-Za-z0-9_./@\\-]+$/.test(p)
+    const allowed = 'a repo-relative path of letters, digits and _ . / @ - only (no absolute path, no "..")'
+    if (!safePath(missing)) fail(`prepare: --missing must be ${allowed}: ${entry}`)
+    if (!safePath(inDir)) fail(`prepare: --in must be ${allowed}: ${entry}`)
     if (!/^[A-Za-z0-9:_-]+$/.test(script)) fail(`prepare: --script must be one npm script name, not a command: ${entry}`)
     if (pm !== 'npm' && pm !== 'pnpm') fail(`prepare: --pm must be npm or pnpm: ${entry}`)
     if (existsSync(join(root, missing))) emit({ ok: true, state: 'present', missing }, ['PREPARE: ok (present)'])

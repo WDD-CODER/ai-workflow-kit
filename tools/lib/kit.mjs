@@ -122,16 +122,17 @@ export function ciCommandProblem(cmd) {
   return `${c}: not an allowed check (npm run <script>, pnpm run <script>, node scripts/<file>.mjs or node tools/<file>.mjs)`
 }
 
-const PREPARE_PATH = /^[A-Za-z0-9_./-]+$/
+const PREPARE_PATH = /^[A-Za-z0-9_./@-]+$/ // @ for scoped packages (node_modules/@scope/pkg)
+const PREPARE_PATH_WHY = 'a repo-relative path of letters, digits and _ . / @ - only (no absolute path, no "..")'
 /** Why an orchestrator.prepare entry is refused (shape, absolute path, "..", a script that is a command, an unknown field), or null. */
 export function prepareProblem(item) {
   if (!item || typeof item !== 'object' || Array.isArray(item)) return 'it must be an object { "missing", "script", "in" }'
   const unknown = Object.keys(item).find((k) => !['missing', 'script', 'in'].includes(k))
   if (unknown) return `unknown field "${unknown}" (allowed: missing, script, in)`
   const okPath = (p) => typeof p === 'string' && p !== '' && PREPARE_PATH.test(p) && !p.startsWith('/') && !/^[A-Za-z]:/.test(p) && !p.split('/').includes('..')
-  if (!okPath(item.missing)) return '"missing" must be a repo-relative path (no absolute path, no "..")'
+  if (!okPath(item.missing)) return `"missing" must be ${PREPARE_PATH_WHY}`
   if (typeof item.script !== 'string' || !/^[A-Za-z0-9:_-]+$/.test(item.script)) return '"script" must be one npm script name, not a command'
-  if (item.in !== undefined && !okPath(item.in)) return '"in" must be a repo-relative folder (no absolute path, no "..")'
+  if (item.in !== undefined && !okPath(item.in)) return `"in" must be ${PREPARE_PATH_WHY}`
   return null
 }
 
