@@ -35,6 +35,7 @@ branch himself.
 | `triageMinGraded` | `{{orchestrator.triageMinGraded}}` | Graded decisions of that kind it needs first (5–500) |
 | `mergeChecks` | `{{orchestrator.mergeChecks}}` | What the merge step runs on the merged tree: `build` = the project build plus the plan's scope check (lint and tests passed in the plan's gate and run once more at the final gate), `full` = the plan's whole check list on every merge |
 | `ciMirror` | `{{orchestrator.ciMirror|json}}` | CI commands (`npm run <script>`, `pnpm run <script>`, `node scripts/…` or `node tools/…`, no write flag) the final gate runs after the project checks and the kit manifest check, so a green run is a green pull request. Install and sync print a `NOTE ci-mirror:` line for each workflow command the final gate does not run; they never write the list |
+| `prepare` | `{{orchestrator.prepare|json}}` | Files the gate generates before the tests: a list of `{ "missing": "<repo-relative path>", "script": "<npm script>", "in": "<repo-relative folder, default .>" }`. Each entry is a first gate command of every plan gate and of the final gate (`node scripts/orch-state.mjs prepare --missing <path> --script <name> [--in <folder>]`): it runs `{{project.packageManager}} run <script>` in the folder only when `<path>` is absent, and fails with the last 20 output lines and the entry when the path is still missing. Not in the merge step's `build` list. Install and sync refuse an absolute path, a `..`, a script that is a full command or an unknown field |
 
 ## The run
 
@@ -70,7 +71,9 @@ branch himself.
      nothing; a folder of its own installs once before the builder starts (with pnpm, quickly: one shared store).
      Packages are never linked in from the main folder: on Windows git follows a junction when it removes a worktree
      and would delete the main folder's packages. At most `orchestrator.concurrency` builders run at once (default 2);
-   - gate (`orch-gate`): the project checks (`commands.build`, `commands.lint`, and `commands.testCi` when set, else
+   - gate (`orch-gate`): first the `orchestrator.prepare` commands (generated files the tests need), then the project
+     checks, then `node scripts/kit-manifest-check.mjs` when the project has a kit manifest (a plan that adds an inventoried
+     file or an ADR is sent back as `unclassified: <path>` until the manifest lists it; the merge step never runs it); the project checks are (`commands.build`, `commands.lint`, and `commands.testCi` when set, else
      `commands.test`; run with `{{project.packageManager}} run`; each stopped after `orchestrator.gateTimeoutMin`
      minutes and reported as a fail, never a hang — a watch-mode test script is the usual cause, and preflight warns about
      it) plus the plan's own check commands from readiness — only `{{project.packageManager}} run
@@ -105,7 +108,7 @@ branch himself.
    are `skipped` with the reason "pilot", the run stops, and the report and the numbered decisions go to the Human.
    `continue` relaunches the same run with `pilot: false`: merged plans are skipped from git, the rest are built with
    the graded decisions and any new rule in `docs/brain/agent-rules.md` in place (`docs/agent/decision-review.md`).
-   **Final gate.** After the last wave, one `orch-gate` runs the project's build, lint and test commands on the run
+   **Final gate.** After the last wave, one `orch-gate` runs the `orchestrator.prepare` commands first, then the project's build, lint and test commands on the run
    branch (the merge folder) once, plus `node scripts/kit-manifest-check.mjs` when the project has a kit manifest
    (the manifest.json under docs/workflow-kit; the pull request's rules job runs the check; a run once finished green and its pull
    request failed on three test fixtures no manifest entry classified), plus every command in `orchestrator.ciMirror`

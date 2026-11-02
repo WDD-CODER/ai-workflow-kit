@@ -42,6 +42,16 @@ const MAX_NOTES = 12
 const MAX_CALLS = 60
 const COUNT = { notes: {}, calls: {} }
 const PROJECT_CHECKS = ["build", "lint", TEST_SCRIPT].filter((s) => typeof s === 'string' && s !== '').map((s) => `${PM} run ${s}`)
+// Files the gate generates before the tests (orchestrator.prepare: { missing, script, in? }). Each entry becomes one command
+// that runs the project's script only when the path is absent; it comes first in every plan gate and in the final gate.
+const PREPARE = []
+const PREPARE_CHECKS = (Array.isArray(PREPARE) ? PREPARE : [])
+  .filter((p) => p && typeof p.missing === 'string' && typeof p.script === 'string')
+  .map((p) => `node scripts/orch-state.mjs prepare --missing ${p.missing} --script ${p.script}${typeof p.in === 'string' && p.in !== '' && p.in !== '.' ? ` --in ${p.in}` : ''}${PM === 'pnpm' ? ' --pm pnpm' : ''}`)
+// The kit manifest check: each plan's own gate runs it when the run's folder has a manifest (init.kitManifest, kept in
+// KIT_MANIFEST after init), so a plan that adds an inventoried file fails there and not at the end; the merge step never does.
+const MANIFEST_CHECK = 'node scripts/kit-manifest-check.mjs'
+let KIT_MANIFEST = false
 // CI commands the Human listed (orchestrator.ciMirror): the final gate runs them after PROJECT_CHECKS and the kit
 // manifest check, so a green run is a green PR. Each one passes checkProblem; a bad one is dropped with a run note.
 const CI_MIRROR = []
@@ -51,7 +61,7 @@ const CI_MIRROR = []
 const MERGE_CHECKS_MODE = "build"
 const BUILD_SCRIPT = "build"
 const BUILD_CHECK = typeof BUILD_SCRIPT === 'string' && BUILD_SCRIPT !== '' ? `${PM} run ${BUILD_SCRIPT}` : null
-const mergeChecksOf = (checks) => (MERGE_CHECKS_MODE === 'full' ? checks : [...new Set([BUILD_CHECK, ...checks.filter((c) => /scope-check\.mjs/.test(c))].filter(Boolean))])
+const mergeChecksOf = (checks) => (MERGE_CHECKS_MODE === 'full' ? checks.filter((c) => c !== MANIFEST_CHECK) : [...new Set([BUILD_CHECK, ...checks.filter((c) => /scope-check\.mjs/.test(c))].filter(Boolean))])
 const FAILING = ['blocker', 'major']
 const KEEP_THRESHOLD = 80
 const FINDERS = ['orch-check-plan', 'orch-check-bugs', 'orch-check-rules']
@@ -640,6 +650,7 @@ async function builder(ctx, mode, findings) {
       ROUND: ctx.round, CHECKS: ctx.checks, FINDINGS: mode !== 'handoff' && findings.length ? findings : undefined,
       HANDOFF: mode === 'handoff' ? ctx.handoff : undefined, LESSONS: lessonsOf('builder'),
     }),
+    KIT_MANIFEST ? 'The per-plan gate runs node scripts/kit-manifest-check.mjs: a file you add under the manifest inventory (scripts, agents, commands, skills, docs/brain, docs/agent, .github/workflows) or an ADR needs its docs/workflow-kit/manifest.json entry in the same branch.' : '',
     mode === 'fix' ? 'Fix exactly the FINDINGS, rerun the checks, commit and push your branch.' : '',
     mode === 'handoff' ? 'You are a fresh builder: read the HANDOFF file, the plan and git diff against the run branch; rerun the failing check first.' : '',
     mode === 'env-retry' ? 'The environment check passed after an environment failure: continue the plan where it stopped.' : '',
@@ -907,7 +918,7 @@ async function runPlan(nnn) {
   const extra = Array.isArray((A.checks ?? {})[nnn]) ? A.checks[nnn] : []
   const scripts = Array.isArray(info.npmScripts) ? info.npmScripts : []
   const dropped = extra.map((c) => checkProblem(c, scripts)).filter(Boolean)
-  const checks = [...new Set([...PROJECT_CHECKS, ...extra.filter((c) => !checkProblem(c, scripts)).map((c) => String(c).trim())])]
+  const checks = [...new Set([...PREPARE_CHECKS, ...PROJECT_CHECKS, ...(KIT_MANIFEST ? [MANIFEST_CHECK] : []), ...extra.filter((c) => !checkProblem(c, scripts)).map((c) => String(c).trim())])]
   // The plan's [auto:main] checks (readiness `mainCommands`, args.mainChecks): project scripts run from the main folder
   // after the worktree gate passed; never part of the merge or the final gate.
   const mainExtra = Array.isArray((A.mainChecks ?? {})[nnn]) ? A.mainChecks[nnn] : []
@@ -1143,6 +1154,7 @@ async function run() {
   // No start time is passed: init reads its own clock (a value the model wrote was invented) and returns it.
   const init = await state(['init', '--run', RUN], 'start run')
   if (!init.ok) return { mode: 'run', run: RUN, ok: false, stopped: 'init', problems: [init.error] }
+  KIT_MANIFEST = init.kitManifest === true
   LAUNCH = String(init.attempt ?? 0) // note ids are per launch: a relaunch of the run numbers its notes again
   // The run report names the database mode once (a run note): local unless the request said `remote`.
   await note(`database: ${DB} — when a plan needs the main folder's backend and none answers, the preflight starts ${DB === 'remote' ? 'commands.devRemote (the remote database), asked for this run' : 'commands.devLocal (the local database)'}; a backend already running is kept on whatever database it uses`)
@@ -1167,7 +1179,7 @@ async function run() {
   const mirrorScripts = Array.isArray(init.npmScripts) ? init.npmScripts : null
   const mirrorDropped = mirrorList.map((c) => checkProblem(c, mirrorScripts)).filter(Boolean)
   const mirrorOk = mirrorList.filter((c) => !checkProblem(c, mirrorScripts)).map((c) => String(c).trim())
-  const finalChecks = [...new Set([...PROJECT_CHECKS, ...(init.kitManifest === true ? ['node scripts/kit-manifest-check.mjs'] : []), ...mirrorOk])]
+  const finalChecks = [...new Set([...PREPARE_CHECKS, ...PROJECT_CHECKS, ...(init.kitManifest === true ? [MANIFEST_CHECK] : []), ...mirrorOk])]
   for (const why of mirrorDropped) await note(`ci-mirror check dropped, not run: ${why}`)
   const startedAt = init.startedAt ?? null
   const order = await state(['order', '--run', RUN, '--plans', PLANS.join(',')], 'plan order')
