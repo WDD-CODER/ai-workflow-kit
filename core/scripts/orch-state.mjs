@@ -898,7 +898,7 @@ const commands = {
       `Files changed:   ${files.join(', ') || '(none)'}`,
       `Done:            ${done}`,
       `Failed:          ${val('failed')}`,
-      `Tried:          ${val('tried')}`,
+      `Tried:           ${val('tried')}`,
       `Failing check:   ${val('check')}`,
       `Output tail:     ${val('tail')}`,
       'Suspected cause: (a guess) see the output tail; rerun the failing check first',
