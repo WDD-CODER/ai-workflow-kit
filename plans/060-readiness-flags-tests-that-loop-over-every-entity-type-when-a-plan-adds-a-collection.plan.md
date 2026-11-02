@@ -1,7 +1,7 @@
 # Plan 060 — Readiness flags tests that loop over every entity type when a plan adds a collection; the plan template asks for them
 
 Status: draft
-Depends-on: none
+Depends-on: 063
 Snapshot: aac496e051072bad36314d3b24767d2f7fa37469
 Source: first orchestrator test run (test-512-422), findings F3 and D16
 
