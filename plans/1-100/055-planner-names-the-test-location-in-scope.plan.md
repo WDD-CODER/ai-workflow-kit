@@ -1,6 +1,6 @@
 # Plan 055 — Planner names the test location in scope
 
-Status: draft
+Status: done
 Depends-on: 049
 Snapshot: 3d52a688afa8bc070ddd5757bad271c66a7f82ed
 

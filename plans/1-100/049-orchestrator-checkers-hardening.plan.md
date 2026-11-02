@@ -1,6 +1,6 @@
 # Plan 049 — Orchestrator checkers hardening: a test-file gate, finders that judge the diff alone, a stop on no progress, and every change measured against the baseline
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: 65f45bb467a35c0a1c007ca8471875077a5aee82
 

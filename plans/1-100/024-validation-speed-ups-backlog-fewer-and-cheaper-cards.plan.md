@@ -1,6 +1,6 @@
 # Plan 024 — Validation speed-ups backlog: fewer and cheaper cards
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: 58be2737fde3c24035edc61c85c46798956a6bb0
 
