@@ -23,6 +23,15 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
   exposures and recurrences, `trend` shows whether the kit gets better, `triage-prior` calibrates a new project's triage from
   every project's grades. The graders (`agent-eval`, the signature code, the leak and secret checks, `tools/test/**`) are
   protected from the loop. The kit-side database role is a Human step (`docs/agent/kit-brain.md`, Setup 8).
+- **`/ship` learns from every Worker plan.** Every decision the Human grades at `/ship` is stored, `ok` ones too, under a
+  run name stable per plan (`ship-<NNN>`): `decision-log.mjs pending` lists the plan's ungraded `- decision:` lines with ids
+  that never repeat, and `grade --mark` tags the graded lines, so a later session does not list them again. A `seen:`
+  defect becomes a follow-up row that `/plan`'s follow-ups check shows. A REGULAR `/ship` on a plan branch now reviews with
+  the `/review-it` checker pipeline (`review.ship`: `checkers`, the default, or `light` for the single `/review` pass), with
+  one fix-and-recheck by the verifier only; `/ship fast` keeps the light review unless the diff touches a sensitive path
+  (ADR 0015 supersedes 0007). `/review-it` hands each checker its own lessons (the kit's first) and the `## checkers`
+  rules, read from the main folder. Each review writes one fact line (mode, kept, dropped, rechecked, minutes, models) to
+  the plan's Execution Notes.
 
 ## [1.13.0] - 2026-11-01
 

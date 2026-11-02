@@ -50,7 +50,8 @@ export function trendRows(runs, grades, by) {
       x.tokenPlans += c.plans ?? 0
     }
   }
-  for (const gr of grades) if (gr.humanVerdict === '✗') g(String(gr[by] ?? 'unknown')).wrong++
+  // ✗/plan is per orchestrator plan: a grade from a /ship run (`ship-<NNN>`, no runs document, no plans counted) stays out.
+  for (const gr of grades) if (gr.humanVerdict === '✗' && !/^ship-/.test(String(gr.run ?? ''))) g(String(gr[by] ?? 'unknown')).wrong++
   return [...groups.values()].sort((a, b) => (a.key < b.key ? -1 : 1)).map((x) => ({
     [by]: x.key, runs: x.runs, plans: x.plans, parkedPerRun: avg(x.parked, x.runs), fixRoundsPerPlan: avg(x.fixRounds, x.plans), minutesPerPlan: avg(x.minutes, x.minutesPlans),
     decisionsPerPlan: avg(x.decisions, x.plans), wrongPerPlan: avg(x.wrong, x.plans), flakesPerRun: avg(x.flakes, x.runs), tokensPerPlan: x.tokenPlans ? Math.round(x.tokens / x.tokenPlans) : null,

@@ -474,3 +474,97 @@ test('case: a checker miss becomes an eval case in the harness shape with no mod
     assert.equal(run(['case', '--run', 'r1', '--dir', s.dir]).status, 2)
   } finally { rmSync(s.dir, { recursive: true, force: true }) }
 })
+
+// ---- plan 057: /ship grades a plan's decisions — pending, grade --mark ---------------------------------------------
+const { planDecisions, pendingDecisions, markGraded } = await import(pathToFileURL(script).href)
+const PLAN_NOTES = [
+  '# Plan 057 — x', '', '## Atomic Sub-tasks', '- decision: behaviour: not a note, outside Execution Notes', '',
+  '## Execution Notes',
+  '- decision: seen: src/a.ts:12 — NaN at 100 %',
+  '- decision: behaviour: no dialog on leave',
+  '  — reverse: add one',
+  '- decision: removes: the old export — reverse: restore it',
+  '- follow-up: run-x D9', '',
+].join('\n')
+const shipSetup = (text = PLAN_NOTES) => {
+  const s = gradeSetup()
+  const plan = join(s.dir, 'plans', '057-x.plan.md')
+  mkdirSync(join(s.dir, 'plans'), { recursive: true })
+  writeFileSync(plan, text)
+  return { ...s, plan, out: join(s.dir, 'pending.json') }
+}
+const pending = (s) => run(['pending', '--dir', s.dir, '--plan', 'plans/057-x.plan.md', '--out', s.out])
+const shipGrade = (s, reply) => run(['grade', '--dir', s.dir, '--run', 'ship-057', '--reply', reply, '--decisions', s.out, '--date', '2026-11-02', '--mark', 'plans/057-x.plan.md'])
+
+test('pending: the untagged Execution Notes decisions, removes then behaviour then seen, as a list grade reads', () => {
+  const s = shipSetup()
+  try {
+    const r = pending(s)
+    assert.equal(r.status, 0, r.stderr)
+    assert.deepEqual(r.stdout.trim().split(/\r?\n/), [
+      'D1 · removes: the old export — reverse: restore it',
+      'D2 · behaviour: no dialog on leave — reverse: add one',
+      'D3 · seen: src/a.ts:12 — NaN at 100 %',
+      'DECISIONS: 3 to grade',
+    ])
+    assert.deepEqual(JSON.parse(readFileSync(s.out, 'utf8')).map((d) => [d.id, d.plan]), [['D1', '057'], ['D2', '057'], ['D3', '057']])
+    assert.equal(planDecisions(PLAN_NOTES).length, 3, 'a decision line outside Execution Notes is not one')
+  } finally { rmSync(s.dir, { recursive: true, force: true }) }
+})
+
+test('grade --mark: ok and ✗ rows under the ship run, a follow-up for seen:, tags on exactly those lines, never twice', () => {
+  const s = shipSetup()
+  try {
+    pending(s)
+    const r = shipGrade(s, 'D2 ✗ ask me first')
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(r.stdout, /graded 3 item\(s\) \(1 ✗\)/)
+    assert.match(r.stdout, /marked 3 line\(s\) graded in plans\/057-x\.plan\.md/)
+    const rows = jsonLines(s.grades)
+    assert.deepEqual(rows.map((x) => [x.run, x.id, x.humanVerdict, x.triageVerdict]), [['ship-057', 'D1', 'ok', 'none'], ['ship-057', 'D2', '✗', 'none'], ['ship-057', 'D3', 'ok', 'none']])
+    assert.deepEqual(followIds(s), ['D3'], 'the seen: item becomes a follow-up')
+    const text = readFileSync(s.plan, 'utf8')
+    assert.match(text, /^- decision: removes: the old export — reverse: restore it \[graded D1 ok 2026-11-02\]$/m)
+    assert.match(text, /^ {2}— reverse: add one \[graded D2 ✗ 2026-11-02\]$/m, 'a wrapped item is tagged on its last line')
+    assert.match(text, /^- decision: seen: src\/a\.ts:12 — NaN at 100 % \[graded D3 ok 2026-11-02\]$/m)
+    assert.match(text, /^- decision: behaviour: not a note, outside Execution Notes$/m)
+    assert.ok(!/\[graded[^\]]*follow-up:/.test(text), 'a tag never holds follow-up:')
+    // the same grade again: nothing new anywhere
+    const again = shipGrade(s, 'D2 ✗ ask me first')
+    assert.match(again.stdout, /graded 0 item/)
+    assert.match(again.stdout, /marked 0 line/)
+    assert.equal(jsonLines(s.grades).length, 3)
+    assert.deepEqual(followIds(s), ['D3'])
+    assert.equal(readFileSync(s.plan, 'utf8'), text)
+    assert.match(run(['follow-ups', '--open', '--dir', s.dir]).stdout, /FOLLOW_UP ship-057 D3 src\/a\.ts:12/)
+    assert.match(pending(s).stdout, /^DECISIONS: none to grade$/m)
+  } finally { rmSync(s.dir, { recursive: true, force: true }) }
+})
+
+test('pending after a graded session: only the new line, numbered after the highest graded D', () => {
+  const s = shipSetup()
+  try {
+    pending(s)
+    assert.equal(shipGrade(s, 'decisions: ok').status, 0)
+    writeFileSync(s.plan, readFileSync(s.plan, 'utf8').replace('- follow-up: run-x D9', '- decision: behaviour: saved on blur\n- follow-up: run-x D9'))
+    assert.deepEqual(pending(s).stdout.trim().split(/\r?\n/), ['D4 · behaviour: saved on blur', 'DECISIONS: 1 to grade'])
+    const r = shipGrade(s, 'decisions: ok')
+    assert.match(r.stdout, /graded 1 item\(s\) \(0 ✗\)/, 'D4 is new to run ship-057: it is graded, not skipped')
+    assert.deepEqual(jsonLines(s.grades).map((x) => x.id), ['D1', 'D2', 'D3', 'D4'])
+  } finally { rmSync(s.dir, { recursive: true, force: true }) }
+})
+
+test('pendingDecisions / markGraded: CRLF text, an unknown text is not tagged, a missing plan exits 1', () => {
+  const crlf = PLAN_NOTES.replace(/\n/g, '\r\n')
+  const list = pendingDecisions(crlf, '057')
+  assert.equal(list.length, 3)
+  const marked = markGraded(crlf, [{ id: 'D1', text: list[0].text, verdict: 'ok' }, { id: 'D9', text: 'not in the plan', verdict: 'ok' }], '2026-11-02')
+  assert.match(marked, /restore it \[graded D1 ok 2026-11-02\]\r\n/)
+  assert.equal((marked.match(/\[graded/g) ?? []).length, 1)
+  assert.deepEqual(pendingDecisions(marked, '057').map((d) => d.id), ['D2', 'D3'])
+  const s = shipSetup()
+  try {
+    assert.equal(run(['pending', '--dir', s.dir, '--plan', 'plans/nope.plan.md', '--out', s.out]).status, 1)
+    assert.equal(run(['pending', '--dir', s.dir, '--plan', 'plans/057-x.plan.md']).status, 2)
+  } finally { rmSync(s.dir, { recursive: true, force: true }) }
+})

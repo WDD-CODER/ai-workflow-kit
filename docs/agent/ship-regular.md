@@ -6,7 +6,33 @@ Loaded from `.claude/commands/ship.md` when Lane = REGULAR, or when any lane's s
 
 ## Phase 2 — REGULAR review procedure
 
-**Lane = REGULAR:**
+**Which review.** Note the start time (`date -u +%Y-%m-%dT%H:%M:%SZ`) for the fact line below, then pick:
+
+- **Plan branch** = the current branch is `feat/NNN-<slug>` or `fix/NNN-<slug>` and `plans/NNN-*.plan.md` exists (any
+  plan folder).
+- **Sensitive** = `sensitiveMatches` in `node scripts/ship-prep.mjs --json` is not empty.
+- Checkers (below) when: plan branch AND `review.ship` is `checkers` AND (`fast` not passed OR sensitive). `fast` on a
+  REGULAR plan branch therefore keeps the light review, unless the diff is sensitive (ADR 0015). Plain `/ship` and
+  `/ship regular` keep the checkers.
+- Otherwise the light review (`/review`, below). A branch with no plan, FAST / ULTRA-TRIVIAL lanes and `--skip-review`
+  are unchanged.
+
+**Checker review (plan branch):**
+1. Read `.claude/commands/review-it.md` and run its steps 1–6 inline on the current branch — read the file directly,
+   never through the Skill tool by name (the same reason as for `/review` below). Its finders and `orch-verify` are the
+   only sub-agents this adds. At `/ship` the work is not committed yet, so the diff under review is the working tree
+   against the branch point — `git diff <base>` with `<base>` = `git merge-base HEAD origin/main`, plus the
+   untracked files `git status --short` lists (`git add -N` them first) — not `origin/main...<ref>`
+   (`origin/main` itself may have moved on). The finders get this folder, `<base>` and that diff.
+2. No kept `blocker` or `major` (Decision `APPROVE`) → continue.
+3. A kept `blocker` or `major` (`RETURN TO WORKER` / `ESCALATE TO ARCHITECT`) = ISSUES FOUND → fix those findings → re-check
+   **exactly once**: hand `orch-verify` only the findings you fixed, with the new diff (`git diff origin/main...HEAD`),
+   and re-run the `kit-runner` checks of `/review-it` step 2. No second set of finders.
+4. A fixed finding still kept, or a check still failing → **stop**. Do not commit. Present the remaining findings.
+5. The `/ship` tree shows the review as one line per lens (`Plan-match PASS · Bugs PASS · …`); the commit body keeps
+   `Review: checkers <Decision> — kept <n>, dropped <m>`. The full `/review-it` tables stay in the chat, not the commit.
+
+**Light review (`/review`):**
 1. Invoke `/review` by **reading `.claude/commands/review.md` and executing it inline** — do
    **not** call it via the Skill tool by name (`skill: "review"`). The plain name "review" is
    ambiguous with a vendored third-party skill of the same name at `~/.claude/skills/review/`,
@@ -20,6 +46,20 @@ Loaded from `.claude/commands/ship.md` when Lane = REGULAR, or when any lane's s
 3. On `ISSUES FOUND` → fix the listed issues → re-run `/review` **exactly once**.
 4. If still `ISSUES FOUND` → **stop**. Do not commit. Present remaining issues to the user.
 5. Retry cap is hard: one fix-and-recheck cycle only. Never loop indefinitely.
+6. The commit body keeps `Review: light PASS` (`Review: light (fast) PASS` when `fast` chose it).
+
+**Review fact line (both reviews, no model call).** On a plan branch, after the verdict, append one line to the plan's
+`## Execution Notes`:
+
+```text
+- review: <checkers|light|light (fast)> kept <n> dropped <m> rechecked <k> minutes <t> models <role=model,…>
+```
+
+`light (fast)` = `fast` chose the light review. `kept` / `dropped` = the kept and the dropped findings (light: the
+issues `/review` listed, dropped 0). `rechecked` = findings sent to the re-check (0 when none). `minutes` = the wall
+clock from the start time above to the verdict, one decimal (a second `date -u`). `models` = what each agent result
+names (`check-plan=sonnet,…`; light: `inline`). No token counts: the runtime does not expose them cheaply. The plan
+file joins the commit.
 
 ---
 
