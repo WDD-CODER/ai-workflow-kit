@@ -108,7 +108,11 @@ append the path to the scope block above and retry.
    (:545), `context` (:1170-1181), `rulesIn` (:~598), `kitLessonsIn`, and every reader of the line shape (`lessonOf` regex,
    `lessonParts`, `lessonSize`, the kit-learn upkeep that reads lesson files, `tools/lib/kit-learn/upkeep.mjs`).
 4. List every place that parses a lesson line (grep `lessonOf`, `agent-lessons`) so the new shape breaks none; print the list.
-5. `node tools/install-check.mjs` and `node --test "tools/test/*.test.mjs"` pass before any edit.
+5. Key the repeat count on stable facts only: command kind + file path, the park-reason prefix, an `INV-n` id. Never a finding
+   id — ids are positional per call (`<lens>-<n>`, `gate-<n>`, `scope-<n>`, `ui-<n>`, `orchestrate.js:715, 758, 776, 853, 884`),
+   so `bugs-1` in two runs names unrelated findings. A 065 line may still show the id for reading; the key drops it. Test: the
+   same file + kind with different ids counts as one line; the same id on different files stays two lines.
+6. `node tools/install-check.mjs` and `node --test "tools/test/*.test.mjs"` pass before any edit.
 
 ## User Stories
 - As the Human, I want to see that a problem came back in several runs, on one line.
