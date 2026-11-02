@@ -112,7 +112,14 @@ branch himself.
    (`{{orchestrator.ciMirror|json}}`; deduplicated, in that order; a command that fails the plan-check allowlist is dropped
    with the run note `ci-mirror check dropped, not run: <why>`). A failure is a finding in the report
    (`Stopped: final gate failed: <command> — <output tail>`, and the command's output) and the run branch is not handed
-   over as clean; a merge can break a test no plan's own checks cover.
+   over as clean; a merge can break a test no plan's own checks cover. The result is stored in `status.finalGate`. A lesson
+   about a failure goes only to the roles that could have caught it, by the failing command's kind (`FINAL_GATE_ROLES` in
+   `lib/orch-run.mjs`): `test` to `check-bugs` and `check-plan`, `lint` to `check-rules`, `build` to `check-bugs`, the kit
+   manifest check to `readiness`; a ci-mirror or unknown command teaches nobody and `security` never receives one. After
+   the Human fixes the cause and re-runs the gate, `node scripts/orch-state.mjs final-gate --run <name> --result ok` records
+   the pass: the `final gate …` misses and the final gate's stop reason are removed, and the report (local copy and the run
+   branch's) and the run-log row are rewritten from the stored result in the same call (a run that has no report yet gets
+   it from `finish`). `--result failed [--command …]` records another failure the same way.
 5. **Report.** `orch-state.mjs finish` runs every time the workflow ends — after the last wave, when every plan parked,
    and when a step threw (the run is then stopped with `run stopped with an error: …`). It writes the local copy
    `.claude/orchestrator-runs/<run>.md` in the main folder first (gitignored, opens without a branch switch), then
@@ -388,7 +395,8 @@ the runner. The one row to watch is `set` — see its recommendation.
   | `roundCauses[]` | `set --round-cause "round 2: <why>"` | the reason a fix round began (`checker: major src/x.ts:12 <rule>`, `gate: <command>`, …) |
   | `escalations[]` | `handoff` | `{ step, check }` of each escalation to a fresh judgment-tier builder |
   | `verify` | `set --candidates --refuted --refuted-rules --verify-by --late-low --reappeared` | the verifier's totals for the plan so far: candidates and refuted, per finder (`byRole`), refuted rule names, problems kept below the threshold that later mattered (`lateLow`) and refuted ones that came back (`reappeared`) |
-  | `misses[]` | `set --miss "<what>"` | a `[ui]` card, or the final gate (when the failure names a file only one plan changed), failed after the checkers passed that plan |
+  | `misses[]` | `set --miss "<what>"` | a `[ui]` card failed after the checkers passed that plan (older runs also hold `final gate …` entries; a passing final gate removes them) |
+  | `finalGate` (run level) | `finish --final-gate ok\|failed [--final-gate-command "<cmd>"] [--final-gate-plans N]`, or by hand `final-gate --run <name> --result ok\|failed [--command "<cmd>"] [--plans N]` | `{ ok, command, at, attempt, blamed[] }`: the final gate's latest result, the failing command and the one plan whose changed file the failure names (none when two plans changed it). `attempt` counts changed outcomes; the same call twice is a retry and changes nothing. The lesson routing, the report and the run-log row all read this one place |
   | `gateEvents[]` | `set --gate-event "<text>"` | `timed out: <command>`, `env-fail rerun: <command>` |
   | `ready`, `asked[]` | `set --ready yes\|no --asked "q1 \|\| q2"` | whether readiness called the plan ready (from `args.asked`), and the questions it had to ask |
   | `uiCards[].regressed` | `set --card …` | the card passed earlier and fails now |

@@ -101,7 +101,7 @@ const SENSITIVE_CODE_RE = /auth|permission|password|jwt|session[_-]?id|tokens?\b
 // folder is always this script's own project) or a second positional word stops the command.
 const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tier', 'sha', 'role', 'model', 'effort', 'roles', 'reason', 'card', 'card-status', 'page', 'shots', 'via', 'step', 'check', 'tail', 'tried', 'text', 'min', 'stale-min', 'files', 'cmd', 'id', 'verdict', 'kind', 'confidence', 'rec', 'why', 'forced', 'dup-of', 'command', 'where',
   // facts the workflow records for the lessons (docs/agent/orchestrator.md "status.json"), and `trend` / `finish` options
-  'candidates', 'refuted', 'refuted-rules', 'verify-by', 'late-low', 'reappeared', 'miss', 'round-cause', 'gate-event', 'asked', 'ready', 'final-gate', 'last',
+  'candidates', 'refuted', 'refuted-rules', 'verify-by', 'late-low', 'reappeared', 'miss', 'round-cause', 'gate-event', 'asked', 'ready', 'final-gate', 'final-gate-command', 'final-gate-plans', 'result', 'last',
   // the hand-off's replan verdict and the builder's receipt
   'replan', 'replan-why', 'not-done', 'failed',
   // queued run notes riding on set / stop / finish, and the one-call decisions list
@@ -384,6 +384,41 @@ function needStatus(run) {
   if (!s) fail(`no run "${run}" — start it with: node scripts/orch-state.mjs init --run ${run}`)
   return s
 }
+
+// ---- the final gate's result (status.finalGate: { ok, command, at, attempt, blamed }) ------------------------------------
+// One writer for the workflow (riding on `finish`) and the Human (`final-gate`): the lesson routing, the report and the run-log
+// row all read this one place. A repeat of the stored outcome (same result, command, blamed plans) is a retry, not a new
+// attempt, so re-sending a call changes nothing.
+const cutText = (s, n) => String(s ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, n).replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
+const fgWord = (status) => (status.finalGate ? (status.finalGate.ok ? 'ok' : 'failed') : 'none')
+function applyFinalGate(status, result, { command = '', plans = '' } = {}) {
+  const ok = result === 'ok'
+  const cmd = ok ? null : cutText(command, 200) || null
+  const blamed = ok ? [] : [...new Set(String(plans).split(',').map((x) => x.trim()).filter((x) => /^\d+$/.test(x)))].sort()
+  const prev = status.finalGate
+  let changed = false
+  if (!(prev && prev.ok === ok && (prev.command ?? null) === cmd && JSON.stringify(prev.blamed ?? []) === JSON.stringify(blamed))) {
+    status.finalGate = { ok, command: cmd, at: nowIso(), attempt: (Number(prev?.attempt) || 0) + 1, blamed }
+    changed = true
+  }
+  if (ok) {
+    // A pass removes what an earlier failure left: the legacy `final gate …` misses and a stop that was the final gate's.
+    for (const p of Object.values(status.plans ?? {})) {
+      const left = (p.misses ?? []).filter((m) => !/^final gate/.test(String(m)))
+      if (left.length !== (p.misses ?? []).length) {
+        p.misses = left
+        changed = true
+      }
+    }
+    if (/^final gate/.test(String(status.stopReason ?? ''))) {
+      delete status.stopReason
+      status.phase = status.finishedAt ? 'finished' : 'running'
+      changed = true
+    }
+  }
+  return changed
+}
+const fgArgs = () => ({ result: String(args['final-gate'] ?? ''), command: args['final-gate-command'], plans: args['final-gate-plans'] })
 
 function diskGb() {
   if (process.env.ORCH_FREE_GB !== undefined && process.env.ORCH_FREE_GB !== '') return Number(process.env.ORCH_FREE_GB)
@@ -1123,7 +1158,10 @@ const commands = {
     if (!existsSync(mergeFolder(run))) fail(`the merge folder ${mergeFolder(run)} of run ${run} is gone (a merged run's folder is removed) — lessons are written on the run branch, never in the main checkout`)
     const base = mergeFolder(run)
     const merged = mergedPlans(run)
-    const learned = learnRun(run, status, base, { merged, finalGate: 'none' })
+    // A `--final-gate ok|failed` argument is recorded first, so the lines are cut from the newest result.
+    const fa = fgArgs()
+    if (['ok', 'failed'].includes(fa.result) && applyFinalGate(status, fa.result, fa)) writeStatus(run, status)
+    const learned = learnRun(run, status, base, { merged, finalGate: fgWord(status) })
     writeLearned(base, learned.files)
     emit({ ok: true, base: base.replace(/\\/g, '/'), added: learned.added, dropped: learned.dropped.length, chars: learned.budget.total, line: learned.budget.line },
       [...learned.added.map((a) => `LESSON ${a.role}: ${a.text}`), ...learned.dropped.map((d) => `DROPPED ${d.role}: ${d.line}`), `lessons: ${learned.added.length} line(s) added`, ...budgetLines(learned.budget)])
@@ -1203,8 +1241,38 @@ const commands = {
     addFlakes(status)
     if (status.phase === 'running') status.phase = 'finished'
     status.finishedAt = nowIso()
+    // The final gate's result rides on this call (status.finalGate); `none` leaves a stored result alone.
+    const fa = fgArgs()
+    if (['ok', 'failed'].includes(fa.result)) applyFinalGate(status, fa.result, fa)
     const slots = giveSlotsBack(run, status)
     writeStatus(run, status)
+    publishReport(run, status, { merged, slots, message: `orch(${run}): run report`, brain: true })
+  },
+
+  // Records the final gate's result by hand (after a run stopped at the final gate, the Human fixed the cause and re-ran it):
+  //   node scripts/orch-state.mjs final-gate --run <name> --result ok|failed [--command "<failing command>"] [--plans <NNN,NNN>]
+  // On a run that already has its report the report (local copy and the run branch's) and the run-log row are rewritten from
+  // the stored result in the same call; the same call twice changes nothing.
+  'final-gate'() {
+    const run = runName()
+    const result = String(args.result ?? '')
+    if (!['ok', 'failed'].includes(result)) fail('--result takes ok or failed')
+    const status = needStatus(run)
+    const changed = applyFinalGate(status, result, { command: args.command, plans: args.plans })
+    if (changed) writeStatus(run, status)
+    const fg = status.finalGate
+    if (!status.finishedAt || !['finished', 'stopped'].includes(status.phase)) emit({ ok: true, finalGate: fg, changed, rewritten: false }, [`final gate: ${result} (attempt ${fg.attempt}); the run has no report yet, \`finish\` writes it`])
+    fetchOrigin()
+    publishReport(run, status, { merged: mergedPlans(run), slots: { lines: [] }, message: `orch(${run}): final gate ${result}`, brain: false })
+  },
+}
+
+// The report, the lesson lines and the run-log row from status.json, then their commit: the tail of `finish`, and what a
+// recorded final gate rewrites. `slots` is what giveSlotsBack returned (empty when the slots were given back already).
+function publishReport(run, status, { merged, slots, message, brain }) {
+  const branch = runBranch(run)
+  const mf = mergeFolder(run)
+  {
     const mainShaNow = git(root, 'rev-parse', `origin/${MAIN}`).out
     // The files main changed during the run: a commit that touches only plans and the todo list (the Planner's own
     // pushes) does not make main "touched".
@@ -1220,7 +1288,7 @@ const commands = {
     let learned = null
     let learnError = null
     try {
-      learned = learnRun(run, status, existsSync(mf) ? mf : root, { merged, finalGate: String(args['final-gate'] ?? 'none'), finishedAt: status.finishedAt, runLog: true })
+      learned = learnRun(run, status, existsSync(mf) ? mf : root, { merged, finalGate: fgWord(status), finishedAt: status.finishedAt, runLog: true })
     } catch (e) {
       learnError = e.message
     }
@@ -1234,7 +1302,7 @@ const commands = {
     writeFileSync(local, report)
     // The run's facts go to the kit brain (docs/agent/kit-brain.md): after the local report exists, before the branch commit,
     // so a failed push still sends. It can never change this command's exit code or the report.
-    const brainLine = brainSend(['--run', run, `--final-gate=${String(args['final-gate'] ?? 'none')}`])
+    const brainLine = brain ? brainSend(['--run', run, `--final-gate=${fgWord(status)}`]) : null
     const parked = Object.values(status.plans).filter((x) => x.state === 'parked' || x.state === 'left-run').map((x) => x.nnn)
     const rel = `docs/orchestrator/runs/${run}`
     const learningOut = learned ? { lessonsAdded: learned.added.length, lessonsDropped: learned.dropped.length, budget: learned.budget.line, chars: learned.budget.total, trend: learned.trend.line } : { error: learnError }
@@ -1253,14 +1321,14 @@ const commands = {
     if (learned) writeLearned(mf, learned.files)
     const add = git(mf, 'add', '--', `${rel}/report.md`, `${rel}/status.json`, ...(learned ? [...learned.files.keys()] : []))
     if (add.status !== 0) notCommitted(`git add the report: ${add.err}`)
-    const c = git(mf, 'commit', '--quiet', '-m', `orch(${run}): run report`)
+    const c = git(mf, 'commit', '--quiet', '-m', message)
     if (c.status !== 0 && !/nothing to commit/.test(c.out + c.err)) notCommitted(`git commit the report: ${(c.err || c.out).split('\n').pop()}`)
     const p = git(mf, 'push', '--quiet', 'origin', branch)
     if (p.status !== 0) notCommitted(`git push origin ${branch}: ${p.err.split('\n').pop()}`, { envFailure: true })
     const left = git(mf, 'status', '--porcelain').out
     emit({ ok: !left, ...base, reportCommitted: true, ...(left ? { error: `merge folder not clean: ${left}` } : {}) },
       [...slots.lines, `report: ${rel}/report.md on ${branch}; local copy ${local}`, `merged ${merged.length}: ${merged.map((m) => m.nnn).join(', ') || 'none'}; parked ${parked.length}: ${parked.join(', ') || 'none'}`, ...learningLines, ...(brainLine ? [brainLine] : [])])
-  },
+  }
 }
 
 // The kit brain (docs/agent/kit-brain.md): `node scripts/brain.mjs send …` in a child process that is killed after 15 s
