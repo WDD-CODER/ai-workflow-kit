@@ -37,3 +37,6 @@ scripts/node_modules/
 # Session hand-offs written by the workflow (may name other projects)
 docs/session-state-*.md
 .claude/handoff-previous.md
+
+# /kit-learn working files (card records of the last session)
+.kit-learn/

@@ -284,15 +284,20 @@ const roleArg = (results) => results.filter(Boolean).filter((r) => r.role && r.m
 // One `orch-state.mjs context` call per launch (readiness and run) reads the role's lessons (docs/brain/agent-lessons/), the
 // rules sections and the last run-log rows; each role's task then carries LESSONS (and RULES, RECENT_RUNS) as a JSON array of
 // lines — `[]` when there is none. No model call: the runner agent only copies the command's output.
-const LEARN = { lessons: {}, rules: {}, recent: [] }
+// The kit's own lessons (docs/agent/kit-lessons/<role>.md, true for every project, kept by the kit) come in the same
+// `context` answer as `kitLessons` and go first: LESSONS = [...kit lines, ...the project's lines]. A missing kit file adds nothing.
+const LEARN = { lessons: {}, kitLessons: {}, rules: {}, recent: [] }
 const lineList = (v) => (Array.isArray(v) ? v.filter((l) => typeof l === 'string' && l.trim() !== '') : [])
-const lessonsOf = (role) => lineList(LEARN.lessons[role])
+const kitLessons = (role) => lineList(LEARN.kitLessons[role])
+const projectLessons = (role) => lineList(LEARN.lessons[role])
+const lessonsOf = (role) => [...kitLessons(role), ...projectLessons(role)]
 const rulesOf = (group) => lineList(LEARN.rules[group])
 async function loadLearning() {
   const r = await state(['context', '--run', RUN], 'learning context')
   if (!r?.ok) return String(r?.error ?? 'unreadable').slice(0, 200)
   const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {})
   LEARN.lessons = obj(r.lessons)
+  LEARN.kitLessons = obj(r.kitLessons)
   LEARN.rules = obj(r.rules)
   LEARN.recent = lineList(r.recent)
   return null

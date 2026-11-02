@@ -28,6 +28,9 @@ their instructions.
 | A graded `✗` | `decision-log.mjs add` → `decision-log.md`; a rule at the first `✗` (`pending — seen once`), promoted by `repeats` | `agent-rules.md`: `## builder` → builder and `/take-plan`; `## checkers` → finders and verifier; `## readiness`; `## ui` | 30 lines / 2,400 characters per section |
 | A mistake a check could catch | `rules --add "enforce: …"` → `## enforce candidates` | nobody (listed in the wrap-up) | 10 lines |
 | A graded `checker-miss: yes` | `decision-log.mjs case` → `docs/agent-evals/cases/<checker>/<date>-<kind>/` | the eval harness | one folder per miss |
+| A problem seen in runs of any project (park, timeout, env-fail, by-hand toil, a lesson several projects sent) | the kit's `/kit-learn` (kit repository only): `kit-learn.mjs collect` → the ledger (`issues`) in the kit brain (`docs/agent/kit-brain.md` "Kit side") | the Human, as at most 5 cards and one reply line | one issue per signature, `proposals` row per card |
+| A lesson true for every project | the kit's `kit-lessons.mjs add`, after the Human's `I<n> lesson <role>` → `docs/agent/kit-lessons/<role>.md` | every role at launch, before its project lessons (`LESSONS`); `/plan`'s review reads `planner.md` from both folders | 2,000 characters of live lines per role; retired only for a positive reason |
+| Per decision kind, the agreement over every project's grades | `kit-learn.mjs triage-prior` → `docs/agent/kit-lessons/triage-calibration.md` | the triage, as a starting point for a kind the project has graded fewer than `orchestrator.triageMinGraded` times (the file is written; `orch-state.mjs` reading it is a separate step) | one row per kind |
 
 ## 1. Agents log what they chose
 
