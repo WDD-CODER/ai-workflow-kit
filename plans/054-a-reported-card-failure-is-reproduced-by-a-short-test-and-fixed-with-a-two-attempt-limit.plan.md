@@ -1,13 +1,13 @@
 # Plan 054 — A reported card failure is reproduced by one short test and fixed, with at most two fix attempts per card
 
 Status: draft
-Depends-on: 053
+Depends-on: 069
 Snapshot: 58be2737fde3c24035edc61c85c46798956a6bb0
 
 ## Problem Statement
 When the Human replies `failed: <number> <what you saw>`, the agent asks questions before it can act. A script that reproduces the failure removes the back and forth.
 
-This plan came from the backlog in plan 024 (idea C5); it is one of five that run in order, each after the one before it, because they edit the same files.
+This plan came from the backlog in plan 024 (idea C5); it runs after plan 069 (which merged the earlier plans 050–053 of the same backlog), because they edit the same files.
 
 ## Goals & Success Criteria
 **Primary:** A failed reply makes the agent write one short e2e test for the card, run it, and fix until it passes — at most two fix attempts per failed card, then it stops and reports to the Human.
@@ -20,7 +20,7 @@ This plan came from the backlog in plan 024 (idea C5); it is one of five that ru
 
 ## Execution Mode
 - Parallel: no.
-- Concurrent plans: none (the five validation speed-up plans run strictly in order).
+- Concurrent plans: none (the validation speed-up plans run strictly in order: 069, then this plan).
 - Isolated DB: no.
 - Kit edits: one kit branch and one kit PR for this plan.
 
@@ -52,7 +52,7 @@ the path to the scope block and retry. Tags and releases: wait for Dandan's go.
 - INV-none: preserves — kit instruction and workflow files only; `docs/brain/invariants.md` lists no invariant these files touch.
 
 ## Step 0 — Reality Check
-Plan 053 is merged. Re-read the failed-reply rules in `docs/agent/job-validation.md` and `orch-ui.md`; drop any sub-task already covered.
+Plan 069 is merged. Re-read the failed-reply rules in `docs/agent/job-validation.md` and `orch-ui.md`; drop any sub-task already covered.
 
 ## Atomic Sub-tasks
 
@@ -62,7 +62,7 @@ Plan 053 is merged. Re-read the failed-reply rules in `docs/agent/job-validation
 - [ ] E4: Add tests that fail on today's code for the reproduce step and the two-attempt stop, then resync installed copies and add a changelog entry — tools/test/ui-tier.test.mjs, tools/test/orchestrator.test.mjs, CHANGELOG.md
 
 ## Technical Considerations
-- Dependencies: plan 053. The stop rule counts attempts per card, not per run.
+- Dependencies: plan 069. The stop rule counts attempts per card, not per run.
 - Model changes: none. Backend / API: none. Auth and validation: none. Security surface: none. Data / migration: none. Project checks: none.
 - Card format: a change here must not alter the format other plans rely on without a test in `tools/test/ui-tier.test.mjs` or `tools/test/orchestrator.test.mjs`.
 
