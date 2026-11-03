@@ -1,6 +1,6 @@
 # Plan 052 — Cards for areas the diff did not touch are skipped when a test covers them, and the skipped list is shown
 
-Status: draft
+Status: superseded by 069
 Depends-on: 051
 Snapshot: 58be2737fde3c24035edc61c85c46798956a6bb0
 

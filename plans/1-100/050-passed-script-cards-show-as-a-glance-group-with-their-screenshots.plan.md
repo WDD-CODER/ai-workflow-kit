@@ -1,6 +1,6 @@
 # Plan 050 — Cards a script already passed show as a glance group with their screenshots
 
-Status: draft
+Status: superseded by 069
 Depends-on: 049
 Snapshot: 58be2737fde3c24035edc61c85c46798956a6bb0
 

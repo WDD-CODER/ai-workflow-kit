@@ -1,6 +1,6 @@
 # Plan 051 — Cards that repeat the same check on several pages merge into one card with a list of pages
 
-Status: draft
+Status: superseded by 069
 Depends-on: 050
 Snapshot: 58be2737fde3c24035edc61c85c46798956a6bb0
 

@@ -1,6 +1,6 @@
 # Plan 053 — The orchestrator end-of-run validation list uses the same plain-text, copy-ready card layout
 
-Status: draft
+Status: superseded by 069
 Depends-on: 052
 Snapshot: 58be2737fde3c24035edc61c85c46798956a6bb0
 
