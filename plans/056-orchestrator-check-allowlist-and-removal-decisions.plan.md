@@ -16,7 +16,7 @@ fix.
    scripts v1.13.0 added (`scripts/brain.mjs`, `scripts/scout/pr.mjs`, `scripts/scout/render.mjs`, and any later one)
    are on no list, so `main-try` would run them. A denylist fails open: each new kit script needs a second edit that
    nothing reminds the author of.
-2. `core/.claude/workflows/orchestrate.js` (~line 1250) — the decision triage accepts an agent-supplied `duplicateOf`
+2. `core/.claude/workflows/orchestrate.js` (~line 1352) — the decision triage accepts an agent-supplied `duplicateOf`
    and forces the verdict `noise` when the target id exists, without checking that the target is the same kind of
    decision or running `triageForce` on it. A `removes:` decision can therefore be marked a duplicate of an unrelated
    decision and never reach the Human as a card, and a `removes:` decision can be dropped on an agent-written `why`.

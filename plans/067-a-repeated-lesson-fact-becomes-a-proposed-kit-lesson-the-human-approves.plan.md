@@ -7,7 +7,7 @@ Source: Human decision "approve: code facts only" (2026-11-02); follows plans 04
 
 ## Problem Statement
 
-**What exists (plan 046, merged):** `tools/kit-learn.mjs` reads run evidence from the kit brain, keeps a problem ledger and shows up
+**What exists (plan 046 open draft; its database prerequisite (brainKit in Atlas) is met as of 2026-11-03):** `tools/kit-learn.mjs` reads run evidence from the kit brain, keeps a problem ledger and shows up
 to five problem cards; the Human's one-line reply (`I<n> lesson <role>`, `tools/lib/kit-learn/reply.mjs`) is parsed into an action;
 `applyDecisions` (`tools/lib/kit-learn/apply.mjs:20-60`) marks the issue `planned` with `lessonRole`, and the next step is only
 **printed** as a command (`apply.mjs:14`: `node tools/kit-lessons.mjs add --role <role> --text "<the lesson>" --why "<why>" --issue <id>`).
