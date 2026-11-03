@@ -27,6 +27,9 @@
       "plans"
     ]
   },
+  "orchestrator": {
+    "useSlots": false
+  },
   "paths": {
     "hotspots": [
       "CHANGELOG.md",

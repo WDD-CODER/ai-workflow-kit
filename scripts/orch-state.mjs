@@ -75,7 +75,7 @@ const PREFIX = 'orch/'
 const MIN_FREE_GB = 5
 const REPO = 'ai-workflow-kit'
 const PM = 'npm' === 'pnpm' ? 'pnpm' : 'npm'
-const USE_SLOTS = true !== false
+const USE_SLOTS = false !== false
 const SERVER_ROOT = ''
 // Minutes without a status.json update after which `watch` prints STUCK (orchestrator.staleMin).
 const STALE_MIN = 10
