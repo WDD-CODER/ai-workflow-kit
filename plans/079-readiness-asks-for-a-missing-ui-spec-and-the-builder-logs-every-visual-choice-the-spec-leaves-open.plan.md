@@ -9,11 +9,12 @@ Snapshot: b075db1e9c4876d4f210c95612df2e2a406a160a
 After plan 078 a UI plan can carry a `## UI Spec` (Page, Placement, Elements, States, Texts) and `scope-check --ui-spec`
 warns when it is missing. Two gaps stay open inside a run:
 
-1. `orch-readiness` asks product questions only for behaviour (edit, leave, cancel, error) and explicitly skips "plans
-   that change only styling" (`core/.claude/agents/orch-readiness.md:50-54`). A UI plan whose spec is missing or
+1. `orch-readiness` asks product questions only for behaviour (edit, leave, cancel, error) and explicitly says "Skip
+   plans that change only styling or only the backend" (`core/.claude/agents/orch-readiness.md:50-54`). A UI plan whose spec is missing or
    incomplete reaches the builder without a question, which is how plan 515's box-inside-a-box shipped.
 2. The builder records a decision only for an unsettled behaviour (`behaviour:`), a defect seen (`seen:`) or a removal
-   (`removes:`); everything else is dropped (`core/.claude/workflows/orchestrate.js:154-156`, `take()`). A visual choice
+   (`removes:`); everything else is dropped (the `COMMON.decisions` description at `core/.claude/workflows/orchestrate.js:156`,
+   `take()` at `:468`, the ranking at `:486`). A visual choice
    the plan did not settle (which element, where it sits, a new element type) leaves no trace, so the Human cannot grade
    it at `/ship` and the learning loop never sees it. Plan 072 adds one case (an unplanned element type must be logged
    or asked), but not the general rule.
@@ -29,8 +30,8 @@ that the spec does not fix becomes a numbered `design:` decision the Human grade
 - [auto] `node --test tools/test/orchestrator.test.mjs` passes, with tests that fail on today's code:
   (a) the rendered `orch-readiness.md` has a rule: run `node scripts/scope-check.mjs --ui-spec --plan=<plan>` for each
   plan; on `UI_SPEC: warn` add `<plan>: [design] the UI Spec is missing <labels> — write them now? Default if
-  unanswered: build from the plan text and log every visual choice as design:`; the old "skip plans that change only
-  styling" sentence is gone;
+  unanswered: build from the plan text and log every visual choice as design:`; the skip sentence keeps "only the
+  backend" and drops "only styling";
   (b) a builder result with a `design: <choice> — reverse: <how>` entry keeps it (`take()`), numbers it with the run's
   other decisions after `behaviour:` and before `seen:`, and the report lists it under the plan;
   (c) a `design:` entry without `— reverse:` is dropped with the run note `design decision dropped: no reverse`.
@@ -125,13 +126,13 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 
 - [ ] R2: Make readiness ask about a UI plan's missing spec in the one batch before the run — run the UI Spec lint per plan, one design question per warn, drop the styling-only skip — core/.claude/agents/orch-readiness.md, tools/test/orchestrator.test.mjs
 - [ ] B1: Make the builder build only what the spec states and log each visual choice it had to make — one rule in the builder file, merged with plan 072's unplanned-element rule — core/.claude/agents/orch-builder.md
-- [ ] B2: Keep design decisions through the run so they reach the report and the grade list — `take()` and the schema description accept `design:`, numbering puts it after behaviour, a design entry with no reverse is dropped with a note — core/.claude/workflows/orchestrate.js, tools/test/orchestrator.test.mjs
+- [ ] B2: Keep design decisions through the run so they reach the report and the grade list — the COMMON.decisions description (`:156`), `take()` (`:468`) and the rank (`:486`) accept `design:` after behaviour; a design entry with no reverse is dropped with a note — core/.claude/workflows/orchestrate.js, tools/test/orchestrator.test.mjs
 - [ ] G1: Grade design decisions like behaviour ones and route a repeated wrong one to the ui rules — `TYPE_ORDER` and the type regexes in decision-log, the ui section for design kinds, the review doc — core/scripts/decision-log.mjs, core/docs/agent/decision-review.md, tools/test/decision-log.test.mjs
 - [ ] R1: Render the kit's own installed copies, check drift and add a changelog line — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .` — scripts/**, .claude/**, docs/agent/**, CHANGELOG.md
 
 ## Technical Considerations
 - Dependencies: plan 078 (`scope-check --ui-spec`), plan 072 (builder and rules-checker design wording), plan 070
-  (decision ids unique per run).
+  (decision ids unique per run). The `[design]` question tag comes from plan 076; without 076 it is harmless text.
 - New files: none.
 - Model changes: decision type `design` beside `removes`, `behaviour`, `seen`.
 - Backend / API: none. Auth and validation: none. Security surface: none.
@@ -150,3 +151,4 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 ## Execution Notes
 - Source: chat "תכנון ווקפלו לעיצוב UI/UX" (2026-10-28/29), steps 2 and 3 of "how it will look in a run"; chat "בחירת
   סוכן אופוסס מול סוננט" (2026-11-03), the combobox example.
+- Review (Architect + PM, a separate agent against b075db1, 2026-11-03): mechanical gaps fixed in the draft (line references, scope and Depends-on, test names); open points answered with the recommended default in Critical Questions. The Planner's own review is still to run.

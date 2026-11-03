@@ -13,7 +13,7 @@ runs only 7 of the files, and only against a freshly installed project (`tools/e
 `node --test "tools/test/*.test.mjs"` on its own machine.
 
 This is not theoretical. On `main` at `b075db1` the full set has one red test that CI did not catch:
-`tools/test/orchestrator.test.mjs:1151` ("final gate: PROJECT_CHECKS, then the manifest check, then
+`tools/test/orchestrator.test.mjs:1153` ("final gate: PROJECT_CHECKS, then the manifest check, then
 orchestrator.ciMirror …") fails at line 1159. PR #94 put six checks into the kit's own `orchestrator.ciMirror`
 (`.kit/config.json:33-40`), so the kit's rendered workflow already carries a mirror, and the test's baseline run now
 includes it while its override replaces it. The same test passes inside `e2e-check`, whose fresh project has no mirror,
@@ -28,17 +28,20 @@ local runs to the checks that CI does not cover. It was never planned.
 today is fixed, and the change loop says which checks a builder runs locally.
 
 - [auto] `node --test "tools/test/*.test.mjs"` exits 0 on the plan branch (today it exits 1 on the ciMirror test).
-- [auto] `node --test tools/test/orchestrator.test.mjs` passes, and the ciMirror test builds its expected list from the
-  rendered `CI_MIRROR` of the workflow it runs, so it passes both in the kit root and inside `e2e-check`
-  (`node tools/e2e-check.mjs` passes).
-- [auto] `.github/workflows/leak-check.yml` has, in the `leak-check` job after the install check, a step named
-  `Every kit tool test (node --test tools/test)` whose `run` is `node --test "tools/test/*.test.mjs"`; a test in
-  `tools/test/ci-coverage.test.mjs` reads the workflow file and fails without it.
-- [auto] `tools/test/ci-coverage.test.mjs` also fails when a `tools/test/*.test.mjs` file is added that the glob would
-  not match (for example a `.test.js` file), so no test file can sit outside the CI run.
+- [auto] `node --test tools/test/orchestrator.test.mjs` passes: the ciMirror test computes its `base` with
+  `source: withMirror([])`, so expected = project checks + manifest check + the deduplicated override, the same in the kit
+  root and in a fresh project; the closing "an empty mirror changes nothing" assertion uses the same base
+  (`node tools/e2e-check.mjs` passes too).
+- [auto] `.github/workflows/leak-check.yml` has its own job `kit-tests` (Ubuntu, Node 22, running beside `leak-check`
+  so PR wall time does not grow by the ~5 minutes the set takes) with a step `npm ci --prefix scripts` (the workflow
+  scripts import `picomatch`) followed by the step `Every kit tool test (node --test tools/test)` whose `run` is
+  `node --test "tools/test/*.test.mjs"`; `tools/test/ci-coverage.test.mjs` reads the workflow file and fails without the
+  job or either step.
+- [auto] `tools/test/ci-coverage.test.mjs` also fails when a file under `tools/test/` (not under `fixtures/`) matches
+  `/\.test\.(c|m)?js$/` but not `*.test.mjs`, so no test file can sit outside the CI run.
 - [auto] `docs/CHANGE-LOOP.md` section 1 lists the local checks as build, lint, `npm test`, drift-check and
   `node --test "tools/test/*.test.mjs"`, says `e2e-check` and `acceptance-check --e2e` run in CI on every PR and
-  locally only to debug a CI failure, and says never to run `orchestrator-e2e` and `e2e-check` both (a test reads it).
+  locally only to debug a CI failure, and says never to run `orchestrator-e2e` and `e2e-check` both (`tools/test/ci-coverage.test.mjs` reads it).
 - [auto] `npm run build` and `npm run lint` pass.
 - [human] The first PR after the merge shows the new step green in the `leak-check` job.
 
@@ -108,14 +111,14 @@ append the path to the scope block above and retry.
 
 These are the plan's milestones: a Worker does them in order and ticks each one after it is checked.
 
-- [ ] T1: Fix the final-gate test that broke when the kit got its own CI mirror — expected list built from the rendered CI_MIRROR plus the override, so it passes in the kit root and in a fresh project — tools/test/orchestrator.test.mjs
-- [ ] C1: Run every kit tool test once in CI on every pull request — one step in the leak-check job after the install check — .github/workflows/leak-check.yml
+- [ ] T1: Fix the final-gate test that broke when the kit got its own CI mirror — base computed with an empty mirror (`withMirror([])`), for both the override assertion and the empty-mirror assertion — tools/test/orchestrator.test.mjs
+- [ ] C1: Run every kit tool test once in CI on every pull request, in its own job so the PR does not wait longer — job kit-tests: checkout, Node 22, npm ci --prefix scripts, node --test — .github/workflows/leak-check.yml
 - [ ] C2: Fail a test when the CI step goes missing or a test file falls outside the glob — tools/test/ci-coverage.test.mjs
 - [ ] D1: Say which checks a builder runs locally and which only CI runs — docs/CHANGE-LOOP.md section 1, and a changelog line — docs/CHANGE-LOOP.md, CHANGELOG.md
 
 ## Technical Considerations
-- Dependencies: the `leak-check` job (Ubuntu, Node 22). The new step adds the time of the full set to every PR
-  (measured locally in Step 0; write the number into Execution Notes).
+- Dependencies: a new `kit-tests` job (Ubuntu, Node 22) beside `leak-check`. The full set took 285 s on Linux at
+  `b075db1` (454 tests); in its own job it does not lengthen the PR.
 - New files: `tools/test/ci-coverage.test.mjs`.
 - Model changes: none. Backend / API: none. Auth and validation: none. Security surface: none.
 - Data / migration: none.
@@ -129,6 +132,7 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 
 ## Critical Questions
 - Q: Add the step to the Windows leg too? A: no; Ubuntu on every PR, as the 2026-10-31 proposal said (recommended).
+- Q: A step in `leak-check` or its own job? A: its own job `kit-tests`, so the ~5 minutes run in parallel (recommended).
 
 ## Execution Notes
 - Source: chat "בדיקות e2e ומיזוג PR" (2026-10-31): 10 of 17 test files ran only on the builder's machine; proposal to
@@ -136,3 +140,4 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 - Evidence at `b075db1` (plan author, 2026-11-03): `node --test "tools/test/*.test.mjs"` on Linux, Node 22: one failure,
   `final gate: PROJECT_CHECKS, then the manifest check, then orchestrator.ciMirror …` (`orchestrator.test.mjs:1159`,
   actual list without the six mirror checks).
+- Review (Architect + PM, a separate agent against b075db1, 2026-11-03): mechanical gaps fixed in the draft (line references, scope and Depends-on, test names); open points answered with the recommended default in Critical Questions. The Planner's own review is still to run.

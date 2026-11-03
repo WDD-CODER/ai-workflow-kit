@@ -1,7 +1,7 @@
 # Plan 080 — A UI card is checked against the plan's own code, never against a server that runs main
 
 Status: draft
-Depends-on: none
+Depends-on: 075
 Snapshot: b075db1e9c4876d4f210c95612df2e2a406a160a
 
 ## Problem Statement
@@ -36,12 +36,15 @@ a page served by a folder that is not at the plan's head commit is never a pass.
   (c) without `--plan-sha` nothing changes (the line is not printed).
 - [auto] `node --test tools/test/orchestrator.test.mjs` passes, with tests that fail on today's code: the workflow
   passes the plan branch's head sha to the UI preflight; a `ui code` failure keeps every affected card out of the
-  browser step and records it as `unchecked` with the reason, never `pass`; a card whose script test passed against a
-  page with a `ui code` failure is recorded `unchecked` as well, with the reason.
+  browser step and records it as `unchecked` with the reason, never `pass`; a script pass counts only when the card's e2e
+  test started its own server in the plan's folder (a Playwright `webServer` or the project's e2e command, as Step 0 (c)
+  finds), otherwise a script pass against a page with a `ui code` failure is recorded `unchecked` with the reason.
 - [auto] The rendered `orch-builder.md` says the page URL of a card uses the builder's own server: inside a slot the
-  port from `node scripts/slot-serve.mjs` for that slot, outside a slot no page (the card goes to the Human); the
+  port from `node scripts/slot-serve.mjs` for that slot; outside a slot only a test that starts its own server in the
+  builder's folder, and otherwise no page (the browser step goes to the Human); the
   rendered `orchestrator.md` `## The [ui] cards` section says which code a card is checked against (a test reads both).
-- [auto] `npm run build`, `npm run lint` and `node --test "tools/test/*.test.mjs"` pass.
+- [auto] `npm run build`, `npm run lint` and `node --test "tools/test/*.test.mjs"` pass, and `node tools/e2e-check.mjs`
+  passes (it runs `ui-tier.test.mjs` against an installed project, `e2e-check.mjs:194`).
 - [auto] `node tools/sync.mjs --target . --apply` then `node tools/drift-check.mjs --target .` reports no drift.
 - [human] On the next FoodVibe run with `ui: true`, the report shows for each `[ui]` card the folder and commit its page
   came from, and none came from the main folder for an unmerged plan.
@@ -100,8 +103,7 @@ append the path to the scope block above and retry.
    (b) which URL a builder outside a slot would use, and whether anything serves its folder;
    (c) whether the card's own e2e test starts its own server (a `webServer` entry or the project's e2e command) — if it
    does, the script verdict already ran on the plan's code and only the browser step needs the check.
-   If (c) holds for every pack's e2e setup, the plan keeps the browser-step check and drops the script-verdict rule
-   (write which); otherwise both stay.
+   The answer to (c) decides, per pack, which script passes count (Done-when, the orchestrator item); write it per pack.
 
 ## User Stories
 - As the Human, I want a green UI card to mean the plan's code works, not that `main` looks fine.
@@ -128,7 +130,7 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 
 - [ ] U1: Find which folder serves a page and at which commit, before any card is judged — port to folder from the slot range, the folder's head compared with the plan's — core/scripts/lib/slot.mjs, core/scripts/orch-preflight.mjs, tools/test/ui-tier.test.mjs
 - [ ] U2: Keep a card that was checked on other code out of the pass column — the workflow passes the plan's head sha, a ui code failure makes the cards unchecked with the reason, the report names folder and commit — core/.claude/workflows/orchestrate.js, tools/test/orchestrator.test.mjs
-- [ ] U3: Tell the builder which page URL to report and write down which code a card is checked against — builder rule (own slot port, or no page outside a slot), one paragraph in the orchestrator doc — core/.claude/agents/orch-builder.md, core/docs/agent/orchestrator.md
+- [ ] U3: Tell the builder which page URL to report and write down which code a card is checked against — builder rule (own slot port; outside a slot only a test that starts its own server, else no page), one paragraph in the orchestrator doc — core/.claude/agents/orch-builder.md, core/docs/agent/orchestrator.md
 - [ ] R1: Render the kit's own installed copies, check drift and add a changelog line — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .` — scripts/**, .claude/**, docs/agent/**, CHANGELOG.md
 
 ## Technical Considerations
@@ -147,9 +149,13 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 - Changing how secrets reach a slot's backend.
 
 ## Critical Questions
+- Q: Is a script pass valid when the e2e test started its own server in the plan's folder? A: yes; only the browser
+  step needs a known folder and commit (recommended: otherwise every card of a `useSlots: false` project, the kit
+  included, goes to the Human).
 - Q: A page served by the main folder for an unmerged plan — fail the card or mark it unchecked? A: unchecked, so it goes
   to the Human with the reason and never costs a builder fix round (recommended).
 
 ## Execution Notes
 - Source: chat "בדיקת אורקסטרטור ראשונה" (2026-11-02): the open question "a server started from the main folder serves
   main's code, not the plan's — which code does orch-ui see?", sent to the FoodVibe agent and never answered.
+- Review (Architect + PM, a separate agent against b075db1, 2026-11-03): mechanical gaps fixed in the draft (line references, scope and Depends-on, test names); open points answered with the recommended default in Critical Questions. The Planner's own review is still to run.

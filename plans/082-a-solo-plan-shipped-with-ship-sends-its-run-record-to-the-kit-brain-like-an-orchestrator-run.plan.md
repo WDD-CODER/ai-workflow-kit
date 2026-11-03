@@ -1,7 +1,7 @@
 # Plan 082 — A solo plan shipped with /ship sends its run record to the kit brain, like an orchestrator run
 
 Status: draft
-Depends-on: none
+Depends-on: 075
 Snapshot: b075db1e9c4876d4f210c95612df2e2a406a160a
 
 ## Problem Statement
@@ -33,8 +33,10 @@ check had happened. Run test-514-515 has happened since.
   `BRAIN: queued <n> (KIT_BRAIN_URI not set)` and the exit code is 0.
 - [auto] The rendered `ship.md` "On approval" step runs `node scripts/brain.mjs send --ship <NNN>` after the grade step
   on a plan branch, and says nothing waits for it (a test reads it).
-- [auto] `node --test tools/test/kit-learn.test.mjs` passes with a test that `tools/brain-query.mjs runs` shows a
-  `kind` column (`solo` or `orchestrator`) and `trend --by kitVersion` counts solo plans apart from run plans.
+- [auto] `node --test tools/test/kit-learn.test.mjs` passes with tests that `tools/brain-query.mjs runs` shows a
+  `kind` column (`solo` or `orchestrator`), and that `trendRows()` (`tools/brain-query.mjs:28`, also used by
+  `tools/lib/kit-learn/trend.mjs:5`) keeps solo runs out of `parked/run`, `fix rounds/plan` and `min/plan` and counts them
+  in their own `solo plans` column, so `kit-learn.mjs trend` is not skewed.
 - [auto] `npm run build`, `npm run lint` and `node --test "tools/test/*.test.mjs"` pass.
 - [auto] `node tools/sync.mjs --target . --apply` then `node tools/drift-check.mjs --target .` reports no drift.
 - [human] After the next `/ship` of a FoodVibe Worker plan, `node tools/brain-query.mjs runs --last 3` in the kit lists
@@ -42,8 +44,8 @@ check had happened. Run test-514-515 has happened since.
 
 ## Execution Mode
 - Parallel: yes.
-- Concurrent plans: plans 076 and 077 add other options to `brain.mjs` and `brain-doc.mjs`; each adds its own option,
-  so the merge is additive.
+- Concurrent plans: plans 076, 077 and 067 also edit `brain.mjs` and `brain-doc.mjs`; each adds its own option, so the
+  merge is additive.
 - Isolated DB: no.
 
 ## Read-Write Scope
@@ -90,10 +92,6 @@ append the path to the scope block above and retry.
    or `conflict: <what>` per commit; stop for a go only on a conflict.
 2. Always: confirm the `- review:` line shape in the rendered `ship-regular.md` and the `ship-<NNN>` run name in
    `ship.md`; a different shape on `main` is followed and written into Execution Notes.
-3. When `KIT_BRAIN_READER_URI` is set on the machine, run `node tools/brain-query.mjs runs --last 3` and
-   `node tools/brain-query.mjs events --last 20` and write into Execution Notes whether two different problems share one
-   `signature` (the 2026-11-01 worry about the path normaliser). When it is not set, write `brain read: not checked`
-   and go on; this is information for the Human, never a reason to stop.
 
 ## User Stories
 - As the Human, I want the kit to learn from the plans I ship by hand, not only from orchestrator runs.
@@ -120,7 +118,7 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 
 - [ ] S1: Build a solo run's brain documents from the plan file alone — `shipDocs()` parsing the last review line, decision and graded counts, plus `brain.mjs digest|send --ship` — core/scripts/lib/brain-doc.mjs, core/scripts/brain.mjs, tools/test/brain.test.mjs
 - [ ] S2: Send them from /ship after the grade step, so no solo plan is missed — one line in the On approval step, one row in the kit-brain command table — core/.claude/commands/ship.md, core/docs/agent/kit-brain.md
-- [ ] S3: Show solo plans apart from orchestrator runs when the kit reads the brain — a kind column in runs, solo counts in the trend — tools/brain-query.mjs, tools/test/kit-learn.test.mjs
+- [ ] S3: Show solo plans apart from orchestrator runs when the kit reads the brain, so the trend is not skewed — a kind column in runs; trendRows keeps solo runs in their own column — tools/brain-query.mjs, tools/test/kit-learn.test.mjs
 - [ ] R1: Render the kit's own installed copies, check drift and add a changelog line — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .` — scripts/**, .claude/**, docs/agent/**, CHANGELOG.md
 
 ## Technical Considerations
@@ -138,9 +136,10 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 - Token counts for a solo ship (the runtime does not expose them cheaply, as plan 057 found).
 
 ## Critical Questions
-- Q: Wait for a `brain-query` check by the Human before building? A: no; Step 0 runs it when the reader key is on the
-  machine and only reports (recommended).
+- Q: Wait for a `brain-query` check by the Human before building? A: no; the signature-collision check is the Human's
+  separate step (`node tools/brain-query.mjs events` in the kit) and does not change this plan (recommended).
 
 ## Execution Notes
 - Source: chat "לולאת הלמידה והאורקסטרטור" (2026-11-02) and the project doc
   `claude/decision-2026-11-02-learning-loop-in-ship.md`, "Stage 2 later".
+- Review (Architect + PM, a separate agent against b075db1, 2026-11-03): mechanical gaps fixed in the draft (line references, scope and Depends-on, test names); open points answered with the recommended default in Critical Questions. The Planner's own review is still to run.

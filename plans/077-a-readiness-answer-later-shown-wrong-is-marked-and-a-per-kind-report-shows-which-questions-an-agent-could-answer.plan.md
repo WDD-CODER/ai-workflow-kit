@@ -1,7 +1,7 @@
 # Plan 077 — A readiness answer later shown wrong is marked, and a per-kind report shows which questions an agent could answer
 
 Status: draft
-Depends-on: 076, 071
+Depends-on: 076, 071, 075
 Snapshot: b075db1e9c4876d4f210c95612df2e2a406a160a
 
 ## Problem Statement
@@ -24,21 +24,24 @@ merge and validation finished without such a row marks its answers `held`; one c
 answers there were, how often the default was taken, how often the Human delegated, and how often an answer was wrong.
 
 - [auto] `node --test tools/test/readiness-answers.test.mjs` passes, with tests that fail on today's code:
-  (a) `notes-apply` with an approved row whose origin is `readiness <run> <plan> <n>` and whose category is the reversed
-  decision category sets `verdict: "wrong"` and `verdictBy: "notes"` on that answer row, once (a second apply changes
-  nothing);
+  (a) `notes-apply` with an approved row whose origin is the notes table's usual `{file, line}` pointing at a readiness
+  answer line (`Orchestrator readiness (<date>, <run>): …`, plan 076) plus `answerId: "<run>-<plan>-<n>"`, and whose
+  category is the reversed-decision category, sets `verdict: "wrong"` and `verdictBy: "notes"` on that answer row, once
+  (a second apply changes nothing);
   (b) `node scripts/decision-log.mjs readiness --close --run <run>` sets `verdict: "held"` on every answer of the run
-  with no verdict yet and prints `READINESS: held <n>, wrong <m>`; a closed run is never closed twice;
+  with no verdict yet and prints `READINESS: held <n>, wrong <m>`; a closed run is never closed twice; `wrong` overrides an
+  earlier `held` (notes can arrive after the close), and nothing overrides `wrong`;
   (c) `node scripts/decision-log.mjs readiness --stats` prints one line per kind
   `<kind> · answers <n> · default taken <p>% · delegated <q>% · wrong <r>%`, sorted by answers, and `READINESS: no
   answers yet` on an empty file.
-- [auto] `node --test tools/test/notes-table.test.mjs` passes with a test that the table validator accepts the origin
-  form `readiness <run> <plan> <n>` and refuses it when no such answer row exists.
+- [auto] `node --test tools/test/notes-table.test.mjs` passes with a test that the table validator accepts an `answerId`
+  beside a `{file, line}` origin and refuses an `answerId` with no such row in `readiness-answers.jsonl`.
 - [auto] `node --test tools/test/brain.test.mjs` passes with a test that a verdict change is sent as a new
-  `readiness-answer` event that names the same answer id, so the store keeps the history.
-- [auto] The rendered `ship.md` says that after the grade step of the last plan of a run the Planner runs
-  `decision-log.mjs readiness --close --run <run>`; the rendered `notes-review.md` names the readiness origin form (a
-  test reads both).
+  `readiness-answer` event that names the same answer id and has the verdict in its `_id`, so the store keeps the
+  history.
+- [auto] The rendered `ship.md` says that when a run branch is merged and the Human's final reply has no `notes:`, the
+  Planner runs `decision-log.mjs readiness --close --run <run>` and then `node scripts/brain.mjs send --answers --run
+  <run>`; the rendered `notes-review.md` names the `answerId` field (a test reads both).
 - [auto] `npm run build`, `npm run lint` and `node --test "tools/test/*.test.mjs"` pass.
 - [auto] `node tools/sync.mjs --target . --apply` then `node tools/drift-check.mjs --target .` reports no drift.
 - [human] After two real runs, `node scripts/decision-log.mjs readiness --stats` in the project shows numbers the Human
@@ -96,9 +99,9 @@ append the path to the scope block above and retry.
 
 1. Runs only when `scope-check.mjs --drift` reports `REALITY: drift`: check the listed commits by symbol and print `ok`
    or `conflict: <what>` per commit; stop for a go only on a conflict.
-2. Always: confirm on `main` that plan 071's `notes-table.mjs` exists and how its origin column is written
-   (`grep -n "origin" core/scripts/notes-table.mjs`). Write the origin values it accepts into Execution Notes; the
-   readiness form is added to that list, never as a second parser.
+2. Always: confirm on `main` that plan 071's `notes-table.mjs` exists, how its origin is written
+   (`grep -n "origin" core/scripts/notes-table.mjs`) and the exact name of its reversed-decision category. Write both into
+   Execution Notes; `answerId` is an optional field beside the existing origin, never a second origin shape.
 
 ## User Stories
 - As the Human, I want to see, per kind of question, how often my answer was the default and how often it was wrong, so
@@ -124,8 +127,8 @@ append the path to the scope block above and retry.
 
 These are the plan's milestones: a Worker does them in order and ticks each one after it is checked.
 
-- [ ] V1: Let a notes table name a readiness answer as the origin of a mistake — the origin form `readiness <run> <plan> <n>` in the validator, refused when the answer does not exist — core/scripts/notes-table.mjs, core/docs/agent/notes-review.md, tools/test/notes-table.test.mjs
-- [ ] V2: Mark an answer wrong when an approved table reverses it, and held when its run closes clean — `notes-apply` sets the verdict once; `readiness --close --run` sets `held`; one line in the ship command's grade step — core/scripts/decision-log.mjs, core/.claude/commands/ship.md, tools/test/readiness-answers.test.mjs
+- [ ] V1: Let a notes table name a readiness answer as the origin of a mistake — an optional answerId beside the usual file-and-line origin, refused when the answer does not exist — core/scripts/notes-table.mjs, core/docs/agent/notes-review.md, tools/test/notes-table.test.mjs
+- [ ] V2: Mark an answer wrong when an approved table reverses it, and held when its run closes clean — `notes-apply` sets the verdict once; `readiness --close --run` sets `held` when the run branch merged with no notes left; wrong overrides held; one line in the ship command that closes and sends — core/scripts/decision-log.mjs, core/.claude/commands/ship.md, tools/test/readiness-answers.test.mjs
 - [ ] V3: Show per kind how often the default was taken and how often an answer was wrong — `readiness --stats` — core/scripts/decision-log.mjs, tools/test/readiness-answers.test.mjs
 - [ ] V4: Send each verdict to the kit brain as its own event, so the history is kept — core/scripts/lib/brain-doc.mjs, tools/test/brain.test.mjs
 - [ ] R1: Render the kit's own installed copies, check drift and add a changelog line — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .` — scripts/**, .claude/**, docs/agent/**, CHANGELOG.md
@@ -145,8 +148,10 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 ## Critical Questions
 - Q: Should every answer get an explicit grade at `/ship`? A: no; a reversed answer is found through the notes table and
   the rest count as `held` when the run closes (recommended: no new question for the Human).
+- Q: When is a run closed? A: when its run branch is merged and the Human's final reply has no `notes:` (recommended).
 - Q: Which kinds may an advisor answer first? A: open until the report has about a month of data (Human, 2026-11-01).
 
 ## Execution Notes
 - Source: chat "אוטומציה של תהליך עבודה עם סוכן" (2026-11-01) for the verdict field; chat "בחירת סוכן אופוסס מול סוננט"
   (2026-11-03) for the origin order the notes sorter uses.
+- Review (Architect + PM, a separate agent against b075db1, 2026-11-03): mechanical gaps fixed in the draft (line references, scope and Depends-on, test names); open points answered with the recommended default in Critical Questions. The Planner's own review is still to run.

@@ -1,7 +1,7 @@
 # Plan 078 — A plan with UI cards carries a UI Spec the Human approves with the plan, before anything is built
 
 Status: draft
-Depends-on: none
+Depends-on: 075
 Snapshot: b075db1e9c4876d4f210c95612df2e2a406a160a
 
 ## Problem Statement
@@ -46,7 +46,8 @@ check it for every plan that has a `[ui]` item or a design track, and the Human 
 ## Execution Mode
 - Parallel: no.
 - Concurrent plans: plans 072 and 074 also change `core/scripts/scope-check.mjs` (new `--ui-elements`, flag-value
-  checks); each adds its own command branch, so the merge is additive. Merge `origin/main` before the PR.
+  checks), and plan 060 also edits `prd-template.md` and `plan.md`; each adds its own part, so the merge is additive.
+  Merge `origin/main` before the PR.
 - Isolated DB: no.
 
 ## Read-Write Scope
@@ -129,7 +130,7 @@ append the path to the scope block above and retry.
 These are the plan's milestones: a Worker does them in order and ticks each one after it is checked.
 
 - [ ] S1: Add a five-line UI Spec section to the plan template so every UI plan says what the screen will be — Page, Placement, Elements (existing component reused or new with a reason), States (loading, empty, error), Texts (exact strings in the app's language) — core/.claude/references/prd-template.md
-- [ ] S2: Warn at save time when a UI plan has no complete UI Spec — `ui-spec.mjs` (section and label parser, reuses the Done-when parser for `[ui]` items and reads `Track:`), `scope-check --ui-spec` — core/scripts/lib/ui-spec.mjs, core/scripts/scope-check.mjs, tools/test/ui-spec.test.mjs, tools/test/fixtures/ui-spec/**
+- [ ] S2: Warn at save time when a UI plan has no complete UI Spec — `ui-spec.mjs` (section and label parser, reuses the Done-when parser for `[ui]` items and reads `Track:`), `scope-check --ui-spec`, added to the dispatch and to the usage string (`scope-check.mjs:368-378`) — core/scripts/lib/ui-spec.mjs, core/scripts/scope-check.mjs, tools/test/ui-spec.test.mjs, tools/test/fixtures/ui-spec/**
 - [ ] S3: Make the save checklist and the Planner's review ask for the spec — one checklist line in save-plan, one Product Manager bullet in plan — core/.claude/skills/save-plan/SKILL.md, core/.claude/commands/plan.md
 - [ ] R1: Render the kit's own installed copies, check drift and add a changelog line — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .` — scripts/**, .claude/**, .kit/install.json, CHANGELOG.md
 
@@ -154,3 +155,4 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 ## Execution Notes
 - Source: chat "תכנון ווקפלו לעיצוב UI/UX" (2026-10-28/29): spec before code with one human checkpoint; the kit gap
   "`orch-readiness` skips plans that change only styling; look and feel stays `[human]`".
+- Review (Architect + PM, a separate agent against b075db1, 2026-11-03): mechanical gaps fixed in the draft (line references, scope and Depends-on, test names); open points answered with the recommended default in Critical Questions. The Planner's own review is still to run.
