@@ -4,3 +4,4 @@ One row per orchestrator run, written by `node scripts/orch-state.mjs finish` fr
 
 | Date | Run | Plans | Merged | Parked | Parked reasons | Fix rounds | Escalations | Gate fails | Final gate | ✗ | Checker misses | ✗ per plan |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-11-03 | run-065 | 065 | 0 | 1 | environment | 1 | 0 | 1 | - | - | - | - |

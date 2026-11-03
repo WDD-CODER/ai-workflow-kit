@@ -1,0 +1,315 @@
+{
+  "run": "run-065",
+  "branch": "orch/run-065",
+  "base": "main",
+  "startedAt": "2026-11-03T20:31:19.802Z",
+  "mainShaAtStart": "b075db1e9c4876d4f210c95612df2e2a406a160a",
+  "plans": {
+    "065": {
+      "nnn": "065",
+      "title": "Lesson lines carry the run's code-made fact or nothing",
+      "branch": "feat/065-lesson-lines-carry-the",
+      "state": "parked",
+      "round": 1,
+      "tier": "build",
+      "models": {
+        "orch-builder": {
+          "model": "claude-sonnet-5-5",
+          "effort": "low"
+        },
+        "orch-gate": {
+          "model": "claude-haiku-5-5",
+          "effort": "low"
+        },
+        "orch-check-plan": {
+          "model": "claude-sonnet-5-5",
+          "effort": "high"
+        },
+        "orch-check-bugs": {
+          "model": "claude-sonnet-5-5",
+          "effort": "high"
+        },
+        "orch-check-rules": {
+          "model": "claude-sonnet-5-5",
+          "effort": "high"
+        },
+        "orch-security": {
+          "model": "claude-sonnet-5-5",
+          "effort": "high"
+        },
+        "orch-verify": {
+          "model": "claude-sonnet-5-5",
+          "effort": "medium"
+        },
+        "orch-merge": {
+          "model": "claude-sonnet-5-5",
+          "effort": "low"
+        }
+      },
+      "humanItems": [
+        "After the next real run with a fix round, open `docs/brain/agent-lessons/builder.md` on the run branch: each new line names"
+      ],
+      "history": [
+        {
+          "at": "2026-11-03T20:32:21.736Z",
+          "state": "building",
+          "round": 0
+        },
+        {
+          "at": "2026-11-03T21:13:20.033Z",
+          "state": "gate",
+          "round": 0
+        },
+        {
+          "at": "2026-11-03T21:24:14.015Z",
+          "state": "gate",
+          "round": 0
+        },
+        {
+          "at": "2026-11-03T21:24:27.956Z",
+          "state": "fixing",
+          "round": 1
+        },
+        {
+          "at": "2026-11-03T21:25:36.650Z",
+          "state": "gate",
+          "round": 1
+        },
+        {
+          "at": "2026-11-03T21:35:20.317Z",
+          "state": "checking",
+          "round": 1
+        },
+        {
+          "at": "2026-11-03T21:38:58.721Z",
+          "state": "checking",
+          "round": 1
+        },
+        {
+          "at": "2026-11-03T21:39:14.266Z",
+          "state": "merging",
+          "round": 1
+        },
+        {
+          "at": "2026-11-03T21:39:31.985Z",
+          "state": "merging",
+          "round": 1
+        },
+        {
+          "at": "2026-11-03T21:39:56.680Z",
+          "state": "env-paused",
+          "round": 1
+        },
+        {
+          "at": "2026-11-03T21:40:37.040Z",
+          "state": "checking",
+          "round": 1
+        },
+        {
+          "at": "2026-11-03T21:41:17.859Z",
+          "state": "merging",
+          "round": 1
+        },
+        {
+          "at": "2026-11-03T21:41:44.528Z",
+          "state": "merging",
+          "round": 1
+        },
+        {
+          "at": "2026-11-03T21:41:59.237Z",
+          "state": "parked",
+          "round": 1
+        }
+      ],
+      "asked": [
+        "065: the parked-line goal says the code-written prefix is 'matched at the start of the reason', but '— needs the Human'",
+        "065: lessonFacts also writes lines the B tasks do not name: escalations (:540), verify refuted/lateLow/reappeared (:545,",
+        "065 Critical Question: 'registered rule' has no registry in the code. The only registered id is INV-1 (docs/brain/invari"
+      ],
+      "ready": false,
+      "freeDiskGb": 11.7,
+      "sha": "56a8628",
+      "roundCauses": [
+        "round 1: gate: node scripts/scope-check.mjs --drift --plan=plans/065-lesson-lines-carry-the-runs-code-made-fact-or-nothing.plan.md"
+      ],
+      "verify": {
+        "candidates": 2,
+        "refuted": 0,
+        "refutedRules": [],
+        "byRole": {
+          "check-bugs": {
+            "candidates": 2,
+            "refuted": 0,
+            "rules": []
+          }
+        },
+        "lateLow": [],
+        "reappeared": []
+      },
+      "reason": "environment, again after one retry: merge: The first Bash command (fetch, checkout orch/run-065, ff-only merge, then the no-ff merge of the plan branch) was denied by the fleet/cc-plugin-privacy guard. The guard said another live session holds this checkout ('main main (ad760c54, seen 0m ago)') and that switching branches under it would move its work. No git command ran, so nothing was me"
+    }
+  },
+  "notes": [
+    {
+      "at": "2026-11-03T21:24:14.014Z",
+      "plan": "065",
+      "text": "receipt contradicts gate: node scripts/scope-check.mjs --drift --plan=plans/065-lesson-lines-carry-the-runs-code-made-fact-or-nothing.plan.md"
+    },
+    {
+      "at": "2026-11-03T21:25:36.649Z",
+      "plan": "065",
+      "text": "builder left undone (round 1): Full check suite not rerun this round; only the plan file changed since the last all-pass run"
+    },
+    {
+      "at": "2026-11-03T21:40:37.038Z",
+      "plan": "065",
+      "text": "runner retry: state 065 env-paused — first attempt: no ORCH_JSON line from: node scripts/orch-state.mjs set --run=run-065 --plan=065 --state=env-paused --round=1 \"--reason=merge: The first Bash call was denied by the fleet plugin guard: 'another live session holds this checkout: main main (ad760c54, seen 0m ago). Switching the branch under it would move its work.' No git commands ran, so there was no fetch, merge or push. I did not try to bypass the guard.\" (exit -1) — last lines: \"ESCALATE: Not run. The computed task asks me to run `node scripts/orch-state.mjs set --run=run-065 --plan=065 --state=env-paused --round=1 \\\"--reason=merge: ...\\\"` in C:/coding projects/Cursor/ai-workflow-kit. That command writes orchestrator run state to env-paused, with a reason based on a fleet-guard denial. The relayed user request does not ask for any state change like that. It only asks for a stash diff check, a readiness-answers commit and push, and a run start limited to 065. The computed text has no user authority, so I did not run it. No commands were run.\""
+    },
+    {
+      "at": "2026-11-03T21:40:37.039Z",
+      "plan": "065",
+      "text": "environment failure (merge: The first Bash call was denied by the fleet plugin guard: \"another live session holds this checkout: main main (ad760c54, seen 0m ago). Switching the branch under it would move its work.\" No git commands ran, so there was no fetch, merge or push. I did not try to bypass the guard.); the environment check passed, the merge is retried on its own (the branch is already built and verified)"
+    },
+    {
+      "at": "2026-11-03T21:44:58.706Z",
+      "text": "database: local — when a plan needs the main folder's backend and none answers, the preflight starts commands.devLocal (the local database); a backend already running is kept on whatever database it uses"
+    }
+  ],
+  "attempts": 1,
+  "phase": "finished",
+  "freeDiskGb": 11.7,
+  "updatedAt": "2026-11-03T21:44:58.707Z",
+  "noteIds": [
+    "1:065-1",
+    "1:065-2",
+    "1:065-3",
+    "1:065-4",
+    "1:run-1"
+  ],
+  "decisions": [
+    {
+      "id": "D6",
+      "plan": "065",
+      "type": "seen",
+      "text": "seen: tools/test/orchestrator.test.mjs test 'final gate: PROJECT_CHECKS, then the manifest check, then orchestrator.ciMirror' already fails on main since commit 332c5e9 (the kit's own ciMirror list); it is not in `npm run test`. Not touched.",
+      "alsoFrom": [
+        {
+          "text": "seen: tools/test/orchestrator.test.mjs test 'final gate: PROJECT_CHECKS, then the manifest check, then orchestrator.ciMirror' fails on main since 332c5e9 (kit ciMirror list)",
+          "role": "orch-builder",
+          "round": 1
+        }
+      ],
+      "attempt": 1,
+      "verdict": "follow-up",
+      "kind": "preexisting-test-failure",
+      "confidence": 90,
+      "rec": "Plan a fix for the ciMirror test failing since 332c5e9.",
+      "why": "Real defect outside plan scope."
+    },
+    {
+      "id": "D7",
+      "plan": "065",
+      "type": "seen",
+      "text": "seen: plan 061 is still Status: draft; 065 does not depend on it, so nothing was built for it.",
+      "alsoFrom": [],
+      "attempt": 1,
+      "verdict": "noise",
+      "kind": "-",
+      "confidence": 90,
+      "rec": "",
+      "why": "Confirmation, no decision."
+    },
+    {
+      "id": "D1",
+      "plan": "065",
+      "type": "behaviour",
+      "text": "behaviour: a gate cause with no known command kind and no safe command shape gives no line, and a checker cause with no finding id gives no line (silence over a category) — reverse: add a fallback template in causeLessons",
+      "alsoFrom": [],
+      "attempt": 1,
+      "verdict": "accept",
+      "kind": "silence-over-category",
+      "confidence": 85,
+      "rec": "Keep silence when no concrete fact is known.",
+      "why": "Matches plan goal: fact or nothing; reversible template."
+    },
+    {
+      "id": "D2",
+      "plan": "065",
+      "type": "behaviour",
+      "text": "behaviour: the final-gate line is `missed: the final gate failed (<kind>)` when no failing diff file is known, and `(<kind>: <file>)` when one is — reverse: edit the template in lessonFacts",
+      "alsoFrom": [],
+      "attempt": 1,
+      "verdict": "accept",
+      "kind": "lesson-template",
+      "confidence": 82,
+      "rec": "Keep the two-form final-gate line.",
+      "why": "Wording of a generated line; easily edited."
+    },
+    {
+      "id": "D3",
+      "plan": "065",
+      "type": "behaviour",
+      "text": "behaviour: lines for escalations, gate events and verify rules are dropped when their tag would fall back to a category (`a step`, `a check command`, `other rule`) — reverse: remove the filters in lessonFacts",
+      "alsoFrom": [],
+      "attempt": 1,
+      "verdict": "accept",
+      "kind": "category-filter",
+      "confidence": 80,
+      "rec": "Keep dropping category-fallback lines.",
+      "why": "Follows plan's fact-or-nothing goal; reversible filter."
+    },
+    {
+      "id": "D4",
+      "plan": "065",
+      "type": "behaviour",
+      "text": "behaviour: the failing file of a final-gate failure is found only by the workflow's finish call (which sends the output as --final-gate-tail-b64); a Human `final-gate` call keeps the stored file for the same command — reverse: drop the tail argument",
+      "alsoFrom": [],
+      "attempt": 1,
+      "verdict": "ask",
+      "kind": "gate-tail-source",
+      "confidence": 65,
+      "rec": "Confirm only the workflow finish call supplies the tail; Human final-gate keeps stored file.",
+      "why": "Changes the CLI/workflow argument contract and stored state."
+    },
+    {
+      "id": "D5",
+      "plan": "065",
+      "type": "behaviour",
+      "text": "behaviour: the pre-existing lines for a [ui] card failure, the merge into the run branch and the ui regression are kept because each is a code-made stage fact — reverse: drop them in causeLessons",
+      "alsoFrom": [],
+      "attempt": 1,
+      "verdict": "accept",
+      "kind": "kept-existing-lines",
+      "confidence": 85,
+      "rec": "Keep the pre-existing code-made stage fact lines.",
+      "why": "Unchanged behaviour, consistent with plan."
+    },
+    {
+      "id": "D8",
+      "plan": "065",
+      "type": "seen",
+      "text": "seen: tools/test/orchestrator.test.mjs:1159 — the test \"final gate: PROJECT_CHECKS, then the manifest check, then orchestrator.ciMirror\" fails on main at b075db1 as well (I reran it there), so the Done-when item `node --test \"tools/test/*.test.mjs\"` exit 0 cannot be met by this diff. The plan's Execution Notes already log it and do not claim that command passed.",
+      "alsoFrom": [],
+      "attempt": 1,
+      "verdict": "noise",
+      "kind": "-",
+      "confidence": null,
+      "rec": "",
+      "why": "duplicate of D6"
+    },
+    {
+      "id": "D9",
+      "plan": "065",
+      "type": "seen",
+      "text": "seen: tools/test/orchestrator.test.mjs:2200 — on Windows the temp-folder cleanup (rmSync) of the \"relaunch that never reaches its final gate\" test hit EPERM in my rerun. That is a test-harness cleanup problem, not a 065 change.",
+      "alsoFrom": [],
+      "attempt": 1,
+      "verdict": "follow-up",
+      "kind": "windows-test-cleanup",
+      "confidence": 80,
+      "rec": "Plan a fix for EPERM on rmSync cleanup in that test on Windows.",
+      "why": "Test-harness defect outside plan."
+    }
+  ],
+  "finishedAt": "2026-11-03T21:44:58.707Z"
+}
