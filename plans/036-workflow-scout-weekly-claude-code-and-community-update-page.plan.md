@@ -114,7 +114,7 @@ and wait for the Human's go.
 
 ### Must Have (P0)
 
-- [ ] `scout.md` command (kit), `sources.json`, JSON→HTML renderer, page template, `state.json` cursors, PR with top-5 text and a useful-checkbox list.
+- [x] `scout.md` command (kit), `sources.json`, JSON→HTML renderer, page template, `state.json` cursors, PR with top-5 text and a useful-checkbox list.
 - [ ] Cloud weekly routine running the command against the first project's repo.
 
 ### Won't Have (this plan)
@@ -128,7 +128,7 @@ and wait for the Human's go.
 - [x] C2: Collect updates and judge which fit the project's workflow, within a budget — Scout command (collect, judge fit, emit JSON, budget caps) — core/.claude/commands/scout.md
 - [x] C3: Turn the findings into an easy-to-read web page — Advertiser-style page template + JSON→HTML renderer + tests — templates/scout-page.html, tools/scout/render.mjs, tools/test/scout-render.test.mjs
 - [x] C4: Open a weekly PR with the top 5 findings and the page link — Branch + PR step (top-5 text, page link, useful checkboxes) — tools/scout/pr.mjs
-- [ ] C5: Document the scout, render the kit's own copies and release — README/CHANGELOG section, install-check strings, `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .`, kit PR merged + release — README.md, CHANGELOG.md, tools/install-check.mjs, .claude/**, docs/agent/**, .kit/install.json
+- [x] C5: Document the scout, render the kit's own copies and release — README/CHANGELOG section, install-check strings, `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .`, kit PR merged + release — README.md, CHANGELOG.md, tools/install-check.mjs, .claude/**, docs/agent/**, .kit/install.json
 - [ ] C6: Bring the scout into the first project and run it once by hand to get the first page and PR — `kit-sync` in the project, then a manual run there (runs in that project, shipped with its own workflow) — docs/scout/** in the project
 - [ ] C7: Schedule it weekly after the Human's go and receive one automatic PR — Create the weekly cloud routine (the Human's go); receive one scheduled PR — cloud routine
 - [ ] C8: The Human marks which tips were useful; record that and tune — useful-checkbox results written in Execution Notes; adjust `sources.json` caps if needed — tools/scout/sources.json

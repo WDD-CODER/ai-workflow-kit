@@ -158,39 +158,39 @@ append the path to the scope block above and retry.
 ## Functional Requirements
 
 ### Must Have (P0)
-- [ ] `slot-serve.mjs --main [--servers fe,be] [--db local|remote]`: allowed only outside a slot. Ports are the config base
+- [x] `slot-serve.mjs --main [--servers fe,be] [--db local|remote]`: allowed only outside a slot. Ports are the config base
       ports (`slots.fePorts`, `slots.bePorts`; main = base, as `orch-preflight.mjs` `devPort()` already assumes).
       The frontend runs `<pm> run <commands.dev>` with no port arguments (the project's script owns its port, as
       `pnpm start` does by hand); the backend runs `<pm> run <commands.devLocal | commands.devRemote>` in `server/` with the
       unchanged environment. No install, no `environment.slot`, no `commands.slotPrepare`. A server that answers is `kept`;
       a held port is refused with the holder named; a start that does not come up is killed from its root (existing
       `startServer`) and its log tail is the error. Prints `SLOT_SERVE: main be=<port> started|kept, fe=<port> started|kept`.
-- [ ] A package-manager-aware spawn (`spawnPm`) next to `spawnNpm` in `slot-procs.mjs`: `pnpm`/`npm` by
+- [x] A package-manager-aware spawn (`spawnPm`) next to `spawnNpm` in `slot-procs.mjs`: `pnpm`/`npm` by
       `project.packageManager`, `.cmd` through a shell on Windows; `spawnNpm` stays for the slot paths. `CHAIN_CMD`
       (`slot-procs.mjs:35`) also matches `pnpm` and the configured backend scripts, so their chains are found and killed.
-- [ ] Recorded processes: `slot-serve --main` writes the chain roots (pid + creation time) to `.claude/.main-serve-pids`;
+- [x] Recorded processes: `slot-serve --main` writes the chain roots (pid + creation time) to `.claude/.main-serve-pids`;
       `slot-stop.mjs --main` stops only those; the file is in `core/scripts/local-excludes.mjs` and `.gitignore`.
       The servers a run started keep running after it (as a hand-started server would); `slot-stop.mjs --main` stops them.
-- [ ] `orch-preflight.mjs`: `devServer()` calls `slot-serve.mjs --main --servers fe`; a new `backend()` check starts the
+- [x] `orch-preflight.mjs`: `devServer()` calls `slot-serve.mjs --main --servers fe`; a new `backend()` check starts the
       backend (`--servers be`) when `mainAutoItems` of any `--plans` plan is non-empty, else `SKIP`. `--env-only` and
       `--ui` modes unchanged.
-- [ ] `mainAutoItems(planText)` in `done-when.mjs`: the open `- [ ] [auto:main] …` Done-when items, same section rules as
+- [x] `mainAutoItems(planText)` in `done-when.mjs`: the open `- [ ] [auto:main] …` Done-when items, same section rules as
       `openAutoItems`.
-- [ ] `commands.devRemote` (optional npm script name, default empty = `dev:remote`): `kit.config.json`, the
+- [x] `commands.devRemote` (optional npm script name, default empty = `dev:remote`): `kit.config.json`, the
       `SCRIPT_NAME_KEYS` list in `tools/lib/kit.mjs`, and the `$comment`.
-- [ ] `slot-serve.mjs` (slot mode) takes the backend script from `commands.devLocal` (fallback `dev:local`) instead of the
+- [x] `slot-serve.mjs` (slot mode) takes the backend script from `commands.devLocal` (fallback `dev:local`) instead of the
       hard-coded string, so the two modes agree.
-- [ ] `orchestrator.md` (preflight row and the "start through slot-serve" sentence), `workflow-map.md` and one
+- [x] `orchestrator.md` (preflight row and the "start through slot-serve" sentence), `workflow-map.md` and one
       `agent-workflow.md` gotcha: *"The preflight said it would start the dev server; the script refused in the main
       folder"* — what hurt, why the obvious fix (telling the Human to start it) is wrong, what to do instead.
-- [ ] CHANGELOG entry: what changed, and "a project with `commands.dev` set no longer needs its dev server started by hand
+- [x] CHANGELOG entry: what changed, and "a project with `commands.dev` set no longer needs its dev server started by hand
       before `/orchestrate`".
 
 ### Should Have (P1)
-- [ ] `/orchestrate <plans> remote`: the command file and the workflow pass `--db remote` to the preflight calls
+- [x] `/orchestrate <plans> remote`: the command file and the workflow pass `--db remote` to the preflight calls
       (`orchestrate.js` lines of `runner('orch-preflight.mjs', …)` for readiness and run), the way the word `ask` is
       passed; the run report names the database mode once. Never stored; the next run without the word is local.
-- [ ] The failure message of a start names the log file (`.claude/fe.log` / `.claude/be.log`) and the exact command that was
+- [x] The failure message of a start names the log file (`.claude/fe.log` / `.claude/be.log`) and the exact command that was
       run, so the Human can repeat it by hand.
 
 ### Nice to Have (P2)

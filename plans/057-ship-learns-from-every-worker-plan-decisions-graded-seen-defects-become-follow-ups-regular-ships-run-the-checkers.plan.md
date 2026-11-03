@@ -144,14 +144,14 @@ append the path to the scope block above and retry.
 ## Functional Requirements
 
 ### Must Have (P0)
-- [ ] `/ship` lists only ungraded decisions with ids stable per plan, grades every reply (`ok` included) under run
+- [x] `/ship` lists only ungraded decisions with ids stable per plan, grades every reply (`ok` included) under run
   `ship-<NNN>`, and tags the graded lines.
-- [ ] REGULAR `/ship` on a plan branch runs the `/review-it` checker pipeline when `review.ship` is `checkers` (default).
-- [ ] `/review-it` passes the checker-role `LESSONS` (kit first) and `RULES` `## checkers` to the finders and the verifier.
-- [ ] Tests for every script change; rendered copies in sync.
+- [x] REGULAR `/ship` on a plan branch runs the `/review-it` checker pipeline when `review.ship` is `checkers` (default).
+- [x] `/review-it` passes the checker-role `LESSONS` (kit first) and `RULES` `## checkers` to the finders and the verifier.
+- [x] Tests for every script change; rendered copies in sync.
 
 ### Should Have (P1)
-- [ ] One review fact line per `/ship` review in the plan's Execution Notes.
+- [x] One review fact line per `/ship` review in the plan's Execution Notes.
 
 ### Nice to Have (P2)
 - None.

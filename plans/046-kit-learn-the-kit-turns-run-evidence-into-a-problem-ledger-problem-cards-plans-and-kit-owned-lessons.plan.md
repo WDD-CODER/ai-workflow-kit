@@ -145,18 +145,18 @@ the kit's own collections) is the Human's step — show it, never do it.
 ## Functional Requirements
 
 ### Must Have (P0)
-- [ ] `collect` (script, no model): new evidence since the cursor → issues upserted by signature → ranked table.
-- [ ] Ledger statuses `open | planned | fixed | regressed | dismissed` with history; regression by git ancestry.
-- [ ] `/kit-learn` command: collect → cards for the top 5 → one Human reply → `apply`.
-- [ ] `plan-check`: a plan from a brain issue carries a regression test.
+- [x] `collect` (script, no model): new evidence since the cursor → issues upserted by signature → ranked table.
+- [x] Ledger statuses `open | planned | fixed | regressed | dismissed` with history; regression by git ancestry.
+- [x] `/kit-learn` command: collect → cards for the top 5 → one Human reply → `apply`.
+- [x] `plan-check`: a plan from a brain issue carries a regression test.
 
 ### Should Have (P1)
-- [ ] Kit-owned lessons per role (`docs/agent/kit-lessons/`), injected before project lessons, capped, id-based edits.
-- [ ] Lesson upkeep report: exposures, recurrences, drift → enforce, retire candidates with a positive reason.
-- [ ] `lessonsIn` from projects grouped by similarity into one card with its project count.
+- [x] Kit-owned lessons per role (`docs/agent/kit-lessons/`), injected before project lessons, capped, id-based edits.
+- [x] Lesson upkeep report: exposures, recurrences, drift → enforce, retire candidates with a positive reason.
+- [x] `lessonsIn` from projects grouped by similarity into one card with its project count.
 
 ### Nice to Have (P2)
-- [ ] A kit-level triage prior: per decision kind, agreement across all projects' grades, written to
+- [x] A kit-level triage prior: per decision kind, agreement across all projects' grades, written to
   `docs/agent/kit-lessons/triage-calibration.md` so a new project's plan-041 triage starts calibrated.
 
 ## UI/UX Notes

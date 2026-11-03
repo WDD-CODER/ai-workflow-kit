@@ -126,8 +126,8 @@ Expected cost: evidence 0; edit ~30–60k; evals 6 runs × ~20–40k → **~150�
 ### Must Have (P0)
 
 - [ ] Evidence script, picker, isolated worktree, evals (existing or generated), editor, blind judge, decide/push, budget cap, path guard, leak guard, local log.
-- [ ] `kit-skill-improver.ps1` (PowerShell 5) registers / removes the daily task, `StartWhenAvailable` false, runs only on AC power.
-- [ ] PR body template: evidence counts, before/after, "how to validate" (a `kit-sync` dry-run into a project, then the eval prompts to try by hand).
+- [x] `kit-skill-improver.ps1` (PowerShell 5) registers / removes the daily task, `StartWhenAvailable` false, runs only on AC power.
+- [x] PR body template: evidence counts, before/after, "how to validate" (a `kit-sync` dry-run into a project, then the eval prompts to try by hand).
 
 ### Won't Have (this plan)
 
