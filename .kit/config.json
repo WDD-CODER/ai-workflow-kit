@@ -29,6 +29,7 @@
   },
   "orchestrator": {
     "useSlots": false,
+    "gateTimeoutMin": 20,
     "ciMirror": [
       "node tools/pack-check.mjs",
       "node tools/drift-check.mjs --target .",

@@ -29,7 +29,7 @@ const UI_BATCH = 5
 const PM = "npm" === 'pnpm' ? 'pnpm' : 'npm'
 // How many builders run at once, and how long one gate command may run (minutes) before the gate stops it.
 const CONCURRENCY = 2
-const GATE_TIMEOUT_MIN = 15
+const GATE_TIMEOUT_MIN = 20
 // The gate runs commands.testCi when the project set it (a test command that exits), else commands.test: a watch-mode
 // test script prints its totals and never returns.
 const TEST_SCRIPT = "" || "test"
