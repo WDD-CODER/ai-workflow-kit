@@ -2,7 +2,7 @@
 
 Status: draft
 Depends-on: none
-Snapshot: 9909c12f1572d8e1e0a4aa133ab2b362c468c1ee
+Snapshot: b075db1e9c4876d4f210c95612df2e2a406a160a
 Source: first orchestrator test run (test-512-422) — lesson files held category-only lines; Human decision "approve: code facts only" (2026-11-02)
 
 ## Problem Statement
@@ -195,3 +195,4 @@ Every step names its own test location.
 - Evidence: `npm run build`, `npm run lint`, `npm run test`, `node tools/install-check.mjs`, `node tools/drift-check.mjs --target .`, `node tools/orchestrator-e2e.mjs` (90 cases), both scope checks -> exit 0. `node --test tools/test/orchestrator.test.mjs` -> 140 pass, 1 fail.
 - seen: `tools/test/orchestrator.test.mjs` test "final gate: PROJECT_CHECKS, then the manifest check, then orchestrator.ciMirror" already fails on `main` (the kit's own ciMirror list from commit 332c5e9); not touched here.
 - Note: 061 is still draft (the plan states 065 does not depend on it); nothing built for it.
+- Builder (round 1): Step 0 drift check. 0bcad4b `GATE_TIMEOUT_MIN` 15 to 20 (orchestrate.js, orch-state.mjs): ok. 332c5e9 `CI_MIRROR` list and its doc rows: ok. de1bac1 `USE_SLOTS` false: ok. All three are config-rendered constants and touch none of `lessonFacts`, `causeLessons` or the park/round-cause code; no conflict. Snapshot moved to `b075db1` (origin/main) so the drift check reads clean.
