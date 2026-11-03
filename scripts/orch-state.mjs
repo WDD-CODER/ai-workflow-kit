@@ -87,7 +87,7 @@ const TRIAGE = "shadow"
 const TRIAGE_MIN_AGREEMENT = 0.9
 const TRIAGE_MIN_GRADED = 20
 // Minutes one `main-try` command may run before it is stopped (orchestrator.gateTimeoutMin, the gate's own limit).
-const GATE_TIMEOUT_MIN = 15
+const GATE_TIMEOUT_MIN = 20
 // Sensitive paths (the security reviewer runs on them): the same reading as ship-prep — a regex string replaces the
 // built-in list, a list of globs is added to it.
 const DEFAULT_SENSITIVE_RE = /auth|crypto|guard|interceptor|security|permission|payment|migration|secret|\.env|\.github\/workflows/i
