@@ -320,6 +320,12 @@ async function loadLearning() {
 // no agent call of their own. A list fact (` || `-joined) keeps every line; a scalar keeps the last value.
 const FACTS = {}
 const FACT_LISTS = new Set(['miss', 'round-cause', 'gate-event'])
+// What the code has about a fix round (the failing command and its output, the findings' id, rule and file) rides on the
+// plan's next `set` as `--causes-b64`; orch-state.mjs keeps only what git and the registered rules confirm.
+const CAUSES = {}
+function queueCause(nnn, cause) {
+  ;(CAUSES[nnn] ??= []).push(cause)
+}
 function queueFact(nnn, key, value) {
   const f = (FACTS[nnn] ??= {})
   const v = String(value).replace(/\s+/g, ' ').trim()
@@ -347,6 +353,8 @@ async function setPlan(nnn, fields, results = []) {
   // Lesson facts queued for this plan go with this call.
   for (const [k, v] of Object.entries(FACTS[nnn] ?? {})) if (fields[k] === undefined) argv.push(`--${k}`, v)
   delete FACTS[nnn]
+  if (CAUSES[nnn]?.length) argv.push('--causes-b64', toB64(JSON.stringify(CAUSES[nnn])))
+  delete CAUSES[nnn]
   // Run notes and flakes queued for this plan go with this call too; a failed call puts them back (each note has an id, so
   // a call that did write them and is sent again records them once).
   const queued = NOTES[nnn] ?? []
@@ -1116,6 +1124,11 @@ async function runPlan(nnn) {
     if (ctx.tier === 'judgment' && ctx.escalated) return park(`${failure.why} (fix rounds used: ${ctx.round} of ${MAX_FIX_ROUNDS}) — needs the Human`)
     ctx.round += 1
     queueFact(nnn, 'round-cause', `round ${ctx.round}: ${String(failure.why ?? '').slice(0, 280)}`)
+    {
+      const w = String(failure.why ?? '')
+      if (/^checker:/.test(w)) queueCause(nnn, { round: ctx.round, stage: 'checker', findings: (failure.findings ?? []).slice(0, 5).map((f) => ({ id: f.id, rule: String(f.rule ?? '').slice(0, 120), file: f.file })) })
+      else if (/^gate/.test(w)) queueCause(nnn, { round: ctx.round, stage: 'gate', cmd: failure.check, tail: String(failure.tail ?? '').slice(-2000) })
+    }
     findings = failure.findings ?? []
     ctx.knownFindings = findings.filter((f) => /^ui-/.test(f.id)).map((f) => `${f.file}: ${f.reasoning}`)
     if (failure.escalate || ctx.round >= 2) {
@@ -1381,8 +1394,9 @@ async function run() {
   // it rides on the one call; a command of an odd shape is left out (its kind is then unknown, no role is taught).
   // base64 (like the notes), so a command with quotes or `*` (node --test "tools/test/*.test.mjs") reaches the script whole.
   const gateCmd = finalGate && !finalGate.ok && String(finalGate.command ?? '').trim() ? ['--final-gate-command-b64', toB64(String(finalGate.command).replace(/\s+/g, ' ').trim().slice(0, 300))] : []
+  const gateTail = finalGate && !finalGate.ok && String(finalGate.tail ?? '').trim() ? ['--final-gate-tail-b64', toB64(String(finalGate.tail).slice(-2000))] : []
   const gatePlans = finalGate && !finalGate.ok && finalBlamed.length ? ['--final-gate-plans', finalBlamed.join(',')] : []
-  const fin = await withQueued(['finish', '--run', RUN, '--final-gate', finalGate ? (finalGate.ok ? 'ok' : 'failed') : 'none', ...gateCmd, ...gatePlans], 'report')
+  const fin = await withQueued(['finish', '--run', RUN, '--final-gate', finalGate ? (finalGate.ok ? 'ok' : 'failed') : 'none', ...gateCmd, ...gateTail, ...gatePlans], 'report')
   // A run that ended on a limit or an error: the command prints this line first (STUCK), before the lists.
   const LIMIT = /^(agent-call limit|same reason twice|run stopped with an error)/
   const stuckWhy = LIMIT.test(String(stopReason ?? '')) ? stopReason : outcomes.find((o) => LIMIT.test(String(o.reason ?? '')))?.reason ?? null

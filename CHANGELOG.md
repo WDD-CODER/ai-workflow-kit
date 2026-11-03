@@ -9,6 +9,9 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Changed
+- **Orchestrator lesson lines name a fact the code produced, or nothing.** Fix-round lines carry the failing command kind and the diff file, or the checker finding id (and its `INV-n` rule); a parked plan's line carries only the code-written start of the park reason; the final-gate line carries the kind and the failing file. The category-only lines (`parked: other`, `other rule`, `another failure`, `an open question`, the asked-about line) are no longer written. The script stores the facts (`causeFacts`, `diffFiles`) inside the existing `set` call.
+
 ## [2.0.0] - 2026-11-02
 
 **Action for projects (major):** a project whose config sets `models.judgment` to `inherit` or a Haiku value is refused
