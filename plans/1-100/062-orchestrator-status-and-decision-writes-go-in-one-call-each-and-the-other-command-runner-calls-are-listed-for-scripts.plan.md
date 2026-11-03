@@ -1,6 +1,6 @@
 # Plan 062 — Orchestrator status and decision writes go in one call each; the other command-runner calls are listed for scripts
 
-Status: draft
+Status: done
 Depends-on: 063
 Snapshot: aac496e051072bad36314d3b24767d2f7fa37469
 Source: first orchestrator test run (test-512-422), finding F8 (87 Haiku command-runner calls)

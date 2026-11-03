@@ -1,6 +1,6 @@
 # Plan 063 — The judgment tier is pinned to Opus; builders start on Sonnet and one failed fix round hands over to a fresh Opus builder from a written summary
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: aac496e051072bad36314d3b24767d2f7fa37469
 Source: first orchestrator test run (test-512-422), finding F9 (Human wording, 2026-11-02)

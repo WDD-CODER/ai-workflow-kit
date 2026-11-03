@@ -1,6 +1,6 @@
 # Plan 059 — Orchestrator gate: the kit manifest check runs per plan (and readiness/builder know it), and generated files are prepared before server tests
 
-Status: draft
+Status: done
 Depends-on: 063
 Snapshot: aac496e051072bad36314d3b24767d2f7fa37469
 Source: first orchestrator test run (test-512-422), findings F4, F7, F11

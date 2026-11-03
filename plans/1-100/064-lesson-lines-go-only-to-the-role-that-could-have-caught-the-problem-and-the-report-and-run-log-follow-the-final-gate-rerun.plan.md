@@ -1,6 +1,6 @@
 # Plan 064 — Lesson lines go only to the role that could have caught the problem, and the report and run-log row follow the final gate re-run
 
-Status: draft
+Status: done
 Depends-on: 062
 Snapshot: aac496e051072bad36314d3b24767d2f7fa37469
 Source: first orchestrator test run (test-512-422), finding F10 (+ Human addition 2026-11-02)
