@@ -28,7 +28,15 @@
     ]
   },
   "orchestrator": {
-    "useSlots": false
+    "useSlots": false,
+    "ciMirror": [
+      "node tools/pack-check.mjs",
+      "node tools/drift-check.mjs --target .",
+      "node tools/install-check.mjs",
+      "node tools/workflow-link-check.mjs",
+      "node tools/e2e-check.mjs",
+      "node tools/acceptance-check.mjs --e2e"
+    ]
   },
   "paths": {
     "hotspots": [

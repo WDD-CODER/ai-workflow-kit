@@ -34,7 +34,7 @@ branch himself.
 | `triageMinAgreement` | `0.9` | Agreement with the Human a kind needs before `filter` collapses it (0.5–1) |
 | `triageMinGraded` | `20` | Graded decisions of that kind it needs first (5–500) |
 | `mergeChecks` | `build` | What the merge step runs on the merged tree: `build` = the project build plus the plan's scope check (lint and tests passed in the plan's gate and run once more at the final gate), `full` = the plan's whole check list on every merge |
-| `ciMirror` | `[]` | CI commands (`npm run <script>`, `pnpm run <script>`, `node scripts/…` or `node tools/…`, no write flag) the final gate runs after the project checks and the kit manifest check, so a green run is a green pull request. Install and sync print a `NOTE ci-mirror:` line for each workflow command the final gate does not run; they never write the list |
+| `ciMirror` | `["node tools/pack-check.mjs","node tools/drift-check.mjs --target .","node tools/install-check.mjs","node tools/workflow-link-check.mjs","node tools/e2e-check.mjs","node tools/acceptance-check.mjs --e2e"]` | CI commands (`npm run <script>`, `pnpm run <script>`, `node scripts/…` or `node tools/…`, no write flag) the final gate runs after the project checks and the kit manifest check, so a green run is a green pull request. Install and sync print a `NOTE ci-mirror:` line for each workflow command the final gate does not run; they never write the list |
 | `prepare` | `[]` | Files the gate generates before the tests: a list of `{ "missing": "<repo-relative path>", "script": "<npm script>", "in": "<repo-relative folder, default .>" }`. Each entry is a first gate command of every plan gate and of the final gate (`node scripts/orch-state.mjs prepare --missing <path> --script <name> [--in <folder>]`): it runs `npm run <script>` in the folder only when `<path>` is absent, and fails with the last 20 output lines and the entry when the path is still missing. Not in the merge step's `build` list. Install and sync refuse an absolute path, a `..`, a script that is a full command or an unknown field |
 
 ## The run
@@ -112,7 +112,7 @@ branch himself.
    branch (the merge folder) once, plus `node scripts/kit-manifest-check.mjs` when the project has a kit manifest
    (the manifest.json under docs/workflow-kit; the pull request's rules job runs the check; a run once finished green and its pull
    request failed on three test fixtures no manifest entry classified), plus every command in `orchestrator.ciMirror`
-   (`[]`; deduplicated, in that order; a command that fails the plan-check allowlist is dropped
+   (`["node tools/pack-check.mjs","node tools/drift-check.mjs --target .","node tools/install-check.mjs","node tools/workflow-link-check.mjs","node tools/e2e-check.mjs","node tools/acceptance-check.mjs --e2e"]`; deduplicated, in that order; a command that fails the plan-check allowlist is dropped
    with the run note `ci-mirror check dropped, not run: <why>`). A failure is a finding in the report
    (`Stopped: final gate failed: <command> — <output tail>`, and the command's output) and the run branch is not handed
    over as clean; a merge can break a test no plan's own checks cover. The result is stored in `status.finalGate`. A lesson
