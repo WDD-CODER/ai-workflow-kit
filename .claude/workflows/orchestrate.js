@@ -54,7 +54,7 @@ const MANIFEST_CHECK = 'node scripts/kit-manifest-check.mjs'
 let KIT_MANIFEST = false
 // CI commands the Human listed (orchestrator.ciMirror): the final gate runs them after PROJECT_CHECKS and the kit
 // manifest check, so a green run is a green PR. Each one passes checkProblem; a bad one is dropped with a run note.
-const CI_MIRROR = []
+const CI_MIRROR = ["node tools/pack-check.mjs","node tools/drift-check.mjs --target .","node tools/install-check.mjs","node tools/workflow-link-check.mjs","node tools/e2e-check.mjs","node tools/acceptance-check.mjs --e2e"]
 // The merge step's checks (orchestrator.mergeChecks): "build" = the project build plus the plan's own scope check
 // (seconds), lint and tests having passed in the plan's gate and running once more at the final gate on the run branch;
 // "full" = the plan's whole check list on every merge (a merge once cost three full test passes per plan).
