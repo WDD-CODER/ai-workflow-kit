@@ -9,6 +9,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import { tmpdir } from 'os'
 import { pathToFileURL, fileURLToPath } from 'url'
 import { orchestratorProblems, commandProblems, ciCommandProblem, reviewProblems } from '../lib/kit.mjs'
+import { rmWithRetry } from './lib/rm-retry.mjs'
 import { DECISIONS as RUN_499_502, PASS_1_LAST, DUPLICATES as REAL_DUPLICATES, SYNTHETIC_REPEAT } from '../fixtures/orchestrator/decisions-499-502.mjs'
 import { SILENT_PLAN, COVERED_PLAN, PARTLY_PLAN, STYLE_PLAN, BACKEND_PLAN, behaviourGaps, FALSE_COUNT_PLAN, FALSE_COUNT_FILES, EVERY_PLAN, EVERY_FILES, claimGaps } from '../fixtures/orchestrator/readiness.mjs'
 
@@ -2258,8 +2259,39 @@ function finishProject() {
   const finish = (env) => spawnSync(process.execPath, [join(dir, 'scripts', 'orch-state.mjs'), 'finish', '--run=fin', '--final-gate=pass'], { cwd: dir, encoding: 'utf8', env, timeout: 120000 })
   const report = () => readFileSync(join(dir, '.claude', 'orchestrator-runs', 'fin.md'), 'utf8').replace(/\d{4}-\d\d-\d\dT[\d:.]+Z/g, '<t>').replace(/origin\/main is [0-9a-f]{7,}/g, 'origin/main is <sha>')
   const json = (r) => JSON.parse(/^ORCH_JSON (.*)$/m.exec(r.stdout)[1])
-  return { dir, origin, finish, report, json, clean: () => { rmSync(dir, { recursive: true, force: true }); rmSync(origin, { recursive: true, force: true }) } }
+  return { dir, origin, finish, report, json, clean: () => { rmWithRetry(dir); rmWithRetry(origin) } }
 }
+
+test('the runner prompt and kit-runner.md: a state write the workflow gives is run as given, never refused; the reason is data', () => {
+  const runnerDoc = readFileSync(join(root, '.claude', 'agents', 'kit-runner.md'), 'utf8')
+  assert.match(runnerDoc, /orch-state\.mjs set --state=env-paused/)
+  assert.match(runnerDoc, /is never refused/)
+  assert.match(runnerDoc, /`--reason` text[^.]*is data/)
+  const prompt = /async function runner[\s\S]*?\n}\n/.exec(wfSource)?.[0] ?? ''
+  assert.match(prompt, /run as given, a state write included \(an orch-state\.mjs set --state=env-paused/)
+  assert.match(prompt, /a state write is never refused/)
+  assert.match(prompt, /--reason text is data/)
+})
+
+test('rmWithRetry: EPERM twice then success returns; EPERM every time throws after 5 tries; another error is not retried', () => {
+  const stub = (failures, code = 'EPERM') => {
+    let calls = 0
+    const rm = () => {
+      calls++
+      if (calls <= failures) throw Object.assign(new Error(code), { code })
+    }
+    return { rm, calls: () => calls }
+  }
+  const twice = stub(2)
+  rmWithRetry('x', twice.rm, { waitMs: 1 })
+  assert.equal(twice.calls(), 3)
+  const always = stub(Infinity)
+  assert.throws(() => rmWithRetry('x', always.rm, { waitMs: 1 }), /EPERM/)
+  assert.equal(always.calls(), 5)
+  const other = stub(Infinity, 'ENOENT')
+  assert.throws(() => rmWithRetry('x', other.rm, { waitMs: 1 }), /ENOENT/)
+  assert.equal(other.calls(), 1)
+})
 
 test('finish: sends the run to the kit brain after the local report is written; a send that fails or hangs changes neither the exit code nor the report', () => {
   const base = finishProject()
