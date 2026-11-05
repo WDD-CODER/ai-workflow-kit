@@ -992,7 +992,7 @@ const commands = {
     fetchOrigin()
     const head = git(root, 'rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`).out
     if (!head) no(`origin/${branch} not found`)
-    if (head !== p.checkedHead && !head.startsWith(p.checkedHead)) no(`origin/${branch} is at ${head.slice(0, 7)}, not the checked head ${String(p.checkedHead).slice(0, 7)} — the branch changed after its checks`)
+    if (head !== p.checkedHead) no(`origin/${branch} is at ${head.slice(0, 7)}, not the checked head ${String(p.checkedHead).slice(0, 7)} — the branch changed after its checks`)
     emit({ ok: true, ready: true, branch, head, checkedHead: p.checkedHead, round: p.round ?? 0, tier: p.tier ?? '' }, [`plan ${nnn}: ${branch} at the checked head ${head.slice(0, 7)} — ready to merge on its own`])
   },
 
@@ -1149,7 +1149,7 @@ const commands = {
     for (const k of ['tier', 'sha', 'reason']) if (args[k] !== undefined && args[k] !== true) p[k] = String(args[k])
     // --checked-head <sha>: the branch head that passed the gate and the checkers (what `merge-ready` compares with).
     if (args['checked-head'] !== undefined && args['checked-head'] !== true) {
-      if (!/^[0-9a-f]{7,40}$/.test(String(args['checked-head']))) fail('--checked-head takes a commit sha')
+      if (!/^[0-9a-f]{40}$/.test(String(args['checked-head']))) fail('--checked-head takes a full 40-character commit sha')
       p.checkedHead = String(args['checked-head'])
     }
     p.models ??= {}

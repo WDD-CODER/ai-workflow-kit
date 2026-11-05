@@ -62,7 +62,7 @@ export function dbWrites(command) {
   const out = commandSegments(command).filter((s) => dbWriteKind(s))
   const whole = String(command ?? '').replace(/\s+/g, ' ').trim()
   const raw = RAW_CLIENT.test(whole) && (RAW_WRITE.test(whole) || RAW_SCRIPT.test(whole))
-  if (raw && !out.some((s) => dbWriteKind(s) === 'raw-write')) out.push(whole)
+  if ((raw && !out.some((s) => dbWriteKind(s) === 'raw-write')) || (!out.length && dbWriteKind(whole))) out.push(whole)
   return out
 }
 

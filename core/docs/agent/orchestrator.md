@@ -429,6 +429,46 @@ the runner. The one row to watch is `set` — see its recommendation.
 - A relaunch while a run of that name is live (status `running`, updated in the last 2 hours) is refused; after a
   crash, `node scripts/orch-state.mjs stop --run <run> --reason "<why>"` ends it first.
 
+## A plan that will fail is stopped before its builder
+
+- **Code a commit guard refuses.** The run's preflight (`orch-preflight.mjs --plans`) reads the code each plan
+  *prescribes* — its fenced code blocks (not ```` ```scope ````) and inline code spans, never prose — and runs it through
+  every installed `scripts/pre-commit-*.mjs` guard that exports `scanGuardText(text, file)`
+  (`scripts/lib/plan-guard-scan.mjs`). A hit parks the plan before any builder: `preflight: guard <script> line <n>:
+  <rule> — plan line <n>: <text>`; a plan that depends on it is skipped. The security guard
+  (`pre-commit-security-grep.mjs`) also reports a log call of a variable assigned from a PII-named expression earlier in
+  the file. Its one exception is a comment on the line it excuses, `// security-grep-allow: <reason of 10+ characters>`,
+  printed when the guard passes the line; no path, folder or setting turns the guard off.
+- **A [ui] card role with no login.** `ui.logins` in the project config maps a role to a login recipe — `{ "<role>": {
+  "url": "<login page>", "userEnv": "<ENV_NAME>", "passEnv": "<ENV_NAME>" } }`, environment variable **names** only,
+  never values. A card names its role as `as the <role> user` (or `role: <role>`); preflight warns `ui login: no recipe
+  for role <role> (plan NNN card <n>)`, and when recipes exist, `no role named` for a card without one. `--ui --role
+  <role>` logs in with that recipe.
+- **Leftovers of earlier runs.** Preflight lists, one warning line each: a `feat/NNN-*` branch (local or on origin) of
+  a plan in the run that is not in the run branch, every `park/*` branch, a slot holding a `.worktree-plan` marker or a
+  branch, and an `<repo>-orch-<run>-<NNN>` builder folder still on disk. They are run notes; the run goes on.
+- **The park branch.** When a plan is parked, the builder's uncommitted work (tracked changes and new files, never an
+  ignored one) is committed as `WIP: park <run> <NNN>` on the fixed branch `park/<run>-<NNN>` — on top of that branch
+  when an earlier park made it — and pushed (`orch-state.mjs park-save`). The plan branch is not touched. Then the
+  folder is cleaned and a slot is given back. Nothing uncommitted makes no branch; a failed push keeps the folder as it
+  was, with a run note.
+- **A database write the plan does not list.** `orch-state.mjs worktree` writes the marker `orch-builder.json` into the
+  builder worktree's own git dir (run, plan, plan path, branch and the run branch's commit). Only there, the scope guard
+  answers a migration, a seed or a raw database-client write (`scripts/lib/db-write.mjs`) that is not a line of the
+  code the plan prescribes — read from that commit, never from the builder's copy — with `ESCALATE: db-write <command>`
+  before it runs. The builder returns `ESCALATE`; the run parks that plan with `ask: …` and records a decision forced to
+  `ask` (`forced: db-write`); the other plans go on. A Human session and a Worker slot have no marker and are judged as
+  before.
+- **Merge only.** `args.mode: "merge"` resumes a run at the merge: for each plan `orch-state.mjs merge-ready` checks
+  that `status.json` recorded the head that passed its gate and checkers (`checkedHead`: the full sha the state
+  script's `diff` read for the checkers, written by `set --checked-head` just before the merge) and that the plan
+  branch on origin is still exactly at it; then that commit is merged with no builder, gate or checker, and the final
+  gate runs. Every merge with a checked head is pinned to it: the merge agent refuses a branch that moved after its
+  checks. Any other plan is refused with the reason and nothing is
+  merged.
+- **Decisions on a relaunch.** The decisions the command shows for grading are this launch's and every earlier
+  launch's that has no grade row for this run yet (`decisionsInView`); `finish` returns those as `earlierDecisions`.
+
 ## Never
 
 - Merge into, push to or check out `{{git.mainBranch}}` from a run; the Human merges the run branch.

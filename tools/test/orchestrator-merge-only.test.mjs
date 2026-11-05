@@ -14,6 +14,8 @@ const kit = resolve(fileURLToPath(new URL('../..', import.meta.url)))
 const root = process.env.ORCH_ROOT ? resolve(process.env.ORCH_ROOT) : kit
 const wfSource = readFileSync(join(root, '.claude', 'workflows', 'orchestrate.js'), 'utf8')
 
+// the full sha the state script's `diff` reports for the commit the builder reported as abc1234
+const FULL = `abc1234${'0'.repeat(33)}`
 async function runFlow(args, mergeReady) {
   const plansIn = args.plans.map(String)
   const words = (cmd) => [...cmd.matchAll(/"([^"]*)"|(\S+)/g)].map((m) => m[1] ?? m[2])
@@ -28,7 +30,7 @@ async function runFlow(args, mergeReady) {
     if (cmd === 'merge-ready') return mergeReady(f.plan)
     if (cmd === 'finish') return { ok: true, merged: [], parked: [], report: 'r', local: 'l', reportCommitted: true }
     if (cmd === 'plan-info') return { ok: true, path: `plans/${f.plan}-x.plan.md`, branch: `feat/${f.plan}-x`, startTier: 'build', invariants: [], npmScripts: [], uiItems: [], wt: { ok: true, path: `/wt/${f.plan}` } }
-    if (cmd === 'diff') return { ok: true, files: [], sensitive: false }
+    if (cmd === 'diff') return { ok: true, files: [], sensitive: false, head: FULL }
     return { ok: true }
   }
   async function agent(prompt, opts = {}) {
@@ -59,12 +61,13 @@ async function runFlow(args, mergeReady) {
 const of = (r, type) => r.calls.filter((c) => c.type === type)
 
 test('merge mode on a plan with its checked head: no builder, gate or checker, one merge, then the final gate', async () => {
-  const r = await runFlow({ mode: 'merge', plans: ['065'] }, () => ({ ok: true, ready: true, branch: 'feat/065-x', head: 'abc1234', checkedHead: 'abc1234', round: 1, tier: 'build' }))
+  const r = await runFlow({ mode: 'merge', plans: ['065'] }, () => ({ ok: true, ready: true, branch: 'feat/065-x', head: FULL, checkedHead: FULL, round: 1, tier: 'build' }))
   assert.equal(r.result.outcomes[0].state, 'merged', JSON.stringify(r.result.outcomes))
   assert.equal(of(r, 'orch-builder').length, 0)
   assert.equal(['orch-check-plan', 'orch-check-bugs', 'orch-check-rules', 'orch-verify', 'orch-security', 'orch-ui'].reduce((n, t) => n + of(r, t).length, 0), 0)
   assert.equal(of(r, 'orch-merge').length, 1)
   assert.equal(of(r, 'orch-merge')[0].task.PLAN_BRANCH, 'feat/065-x')
+  assert.equal(of(r, 'orch-merge')[0].task.PLAN_HEAD, FULL, 'the merge is pinned to the checked commit')
   assert.equal(r.commands.filter((c) => / (plan-info|worktree) /.test(c)).length, 0, 'no plan folder is made')
   const gates = of(r, 'orch-gate')
   assert.equal(gates.length, 1, 'the final gate only')
@@ -89,9 +92,10 @@ test('a normal run records the checked head when its gate and checkers passed, b
   assert.equal(r.result.outcomes[0].state, 'merged')
   const sets = r.commands.filter((c) => / set /.test(c) && /--plan[= ]065/.test(c))
   assert.ok(sets.length, r.commands.join('\n'))
-  const checked = sets.findIndex((c) => /--checked-head[= ]abc1234/.test(c))
+  const checked = sets.findIndex((c) => c.includes(`--checked-head=${FULL}`) || c.includes(`--checked-head ${FULL}`))
   assert.ok(checked >= 0, sets.join('\n'))
   assert.ok(sets.findIndex((c) => /--state[= ]merging/.test(c)) > checked, 'recorded before the merge')
+  assert.equal(of(r, 'orch-merge')[0].task.PLAN_HEAD, FULL, 'a normal merge is pinned too')
 })
 
 const sh = (cwd, ...a) => {

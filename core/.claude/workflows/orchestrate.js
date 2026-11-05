@@ -773,6 +773,8 @@ function recordVerify(nnn, candidates, verdictOf, kept) {
 async function checkers(ctx) {
   const diff = await state(['diff', '--run', RUN, '--plan', ctx.nnn], `diff ${ctx.nnn}`, ctx.nnn)
   if (Array.isArray(diff.files)) CHANGED_FILES[ctx.nnn] = diff.files
+  // The full sha the checkers read (origin/<branch>, resolved by the state script, never a builder's report).
+  ctx.diffHead = /^[0-9a-f]{40}$/.test(String(diff.head ?? '')) ? diff.head : null
   if (!diff.ok) return { env: !!diff.envFailure, fail: !diff.envFailure, why: `diff: ${diff.error}`, findings: [] }
   // Test-file gate: a test file the plan's scope does not name is a blocker found by script, before any finder.
   if (Array.isArray(diff.testsOutOfScope) && diff.testsOutOfScope.length) {
@@ -910,10 +912,14 @@ async function merge(ctx) {
   return serial(async () => {
     await setPlan(ctx.nnn, { state: 'merging', round: ctx.round })
     const subject = `Merge ${ctx.info.branch} into ${RUN_BRANCH} (plan ${ctx.nnn})`
+    // Pinned to the checked commit when there is one: a branch that moved after its checks is not merged.
+    const pin = /^[0-9a-f]{40}$/.test(String(ctx.planHead ?? '')) ? ctx.planHead : null
     const r = await ask([
       `Merge plan ${ctx.nnn} into run branch ${RUN_BRANCH}. Follow .claude/agents/orch-merge.md, with the checks below run before the push:`,
-      task({ RUN_BRANCH, PLAN_BRANCH: ctx.info.branch, PLAN_NUMBER: ctx.nnn, MERGE_FOLDER: ctx.mergeFolder, SUBJECT: subject, CHECKS: ctx.mergeChecks, TIMEOUT_MIN: GATE_TIMEOUT_MIN }),
-      `Steps: git fetch origin; git merge --ff-only origin/${RUN_BRANCH}; git merge --no-ff --no-commit origin/${ctx.info.branch}; run each CHECKS command (output to a temp file) under timeout TIMEOUT_MIN*60 seconds; all pass → git commit -m "${subject}" and push ${RUN_BRANCH}; a conflict or a failing check → git merge --abort and return merged: false with the reason. Never touch the main branch.`,
+      task({ RUN_BRANCH, PLAN_BRANCH: ctx.info.branch, PLAN_NUMBER: ctx.nnn, MERGE_FOLDER: ctx.mergeFolder, SUBJECT: subject, CHECKS: ctx.mergeChecks, TIMEOUT_MIN: GATE_TIMEOUT_MIN, ...(pin ? { PLAN_HEAD: pin } : {}) }),
+      pin
+        ? `Steps: git fetch origin; git rev-parse origin/${ctx.info.branch} must print ${pin} — any other sha → return merged: false with the reason "the branch moved after its checks"; git merge --ff-only origin/${RUN_BRANCH}; git merge --no-ff --no-commit ${pin}; run each CHECKS command (output to a temp file) under timeout TIMEOUT_MIN*60 seconds; all pass → git commit -m "${subject}" and push ${RUN_BRANCH}; a conflict or a failing check → git merge --abort and return merged: false with the reason. Never touch the main branch.`
+        : `Steps: git fetch origin; git merge --ff-only origin/${RUN_BRANCH}; git merge --no-ff --no-commit origin/${ctx.info.branch}; run each CHECKS command (output to a temp file) under timeout TIMEOUT_MIN*60 seconds; all pass → git commit -m "${subject}" and push ${RUN_BRANCH}; a conflict or a failing check → git merge --abort and return merged: false with the reason. Never touch the main branch.`,
     ].join('\n\n'), { agentType: 'orch-merge', schema: SCHEMA.merge, label: `merge ${ctx.nnn}`, phase: 'Build', plan: ctx.nnn })
     if (!r) return { env: true, why: 'the merge agent returned nothing' }
     if (!r.merged) return { r, env: !!r.envFailure, fail: !r.envFailure, why: `merge: ${r.reason ?? 'not merged'}`,
@@ -943,7 +949,7 @@ async function mergeOnly(nnn) {
   }
   if (!PLAN_BRANCH_RE.test(String(ready.branch))) return { nnn, state: 'parked', reason: `merge only refused: plan branch ${JSON.stringify(ready.branch)} does not match feat/<NNN>-<lower-case words>`, refused: true }
   const extra = (Array.isArray((A.checks ?? {})[nnn]) ? A.checks[nnn] : []).filter((c) => !checkProblem(c, null)).map((c) => String(c).trim())
-  const ctx = { nnn, info: { branch: ready.branch }, round: Number(ready.round) || 0, tier: ready.tier, mergeFolder, mergeChecks: mergeChecksOf([...new Set([...PREPARE_CHECKS, ...PROJECT_CHECKS, ...extra])]) }
+  const ctx = { nnn, info: { branch: ready.branch }, planHead: ready.checkedHead, round: Number(ready.round) || 0, tier: ready.tier, mergeFolder, mergeChecks: mergeChecksOf([...new Set([...PREPARE_CHECKS, ...PROJECT_CHECKS, ...extra])]) }
   const m = await merge(ctx)
   if (m.merged) {
     await setPlan(nnn, { state: 'merged', round: ctx.round, sha: m.sha, reason: m.stopRun }, m.r ? [m.r] : [])
@@ -1039,8 +1045,11 @@ async function runPlan(nnn) {
   // The merge step, on its own: after an environment failure at the merge (a merge folder without packages) the
   // branch is already built and verified, so the retry is this step only — no builder, gate or checkers again.
   const mergeStep = async (results) => {
-    // The head that passed the gate and the checkers: merge mode merges a plan on its own only at this head.
-    await setPlan(nnn, { state: 'checking', round: ctx.round, ...(/^[0-9a-f]{7,40}$/.test(String(ctx.lastHead ?? '')) ? { 'checked-head': ctx.lastHead } : {}) }, results)
+    // The head that passed the gate and the checkers: the full sha the checkers read, when it is the commit the gate
+    // ran on. The merge takes exactly that commit, and merge mode merges a plan on its own only at it.
+    const checked = ctx.diffHead && ctx.lastHead && ctx.diffHead.startsWith(String(ctx.lastHead)) ? ctx.diffHead : null
+    ctx.planHead = checked
+    await setPlan(nnn, { state: 'checking', round: ctx.round, ...(checked ? { 'checked-head': checked } : {}) }, results)
     const m = await merge(ctx)
     const res = m.r ? [m.r] : []
     take(nnn, ctx.round, m.r)
