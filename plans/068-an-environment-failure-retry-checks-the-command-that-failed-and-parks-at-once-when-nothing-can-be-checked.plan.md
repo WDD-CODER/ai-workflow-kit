@@ -93,13 +93,13 @@ line or file this plan names was removed, renamed or rewritten).
 
 ## Atomic Sub-tasks
 
-- [ ] A1: Reproduce the failure on `main` as it is now (058 included) — new test `reproduction` in a NEW file driving the stub orchestrator the way `tools/test/orchestrator.test.mjs` l.567-590 does (read that file for the stub setup; copy the harness code, do not edit that file): gate returns `env-fail` for `node scripts/x.mjs`, the environment check passes, the same command fails again → park `environment, again after one retry`. Commit it before A2 — `tools/test/orchestrator-env-retry.test.mjs`
-- [ ] A2: Add `--probe "<command>"` (repeatable) to the env-only preflight — `node <file>` → file exists in the root folder; `npm|pnpm run <name>` → `<name>` is in `package.json` `scripts` and `node_modules` exists; any other command → `SKIP probe: no precondition`; print `OK probe`/`FAIL probe <why>`/`SKIP probe` lines and keep the JSON line's `envFailure: true` on a FAIL — `core/scripts/orch-preflight.mjs`
-- [ ] A3: Set `probeCmds` on the gate result only where a command has the real status `env-fail` (the `env.length` return, l.715), not on the "returned no result, twice" return (l.702) — `core/.claude/workflows/orchestrate.js`
-- [ ] A4: In the env branch (l.1101): when the failure has `probeCmds`, call `envCheck` with them (`--probe` per command); every command `SKIP` → `park('environment: no precondition can be checked for <commands>')` with no retry; any `FAIL` → park with the probe message; otherwise retry once as today. A failure without `probeCmds` takes today's path unchanged — `core/.claude/workflows/orchestrate.js`
-- [ ] A5: Add the cases of the Done-when list to the new file (probe forms, park at once, probe fail, probe pass then second failure, unchanged paths) — `tools/test/orchestrator-env-retry.test.mjs`
-- [ ] A6: Document the probe and the park-at-once rule where the environment retry is described — `core/docs/agent/orchestrator.md`
-- [ ] A7: `node tools/sync.mjs --target . --apply`, then `node tools/drift-check.mjs --target .` — the three installed copies listed in scope
+- [x] A1: Reproduce the failure on `main` as it is now (058 included) — new test `reproduction` in a NEW file driving the stub orchestrator the way `tools/test/orchestrator.test.mjs` l.567-590 does (read that file for the stub setup; copy the harness code, do not edit that file): gate returns `env-fail` for `node scripts/x.mjs`, the environment check passes, the same command fails again → park `environment, again after one retry`. Commit it before A2 — `tools/test/orchestrator-env-retry.test.mjs`
+- [x] A2: Add `--probe "<command>"` (repeatable) to the env-only preflight — `node <file>` → file exists in the root folder; `npm|pnpm run <name>` → `<name>` is in `package.json` `scripts` and `node_modules` exists; any other command → `SKIP probe: no precondition`; print `OK probe`/`FAIL probe <why>`/`SKIP probe` lines and keep the JSON line's `envFailure: true` on a FAIL — `core/scripts/orch-preflight.mjs`
+- [x] A3: Set `probeCmds` on the gate result only where a command has the real status `env-fail` (the `env.length` return, l.715), not on the "returned no result, twice" return (l.702) — `core/.claude/workflows/orchestrate.js`
+- [x] A4: In the env branch (l.1101): when the failure has `probeCmds`, call `envCheck` with them (`--probe` per command); every command `SKIP` → `park('environment: no precondition can be checked for <commands>')` with no retry; any `FAIL` → park with the probe message; otherwise retry once as today. A failure without `probeCmds` takes today's path unchanged — `core/.claude/workflows/orchestrate.js`
+- [x] A5: Add the cases of the Done-when list to the new file (probe forms, park at once, probe fail, probe pass then second failure, unchanged paths) — `tools/test/orchestrator-env-retry.test.mjs`
+- [x] A6: Document the probe and the park-at-once rule where the environment retry is described — `core/docs/agent/orchestrator.md`
+- [x] A7: `node tools/sync.mjs --target . --apply`, then `node tools/drift-check.mjs --target .` — the three installed copies listed in scope
 
 ## Technical Considerations
 - Dependencies: `envCheck`/`runner` in `orchestrate.js`; `orch-preflight.mjs --env-only`; plan 058 (merged) changed the same two files in other functions (`devServer`, `backend`).
@@ -121,4 +121,13 @@ line or file this plan names was removed, renamed or rewritten).
 - Q: Sequence against plan 058? A: Depends-on none, Parallel no; 058 is merged (PR #86, aac496e) (Human, 2026-11-03)
 
 ## Execution Notes
-[Written while the plan runs.]
+- Run (2026-11-05, Human brief "reliability freeze", Part B plan 2 of 5). Step 0: `scope-check --drift` listed only the three 075 commits, none touching this plan's files — ok.
+- A1 committed alone (86f67bc): the reproduction asserted today's behaviour (retry once, then `environment, again after one retry: gate env-fail: node scripts/x.mjs`, two builders) and passed on that commit; A4 rewrote it into the park-at-once expectation.
+- decision: `.kit/install.json` is not committed — it is outside this plan's scope; CI's drift-check passes without it (checked with the old manifest), and the refreshed manifest stays in the working folder so the next local sync does not report the two changed installed files as conflicts. Main's manifest hashes for `.claude/workflows/orchestrate.js` and `scripts/orch-preflight.mjs` stay stale until a plan with `.kit/install.json` in scope (061) re-records them. Reversible: a one-file chore commit.
+- decision: only `npm|pnpm run <name>` is probed as a script, as the plan says; `npm test` (no `run`) counts as no precondition. The workflow renders project checks as `<pm> run <name>`, so a gate command is never `npm test`.
+- decision: a `node <path>` that is absolute or leaves the root folder (`..`) counts as no precondition and is never looked up, so the probe reads nothing outside the project.
+- decision: the env check's answer without a `probes` list (an older preflight) counts every command as not probed, so the plan parks at once rather than retrying blindly.
+- decision: the no-precondition test uses allowed check commands with a stub env check answering SKIP — the gate never runs a command the check rules refuse (e.g. `git status`), so the real SKIP case is a command such as `node --test …`.
+- review: checkers kept 0 dropped 1 rechecked 0 minutes 3.5 models check-plan=claude-sonnet-5-5,check-bugs=claude-sonnet-5-5,check-rules=claude-sonnet-5-5,verify=claude-sonnet-5-5
+- review (independent, Human brief): Opus fresh context — PASS; all five decisions "a human would likely choose: same".
+- follow-up: the probe looks in the main root folder, as this plan says, not in the folder where the gate ran — a check file or script that only the plan's branch adds would FAIL the probe and park at once instead of the one retry (check-bugs bugs-1, kept by the verifier as minor at confidence 35; the independent reviewer named it too). A small later plan: pass the gate folder (`--probe-dir`) and match the returned probes by position, since the runner's quoting can rewrite a command string.

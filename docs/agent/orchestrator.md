@@ -335,6 +335,13 @@ With the UI step off, a failed script is a finding for the builder, and a card n
   a database that is down, a temp folder in use) pauses the plan (`env-paused`), runs `orch-preflight.mjs --env-only`,
   and retries once when it passes. A failing check or a second environment failure parks the plan with the reason,
   and the wave gate skips what depends on it (the whole run with `onPark` = `all`).
+- **A gate env-fail probes the failed command.** When gate commands end `env-fail`, the check also gets
+  `--probe "<command>"` for each one and tests that command's own precondition from its text, never by running it:
+  `node <file>` → the file exists in the root folder; `npm|pnpm run <name>` → the script is in `package.json` and
+  `node_modules` exists. A failed probe parks the plan with its message; when no command has a precondition the check
+  can test, the plan parks at once with `environment: no precondition can be checked for <commands>` — a retry would
+  only repeat the failure. A probe that passes keeps the one retry. Lost gate results and builder or merge environment
+  failures name no command and keep the generic check.
 
 ## Runner calls
 

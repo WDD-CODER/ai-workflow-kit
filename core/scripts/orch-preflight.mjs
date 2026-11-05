@@ -24,6 +24,10 @@
  *                with --plans, no live run holds one of these plans or a plan whose scope overlaps one of them
  * --env-only runs disk, database and packages only (the retry check after an environment failure; pass --run too so
  * the merge folder's packages are checked).
+ *   probe        --probe "<command>" (repeatable): the precondition of a gate command that ended env-fail, derived from
+ *                the command text and never by running it — `node <file>` → the file exists in the root folder;
+ *                `npm|pnpm run <name>` → <name> is in package.json scripts and node_modules exists; anything else →
+ *                `SKIP probe: no precondition`. A FAIL is an environment failure; the JSON line lists every probe.
  *
  *   node scripts/orch-preflight.mjs --ui [--pages <url,url>] [--login <url>] [--api <url>]
  *
@@ -123,6 +127,41 @@ function packages() {
     }
   }
   ok('packages')
+}
+
+// --probe "<command>": the failed gate command's own precondition. The command is split into words and
+// matched against two fixed shapes; it is never run and never handed to a shell.
+const probeCmds = argv.flatMap((a, i) => (a === '--probe' && i + 1 < argv.length ? [argv[i + 1]] : []))
+const probeOut = []
+const cmdWords = (cmd) => [...String(cmd).matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map((m) => m[1] ?? m[2] ?? m[3])
+function probeOf(cmd, dir) {
+  const w = cmdWords(cmd)
+  if (w[0] === 'node' && w[1] && !w[1].startsWith('-')) {
+    const file = w[1].replace(/\\/g, '/')
+    if (/^\/|^[A-Za-z]:|(^|\/)\.\.(\/|$)/.test(file)) return { status: 'SKIP', why: 'no precondition (a path outside the root folder)' }
+    return existsSync(join(dir, file)) ? { status: 'OK' } : { status: 'FAIL', why: `${file} not found in the root folder` }
+  }
+  if ((w[0] === 'npm' || w[0] === 'pnpm') && w[1] === 'run' && w[2]) {
+    let scripts = null
+    try {
+      scripts = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')).scripts ?? {}
+    } catch {
+      return { status: 'FAIL', why: 'package.json cannot be read in the root folder' }
+    }
+    if (!Object.prototype.hasOwnProperty.call(scripts, w[2])) return { status: 'FAIL', why: `package.json has no script ${w[2]}` }
+    if (!existsSync(join(dir, 'node_modules'))) return { status: 'FAIL', why: `node_modules is missing — run ${w[0]} install` }
+    return { status: 'OK' }
+  }
+  return { status: 'SKIP', why: 'no precondition' }
+}
+function probes() {
+  for (const cmd of probeCmds) {
+    const p = probeOf(cmd, root)
+    probeOut.push({ command: cmd, ...p })
+    if (p.status === 'OK') ok(`probe ${cmd}`)
+    else if (p.status === 'FAIL') bad('probe', `${cmd} — ${p.why}`)
+    else skip('probe', `${p.why} — ${cmd}`)
+  }
 }
 
 // The gate waits for the test command to exit: a watch-mode script prints its totals and hangs (a run lost an hour to it).
@@ -371,6 +410,7 @@ else {
   await database()
   packages()
   gate()
+  probes()
 }
 if (!envOnly && !uiOnly) {
   await devServer()
@@ -383,5 +423,5 @@ if (!envOnly && !uiOnly) {
 }
 for (const r of results) console.log(`${r.status.padEnd(4)} ${r.name}${r.why ? `: ${r.why}` : ''}`)
 const problems = results.filter((r) => r.status === 'FAIL').map((r) => `${r.name}: ${r.why}`)
-console.log(`ORCH_JSON ${JSON.stringify({ ok: problems.length === 0, problems, ...(problems.length ? { envFailure: true } : {}), ...(problems.length && uiOnly ? { uiBlocked: true } : {}) })}`)
+console.log(`ORCH_JSON ${JSON.stringify({ ok: problems.length === 0, problems, ...(probeOut.length ? { probes: probeOut } : {}),...(problems.length ? { envFailure: true } : {}), ...(problems.length && uiOnly ? { uiBlocked: true } : {}) })}`)
 process.exit(problems.length ? 1 : 0)
