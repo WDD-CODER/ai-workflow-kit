@@ -126,15 +126,15 @@ None (scripts and agent text only).
 
 Every step names its own test location.
 
-- [ ] A1: Failing tests first — upstream of a new worktree branch is the run branch today; a rerun with a plan-file conflict parks today; Step 0 findings to Execution Notes
+- [x] A1: Failing tests first — upstream of a new worktree branch is the run branch today; a rerun with a plan-file conflict parks today; Step 0 findings to Execution Notes
   - Scope: `tools/test/orchestrator-folders.test.mjs`
-- [ ] B1: `--no-track`, upstream cleanup for a reused branch, push command text; tests
+- [x] B1: `--no-track`, upstream cleanup for a reused branch, push command text; tests
   - Scope: `core/scripts/orch-state.mjs`, `core/scripts/lib/orch-folders.mjs`, `core/.claude/agents/orch-builder.md`, `core/.claude/workflows/orchestrate.js`, `tools/test/orchestrator-folders.test.mjs`, `tools/test/orchestrator.test.mjs`
-- [ ] B2: `mergePlanFile` and the plan-file-only conflict resolution; unit tests of the function and the rerun test
+- [x] B2: `mergePlanFile` and the plan-file-only conflict resolution; unit tests of the function and the rerun test
   - Scope: `core/scripts/lib/orch-run.mjs`, `core/scripts/orch-state.mjs`, `tools/test/orchestrator-folders.test.mjs`, `tools/test/orchestrator.test.mjs`
-- [ ] D1: Gotcha and `orchestrator.md`
+- [x] D1: Gotcha and `orchestrator.md`
   - Scope: `core/docs/brain/gotchas/agent-workflow.md`, `core/docs/agent/orchestrator.md`
-- [ ] R1: Render the installed copies, run every check, add the changelog entry — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .`, build, lint, `npm test`, `node --test "tools/test/*.test.mjs"`, `node tools/orchestrator-e2e.mjs`
+- [x] R1: Render the installed copies, run every check, add the changelog entry — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .`, build, lint, `npm test`, `node --test "tools/test/*.test.mjs"`, `node tools/orchestrator-e2e.mjs`
   - Scope: `scripts/**`, `.claude/**`, `docs/agent/**`, `docs/brain/**`, `.kit/install.json`, `CHANGELOG.md`
 
 ## Technical Considerations
@@ -156,3 +156,12 @@ Every step names its own test location.
 ## Execution Notes
 - Source: orchestrator test run test-512-422, findings F6 + D10, kept as one plan (Human, 2026-11-02). Code facts: kit at
   `origin/main` `aac496e`.
+- Step 0 (2026-11-05): `scope-check --drift` reported `REALITY: drift` — the commits since the snapshot are plans 075, 068 and 083. Checked by symbol: none touches `worktree add -b`, `claimSlot`'s `switch -c`, the rerun merge in `worktree()` or the builder's push text (083 added the builder marker and `park-save` next to them) — `ok` for every commit. `node tools/install-check.mjs` passed before any edit.
+- Step 0 item 2 / F6 reproduced in a scratch repository with a bare origin (A1 test): run r1 builds plan 001 and its builder ticks A1 and adds an Execution Notes line in the plan file; `main` then gets a newer text of that file (the `plan(<run>): readiness answers` commit to Execution Notes); a relaunch under a new run name r2 cuts its run branch from that newer `main` while the old `feat/001-x` is reused, and `worktree` parked with `merging origin/orch/r2 into feat/001-x conflicts: … plans/001-x.plan.md`. Real source: a relaunch under a new run name after the Planner or readiness changed the plan on `main` (the same run name never brings `main` in: `init` does not merge it).
+- decision: the upstream cleanup runs in `orch-state.mjs worktree` for both a slot and an own folder, and removes any upstream other than the plan's own remote branch (this run's branch, and an earlier run's branch after a relaunch under a new name); the plan's own upstream is kept. Reason: `worktree` runs for every plan, so one place covers both kinds of folder; the first version matched only the current run branch, and the independent review and two checkers showed the F6 relaunch then kept the earlier run's upstream.
+- decision: the plan-file merge keeps ticks on sub-ids such as `B2a` and `R1.1`, not only `A1`. Reason: a review nit, cheap and inside `mergePlanFile`; a lost tick would be silent.
+- decision: the builder prompt carries the push command on every mode (`git push -u origin <branch>`), not only `fix`. Reason: the first build pushes too, and that is where a wrong upstream bites.
+- decision: a conflict whose two sides of the plan file cannot be read, or whose resolution fails to commit, aborts the merge and parks with that reason. Reason: fail closed; the plan asks "any other conflicted path: abort and fail exactly as today".
+- decision: `.kit/install.json` is committed here (in this plan's scope) with the manifest sync wrote, which also covers the installed files 068 and 083 changed. Reason: it was left uncommitted on those branches (outside their scope) and main's copy was stale.
+- R1 evidence (2026-11-05): `npm run build` → 0; `npm run lint` → 0; `node tools/drift-check.mjs --target .` → `KIT_DRIFT: ok`; `scope-check --deps/--tags/--tests/--arch/--diff=origin/main` → ok, ok, ok, `ARCH: ok INV-none`, `SCOPE: ok`; `npm test` → 0; `node tools/orchestrator-e2e.mjs` → 0; `node --test "tools/test/*.test.mjs"` → 501/503, the 2 failures the slot-serve `--main` port tests under parallel load (alone: 4/4 pass, a known Windows flake); after the review fixes, folders + orchestrator + agent-contracts → 199/199.
+- Review: independent (opus) PASS, its should-fix items fixed (upstream of an earlier run, test gaps: CRLF, a missing notes section, a section after the notes, plan file plus another file conflicting). Checkers: plan PASS, bugs PASS, rules PASS (their minor finding was the same upstream case). Not changed: notes deduplicated by exact line (a reworded note may repeat), and the resolving commit runs the project's hooks (fails closed) — follow-ups.

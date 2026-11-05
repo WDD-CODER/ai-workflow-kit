@@ -84,7 +84,8 @@ export function idleSlot(slots, skip = []) {
 
 /** Claims a slot for a plan: the plan branch (new from `base`, or the existing one) is checked out and .worktree-plan names the plan. */
 export function claimSlot({ slot, branch, base, planPath, branchExists }) {
-  const s = branchExists ? git(slot.path, 'switch', '--quiet', branch) : git(slot.path, 'switch', '--quiet', '-c', branch, base)
+  // --no-track: a plan branch never takes the run branch as its upstream (a bare push would go there).
+  const s = branchExists ? git(slot.path, 'switch', '--quiet', branch) : git(slot.path, 'switch', '--quiet', '--no-track', '-c', branch, base)
   if (s.status !== 0) return { ok: false, error: `git switch in ${slot.path}: ${s.err.split('\n').pop()}` }
   writeFileSync(join(slot.path, '.worktree-plan'), `${planPath}\n`)
   return { ok: true }

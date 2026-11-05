@@ -355,6 +355,44 @@ export function decisionsInView(decisions, { attempt = 1, run = '', gradeRows = 
   })
 }
 
+/**
+ * A plan file both sides changed, merged for a rerun: `theirs` (the run branch's text — a later Planner, readiness or
+ * plan-close edit) is the base; every Atomic Sub-task id ticked `[x]` in `ours` (the plan branch: the builder's work) is
+ * ticked in it, and the `## Execution Notes` lines of `ours` it lacks are added at the end of that section. Pure.
+ */
+export function mergePlanFile({ ours, theirs }) {
+  const nl = /\r\n/.test(String(theirs)) ? '\r\n' : '\n'
+  const mine = String(ours ?? '').split(/\r?\n/)
+  const out = String(theirs ?? '').split(/\r?\n/)
+  // A sub-task id: A1, B2a, R1.1.
+  const ticked = new Set(mine.map((l) => /^\s*- \[[xX]\] ([A-Z]+\d+(?:\.\d+)*[a-z]?):/.exec(l)?.[1]).filter(Boolean))
+  for (let i = 0; i < out.length; i++) {
+    const m = /^(\s*- )\[ \]( ([A-Z]+\d+(?:\.\d+)*[a-z]?):.*)$/.exec(out[i])
+    if (m && ticked.has(m[3])) out[i] = `${m[1]}[x]${m[2]}`
+  }
+  const section = (lines) => {
+    const a = lines.findIndex((l) => /^## Execution Notes\b/.test(l))
+    if (a < 0) return null
+    const b = lines.findIndex((l, i) => i > a && /^## /.test(l))
+    return { a, b: b < 0 ? lines.length : b }
+  }
+  const os = section(mine)
+  if (!os) return out.join(nl)
+  const ts = section(out)
+  const have = new Set(ts ? out.slice(ts.a + 1, ts.b).map((l) => l.trim()) : [])
+  const add = mine.slice(os.a + 1, os.b).filter((l) => l.trim() && !have.has(l.trim()))
+  if (!add.length) return out.join(nl)
+  if (!ts) {
+    const end = out.length && out[out.length - 1] === '' ? out.length - 1 : out.length
+    out.splice(end, 0, '', '## Execution Notes', ...add)
+    return out.join(nl)
+  }
+  let last = ts.b - 1
+  while (last > ts.a && !out[last].trim()) last--
+  out.splice(last + 1, 0, ...add)
+  return out.join(nl)
+}
+
 const short = (s, n) => (String(s).length > n ? `${String(s).slice(0, n - 1)}…` : String(s))
 function decisionsSection(decisions, triage) {
   const list = Array.isArray(decisions) ? decisions : []

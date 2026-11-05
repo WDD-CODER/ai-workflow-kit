@@ -670,6 +670,7 @@ async function builder(ctx, mode, findings) {
       HANDOFF: mode === 'handoff' ? ctx.handoff : undefined, LESSONS: lessonsOf('builder'),
     }),
     KIT_MANIFEST ? 'The per-plan gate runs node scripts/kit-manifest-check.mjs: a file you add under the manifest inventory (scripts, agents, commands, skills, docs/brain, docs/agent, .github/workflows) or an ADR needs its docs/workflow-kit/manifest.json entry in the same branch.' : '',
+    `Push with git push -u origin ${ctx.info.branch} — never a bare git push (the branch tracks its own remote branch, never the run branch).`,
     mode === 'fix' ? 'Fix exactly the FINDINGS, rerun the checks, commit and push your branch.' : '',
     mode === 'handoff' ? 'You are a fresh builder: read the HANDOFF file, the plan and git diff against the run branch; rerun the failing check first.' : '',
     mode === 'env-retry' ? 'The environment check passed after an environment failure: continue the plan where it stopped.' : '',
