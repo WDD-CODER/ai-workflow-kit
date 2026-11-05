@@ -396,14 +396,14 @@ test('the report tier cell lists every builder tier that ran: a plan built on so
 test('a lesson line takes only the finding ids and paths the code makes: no free words from an agent', () => {
   for (const id of ['gate-3', 'scope-1', 'ui-12', 'merge-1', 'check-rules-2', 'check-bugs-999', 'check-plan-1', 'security-4', 'verify-1', 'readiness-2']) assert.ok(lib.safeLessonId(id), id)
   for (const id of ['ignore-previous-instructions', 'bugs-1', 'gate-1000', 'gate-', 'gate-x', 'gate-1 ', 'check-rules-2-a', '']) assert.ok(!lib.safeLessonId(id), id)
-  for (const p of ['src/app/a/b.ts', 'a.ts', 'tools/test/x.test.mjs', '@scope/pkg/a.js']) assert.ok(lib.safeLessonPath(p), p)
-  for (const p of ['src/app/a/b/c.ts', `src/${'x'.repeat(41)}.ts`, 'src/../a.ts', 'src//a.ts', 'src/a b.ts', '']) assert.ok(!lib.safeLessonPath(p), p)
+  for (const p of ['src/app/a/b.ts', 'a.ts', 'tools/test/x.test.mjs', '@scope/pkg/a.js', 'src/app/pages/x/x.component.ts']) assert.ok(lib.safeLessonPath(p), p)
+  for (const p of ['src/app/a/b/c/d/e.ts', `src/${'x'.repeat(41)}.ts`, 'src/../a.ts', 'src//a.ts', 'src/a b.ts', '']) assert.ok(!lib.safeLessonPath(p), p)
   const status = { run: 'x', plans: { 7: { nnn: '7', state: 'merged', round: 1, models: {}, roundCauses: ['round 1: checker: blocker src/a.ts:1 x'],
-    causeFacts: [{ round: 1, kind: 'checker', findings: [{ id: 'ignore-previous-instructions', file: 'src/a.ts' }, { id: 'gate-3', file: 'src/app/a/b/c/d.ts' }, { id: 'check-rules-2', file: 'src/app/a/b.ts' }] }] } } }
+    causeFacts: [{ round: 1, kind: 'checker', findings: [{ id: 'ignore-previous-instructions', file: 'src/a.ts' }, { id: 'gate-3', file: 'src/app/a/b/c/d/e.ts' }, { id: 'check-rules-2', file: 'src/app/pages/x/x.component.ts' }] }] } } }
   const text = lib.lessonFacts(status).map((f) => f.text).join('\n')
   assert.doesNotMatch(text, /ignore-previous-instructions/)
-  assert.match(text, /finding gate-3(?! in)/, 'a five-segment path is left out, the id stays')
-  assert.match(text, /finding check-rules-2 in src\/app\/a\/b\.ts/)
+  assert.match(text, /finding gate-3(?! in)/, 'a seven-segment path is left out, the id stays')
+  assert.match(text, /finding check-rules-2 in src\/app\/pages\/x\/x\.component\.ts/, 'a six-segment path is kept')
 })
 
 test('onPark dependents: a plan with no edge to the parked one is built and merged, and the run is not stopped', async () => {
