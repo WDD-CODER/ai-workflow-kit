@@ -36,6 +36,7 @@ import { spawnSync } from 'child_process'
 import { join, resolve, dirname, relative, isAbsolute, basename } from 'path'
 import { fileURLToPath } from 'url'
 import { OPEN_PLAN_RE, findOpenPlan } from './plan-paths.mjs'
+import { dbWriteAsk, builderMarker } from './db-write.mjs'
 
 const MAIN_BRANCHES = ['main', 'master']
 // Gitignored runtime files the workflow writes on main: never a branch decision.
@@ -1244,6 +1245,30 @@ function filesOf(ti) {
   return []
 }
 
+/** The db-write ask for a command run from `cwd`, a folder it `cd`s into, or a folder it names with `--prefix` / `-C`;
+ *  null when none of them is a builder worktree. A check that throws where a builder marker exists refuses (fail closed). */
+function builderDbAsk(command, cwd) {
+  const folders = [cwd]
+  try {
+    for (const m of String(command).matchAll(/(?:(?:^|[;&|(\n])\s*(?:cd|pushd)|\s(?:--prefix|-C|--dir))[\s=]+("[^"]*"|'[^']*'|[^\s;&|)]+)/g)) {
+      folders.push(resolve(cwd, nativePath(m[1].replace(/^(["'])(.*)\1$/, '$2'))))
+    }
+    for (const f of folders) {
+      const ask = dbWriteAsk(command, f)
+      if (ask) return ask
+    }
+    return null
+  } catch (e) {
+    let marked = false
+    try {
+      marked = folders.some((f) => builderMarker(f))
+    } catch {
+      marked = true
+    }
+    return marked ? `ESCALATE: db-write check failed (${e && e.message}) in an orchestrator builder worktree — stop and return status ESCALATE with this line as the blocker.` : null
+  }
+}
+
 export function decide(mode, input, here) {
   let d
   try {
@@ -1257,6 +1282,12 @@ export function decide(mode, input, here) {
   let targets
   if (tool === 'Bash' || (typeof ti?.command === 'string' && !filesOf(ti).length)) {
     const command = String(ti.command || '')
+    // An orchestrator builder's worktree only (its marker, never this session's start folder): a database write the
+    // plan does not list is asked about before it runs. Every other folder is judged exactly as before.
+    if (mode === 'scope') {
+      const ask = builderDbAsk(command, cwd)
+      if (ask) return deny(ask)
+    }
     targets = bashWrites(command, cwd)
     // Strict mode: a complex command that writes must use plain, top-level targets the reader found (fail closed).
     const why = strictShell(command, cwd, targets)

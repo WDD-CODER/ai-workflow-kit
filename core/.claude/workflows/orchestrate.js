@@ -136,7 +136,9 @@ function cardProblem({ card, page, shots }) {
 }
 
 const A = args ?? {}
-const MODE = A.mode === 'readiness' ? 'readiness' : 'run'
+// readiness: read the plans only. merge: resume a run at the merge of plans already built and checked (merge-ready),
+// with no builder, gate or checker, then the final gate. run: everything.
+const MODE = A.mode === 'readiness' ? 'readiness' : A.mode === 'merge' ? 'merge' : 'run'
 const RUN = String(A.run ?? '')
 const ROOT = String(A.root ?? '.')
 const PLANS = (Array.isArray(A.plans) ? A.plans : String(A.plans ?? '').split(',')).map((p) => String(p).trim()).filter(Boolean)
@@ -500,6 +502,15 @@ function numberedDecisions(first) {
   return out.map((d, i) => { d.id = `D${first + i}`; return d })
 }
 const idNumber = (id) => Number(String(id).replace(/\D/g, '')) || 0
+// The `ESCALATE: db-write <command> …` line a builder returned (the guard's answer to an unlisted database write), or null.
+function dbWriteEscalation(b) {
+  if (!b || b.status === 'built') return null
+  for (const t of [b.blocker, b.escalate, b.summary]) {
+    const m = String(t ?? '').match(/ESCALATE: db-write [^\n]+/)
+    if (m) return m[0].replace(/\s+/g, ' ').trim().slice(0, 300)
+  }
+  return null
+}
 
 // The hard triage rules, applied here before a verdict is recorded and again by `orch-state.mjs decision`. A mirror copy
 // of triageForce in scripts/lib/orch-run.mjs (a workflow script has no imports): change both, tools/test/orchestrator.test.mjs
@@ -762,6 +773,8 @@ function recordVerify(nnn, candidates, verdictOf, kept) {
 async function checkers(ctx) {
   const diff = await state(['diff', '--run', RUN, '--plan', ctx.nnn], `diff ${ctx.nnn}`, ctx.nnn)
   if (Array.isArray(diff.files)) CHANGED_FILES[ctx.nnn] = diff.files
+  // The full sha the checkers read (origin/<branch>, resolved by the state script, never a builder's report).
+  ctx.diffHead = /^[0-9a-f]{40}$/.test(String(diff.head ?? '')) ? diff.head : null
   if (!diff.ok) return { env: !!diff.envFailure, fail: !diff.envFailure, why: `diff: ${diff.error}`, findings: [] }
   // Test-file gate: a test file the plan's scope does not name is a blocker found by script, before any finder.
   if (Array.isArray(diff.testsOutOfScope) && diff.testsOutOfScope.length) {
@@ -899,10 +912,12 @@ async function merge(ctx) {
   return serial(async () => {
     await setPlan(ctx.nnn, { state: 'merging', round: ctx.round })
     const subject = `Merge ${ctx.info.branch} into ${RUN_BRANCH} (plan ${ctx.nnn})`
+    // Pinned to the checked commit when there is one: a branch that moved after its checks is not merged.
+    const pin = /^[0-9a-f]{40}$/.test(String(ctx.planHead ?? '')) ? ctx.planHead : null
     const r = await ask([
       `Merge plan ${ctx.nnn} into run branch ${RUN_BRANCH}. Follow .claude/agents/orch-merge.md, with the checks below run before the push:`,
-      task({ RUN_BRANCH, PLAN_BRANCH: ctx.info.branch, PLAN_NUMBER: ctx.nnn, MERGE_FOLDER: ctx.mergeFolder, SUBJECT: subject, CHECKS: ctx.mergeChecks, TIMEOUT_MIN: GATE_TIMEOUT_MIN }),
-      `Steps: git fetch origin; git merge --ff-only origin/${RUN_BRANCH}; git merge --no-ff --no-commit origin/${ctx.info.branch}; run each CHECKS command (output to a temp file) under timeout TIMEOUT_MIN*60 seconds; all pass → git commit -m "${subject}" and push ${RUN_BRANCH}; a conflict or a failing check → git merge --abort and return merged: false with the reason. Never touch the main branch.`,
+      task({ RUN_BRANCH, PLAN_BRANCH: ctx.info.branch, PLAN_NUMBER: ctx.nnn, MERGE_FOLDER: ctx.mergeFolder, SUBJECT: subject, CHECKS: ctx.mergeChecks, TIMEOUT_MIN: GATE_TIMEOUT_MIN, ...(pin ? { PLAN_HEAD: pin } : {}) }),
+      `Steps: git fetch origin;${pin ? ` git rev-parse origin/${ctx.info.branch} must print PLAN_HEAD (${pin}) — any other sha → do not merge, return merged: false with the reason "the branch moved after its checks";` : ''} git merge --ff-only origin/${RUN_BRANCH}; git merge --no-ff --no-commit origin/${ctx.info.branch};${pin ? ` git rev-parse MERGE_HEAD must print PLAN_HEAD (${pin}), also after any later fetch and retry — any other sha → git merge --abort and return merged: false with the reason "the branch moved after its checks";` : ''} run each CHECKS command (output to a temp file) under timeout TIMEOUT_MIN*60 seconds; all pass → git commit -m "${subject}" and push ${RUN_BRANCH}; a conflict or a failing check → git merge --abort and return merged: false with the reason. Never touch the main branch.`,
     ].join('\n\n'), { agentType: 'orch-merge', schema: SCHEMA.merge, label: `merge ${ctx.nnn}`, phase: 'Build', plan: ctx.nnn })
     if (!r) return { env: true, why: 'the merge agent returned nothing' }
     if (!r.merged) return { r, env: !!r.envFailure, fail: !r.envFailure, why: `merge: ${r.reason ?? 'not merged'}`,
@@ -921,7 +936,30 @@ async function envCheck(ctx, why, probeCmds = []) {
   return r
 }
 
+// Merge mode: a plan built and checked earlier in this run is merged on its own — no builder, gate or checker — when
+// `merge-ready` finds its branch still at the recorded checked head; any other plan is refused with the reason.
+async function mergeOnly(nnn) {
+  const ready = await state(['merge-ready', '--run', RUN, '--plan', nnn], `merge-ready ${nnn}`, nnn)
+  if (!ready?.ok || ready.ready !== true) {
+    const why = `merge only refused: ${String(ready?.why ?? ready?.error ?? 'no answer').slice(0, 300)}`
+    await note(why, nnn)
+    return { nnn, state: 'parked', reason: why, refused: true }
+  }
+  if (!PLAN_BRANCH_RE.test(String(ready.branch))) return { nnn, state: 'parked', reason: `merge only refused: plan branch ${JSON.stringify(ready.branch)} does not match feat/<NNN>-<lower-case words>`, refused: true }
+  const extra = (Array.isArray((A.checks ?? {})[nnn]) ? A.checks[nnn] : []).filter((c) => !checkProblem(c, null)).map((c) => String(c).trim())
+  const ctx = { nnn, info: { branch: ready.branch }, planHead: ready.checkedHead, round: Number(ready.round) || 0, tier: ready.tier, mergeFolder, mergeChecks: mergeChecksOf([...new Set([...PREPARE_CHECKS, ...PROJECT_CHECKS, ...extra])]) }
+  const m = await merge(ctx)
+  if (m.merged) {
+    await setPlan(nnn, { state: 'merged', round: ctx.round, sha: m.sha, reason: m.stopRun }, m.r ? [m.r] : [])
+    return { nnn, state: 'merged', sha: m.sha, round: ctx.round, stopRun: m.stopRun }
+  }
+  const reason = `merge only: ${String(m.why ?? 'not merged').slice(0, 300)}`
+  await setPlan(nnn, { state: 'parked', round: ctx.round, reason }, m.r ? [m.r] : [])
+  return { nnn, state: 'parked', reason }
+}
+
 async function runPlan(nnn) {
+  if (MODE === 'merge') return mergeOnly(nnn)
   // plan-info also makes the plan's folder (`--with-worktree`, answer in info.wt): one runner call, not two.
   const info = await state(['plan-info', '--run', RUN, '--plan', nnn, '--with-worktree', 'yes'], `plan ${nnn}`, nnn)
   if (!info.ok) return { nnn, state: 'parked', reason: `plan-info: ${info.error}` }
@@ -955,6 +993,13 @@ async function runPlan(nnn) {
   // A parked plan closes with one `set` (the reason carries everything), not one note per closing step.
   const park = async (reason) => {
     await setPlan(nnn, { state: 'parked', round: ctx.round, tier: ctx.tier, reason })
+    // The builder's uncommitted work goes to the fixed branch park/<run>-<NNN> (pushed) and its slot is given back; a
+    // folder with nothing uncommitted is left as it is. A failed save is a note: the folder is then kept untouched.
+    if (ctx.wt?.ok) {
+      const s = await state(['park-save', '--run', RUN, '--plan', nnn], `park save ${nnn}`, nnn)
+      if (s?.saved && s.pushed) await note(`parked work saved on ${s.branch} (${String(s.sha ?? '').slice(0, 7)})${s.released ? ', slot released' : ''}`, nnn)
+      else if (s && s.ok === false) await note(`parked work not saved: ${String(s.error ?? 'unknown').slice(0, 300)}`, nnn)
+    }
     return { nnn, state: 'parked', reason, round: ctx.round }
   }
   // The agent-call limit (orchestrator.maxAgentCallsPerPlan): checked before each stage, so a plan that keeps calling
@@ -998,7 +1043,11 @@ async function runPlan(nnn) {
   // The merge step, on its own: after an environment failure at the merge (a merge folder without packages) the
   // branch is already built and verified, so the retry is this step only — no builder, gate or checkers again.
   const mergeStep = async (results) => {
-    await setPlan(nnn, { state: 'checking', round: ctx.round }, results)
+    // The head that passed the gate and the checkers: the full sha the checkers read, when it is the commit the gate
+    // ran on. The merge takes exactly that commit, and merge mode merges a plan on its own only at it.
+    const checked = ctx.diffHead && ctx.lastHead && ctx.diffHead.startsWith(String(ctx.lastHead)) ? ctx.diffHead : null
+    ctx.planHead = checked
+    await setPlan(nnn, { state: 'checking', round: ctx.round, ...(checked ? { 'checked-head': checked } : {}) }, results)
     const m = await merge(ctx)
     const res = m.r ? [m.r] : []
     take(nnn, ctx.round, m.r)
@@ -1023,6 +1072,14 @@ async function runPlan(nnn) {
     take(nnn, ctx.round, b)
     results = [b]
     ctx.lastBuilder = b
+    // A database write the plan does not list (the scope guard refused it in the builder's worktree): an ask for the
+    // Human, recorded as a decision the triage cannot wave through; this plan stops, the run goes on.
+    const dbAsk = dbWriteEscalation(b)
+    if (dbAsk) {
+      DECISIONS.push({ plan: nnn, text: `behaviour: ${dbAsk} — reverse: list the command in the plan and relaunch, or drop it`, alsoFrom: [], dbAsk: true })
+      await setPlan(nnn, { round: ctx.round }, results)
+      return park(`ask: ${dbAsk}`)
+    }
     // A judgment-tier builder that says the plan itself must change: parked for the Human, no further round.
     if (b && ctx.tier === 'judgment' && b.planChange?.needed === true) {
       await setPlan(nnn, { round: ctx.round }, results)
@@ -1207,12 +1264,36 @@ async function run() {
   const finalChecks = [...new Set([...PREPARE_CHECKS, ...PROJECT_CHECKS, ...(init.kitManifest === true ? [MANIFEST_CHECK] : []), ...mirrorOk])]
   for (const why of mirrorDropped) await note(`ci-mirror check dropped, not run: ${why}`)
   const startedAt = init.startedAt ?? null
-  const order = await state(['order', '--run', RUN, '--plans', PLANS.join(',')], 'plan order')
+  // A plan the preflight named as one that will fail (a commit guard refuses code it prescribes) is parked here, before
+  // any builder, with the preflight's reason; the other plans go on. Its warnings (a [ui] role without a login recipe,
+  // leftovers of earlier runs) are run notes.
+  // (Merge mode merges code that already passed its checks: the plan-text scan does not park it.)
+  const early = MODE !== 'merge' && pre.parkPlans && typeof pre.parkPlans === 'object' ? pre.parkPlans : {}
+  const earlyParked = []
+  for (const nnn of PLANS.filter((p) => typeof early[p] === 'string' && early[p])) {
+    await setPlan(nnn, { state: 'parked', reason: `preflight: ${early[nnn]}`.slice(0, 380) })
+    earlyParked.push({ nnn, state: 'parked', reason: `preflight: ${early[nnn]}` })
+  }
+  for (const w of Array.isArray(pre.warnings) ? pre.warnings.slice(0, 10) : []) await note(`preflight: ${String(w).slice(0, 360)}`)
+  const runPlans = PLANS.filter((p) => !earlyParked.some((o) => o.nnn === p))
+  const order = runPlans.length ? await state(['order', '--run', RUN, '--plans', runPlans.join(',')], 'plan order') : { ok: true, waves: [], waveLocks: [], skipped: [], plans: {} }
   if (!order.ok) {
     await stopRun(`plan order: ${order.error}`)
     return { mode: 'run', run: RUN, ok: false, stopped: 'order', problems: [order.error] }
   }
   if (order.skipped?.length) log(`already merged into ${RUN_BRANCH} (from git): ${order.skipped.join(', ')}`)
+  // plan-order adds an open dependency that was not named: a plan parked by the preflight never comes back that way,
+  // and a plan that depends on it is skipped with the reason.
+  if (earlyParked.length) {
+    const ids = earlyParked.map((o) => o.nnn)
+    order.waves = (order.waves ?? []).map((wave) => wave.filter((p) => !ids.includes(p)))
+    const blocked = Array.isArray(order.edges) ? blockedBy(ids, order.waves.flat(), order.edges) : new Map()
+    for (const [nnn, reason] of blocked) {
+      await setPlan(nnn, { state: 'skipped', reason })
+      earlyParked.push({ nnn, state: 'skipped' })
+    }
+    order.waves = order.waves.map((wave) => wave.filter((p) => !blocked.has(p)))
+  }
   phase('Build')
   // The pilot (orchestrator.pilotSize): a run with more plans than the pilot size builds the first plans in wave order,
   // then stops with the report and the numbered decisions; the Human's `continue` relaunches with args.pilot false.
@@ -1230,7 +1311,7 @@ async function run() {
     log(`pilot: ${PILOT_SIZE} of ${PILOT_SIZE + waiting.length} plans first, ${waiting.length} wait for the Human's continue`)
   }
   const pilotWaiting = [...waiting]
-  const outcomes = []
+  const outcomes = [...earlyParked]
   const parkedRoots = []
   let stopReason = null
   let finalGate = null
@@ -1384,6 +1465,8 @@ async function run() {
     }
   }
   for (const d of decisions) Object.assign(d, verdicts.get(d.id) ?? { verdict: 'none', forced: null, kind: '-', confidence: null, rec: '', why: '' })
+  // An unlisted database write is always the Human's question, whatever the triage said.
+  for (const d of decisions) if (d.dbAsk) Object.assign(d, { verdict: 'ask', forced: 'db-write', kind: 'db-write' })
   // Every decision is one record in status.json (never cut by maxNotesPerPlan: these calls count under "run"), then its
   // differently worded repeats; a new repeat of an earlier launch's decision is filed under that one.
   // All of them go in ONE `decisions --b64` call (a base64 JSON list, the items in this order; all-or-nothing).
@@ -1416,7 +1499,12 @@ async function run() {
     mode: 'run', run: RUN, ok: !!fin.ok, branch: RUN_BRANCH, stopReason, startedAt,
     merged: fin.merged ?? [], parked: fin.parked ?? [], report: fin.report, local: fin.local, reportCommitted: fin.reportCommitted ?? !!fin.ok, outcomes,
     pilot: pilotWaiting.length ? { size: PILOT_SIZE, waiting: pilotWaiting } : null,
-    finalGate, decisions: decisions.map(({ prior, ...d }) => ({ ...d, alsoFrom: d.alsoFrom.map(({ fresh, ...x }) => x) })), decisionsDropped: DROPPED,
+    // This launch's decisions, then an earlier launch's that are still ungraded (finish lists them: a relaunch once
+    // printed `ask: 0` with 16 waiting).
+    finalGate, decisions: [
+      ...decisions.map(({ prior, dbAsk, ...d }) => ({ ...d, alsoFrom: d.alsoFrom.map(({ fresh, ...x }) => x) })),
+      ...(Array.isArray(fin.earlierDecisions) ? fin.earlierDecisions.filter((e) => e && !decisions.some((d) => d.id === e.id)) : []),
+    ], decisionsDropped: DROPPED,
     mergeFolder, triage: { ...(fin.triage ?? { mode: TRIAGE }), ...(triageNote ? { note: triageNote } : {}) },
     stuck: stuckWhy ? `STUCK: ${stuckWhy}` : null,
     learning: fin.learning ?? null,
@@ -1425,3 +1513,4 @@ async function run() {
 }
 
 return MODE === 'readiness' ? readiness() : run()
+

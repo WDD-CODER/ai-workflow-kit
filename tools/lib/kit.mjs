@@ -175,6 +175,25 @@ export function reviewProblems(vals) {
  */
 export function orchestratorProblems(vals) {
   const out = []
+  // ui.logins: the login recipe per [ui] card role — names of environment variables, never a user or a password.
+  const logins = vals['ui.logins']
+  if (logins !== undefined && !Array.isArray(logins)) out.push(`ui.logins is ${JSON.stringify(logins)} — it must be a list of { "role", "url", "userEnv", "passEnv" }`)
+  else if (Array.isArray(logins)) {
+    const seen = new Set()
+    logins.forEach((r, i) => {
+      const at = `ui.logins item ${i + 1}`
+      if (!r || typeof r !== 'object' || Array.isArray(r)) return out.push(`${at} is not an object { "role", "url", "userEnv", "passEnv" }`)
+      if (typeof r.role !== 'string' || !/^[a-z][\w-]*$/.test(r.role)) out.push(`${at}: role ${JSON.stringify(r.role)} must be one lower-case word (letters, digits, - or _)`)
+      else if (seen.has(r.role)) out.push(`${at}: role ${r.role} has a recipe already`)
+      else seen.add(r.role)
+      if (typeof r.url !== 'string' || !/^https?:\/\/[^\s"'`$\\<>|;&]+$/.test(r.url)) out.push(`${at}: url ${JSON.stringify(r.url)} must be an http(s) URL`)
+      for (const k of ['userEnv', 'passEnv']) {
+        if (typeof r[k] !== 'string' || !/^[A-Z][A-Z0-9_]*$/.test(r[k])) out.push(`${at}: ${k} ${JSON.stringify(r[k])} must be the NAME of an environment variable (upper case), never its value`)
+      }
+      const extra = Object.keys(r).filter((k) => !['role', 'url', 'userEnv', 'passEnv'].includes(k))
+      if (extra.length) out.push(`${at}: unknown key(s) ${extra.join(', ')} — a recipe holds role, url, userEnv and passEnv only (no user or password values)`)
+    })
+  }
   const prefix = vals['orchestrator.runBranchPrefix']
   if (prefix !== undefined && (typeof prefix !== 'string' || !/^[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._-]*)*\/$/.test(prefix) || /\.\.|\.lock\//.test(prefix) ||
       prefix === `${vals['git.mainBranch'] ?? 'main'}/`)) {

@@ -22,6 +22,15 @@
  *   settings     the workflow, the /orchestrate command, the role agents and the state script are installed
  *   run          --run <name>: no run of that name is live (status.json phase running, updated in the last 2 hours);
  *                with --plans, no live run holds one of these plans or a plan whose scope overlaps one of them
+ *   plan guards  each --plans plan's prescribed code (fenced blocks and inline code) run through the project's commit
+ *                guards (scripts/pre-commit-*.mjs exporting scanGuardText): a hit is a `PARK plan NNN` line naming the
+ *                guard, its rule line and the plan line — that plan is parked before any builder, the others go on
+ *   ui login recipes  each --plans plan's [ui] cards: a role a card names ("as the admin user", "role: admin") with no
+ *                recipe in ui.logins is a WARN `ui login: no recipe for role <r> (plan NNN card n)`; with recipes set, a
+ *                card naming no role is a WARN too
+ *   leftovers    a --plans plan's feat/NNN-* branch the run branch (else main) does not contain, any park/* branch, and
+ *                an occupied slot or builder folder of an earlier run: a WARN `leftover: …` line each
+ * --plan-checks runs only the plan checks (with --plans). The JSON line carries parkPlans { NNN: reason } and warnings.
  * --env-only runs disk, database and packages only (the retry check after an environment failure; pass --run too so
  * the merge folder's packages are checked).
  *   probe        --probe "<command>" (repeatable): the precondition of a gate command that ended env-fail, derived from
@@ -34,7 +43,8 @@
  * --ui is the check before any browser step of a [ui] card (docs/agent/orchestrator.md), and runs only these:
  *   ui server    each page's origin answers below 500 (--pages: the cards' page URLs; SKIP when none is given)
  *   ui login     the QA login answers 2xx/3xx (--login or ORCH_UI_LOGIN_URL; a POST of {username,password} from
- *                ORCH_QA_USER / ORCH_QA_PASSWORD when both are set, else a GET; never printed; SKIP when no URL)
+ *                ORCH_QA_USER / ORCH_QA_PASSWORD when both are set, else a GET; never printed; SKIP when no URL);
+ *                --role <r> uses that role's recipe from ui.logins (its url, and the variables userEnv / passEnv)
  *   ui backend   the backend (--api or ORCH_UI_API_URL) answers a request sent with the first page's Origin, and allows
  *                that origin when it is another origin (Access-Control-Allow-Origin); SKIP when no URL
  * A FAIL adds `uiBlocked: true`: the orchestrator stops before the browser agent, with no fix round spent.
@@ -43,11 +53,12 @@
 import { existsSync, readFileSync, readdirSync, statfsSync } from 'fs'
 import { spawnSync } from 'child_process'
 import { resolve, dirname, join } from 'path'
-import { fileURLToPath } from 'url'
+import { fileURLToPath, pathToFileURL } from 'url'
+import { planGuardHits, guardParkReason } from './lib/plan-guard-scan.mjs'
 import net from 'net'
 import { freeGb, runNameProblem, serverProblem, loginProblem, crossOriginProblem, watchModeProblem } from './lib/orch-run.mjs'
 import { findOpenPlan } from './lib/plan-paths.mjs'
-import { mainAutoItems } from './lib/done-when.mjs'
+import { mainAutoItems, uiItems } from './lib/done-when.mjs'
 import { extractScopeGlobs } from './lib/plan-scope.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -288,6 +299,159 @@ function settings() {
   ok('settings')
 }
 
+// ---- plan checks: a plan that will fail is named before any builder starts --------------------------------------------
+const planNumbers = () => String(flag('--plans') ?? '').split(',').map((s) => s.trim()).filter((s) => /^\d{1,4}$/.test(s))
+const planText = (nnn) => {
+  const path = findOpenPlan(root, nnn)
+  if (!path) return null
+  try {
+    return readFileSync(join(root, path), 'utf8')
+  } catch {
+    return null
+  }
+}
+// The plans to park before any builder, with the reason: { NNN: reason } (a PARK line each; not a FAIL — the other
+// plans of the run go on).
+const parkPlans = {}
+const park = (nnn, why) => {
+  parkPlans[nnn] = parkPlans[nnn] ? `${parkPlans[nnn]}; ${why}` : why
+  results.push({ name: `plan ${nnn}`, status: 'PARK', why })
+}
+
+// The project's commit guards (scripts/pre-commit-*.mjs that export scanGuardText), run over the code each plan
+// prescribes: a plan that asks for a line a guard refuses is parked with the guard's rule and line.
+async function commitGuards() {
+  const dir = join(root, 'scripts')
+  const names = existsSync(dir) ? readdirSync(dir).filter((f) => /^pre-commit-[\w-]+\.mjs$/.test(f)).sort() : []
+  const guards = []
+  for (const name of names) {
+    try {
+      const mod = await import(pathToFileURL(join(dir, name)).href)
+      if (typeof mod.scanGuardText === 'function') guards.push({ name, scan: mod.scanGuardText })
+    } catch { /* a guard that cannot be loaded is the commit hook's business */ }
+  }
+  return guards
+}
+async function planGuards() {
+  const plans = planNumbers()
+  if (!plans.length) return
+  const guards = await commitGuards()
+  if (!guards.length) return skip('plan guards', 'no commit guard exports scanGuardText')
+  let parked = 0
+  for (const nnn of plans) {
+    const text = planText(nnn)
+    if (text === null) continue
+    const hits = planGuardHits(text, guards)
+    if (hits.length) {
+      parked++
+      park(nnn, hits.slice(0, 3).map(guardParkReason).join('; '))
+    }
+  }
+  if (!parked) ok('plan guards')
+}
+
+// ui.logins in the project config: one login recipe per role — { role, url, userEnv, passEnv }; the variables are named,
+// never their values. Read when the check runs (like bePort), so a config change needs no re-render.
+function loginRecipes() {
+  for (const f of [join('.kit', 'config.json'), 'kit.config.json']) {
+    try {
+      const list = JSON.parse(readFileSync(join(root, f), 'utf8')).ui?.logins
+      if (Array.isArray(list)) return list.filter((r) => r && typeof r.role === 'string' && typeof r.url === 'string')
+    } catch { /* no such config */ }
+  }
+  return []
+}
+// The role a [ui] card names: "role: <name>", "as <the|a|an> <name> user|role", or "as <name>" for a role ui.logins has.
+const CARD_ROLE_WORDS = /\brole:\s*([a-z][\w-]*)|\bas\s+(?:an?\s+|the\s+)?([a-z][\w-]*)\s+(?:user|role)\b|\bas\s+(?:an?\s+|the\s+)?([a-z][\w-]*)\b/gi
+function cardRole(card, known) {
+  for (const m of String(card).matchAll(CARD_ROLE_WORDS)) {
+    if (m[1] || m[2]) return (m[1] || m[2]).toLowerCase()
+    if (m[3] && known.includes(m[3].toLowerCase())) return m[3].toLowerCase()
+  }
+  return null
+}
+// Each --plans plan's [ui] cards: a role with no recipe is flagged before any builder (the card would fail at its login
+// late in the run). With recipes configured, a card that names no role is flagged too: which login it needs is unknown.
+function uiLogins() {
+  const recipes = loginRecipes()
+  const known = recipes.map((r) => r.role.toLowerCase())
+  let flagged = 0
+  let cards = 0
+  for (const nnn of planNumbers()) {
+    const text = planText(nnn)
+    if (text === null) continue
+    uiItems(text).forEach((card, i) => {
+      cards++
+      const role = cardRole(card, known)
+      if (role && !known.includes(role)) {
+        flagged++
+        warn('ui login', `no recipe for role ${role} (plan ${nnn} card ${i + 1})`)
+      } else if (!role && recipes.length) {
+        flagged++
+        warn('ui login', `no role named (plan ${nnn} card ${i + 1}) — write "as the <role> user" in the card`)
+      }
+    })
+  }
+  if (!cards) return
+  if (!flagged) ok('ui login recipes')
+}
+
+// Leftovers of earlier runs, one WARN line each, so the Human sees them before a builder trips over one: a plan's own
+// feat/NNN-* branch (local or origin) that the run branch (else main) does not contain, any park/* branch (parked work
+// saved by an earlier run), and a slot or builder folder that is still occupied (a .worktree-plan marker or a branch).
+const RUN_PREFIX = '{{orchestrator.runBranchPrefix}}'
+function leftovers() {
+  const plans = planNumbers()
+  if (!plans.length) return
+  const target = run && git('rev-parse', '--verify', '--quiet', `origin/${RUN_PREFIX}${run}`).status === 0 ? `origin/${RUN_PREFIX}${run}` : `origin/${MAIN}`
+  const haveTarget = git('rev-parse', '--verify', '--quiet', target).status === 0
+  const refs = git('for-each-ref', '--format=%(refname)', 'refs/heads/feat', 'refs/heads/park', 'refs/remotes/origin/feat', 'refs/remotes/origin/park').out.split('\n').filter(Boolean)
+  const found = []
+  const seen = new Set()
+  for (const ref of refs) {
+    const name = ref.replace(/^refs\/heads\//, '').replace(/^refs\/remotes\/origin\//, '')
+    const where = ref.startsWith('refs/remotes/') ? 'origin' : 'local'
+    if (seen.has(`${name} ${where}`)) continue
+    seen.add(`${name} ${where}`)
+    if (name.startsWith('park/')) found.push(`park branch ${name} (${where}) holds work saved when an earlier run parked a plan`)
+    else {
+      const nnn = /^feat\/(\d{3,4})-/.exec(name)?.[1]
+      if (!nnn || !plans.includes(nnn)) continue
+      const merged = haveTarget && git('merge-base', '--is-ancestor', ref, target).status === 0
+      if (!merged) found.push(`branch ${name} (${where}) of plan ${nnn} is not in ${target} — an earlier run's work; the run reuses it`)
+    }
+  }
+  // Slots (…-wt-N) and builder folders (…-orch-<run>-NNN) beside the main folder that are still occupied.
+  const lines = git('worktree', 'list', '--porcelain').out.split('\n')
+  let wt = null
+  const trees = []
+  for (const l of [...lines, '']) {
+    if (l.startsWith('worktree ')) wt = { path: l.slice(9).trim(), branch: null }
+    else if (l.startsWith('branch ') && wt) wt.branch = l.slice(7).replace(/^refs\/heads\//, '')
+    else if (!l.trim() && wt) {
+      trees.push(wt)
+      wt = null
+    }
+  }
+  for (const t of trees) {
+    const base = t.path.replace(/\\/g, '/').split('/').pop()
+    const slot = /-wt-\d+$/.test(base)
+    const builder = /-orch-(?!merge-)[a-z0-9-]+-\d{3,4}$/.test(base)
+    if (!slot && !builder) continue
+    const marker = existsSync(join(t.path, '.worktree-plan')) ? readFileSync(join(t.path, '.worktree-plan'), 'utf8').trim() : ''
+    if (builder) found.push(`builder folder ${t.path} of an earlier run is still there${t.branch ? ` (on ${t.branch})` : ''}`)
+    else if (marker || t.branch) found.push(`slot ${t.path} is occupied (${[marker && `plan ${marker}`, t.branch && `on ${t.branch}`].filter(Boolean).join(', ')})`)
+  }
+  for (const f of found) warn('leftover', f)
+  if (!found.length) ok('leftovers')
+}
+
+async function planChecks() {
+  await planGuards()
+  uiLogins()
+  leftovers()
+}
+
 // A live run: status.json running, updated in the last two hours.
 function liveRuns() {
   const dir = join(root, '.claude', 'orchestrator-runs')
@@ -379,12 +543,16 @@ async function uiChecks() {
     if (found.length) bad('ui server', found.join('; '))
     else ok('ui server')
   }
-  const login = flag('--login') ?? process.env.ORCH_UI_LOGIN_URL ?? ''
-  if (!login) skip('ui login', 'no login URL (--login or ORCH_UI_LOGIN_URL)')
+  // --role <role>: the login recipe of that role (ui.logins) — its URL and the names of the variables holding its user.
+  const role = flag('--role')
+  const recipe = role ? loginRecipes().find((r) => r.role === role) : null
+  if (role && !recipe) bad('ui login', `no login recipe for role ${role} in ui.logins — add { "role": "${role}", "url": …, "userEnv": …, "passEnv": … }`)
+  const login = recipe ? recipe.url : role ? '' : flag('--login') ?? process.env.ORCH_UI_LOGIN_URL ?? ''
+  if (role && !recipe) { /* reported above */ } else if (!login) skip('ui login', 'no login URL (--login or ORCH_UI_LOGIN_URL)')
   else {
     // The QA user comes from the environment (.env, loaded by the project); it is sent, never printed.
-    const user = process.env.ORCH_QA_USER
-    const pass = process.env.ORCH_QA_PASSWORD
+    const user = recipe ? process.env[recipe.userEnv] : process.env.ORCH_QA_USER
+    const pass = recipe ? process.env[recipe.passEnv] : process.env.ORCH_QA_PASSWORD
     const res = !originOf(login) ? { error: 'not a URL' } : user && pass
       ? await ask(login, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: user, password: pass }) })
       : await ask(login)
@@ -404,7 +572,10 @@ async function uiChecks() {
 }
 
 const uiOnly = argv.includes('--ui')
+// --plan-checks: only the checks of the --plans plans themselves (commit guards, login recipes, leftovers of earlier runs).
+const planOnly = argv.includes('--plan-checks')
 if (uiOnly) await uiChecks()
+else if (planOnly) await planChecks()
 else {
   disk()
   await database()
@@ -412,7 +583,7 @@ else {
   gate()
   probes()
 }
-if (!envOnly && !uiOnly) {
+if (!envOnly && !uiOnly && !planOnly) {
   await devServer()
   await backend()
   identity()
@@ -420,8 +591,10 @@ if (!envOnly && !uiOnly) {
   mainFolder()
   settings()
   await live()
+  await planChecks()
 }
 for (const r of results) console.log(`${r.status.padEnd(4)} ${r.name}${r.why ? `: ${r.why}` : ''}`)
 const problems = results.filter((r) => r.status === 'FAIL').map((r) => `${r.name}: ${r.why}`)
-console.log(`ORCH_JSON ${JSON.stringify({ ok: problems.length === 0, problems, ...(probeOut.length ? { probes: probeOut } : {}),...(problems.length ? { envFailure: true } : {}), ...(problems.length && uiOnly ? { uiBlocked: true } : {}) })}`)
+const warnings = results.filter((r) => r.status === 'WARN').map((r) => `${r.name}: ${r.why}`)
+console.log(`ORCH_JSON ${JSON.stringify({ ok: problems.length === 0, problems, ...(probeOut.length ? { probes: probeOut } : {}), ...(Object.keys(parkPlans).length ? { parkPlans } : {}), ...(warnings.length ? { warnings } : {}), ...(problems.length ? { envFailure: true } : {}), ...(problems.length && uiOnly ? { uiBlocked: true } : {}) })}`)
 process.exit(problems.length ? 1 : 0)

@@ -342,6 +342,19 @@ export function triageView({ decisions, mode = 'shadow', stats = null, minAgreem
   return { ...view, line: `triage: ${mode} · agreement (last ${all?.last ?? 50}): ${pct} · collapsed: ${collapsed.length} · ask: ${asks.length} · follow-ups: ${rest('follow-up').length}` }
 }
 
+/**
+ * The decisions the run's command shows the Human for grading: this launch's, and every earlier launch's that has no
+ * grade row for this run yet (a launch that stopped before the Human graded, or never reached its report). Without the
+ * second part a relaunch printed `ask: 0` while status.json held the ungraded decisions of the launch before.
+ */
+export function decisionsInView(decisions, { attempt = 1, run = '', gradeRows = [] } = {}) {
+  const graded = new Set((Array.isArray(gradeRows) ? gradeRows : []).filter((g) => g && g.run === run).map((g) => String(g.id)))
+  return (Array.isArray(decisions) ? decisions : []).filter((d) => {
+    const a = d.attempt ?? 1
+    return a === attempt || (a < attempt && !graded.has(String(d.id)))
+  })
+}
+
 const short = (s, n) => (String(s).length > n ? `${String(s).slice(0, n - 1)}…` : String(s))
 function decisionsSection(decisions, triage) {
   const list = Array.isArray(decisions) ? decisions : []
