@@ -45,6 +45,10 @@ test('dbWriteKind names the kind of each command in the plan table, and null for
   assert.equal(dbWriteKind('git submodule foreach "npm run seed"'), 'seed')
   assert.equal(dbWriteKind('git rebase -x "npm run seed" HEAD~1'), 'seed')
   assert.equal(dbWriteKind('git fetch --upload-pack="npm run seed" origin'), 'seed')
+  assert.equal(dbWriteKind('git fetch "--upload-pack=npm run seed" origin'), 'seed')
+  assert.equal(dbWriteKind('git fetch \\--upload-pack="npm run seed" origin'), 'seed')
+  // a plain commit whose message names the command is still not asked about
+  assert.equal(dbWriteKind('git commit -m "docs: npm run seed loads the demo rows"'), null)
   assert.equal(dbWriteKind('git grep -O"psql -c \'DROP TABLE x\'" x'), 'raw-write')
   // prefixes before the command word still count
   assert.equal(dbWriteKind('DATABASE_URL=x npx prisma migrate deploy'), 'migrate')

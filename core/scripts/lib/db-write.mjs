@@ -57,7 +57,8 @@ const flat = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().replace(/^[({]\s
 const stripped = (s) => flat(s).replace(PREFIX, '')
 // Safe only when the segment's own first word (variable assignments aside, no launcher) is the safe tool, and nothing
 // in it runs other code: no $( ), backticks, process substitution, -exec, --pre, git -c / an alias `!`.
-const RUNS_CODE = /\$\(|`|<\(|>\(|\s--?exec\b|\s-x\b|--extcmd\b|--pre\b|\s-c\s|--config-env\b|!/
+// (also a word that opens with a quote or a backslash before a dash: a quoted option the option list cannot read)
+const RUNS_CODE = /\$\(|`|<\(|>\(|\s--?exec\b|\s-x\b|--extcmd\b|--pre\b|\s-c\s|--config-env\b|!|(?:^|\s)["'\\]+-/
 // …and every option it carries (read outside quoted text) is one of these: an option that can name a program
 // (--upload-pack, -O, --ext-diff, --pre …) makes the command judged like any other.
 const SAFE_OPTIONS = new Set(['-m', '--message', '-a', '--all', '-A', '-n', '-i', '-e', '-l', '-w', '-v', '-q', '--quiet', '--oneline', '--stat', '--name-only', '--short', '-s', '-p', '--porcelain', '--no-edit', '--amend', '-r', '--staged', '--cached'])
