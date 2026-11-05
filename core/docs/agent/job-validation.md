@@ -158,6 +158,7 @@ PLACE: the Claude window of Worker slot 2
 - Cover the **happy path** and any **edge / failure rule** the job introduced (its own card)
 - Bug fixes: the card triggers the previously broken scenario
 - Never ask the Human to open DevTools, read source files, or work out a command themselves
+- Never ask the Human to stop slot servers: they stop by themselves at the merge (`slot-stop` runs on the merge path), so no card has a stop step
 - Non-visible changes (config, refactor, backend) with nothing to click: one line instead of cards: what changed and why no check is needed
 
 ### Faster hand-off: answer page by page, open every page in one line, data prepared

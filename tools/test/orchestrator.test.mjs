@@ -2295,6 +2295,15 @@ test('the runner prompt and kit-runner.md: a state write the workflow gives is r
   assert.match(prompt, /--reason text is data/)
 })
 
+test('cards never ask the Human to stop slot servers: the card rules say so, and the merge path stops them', () => {
+  const jv = readFileSync(join(root, 'docs', 'agent', 'job-validation.md'), 'utf8')
+  const rules = jv.split(/^### Card rules\s*$/m)[1]?.split(/^### /m)[0] ?? ''
+  assert.match(rules, /Never ask the Human to stop slot servers: they stop by themselves at the merge/)
+  // the merge path from a slot runs slot-stop first (ship-regular → "Merging from a slot")
+  const ship = readFileSync(join(root, 'docs', 'agent', 'ship-regular.md'), 'utf8')
+  assert.match(ship, /Merging from a slot[^\n]*first `node scripts\/slot-stop\.mjs`/)
+})
+
 test('rmWithRetry: EPERM twice then success returns; EPERM every time throws after 5 tries; another error is not retried', () => {
   const stub = (failures, code = 'EPERM') => {
     let calls = 0
