@@ -58,9 +58,14 @@ const stripped = (s) => flat(s).replace(PREFIX, '')
 // Safe only when the segment's own first word (variable assignments aside, no launcher) is the safe tool, and nothing
 // in it runs other code: no $( ), backticks, process substitution, -exec, --pre, git -c / an alias `!`.
 const RUNS_CODE = /\$\(|`|<\(|>\(|\s--?exec\b|\s-x\b|--extcmd\b|--pre\b|\s-c\s|--config-env\b|!/
+// …and every option it carries (read outside quoted text) is one of these: an option that can name a program
+// (--upload-pack, -O, --ext-diff, --pre …) makes the command judged like any other.
+const SAFE_OPTIONS = new Set(['-m', '--message', '-a', '--all', '-A', '-n', '-i', '-e', '-l', '-w', '-v', '-q', '--quiet', '--oneline', '--stat', '--name-only', '--short', '-s', '-p', '--porcelain', '--no-edit', '--amend', '-r', '--staged', '--cached'])
 const isSafe = (s) => {
   const own = flat(s).replace(new RegExp(`^${ASSIGN}`), '')
-  return SAFE.test(own) && !RUNS_CODE.test(own)
+  if (!SAFE.test(own) || RUNS_CODE.test(own)) return false
+  const opts = own.replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, '""').match(/(?:^|\s)-\S*/g) ?? []
+  return opts.every((o) => SAFE_OPTIONS.has(o.trim()))
 }
 
 /** Does this command run a database client (anchored; anywhere unless it is a safe tool's own command)? */
