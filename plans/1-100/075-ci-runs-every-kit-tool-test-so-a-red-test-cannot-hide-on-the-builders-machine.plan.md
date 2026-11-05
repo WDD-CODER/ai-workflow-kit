@@ -1,6 +1,6 @@
 # Plan 075 — CI runs every kit tool test, so a red test cannot hide on the builder's machine
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: b075db1e9c4876d4f210c95612df2e2a406a160a
 
