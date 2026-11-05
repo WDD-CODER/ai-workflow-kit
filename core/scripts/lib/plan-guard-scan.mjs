@@ -10,7 +10,9 @@
 // they never tell the builder to write it, so their code is not prescribed.
 const DESCRIBING = /^##\s+(Problem Statement|Goals|Out of Scope|Critical Questions|Execution Notes|Step 0|Architecture Impact|Escalation Protocol|Read Scope|Read-Write Scope)\b/i
 
-const NEGATED = /\b(?:never|not|no|don't|dont|avoid|instead of|without|forbid\w*|must not|stop)\b/i
+// A prohibition ending right before a span: "never", "do not call", "don't log", "avoid", "instead of", "without".
+// A miss here is no hole: the commit guard itself still blocks the line at the builder's commit.
+const NEGATED = /\b(?:never|not|no|don't|dont|avoid|instead of|without|forbid\w*|must not|stop)\b(?:\s+\w+){0,2}\s*[:,]?\s*$/i
 
 /** [{ planLine, code }] — each fenced block as one snippet (its first code line is planLine), each inline span alone;
  *  the describing sections (DESCRIBING) are skipped unless `all` (the db-write listing reads every section). */
@@ -31,8 +33,15 @@ export function prescribedSnippets(planText, { all = false } = {}) {
     if (skip) continue
     // An inline span prescribes only when it is a statement (a call or an assignment) on a line that does not forbid it
     // ("never bind `[innerHTML]`", "do not `console.log(token)`"); a fenced block always prescribes.
-    if (!all && NEGATED.test(lines[i].replace(/`[^`\n]*`/g, ' '))) continue
-    for (const m of lines[i].matchAll(/`([^`\n]+)`/g)) if (all || /[(=]/.test(m[1])) out.push({ planLine: i + 1, code: m[1] })
+    for (const m of lines[i].matchAll(/`([^`\n]+)`/g)) {
+      if (all) {
+        out.push({ planLine: i + 1, code: m[1] })
+        continue
+      }
+      // the few words right before the span: a prohibition there ("never call `x()`") makes it a quote, not a step
+      const before = lines[i].slice(Math.max(0, m.index - 40), m.index).replace(/`[^`\n]*`/g, ' ')
+      if (/[(=]/.test(m[1]) && !NEGATED.test(before)) out.push({ planLine: i + 1, code: m[1] })
+    }
   }
   return out
 }

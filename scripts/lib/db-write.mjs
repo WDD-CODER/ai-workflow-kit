@@ -20,9 +20,17 @@ import { join, resolve } from 'path'
 import { spawnSync } from 'child_process'
 import { prescribedSnippets } from './plan-guard-scan.mjs'
 
-// Every pattern is anchored at the command word of a segment (after variable assignments and npx / sudo / env /
-// pnpm exec|dlx): a word inside a commit message, a grep pattern or a package name is never a database write.
-const PREFIX = /^(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?:(?:sudo(?:\s+-u\s+\S+|\s+-[^u\s]\S*)*|npx(?:\s+-\S+)*|env|pnpm\s+exec|pnpm\s+dlx)\s+(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*)*/
+// Each pattern is written anchored at the command word of a segment (after variable assignments and launchers such as
+// npx, sudo, env, yarn, bunx, nohup, timeout). A command whose word is a known read-only or package tool (git, rg, grep,
+// echo, an install) is judged by the anchored patterns only, so a word in its commit message, search or package name is
+// never a write. Any other command — a wrapper the list does not know, `bash -c "…"`, `eval` — is judged by the same
+// patterns anywhere in it (fail closed).
+const ASSIGN = '(?:[A-Za-z_][A-Za-z0-9_]*=\\S*\\s+)*'
+const LAUNCHER = '(?:sudo(?:\\s+-u\\s+\\S+|\\s+-[^u\\s]\\S*)*|doas|npx(?:\\s+-\\S+)*|bunx|env|nohup|nice(?:\\s+-n\\s+\\S+)?|time|exec|command|stdbuf(?:\\s+-\\S+)*|timeout\\s+(?:-\\S+\\s+)*\\S+|xargs(?:\\s+-\\S+)*|yarn(?:\\s+run)?|npm\\s+exec(?:\\s+--)?|pnpm\\s+(?:exec|dlx))'
+const PREFIX = new RegExp(`^${ASSIGN}(?:${LAUNCHER}\\s+${ASSIGN})*`)
+const SAFE = /^(?:git|rg|grep|findstr|echo|printf|cat|type|less|more|head|tail|ls|dir|wc|code|npm\s+(?:install|i|ci|add|uninstall|remove|view|info|ls|outdated)|pnpm\s+(?:install|i|add|remove|why|ls|outdated)|yarn\s+(?:add|install|remove|why))(?=\s|$)/
+// The same pattern found anywhere, ending at a word end or a closing quote (`bash -c "npm run seed"`).
+const loose = (re) => new RegExp(re.source.replace(/^\^/, '(?:^|[\\s;&|("\'=`])').split('(?=\\s|$)').join('(?=[\\s"\'`;)|&]|$)'), re.flags)
 const BIN = (name) => `(?:\\S*[\\\\/])?${name}(?:\\.exe|\\.cmd)?`
 const MIGRATE = [
   new RegExp(`^${BIN('prisma')}\\s+migrate\\s+(?!status\\b|diff\\b)\\S+`),
@@ -42,13 +50,27 @@ const RAW_WRITE = /\b(?:INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE)\b|\b(?:
 // A client fed a script it does not show (-f file, --file, < file, .read): what it runs is unknown — counted as a write.
 const RAW_SCRIPT = /(?:^|\s)(?:-f|--file)(?:\s|=)|<\s*\S|(?:^|\s)\.read\s/
 
+const SEED_LOOSE = SEED.map(loose)
+const MIGRATE_LOOSE = MIGRATE.map(loose)
+const RAW_CLIENT_LOOSE = loose(RAW_CLIENT)
+const stripped = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().replace(/^[({]\s*/, '').replace(PREFIX, '')
+
+/** Does this command run a database client (anchored; anywhere unless its command word is a safe tool)? */
+function runsClient(command) {
+  const c = stripped(command)
+  return RAW_CLIENT.test(c) || (!SAFE.test(c) && RAW_CLIENT_LOOSE.test(c))
+}
+
 /** 'migrate' | 'seed' | 'raw-write' | null — the kind of database write a command is. */
 export function dbWriteKind(command) {
-  const c = String(command ?? '').replace(/\s+/g, ' ').trim().replace(/^[({]\s*/, '').replace(PREFIX, '')
+  const c = stripped(command)
   if (!c) return null
-  if (SEED.some((re) => re.test(c))) return 'seed'
-  if (MIGRATE.some((re) => re.test(c))) return 'migrate'
-  if (RAW_CLIENT.test(c) && (RAW_WRITE.test(c) || RAW_SCRIPT.test(c))) return 'raw-write'
+  const safe = SAFE.test(c)
+  const seed = safe ? SEED : SEED_LOOSE
+  const migrate = safe ? MIGRATE : MIGRATE_LOOSE
+  if (seed.some((re) => re.test(c))) return 'seed'
+  if (migrate.some((re) => re.test(c))) return 'migrate'
+  if (runsClient(c) && (RAW_WRITE.test(c) || RAW_SCRIPT.test(c))) return 'raw-write'
   return null
 }
 
@@ -67,7 +89,7 @@ export function dbWrites(command) {
   const out = segments.filter((s) => dbWriteKind(s))
   const whole = String(command ?? '').replace(/\s+/g, ' ').trim()
   // A segment that runs a database client, whose write keyword a quoted `;` or `|` split into the next segment.
-  const client = segments.some((s) => RAW_CLIENT.test(s.replace(/^[({]\s*/, '').replace(PREFIX, '')))
+  const client = segments.some((s) => runsClient(s))
   const raw = client && (RAW_WRITE.test(whole) || RAW_SCRIPT.test(whole))
   if ((raw && !out.some((s) => dbWriteKind(s) === 'raw-write')) || (!out.length && dbWriteKind(whole))) out.push(whole)
   return out

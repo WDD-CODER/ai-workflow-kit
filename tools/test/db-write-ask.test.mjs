@@ -32,6 +32,12 @@ test('dbWriteKind names the kind of each command in the plan table, and null for
   for (const c of ['git commit -m "feat: add sqlite3 create-table helper"', 'git commit -m "docs: psql update steps"', 'rg -n sqlite3 src -e drop', 'npm install sqlite3 && node a.js < in.json', 'git commit -m "npm run seed fixed"', 'node --test tools/test/seed-parser.test.mjs']) {
     assert.deepEqual(dbWrites(c), [], c)
   }
+  // a wrapper or a shell around the command still counts (fail closed)
+  assert.equal(dbWriteKind('bash -c "npm run seed"'), 'seed')
+  assert.equal(dbWriteKind('yarn prisma migrate dev'), 'migrate')
+  assert.equal(dbWriteKind('nohup psql -c "DROP TABLE x"'), 'raw-write')
+  assert.equal(dbWriteKind('timeout 60 npm run seed'), 'seed')
+  assert.equal(dbWriteKind('eval "sqlite3 app.db \'DELETE FROM t\'"'), 'raw-write')
   // prefixes before the command word still count
   assert.equal(dbWriteKind('DATABASE_URL=x npx prisma migrate deploy'), 'migrate')
   assert.equal(dbWriteKind('sudo -u postgres psql -c "DROP TABLE x"'), 'raw-write')
