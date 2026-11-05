@@ -1,6 +1,6 @@
 # Plan 083 — The preflight stops a plan that will fail, before any builder starts
 
-Status: draft
+Status: done
 Depends-on: 068
 Snapshot: fef8cff11a11cf5bfb7635be56bd7595bba68dbb
 Source: FoodVibe run run-513-516c (2026-11-04: 755k tokens, 1 of 2 plans merged, 16 decisions) and kit run run-065 (2026-11-04: 633k tokens, 74+ minutes) — Human brief of 2026-11-05 (reliability freeze until 2026-11-15)
