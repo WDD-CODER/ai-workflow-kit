@@ -67,7 +67,7 @@ import { uiItems } from './lib/done-when.mjs'
 import { listSlots } from './lib/slot.mjs'
 import { ensureDeps, idleSlot, claimSlot, releaseSlot, releaseRunSlots } from './lib/orch-folders.mjs'
 import { agreementStats, addLesson, lessonParts, ruleLines, LESSON_ROLES } from './decision-log.mjs'
-import { triageForce, triageView, decisionType, runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine, logQueryArgs, lessonFacts, runLogRow, updateRunLog, parseRunLog, parseDecisionRows, trendOf, contextBudget, INJECTED_ROLES } from './lib/orch-run.mjs'
+import { triageForce, triageView, decisionType, runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine, logQueryArgs, lessonFacts, commandTag, runLogRow, updateRunLog, parseRunLog, parseDecisionRows, trendOf, contextBudget, INJECTED_ROLES } from './lib/orch-run.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const MAIN = 'main'
@@ -102,7 +102,7 @@ const SENSITIVE_CODE_RE = /auth|permission|password|jwt|session[_-]?id|tokens?\b
 // folder is always this script's own project) or a second positional word stops the command.
 const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tier', 'sha', 'role', 'model', 'effort', 'roles', 'reason', 'card', 'card-status', 'page', 'shots', 'via', 'step', 'check', 'tail', 'tried', 'text', 'min', 'stale-min', 'files', 'cmd', 'id', 'verdict', 'kind', 'confidence', 'rec', 'why', 'forced', 'dup-of', 'command', 'where',
   // facts the workflow records for the lessons (docs/agent/orchestrator.md "status.json"), and `trend` / `finish` options
-  'candidates', 'refuted', 'refuted-rules', 'verify-by', 'late-low', 'reappeared', 'miss', 'round-cause', 'gate-event', 'asked', 'ready', 'final-gate', 'final-gate-command', 'final-gate-command-b64', 'final-gate-plans', 'result', 'last',
+  'candidates', 'refuted', 'refuted-rules', 'verify-by', 'late-low', 'reappeared', 'miss', 'round-cause', 'gate-event', 'asked', 'ready', 'final-gate', 'final-gate-command', 'final-gate-command-b64', 'final-gate-tail-b64', 'final-gate-plans', 'causes-b64', 'result', 'last',
   // the hand-off's replan verdict and the builder's receipt
   'replan', 'replan-why', 'not-done', 'failed',
   // queued run notes riding on set / stop / finish, and the one-call decisions list
@@ -393,15 +393,70 @@ function needStatus(run) {
 // row all read this one place. A repeat of the stored outcome (same result, command, blamed plans) is a retry, not a new
 // attempt, so re-sending a call changes nothing.
 const cutText = (s, n) => String(s ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, n).replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
+// ---- the facts the lessons name: written here by the script, from git and from the code's own results ----------
+// Never a model's text: a path is kept only when git lists it in the branch diff, an id only in a strict character class, a
+// rule only when it is an INV-n id that docs/brain/invariants.md holds, a command only in an allowed shape.
+const DIFF_FILES_CAP = 40
+const PATH_RE = /^[\w@.+/-]{1,200}$/
+const ID_RE = /^[\w.-]{1,40}$/
+/** The paths the plan's branch changed against the run branch (git's own list, capped), or null when git cannot say. */
+function branchDiffFiles(status, p) {
+  if (!p.branch || planBranchProblem(p.branch)) return null
+  const pick = (b) => (refExists(`origin/${b}`) ? `origin/${b}` : refExists(`refs/heads/${b}`) ? b : null)
+  const head = pick(p.branch)
+  const base = pick(runBranch(status.run))
+  if (!head || !base) return null
+  const d = git(root, 'diff', '--name-only', `${base}...${head}`)
+  if (d.status !== 0 || d.truncated) return null
+  return d.out.split('\n').map((x) => x.trim()).filter((x) => PATH_RE.test(x)).slice(0, DIFF_FILES_CAP)
+}
+/** The first path of `files` that the text names (a failing test or a lint line names the file it failed in). */
+const firstNamed = (files, text) => (files ?? []).find((f) => String(text ?? '').includes(f)) ?? null
+const registeredRule = (rule) => {
+  const m = /\bINV-\d+\b/.exec(String(rule ?? ''))
+  if (!m) return null
+  return new RegExp(`^## ${m[0]}\\b`, 'm').test(readIf(join(root, 'docs', 'brain', 'invariants.md')) ?? '') ? m[0] : null
+}
+/** The workflow's `--causes-b64` items ([{ round, stage, cmd?, tail?, findings?: [{ id, rule, file }] }]) as plans[N].causeFacts. */
+function applyCauseFacts(status, p, items) {
+  if (!Array.isArray(items) || !items.length) return
+  const files = branchDiffFiles(status, p)
+  if (files) p.diffFiles = files
+  const diff = p.diffFiles ?? []
+  let kept = p.causeFacts ?? []
+  for (const it of items.slice(0, 10)) {
+    const round = Number(it?.round)
+    if (!Number.isInteger(round) || round < 1) continue
+    const fact = { round }
+    if (it.stage === 'gate') {
+      fact.kind = 'gate'
+      if (commandTag(it.cmd) !== 'a check command') fact.cmd = String(it.cmd).trim()
+      const file = firstNamed(diff, it.tail)
+      if (file) fact.file = file
+    } else if (it.stage === 'checker') {
+      fact.kind = 'checker'
+      fact.findings = (Array.isArray(it.findings) ? it.findings : []).filter((f) => ID_RE.test(String(f?.id ?? ''))).slice(0, 5).map((f) => {
+        const inv = registeredRule(f.rule)
+        return { id: String(f.id), ...(inv ? { inv } : {}), ...(diff.includes(String(f.file)) ? { file: String(f.file) } : {}) }
+      })
+    } else continue
+    kept = [...kept.filter((k) => k.round !== round), fact]
+  }
+  p.causeFacts = kept.slice(-20)
+}
 const fgWord = (status) => (status.finalGate ? (status.finalGate.ok ? 'ok' : 'failed') : 'none')
-function applyFinalGate(status, result, { command = '', plans = '' } = {}) {
+function applyFinalGate(status, result, { command = '', plans = '', tail = '' } = {}) {
   const ok = result === 'ok'
   const cmd = ok ? null : cutText(command, 200) || null
   const blamed = ok ? [] : [...new Set(String(plans).split(',').map((x) => x.trim()).filter((x) => /^\d+$/.test(x)))].sort()
+  // The first failing file: a path of the blamed plans' (else any plan's) branch diff that the failing output names.
+  const pool = Object.values(status.plans ?? {}).filter((q) => !blamed.length || blamed.includes(String(q.nnn))).flatMap((q) => q.diffFiles ?? [])
   const prev = status.finalGate
+  // no output given (a repeat, or the Human's call): the stored file of the same command stands
+  const file = ok ? null : tail ? firstNamed(pool, tail) : (prev?.command ?? null) === cmd ? prev?.file ?? null : null
   let changed = false
-  if (!(prev && prev.ok === ok && (prev.command ?? null) === cmd && JSON.stringify(prev.blamed ?? []) === JSON.stringify(blamed))) {
-    status.finalGate = { ok, command: cmd, at: nowIso(), attempt: (Number(prev?.attempt) || 0) + 1, blamed }
+  if (!(prev && prev.ok === ok && (prev.command ?? null) === cmd && (prev.file ?? null) === file && JSON.stringify(prev.blamed ?? []) === JSON.stringify(blamed))) {
+    status.finalGate = { ok, command: cmd, at: nowIso(), attempt: (Number(prev?.attempt) || 0) + 1, blamed, ...(file ? { file } : {}) }
     changed = true
   }
   if (ok) {
@@ -427,6 +482,8 @@ const fgArgs = () => ({
   result: String(args['final-gate'] ?? ''),
   command: args['final-gate-command-b64'] !== undefined ? Buffer.from(String(args['final-gate-command-b64']), 'base64').toString('utf8') : args['final-gate-command'],
   plans: args['final-gate-plans'],
+  // the failing output (cut by the workflow); only used to find which path of the branch diff it names, never stored
+  tail: args['final-gate-tail-b64'] !== undefined ? Buffer.from(String(args['final-gate-tail-b64']), 'base64').toString('utf8') : '',
 })
 
 function diskGb() {
@@ -1028,6 +1085,12 @@ const commands = {
     }
     for (const [flag, field] of [['miss', 'misses'], ['round-cause', 'roundCauses'], ['gate-event', 'gateEvents']]) {
       if (text(flag)) p[field] = [...new Set([...(p[field] ?? []), ...text(flag).split(' || ').map((x) => x.trim().slice(0, 300)).filter(Boolean)])]
+    }
+    // --causes-b64: the failed round's code-made facts, in this same call: no runner call of their own.
+    if (args['causes-b64'] !== undefined && args['causes-b64'] !== true) {
+      let items = []
+      try { items = JSON.parse(Buffer.from(String(args['causes-b64']), 'base64').toString('utf8')) } catch { items = [] }
+      applyCauseFacts(status, p, items)
     }
     if (args.asked !== undefined) p.asked = text('asked').split(' || ').map((x) => x.trim()).filter(Boolean).slice(0, 5)
     if (args.ready !== undefined) {

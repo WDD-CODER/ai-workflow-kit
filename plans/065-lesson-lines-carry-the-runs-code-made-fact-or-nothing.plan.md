@@ -2,7 +2,7 @@
 
 Status: draft
 Depends-on: none
-Snapshot: 9909c12f1572d8e1e0a4aa133ab2b362c468c1ee
+Snapshot: b075db1e9c4876d4f210c95612df2e2a406a160a
 Source: first orchestrator test run (test-512-422) — lesson files held category-only lines; Human decision "approve: code facts only" (2026-11-02)
 
 ## Problem Statement
@@ -140,13 +140,13 @@ None (scripts and docs only).
 
 Every step names its own test location.
 
-- [ ] A1: Failing tests first — a fixture shaped like test-512-422 gives category-only lines today — Step 0 findings to Execution Notes — `tools/test/orchestrator.test.mjs`
-- [ ] B1: Store the code-made facts in the run state without new runner calls — diff files, finding ids, first failing file, in the existing set, stop and finish paths — `core/scripts/orch-state.mjs`, `core/.claude/workflows/orchestrate.js`, `tools/test/orchestrator.test.mjs`
-- [ ] B2: Rewrite the fix-round and final-gate lesson lines to carry their fact — command kind, diff file, finding id, registered rule — `core/scripts/lib/orch-run.mjs`, `tools/test/orchestrator.test.mjs`
-- [ ] B3: Write a parked line only for a code-written reason prefix, and no line for model text alone — `core/scripts/lib/orch-run.mjs`, `tools/test/orchestrator.test.mjs`
-- [ ] B4: Remove every category-only line and the asked-about line, and prove silence on a bare status — `core/scripts/lib/orch-run.mjs`, `tools/test/orchestrator.test.mjs`
-- [ ] D1: Describe the new lines and the silence rule in the orchestrator doc — `core/docs/agent/orchestrator.md`
-- [ ] R1: Render the installed copies, run every check, add the changelog entry — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .`, build, lint, `npm test`, `node --test "tools/test/*.test.mjs"`, `node tools/orchestrator-e2e.mjs`
+- [x] A1: Failing tests first — a fixture shaped like test-512-422 gives category-only lines today — Step 0 findings to Execution Notes — `tools/test/orchestrator.test.mjs`
+- [x] B1: Store the code-made facts in the run state without new runner calls — diff files, finding ids, first failing file, in the existing set, stop and finish paths — `core/scripts/orch-state.mjs`, `core/.claude/workflows/orchestrate.js`, `tools/test/orchestrator.test.mjs`
+- [x] B2: Rewrite the fix-round and final-gate lesson lines to carry their fact — command kind, diff file, finding id, registered rule — `core/scripts/lib/orch-run.mjs`, `tools/test/orchestrator.test.mjs`
+- [x] B3: Write a parked line only for a code-written reason prefix, and no line for model text alone — `core/scripts/lib/orch-run.mjs`, `tools/test/orchestrator.test.mjs`
+- [x] B4: Remove every category-only line and the asked-about line, and prove silence on a bare status — `core/scripts/lib/orch-run.mjs`, `tools/test/orchestrator.test.mjs`
+- [x] D1: Describe the new lines and the silence rule in the orchestrator doc — `core/docs/agent/orchestrator.md`
+- [x] R1: Render the installed copies, run every check, add the changelog entry — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .`, build, lint, `npm test`, `node --test "tools/test/*.test.mjs"`, `node tools/orchestrator-e2e.mjs`
   - Scope: `scripts/**`, `.claude/**`, `docs/agent/**`, `docs/brain/**`, `.kit/install.json`, `CHANGELOG.md`
 
 ## Technical Considerations
@@ -191,3 +191,8 @@ Every step names its own test location.
 - Orchestrator readiness (2026-11-03): the readiness `questions` field is a plain string list (`orchestrate.js:166`), so no code-made kind exists → no asked-about line is written for planner or readiness; the stored `asked` facts stay (delegated).
 - Orchestrator readiness (2026-11-03): claim — 15 `park(` call sites at the lines the plan names; the literal list leaves out `UI environment blocked before the browser step` → build for what the code has; the builder logs the difference as seen: (delegated).
 - Orchestrator readiness (2026-11-03): claim — 059-064 all merged; 061 is still `Status: draft` and not merged, 065 has no dependency on it → build for what the code has; the builder logs the difference as seen: (delegated).
+- Builder (round 0): Step 0 ran (drift listed three config-only chore commits; no conflict). The `park(` literals found: `environment:`, `worktree:`, `agent-call limit:`, `replan needed:`, `no progress:`, `UI environment blocked…`, `environment, again after one retry:`, `same reason twice:`, `hand-off file:` as prefixes and `(fix rounds used: N of M) — needs the Human` as the fixed ending. Finding `id` and `file` live in `failure.findings` (ids like `check-bugs-1`); `failure.why` holds no id, so the facts ride as `--causes-b64` on the plan's next `set`, and orch-state keeps a path only when `git diff --name-only origin/<run>...origin/<branch>` lists it.
+- Evidence: `npm run build`, `npm run lint`, `npm run test`, `node tools/install-check.mjs`, `node tools/drift-check.mjs --target .`, `node tools/orchestrator-e2e.mjs` (90 cases), both scope checks -> exit 0. `node --test tools/test/orchestrator.test.mjs` -> 140 pass, 1 fail.
+- seen: `tools/test/orchestrator.test.mjs` test "final gate: PROJECT_CHECKS, then the manifest check, then orchestrator.ciMirror" already fails on `main` (the kit's own ciMirror list from commit 332c5e9); not touched here.
+- Note: 061 is still draft (the plan states 065 does not depend on it); nothing built for it.
+- Builder (round 1): Step 0 drift check. 0bcad4b `GATE_TIMEOUT_MIN` 15 to 20 (orchestrate.js, orch-state.mjs): ok. 332c5e9 `CI_MIRROR` list and its doc rows: ok. de1bac1 `USE_SLOTS` false: ok. All three are config-rendered constants and touch none of `lessonFacts`, `causeLessons` or the park/round-cause code; no conflict. Snapshot moved to `b075db1` (origin/main) so the drift check reads clean.

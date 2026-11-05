@@ -396,6 +396,7 @@ the runner. The one row to watch is `set` — see its recommendation.
   | Field (per plan) | Set by | Meaning |
   | --- | --- | --- |
   | `roundCauses[]` | `set --round-cause "round 2: <why>"` | the reason a fix round began (`checker: major src/x.ts:12 <rule>`, `gate: <command>`, …) |
+  | `causeFacts[]`, `diffFiles[]` | `set --causes-b64` (rides on the same `set` as `--round-cause`) | what the code knows about a fix round, stored by the script: for a gate failure the command and the first path of the branch diff the failing output names; for a checker failure each finding's `id`, its `INV-n` rule when `docs/brain/invariants.md` holds it, and its file when it is in the diff. `diffFiles` is git's own list for the plan branch against the run branch (40 paths at most); a path a model wrote is kept only when git lists it |
   | `escalations[]` | `handoff` | `{ step, check }` of each escalation to a fresh judgment-tier builder |
   | `verify` | `set --candidates --refuted --refuted-rules --verify-by --late-low --reappeared` | the verifier's totals for the plan so far: candidates and refuted, per finder (`byRole`), refuted rule names, problems kept below the threshold that later mattered (`lateLow`) and refuted ones that came back (`reappeared`) |
   | `misses[]` | `set --miss "<what>"` | a `[ui]` card failed after the checkers passed that plan (older runs also hold `final gate …` entries; a passing final gate removes them) |
@@ -403,6 +404,15 @@ the runner. The one row to watch is `set` — see its recommendation.
   | `gateEvents[]` | `set --gate-event "<text>"` | `timed out: <command>`, `env-fail rerun: <command>` |
   | `ready`, `asked[]` | `set --ready yes\|no --asked "q1 \|\| q2"` | whether readiness called the plan ready (from `args.asked`), and the questions it had to ask |
   | `uiCards[].regressed` | `set --card …` | the card passed earlier and fails now |
+
+  **A lesson line names a fact the code produced, or there is no line.** Fix-round lines are `fix round caused by: <command
+  kind> failed at <diff file>` (the file left out when no failing file is in the diff) or `fix round caused by: finding <id>
+  (rule INV-n) in <file>`; a parked plan gives `parked: <prefix>` only for the fixed start of the reason that `park()` writes
+  (`same reason twice`, `agent-call limit`, `no progress`, `replan needed`, `hand-off file`, `worktree`, `environment`, `UI
+  environment blocked`, or the ending `— needs the Human`), never the model text after it; the final-gate line is `missed: the
+  final gate failed (<kind>: <file>)`. A cause, reason, rule or question with no such fact gives no line, and no `asked about`
+  line is written (the readiness question is the agent's text). A rule name counts as registered only when it is an `INV-n`
+  id of `docs/brain/invariants.md`.
 
   Not derived from transcripts: a fact is a field the workflow wrote when it happened. The literal "card failed in the
   browser after its script had passed" cannot happen (a passing script card never reaches the browser agent); the `ui`
