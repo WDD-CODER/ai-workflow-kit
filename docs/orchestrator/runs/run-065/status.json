@@ -9,7 +9,7 @@
       "nnn": "065",
       "title": "Lesson lines carry the run's code-made fact or nothing",
       "branch": "feat/065-lesson-lines-carry-the",
-      "state": "parked",
+      "state": "merged",
       "round": 1,
       "tier": "build",
       "models": {
@@ -119,6 +119,11 @@
           "at": "2026-11-03T21:41:59.237Z",
           "state": "parked",
           "round": 1
+        },
+        {
+          "at": "2026-11-05T06:26:26.187Z",
+          "state": "merged",
+          "round": 1
         }
       ],
       "asked": [
@@ -127,8 +132,8 @@
         "065 Critical Question: 'registered rule' has no registry in the code. The only registered id is INV-1 (docs/brain/invari"
       ],
       "ready": false,
-      "freeDiskGb": 11.7,
-      "sha": "56a8628",
+      "freeDiskGb": 10.8,
+      "sha": "29cdf43",
       "roundCauses": [
         "round 1: gate: node scripts/scope-check.mjs --drift --plan=plans/065-lesson-lines-carry-the-runs-code-made-fact-or-nothing.plan.md"
       ],
@@ -177,8 +182,8 @@
   ],
   "attempts": 1,
   "phase": "finished",
-  "freeDiskGb": 11.7,
-  "updatedAt": "2026-11-03T21:44:58.707Z",
+  "freeDiskGb": 10.8,
+  "updatedAt": "2026-11-05T06:26:26.514Z",
   "noteIds": [
     "1:065-1",
     "1:065-2",
@@ -311,5 +316,12 @@
       "why": "Test-harness defect outside plan."
     }
   ],
-  "finishedAt": "2026-11-03T21:44:58.707Z"
+  "finishedAt": "2026-11-03T21:44:58.707Z",
+  "finalGate": {
+    "ok": true,
+    "command": null,
+    "at": "2026-11-05T06:26:26.510Z",
+    "attempt": 1,
+    "blamed": []
+  }
 }
