@@ -983,6 +983,84 @@ const commands = {
     emit({ ok: true, ...r, slot: slot.slot }, [r.released ? `plan ${nnn}: slot wt-${slot.slot} released` : `plan ${nnn}: slot wt-${slot.slot} kept — ${r.why}`])
   },
 
+  // A parked plan's uncommitted work, saved before its folder is given back:
+  //   node scripts/orch-state.mjs park-save --run <name> --plan <NNN>
+  // The plan's folder (its slot, else its own builder folder) is snapshotted — tracked changes and new files, never an
+  // ignored one — as one commit `WIP: park <run> <NNN>` on the fixed branch park/<run>-<NNN> (on top of that branch when
+  // an earlier park made it, else on the folder's HEAD), pushed to origin; the plan branch itself is not touched. Then
+  // the folder is cleaned and a slot is released (detached at the run branch, marker removed): the work is on origin.
+  // Nothing uncommitted → no branch, nothing changed. A push that fails leaves the folder as it was.
+  'park-save'() {
+    const run = runName()
+    const nnn = planNumber(args.plan ?? '')
+    if (!nnn) fail('--plan takes a plan number')
+    const st = readStatus(run)
+    const own = builderFolder(run, nnn)
+    const planFile = planPath(nnn)
+    const slot = USE_SLOTS ? listSlots().find((s) => s.plan === planFile) ?? null : null
+    const folder = slot ? slot.path : existsSync(own) ? own : null
+    if (!folder) emit({ ok: true, saved: false, why: 'the plan has no folder' }, [`plan ${nnn}: no folder to save`])
+    const changed = git(folder, 'status', '--porcelain').out.split('\n').filter((l) => l && !/^\?\? \.worktree-/.test(l))
+    if (!changed.length) emit({ ok: true, saved: false, why: 'nothing uncommitted' }, [`plan ${nnn}: nothing uncommitted to save`])
+    const branch = `park/${run}-${nnn}`
+    fetchOrigin()
+    const head = git(folder, 'rev-parse', 'HEAD').out
+    const local = git(folder, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`)
+    const remote = git(folder, 'rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`)
+    const parentSha = local.status === 0 ? local.out : remote.status === 0 ? remote.out : head
+    // A separate index: the folder's own index and branch stay as they are until the commit is safely on origin.
+    const index = join(git(folder, 'rev-parse', '--absolute-git-dir').out || folder, `park-index-${process.pid}`)
+    const gi = (...a) => {
+      const r = spawnSync('git', a, { cwd: folder, encoding: 'utf8', env: { ...process.env, GIT_INDEX_FILE: index } })
+      return { status: r.status ?? 1, out: (r.stdout ?? '').trim(), err: (r.stderr ?? '').trim() }
+    }
+    let commit = ''
+    try {
+      for (const step of [['read-tree', 'HEAD'], ['add', '-A', '--', '.', ':(exclude).worktree-*']]) {
+        const r = gi(...step)
+        if (r.status !== 0) fail(`park-save: git ${step.join(' ')} in ${folder}: ${r.err}`)
+      }
+      const tree = gi('write-tree')
+      if (tree.status !== 0) fail(`park-save: git write-tree in ${folder}: ${tree.err}`)
+      const c = gi('commit-tree', tree.out, '-p', parentSha, '-m', `WIP: park ${run} ${nnn}`, '-m', `The uncommitted work of plan ${nnn} when run ${run} parked it (folder ${folder.replace(/\\/g, '/')}, HEAD ${head.slice(0, 7)}).`)
+      if (c.status !== 0) fail(`park-save: git commit-tree in ${folder}: ${c.err}`)
+      commit = c.out
+    } finally {
+      try {
+        unlinkSync(index)
+      } catch { /* none written */ }
+    }
+    const u = git(folder, 'update-ref', `refs/heads/${branch}`, commit)
+    if (u.status !== 0) fail(`park-save: git update-ref ${branch}: ${u.err}`)
+    const p = git(folder, 'push', '--quiet', 'origin', `${branch}:refs/heads/${branch}`)
+    if (p.status !== 0) emit({ ok: false, saved: true, pushed: false, branch, sha: commit, error: `push of ${branch} failed: ${p.err.split('\n').pop()} — the folder is kept as it was` }, [`plan ${nnn}: saved on ${branch} (${commit.slice(0, 7)}), push failed — folder kept`])
+    // The work is on origin: clean the folder and give a slot back.
+    git(folder, 'reset', '--quiet', '--hard')
+    git(folder, 'clean', '-fdq', '--exclude=.worktree-*')
+    const lines = [`plan ${nnn}: uncommitted work saved on ${branch} (${commit.slice(0, 7)}) and pushed`]
+    let released = false
+    if (slot) {
+      const target = refExists(`origin/${runBranch(run)}`) ? `origin/${runBranch(run)}` : `origin/${MAIN}`
+      const d = git(folder, 'switch', '--quiet', '--detach', target)
+      if (d.status === 0) {
+        try {
+          unlinkSync(join(folder, '.worktree-plan'))
+        } catch { /* no marker */ }
+        released = true
+        if (st?.plans?.[nnn]) {
+          delete st.plans[nnn].slot
+          st.plans[nnn].parkBranch = branch
+          writeStatus(run, st)
+        }
+        lines.push(`plan ${nnn}: slot wt-${slot.slot} released`)
+      } else lines.push(`plan ${nnn}: slot wt-${slot.slot} kept — git switch --detach ${target}: ${d.err.split('\n').pop()}`)
+    } else if (st?.plans?.[nnn]) {
+      st.plans[nnn].parkBranch = branch
+      writeStatus(run, st)
+    }
+    emit({ ok: true, saved: true, pushed: true, branch, sha: commit, released, ...(slot ? { slot: slot.slot } : {}) }, lines)
+  },
+
   diff() {
     const run = runName()
     const nnn = planNumber(args.plan ?? '')

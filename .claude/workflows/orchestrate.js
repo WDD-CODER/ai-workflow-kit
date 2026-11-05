@@ -955,6 +955,13 @@ async function runPlan(nnn) {
   // A parked plan closes with one `set` (the reason carries everything), not one note per closing step.
   const park = async (reason) => {
     await setPlan(nnn, { state: 'parked', round: ctx.round, tier: ctx.tier, reason })
+    // The builder's uncommitted work goes to the fixed branch park/<run>-<NNN> (pushed) and its slot is given back; a
+    // folder with nothing uncommitted is left as it is. A failed save is a note: the folder is then kept untouched.
+    if (ctx.wt?.ok) {
+      const s = await state(['park-save', '--run', RUN, '--plan', nnn], `park save ${nnn}`, nnn)
+      if (s?.saved && s.pushed) await note(`parked work saved on ${s.branch} (${String(s.sha ?? '').slice(0, 7)})${s.released ? ', slot released' : ''}`, nnn)
+      else if (s && s.ok === false) await note(`parked work not saved: ${String(s.error ?? 'unknown').slice(0, 300)}`, nnn)
+    }
     return { nnn, state: 'parked', reason, round: ctx.round }
   }
   // The agent-call limit (orchestrator.maxAgentCallsPerPlan): checked before each stage, so a plan that keeps calling
