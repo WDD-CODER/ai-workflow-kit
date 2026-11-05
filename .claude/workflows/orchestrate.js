@@ -735,8 +735,9 @@ async function gate(ctx) {
   const env = known.filter((x) => x.status === 'env-fail')
   const failed = [...known.filter((x) => x.status !== 'pass' && x.status !== 'env-fail'), ...missing, ...twice, ...unknown]
   // probeCmds: only commands with the real status env-fail — the environment check probes their own precondition
-  // The "returned no result, twice" return above names no real failure and carries none.
-  if (env.length && !missing.length && !unknown.length && !twice.length) return { r, env: true, gate: true, flaky: flakyOf(), failedCmds: env.map((x) => x.command), probeCmds: env.map((x) => x.command), why: `${kind} env-fail: ${env.map((x) => x.command).join(', ')}` }
+  // The "returned no result, twice" return above names no real failure and carries none. probeDir: the folder the gate
+  // ran in (the code set it, never a model), so a file only the plan's branch adds is found by the probe.
+  if (env.length && !missing.length && !unknown.length && !twice.length) return { r, env: true, gate: true, flaky: flakyOf(), failedCmds: env.map((x) => x.command), probeCmds: env.map((x) => x.command), probeDir: ctx.wt.path, why: `${kind} env-fail: ${env.map((x) => x.command).join(', ')}` }
   // pass is computed from the results, never read from the agent
   if (failed.length || !ctx.checks.length) {
     // fingerprint: the reason plus the first failure's last output line — "the same reason twice" compares it, so a
@@ -939,11 +940,12 @@ async function merge(ctx) {
   })
 }
 
-async function envCheck(ctx, why, probeCmds = []) {
+async function envCheck(ctx, why, probeCmds = [], probeDir = '') {
   await setPlan(ctx.nnn, { state: 'env-paused', round: ctx.round, reason: why })
   // --run: the merge folder's packages are part of the environment (the merge step builds there). --probe: the failed
-  // gate commands, whose own precondition the check derives from the command text.
-  const r = await runner('orch-preflight.mjs', ['--env-only', '--run', RUN, ...probeCmds.flatMap((c) => ['--probe', c])], `env check ${ctx.nnn}`, ctx.nnn)
+  // gate commands, whose own precondition the check derives from the command text. --probe-dir: the folder the gate ran in.
+  const dirArgs = probeCmds.length && probeDir ? ['--probe-dir', String(probeDir)] : []
+  const r = await runner('orch-preflight.mjs', ['--env-only', '--run', RUN, ...dirArgs, ...probeCmds.flatMap((c) => ['--probe', c])], `env check ${ctx.nnn}`, ctx.nnn)
   return r
 }
 
@@ -1180,7 +1182,7 @@ async function runPlan(nnn) {
       // (a retry would repeat the same failure); a failed probe parks with its message. Other failures (no result
       // twice, a builder or merge envFailure) keep the generic check.
       const probeCmds = Array.isArray(failure.probeCmds) ? failure.probeCmds : []
-      const env = await envCheck(ctx, failure.why, probeCmds)
+      const env = await envCheck(ctx, failure.why, probeCmds, failure.probeDir)
       if (!env.ok) return park(`environment: ${(env.problems ?? [env.error]).join('; ')}`)
       if (probeCmds.length) {
         const probes = Array.isArray(env.probes) ? env.probes : []

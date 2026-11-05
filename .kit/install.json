@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "fd212e119ef16c0b26ebfaf6b44f450fee26d8f5",
+  "commit": "bcb05b4889a5712a182be0b16cad087d80169f8c",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -275,7 +275,7 @@
       "source": "core/.claude/skills/worktree-setup/SKILL.md"
     },
     ".claude/workflows/orchestrate.js": {
-      "sha256": "c592afd7590d647bfd82cac92f99f1f263ae671d68c068d32ec2db0b4a5271fa",
+      "sha256": "9842e0b394881b7d4b21700e6df5ccfc7e2d51903e69c2f241526dbc342dc4fa",
       "kind": "managed",
       "source": "core/.claude/workflows/orchestrate.js"
     },
@@ -810,7 +810,7 @@
       "source": "core/scripts/next-plan-number.mjs"
     },
     "scripts/orch-preflight.mjs": {
-      "sha256": "f5191a9028060b3246655e9c4e25f3b1f70964d797b6d4db740e1f737364e9b3",
+      "sha256": "dd135b7d309be337f00e818060f6695bd3551d133c39a3c4fa27341f2b02c8c3",
       "kind": "managed",
       "source": "core/scripts/orch-preflight.mjs"
     },

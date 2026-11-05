@@ -34,7 +34,8 @@
  * --env-only runs disk, database and packages only (the retry check after an environment failure; pass --run too so
  * the merge folder's packages are checked).
  *   probe        --probe "<command>" (repeatable): the precondition of a gate command that ended env-fail, derived from
- *                the command text and never by running it — `node <file>` → the file exists in the root folder;
+ *                the command text and never by running it — `node <file>` → the file exists in the root folder
+ *                (--probe-dir <folder>: in that folder instead, the one the gate ran in);
  *                `npm|pnpm run <name>` → <name> is in package.json scripts and node_modules exists; anything else →
  *                `SKIP probe: no precondition`. A FAIL is an environment failure; the JSON line lists every probe.
  *
@@ -52,7 +53,7 @@
  */
 import { existsSync, readFileSync, readdirSync, statfsSync } from 'fs'
 import { spawnSync } from 'child_process'
-import { resolve, dirname, join } from 'path'
+import { resolve, dirname, join, isAbsolute } from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
 import { planGuardHits, guardParkReason } from './lib/plan-guard-scan.mjs'
 import net from 'net'
@@ -143,6 +144,11 @@ function packages() {
 // --probe "<command>": the failed gate command's own precondition. The command is split into words and
 // matched against two fixed shapes; it is never run and never handed to a shell.
 const probeCmds = argv.flatMap((a, i) => (a === '--probe' && i + 1 < argv.length ? [argv[i + 1]] : []))
+// --probe-dir <folder>: where the gate ran (the plan's worktree), so a file only the plan's branch adds is found. Only
+// an absolute folder that exists is taken; anything else falls back to the root folder.
+const probeDirArg = flag('--probe-dir')
+const probeDir = probeDirArg && isAbsolute(probeDirArg) && existsSync(probeDirArg) ? resolve(probeDirArg) : root
+const probeWhere = probeDir === root ? 'the root folder' : 'the folder the gate ran in'
 const probeOut = []
 const cmdWords = (cmd) => [...String(cmd).matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map((m) => m[1] ?? m[2] ?? m[3])
 function probeOf(cmd, dir) {
@@ -150,14 +156,14 @@ function probeOf(cmd, dir) {
   if (w[0] === 'node' && w[1] && !w[1].startsWith('-')) {
     const file = w[1].replace(/\\/g, '/')
     if (/^\/|^[A-Za-z]:|(^|\/)\.\.(\/|$)/.test(file)) return { status: 'SKIP', why: 'no precondition (a path outside the root folder)' }
-    return existsSync(join(dir, file)) ? { status: 'OK' } : { status: 'FAIL', why: `${file} not found in the root folder` }
+    return existsSync(join(dir, file)) ? { status: 'OK' } : { status: 'FAIL', why: `${file} not found in ${probeWhere}` }
   }
   if ((w[0] === 'npm' || w[0] === 'pnpm') && w[1] === 'run' && w[2]) {
     let scripts = null
     try {
       scripts = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')).scripts ?? {}
     } catch {
-      return { status: 'FAIL', why: 'package.json cannot be read in the root folder' }
+      return { status: 'FAIL', why: `package.json cannot be read in ${probeWhere}` }
     }
     if (!Object.prototype.hasOwnProperty.call(scripts, w[2])) return { status: 'FAIL', why: `package.json has no script ${w[2]}` }
     if (!existsSync(join(dir, 'node_modules'))) return { status: 'FAIL', why: `node_modules is missing — run ${w[0]} install` }
@@ -167,7 +173,7 @@ function probeOf(cmd, dir) {
 }
 function probes() {
   for (const cmd of probeCmds) {
-    const p = probeOf(cmd, root)
+    const p = probeOf(cmd, probeDir)
     probeOut.push({ command: cmd, ...p })
     if (p.status === 'OK') ok(`probe ${cmd}`)
     else if (p.status === 'FAIL') bad('probe', `${cmd} — ${p.why}`)
