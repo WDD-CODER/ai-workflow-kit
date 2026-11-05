@@ -69,7 +69,7 @@ const isSafe = (s) => {
   // not one whole word ("a b" alone between spaces). What is left after the whole-word quotes is read as plain words.
   if (/[$\\{]/.test(own)) return false
   const words = own.replace(/(^|\s)(?:"[^"]*"|'[^']*')(?=\s|$)/g, '$1Q')
-  if (/["']/.test(words)) return false
+  if (/["'*?[~]/.test(words)) return false // a glue quote, or a glob / tilde that can expand into an option
   const opts = words.match(/(?:^|\s)-\S*/g) ?? []
   return opts.every((o) => SAFE_OPTIONS.has(o.trim()))
 }
