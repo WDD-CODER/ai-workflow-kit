@@ -28,7 +28,7 @@ import { prescribedSnippets } from './plan-guard-scan.mjs'
 const ASSIGN = '(?:[A-Za-z_][A-Za-z0-9_]*=\\S*\\s+)*'
 const LAUNCHER = '(?:sudo(?:\\s+-u\\s+\\S+|\\s+-[^u\\s]\\S*)*|doas|npx(?:\\s+-\\S+)*|bunx|env|nohup|nice(?:\\s+-n\\s+\\S+)?|time|exec|command|stdbuf(?:\\s+-\\S+)*|timeout\\s+(?:-\\S+\\s+)*\\S+|xargs(?:\\s+-\\S+)*|yarn(?:\\s+run)?|npm\\s+exec(?:\\s+--)?|pnpm\\s+(?:exec|dlx))'
 const PREFIX = new RegExp(`^${ASSIGN}(?:${LAUNCHER}\\s+${ASSIGN})*`)
-const SAFE = /^(?:git|rg|grep|findstr|echo|printf|cat|type|less|more|head|tail|ls|dir|wc|code|npm\s+(?:install|i|ci|add|uninstall|remove|view|info|ls|outdated)|pnpm\s+(?:install|i|add|remove|why|ls|outdated)|yarn\s+(?:add|install|remove|why))(?=\s|$)/
+const SAFE = /^(?:git\s+(?:status|log|diff|show|add|commit|branch|switch|fetch|push|rev-parse|ls-files|grep|restore|stash)|rg|grep|findstr|echo|printf|cat|type|less|more|head|tail|ls|dir|wc|code|npm\s+(?:install|i|ci|add|uninstall|remove|view|info|ls|outdated)|pnpm\s+(?:install|i|add|remove|why|ls|outdated)|yarn\s+(?:add|install|remove|why))(?=\s|$)/
 // The same pattern found anywhere, ending at a word end or a closing quote (`bash -c "npm run seed"`).
 const loose = (re) => new RegExp(re.source.replace(/^\^/, '(?:^|[\\s;&|("\'=`])').split('(?=\\s|$)').join('(?=[\\s"\'`;)|&]|$)'), re.flags)
 const BIN = (name) => `(?:\\S*[\\\\/])?${name}(?:\\.exe|\\.cmd)?`
@@ -57,7 +57,7 @@ const flat = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().replace(/^[({]\s
 const stripped = (s) => flat(s).replace(PREFIX, '')
 // Safe only when the segment's own first word (variable assignments aside, no launcher) is the safe tool, and nothing
 // in it runs other code: no $( ), backticks, process substitution, -exec, --pre, git -c / an alias `!`.
-const RUNS_CODE = /\$\(|`|<\(|>\(|\s-exec\b|--pre\b|\s-c\s|!/
+const RUNS_CODE = /\$\(|`|<\(|>\(|\s--?exec\b|\s-x\b|--extcmd\b|--pre\b|\s-c\s|--config-env\b|!/
 const isSafe = (s) => {
   const own = flat(s).replace(new RegExp(`^${ASSIGN}`), '')
   return SAFE.test(own) && !RUNS_CODE.test(own)

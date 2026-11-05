@@ -42,6 +42,8 @@ test('dbWriteKind names the kind of each command in the plan table, and null for
   assert.equal(dbWriteKind('git commit -m "$(npm run seed)"'), 'seed')
   assert.equal(dbWriteKind('xargs -I x git commit -m "npm run seed"'), 'seed')
   assert.equal(dbWriteKind('rg --pre "psql -c \'DROP TABLE x\'" .'), 'raw-write')
+  assert.equal(dbWriteKind('git submodule foreach "npm run seed"'), 'seed')
+  assert.equal(dbWriteKind('git rebase -x "npm run seed" HEAD~1'), 'seed')
   // prefixes before the command word still count
   assert.equal(dbWriteKind('DATABASE_URL=x npx prisma migrate deploy'), 'migrate')
   assert.equal(dbWriteKind('sudo -u postgres psql -c "DROP TABLE x"'), 'raw-write')
