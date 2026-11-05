@@ -108,10 +108,13 @@ export function dbWrites(command) {
   const whole = String(command ?? '').replace(/\s+/g, ' ').trim()
   // A segment that runs a database client, whose write keyword a quoted `;` or `|` split into the next segment.
   const client = segments.some((s) => runsClient(s))
-  const raw = client && (RAW_WRITE.test(whole) || RAW_SCRIPT.test(whole))
-  // Only a quote or an escape can make the split wrong; with neither, the segments are the commands.
+  // A client fed through a pipe or a here-document runs a script the line does not show: a write.
+  const fed = new RegExp(`\\|\\s*(?:${PREFIX.source.slice(1)})?${BIN('(?:psql|mongosh|mongo|sqlite3)')}(?=\\s|$)|${BIN('(?:psql|mongosh|mongo|sqlite3)')}\\s[^|;&]*<<`).test(whole)
+  const raw = (client && (RAW_WRITE.test(whole) || RAW_SCRIPT.test(whole))) || fed
+  // The whole line again for a client write split across segments (always), or for any write when a quote or an
+  // escape may have made the split wrong.
   const split = /["'\\`]/.test(whole)
-  if (split && ((raw && !out.some((s) => dbWriteKind(s) === 'raw-write')) || (!out.length && dbWriteKind(whole)))) out.push(whole)
+  if ((raw && !out.some((s) => dbWriteKind(s) === 'raw-write')) || (split && !out.length && dbWriteKind(whole))) out.push(whole)
   return out
 }
 
