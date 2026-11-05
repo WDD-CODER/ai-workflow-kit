@@ -118,6 +118,18 @@ try {
 }
 const ignored = ignoredPaths(target, plan.files.filter((f) => !existsSync(join(target, f.dest))).map((f) => f.dest))
 
+// The workflow file bakes orchestrator.prepare and orchestrator.ciMirror in at render time: a config change does nothing
+// until the next sync --apply. Read before anything is written, so the dry run (and an override copy) says so.
+// The same check lives in tools/drift-check.mjs.
+const STALE_FILE = '.claude/workflows/orchestrate.js'
+const staleRender = (() => {
+  const f = plan.files.find((x) => x.dest === STALE_FILE)
+  const p = join(target, STALE_FILE)
+  if (!f || !existsSync(p)) return null
+  const baked = (t) => ['PREPARE', 'CI_MIRROR'].map((k) => new RegExp(`^const ${k} = .*$`, 'm').exec(t)?.[0] ?? '').join('\n')
+  return baked(readFileSync(p, 'utf8')) === baked(f.content) ? null : `STALE_RENDER: ${STALE_FILE} — run sync --apply`
+})()
+
 const rows = []
 const record = { ...inst.files }
 const planned = new Set()
@@ -219,6 +231,7 @@ for (const p of unknownOverrides) console.log(`NOTE override ${p} is not a file 
 if (feNote) console.log(feNote)
 if (beNote) console.log(beNote)
 for (const n of ciNotes) console.log(n)
+if (staleRender && !args.apply) console.log(staleRender)
 if (inst.kit?.version !== readJson(join(kitRoot, 'kit.json')).version) {
   console.log(`NOTE installed from kit ${inst.kit?.version}, this kit is ${readJson(join(kitRoot, 'kit.json')).version}`)
 }
