@@ -500,6 +500,15 @@ function numberedDecisions(first) {
   return out.map((d, i) => { d.id = `D${first + i}`; return d })
 }
 const idNumber = (id) => Number(String(id).replace(/\D/g, '')) || 0
+// The `ESCALATE: db-write <command> …` line a builder returned (the guard's answer to an unlisted database write), or null.
+function dbWriteEscalation(b) {
+  if (!b || b.status === 'built') return null
+  for (const t of [b.blocker, b.escalate, b.summary]) {
+    const m = String(t ?? '').match(/ESCALATE: db-write [^\n]+/)
+    if (m) return m[0].replace(/\s+/g, ' ').trim().slice(0, 300)
+  }
+  return null
+}
 
 // The hard triage rules, applied here before a verdict is recorded and again by `orch-state.mjs decision`. A mirror copy
 // of triageForce in scripts/lib/orch-run.mjs (a workflow script has no imports): change both, tools/test/orchestrator.test.mjs
@@ -1030,6 +1039,14 @@ async function runPlan(nnn) {
     take(nnn, ctx.round, b)
     results = [b]
     ctx.lastBuilder = b
+    // A database write the plan does not list (the scope guard refused it in the builder's worktree): an ask for the
+    // Human, recorded as a decision the triage cannot wave through; this plan stops, the run goes on.
+    const dbAsk = dbWriteEscalation(b)
+    if (dbAsk) {
+      DECISIONS.push({ plan: nnn, text: `behaviour: ${dbAsk} — reverse: list the command in the plan and relaunch, or drop it`, alsoFrom: [], dbAsk: true })
+      await setPlan(nnn, { round: ctx.round }, results)
+      return park(`ask: ${dbAsk}`)
+    }
     // A judgment-tier builder that says the plan itself must change: parked for the Human, no further round.
     if (b && ctx.tier === 'judgment' && b.planChange?.needed === true) {
       await setPlan(nnn, { round: ctx.round }, results)
@@ -1414,6 +1431,8 @@ async function run() {
     }
   }
   for (const d of decisions) Object.assign(d, verdicts.get(d.id) ?? { verdict: 'none', forced: null, kind: '-', confidence: null, rec: '', why: '' })
+  // An unlisted database write is always the Human's question, whatever the triage said.
+  for (const d of decisions) if (d.dbAsk) Object.assign(d, { verdict: 'ask', forced: 'db-write', kind: 'db-write' })
   // Every decision is one record in status.json (never cut by maxNotesPerPlan: these calls count under "run"), then its
   // differently worded repeats; a new repeat of an earlier launch's decision is filed under that one.
   // All of them go in ONE `decisions --b64` call (a base64 JSON list, the items in this order; all-or-nothing).

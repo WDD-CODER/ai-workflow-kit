@@ -277,6 +277,15 @@ const runsDir = () => join(root, '.claude', 'orchestrator-runs')
 const statusPath = (run) => join(runsDir(), run, 'status.json')
 const mergeFolder = (run) => join(parent, `${repoName}-orch-merge-${run}`)
 const builderFolder = (run, nnn) => join(parent, `${repoName}-orch-${run}-${nnn}`)
+// The builder marker `worktree` writes (lib/db-write.mjs), removed when the folder is given back. A slot released some
+// other way keeps it, but it names the plan branch, and a released slot is detached: the guard then ignores it.
+const dropBuilderMarker = (folder) => {
+  const gitDir = git(folder, 'rev-parse', '--absolute-git-dir').out
+  if (!gitDir) return
+  try {
+    unlinkSync(join(gitDir, 'orch-builder.json'))
+  } catch { /* none */ }
+}
 
 // Plans of one wave run in parallel, so several orch-state processes can read-modify-write status.json at once.
 // Every read takes the run's lock file (an O_EXCL create, retried; a lock older than LOCK_STALE_MS is taken over, see
@@ -959,6 +968,10 @@ const commands = {
     }
     // Commits the branch already has beyond the run branch: a relaunch or a stopped run continues from them.
     const ahead = Number(git(wt, 'rev-list', '--count', `${base}..HEAD`).out) || 0
+    // The builder marker, in the worktree's own git dir (never in its files): the scope guard asks about a database write
+    // the plan does not list only where this marker names the branch checked out (lib/db-write.mjs).
+    const gitDir = git(wt, 'rev-parse', '--absolute-git-dir').out
+    if (gitDir) writeFileSync(join(gitDir, 'orch-builder.json'), `${JSON.stringify({ run, plan: nnn, planPath: planFile, branch })}\n`)
     emit({ ok: true, path: wt.replace(/\\/g, '/'), branch, base, head: git(wt, 'rev-parse', 'HEAD').out, dirty, ...(slot ? { slot: slot.slot } : {}), ...(ahead ? { resumed: ahead } : {}) }, lines)
   },
 
@@ -976,6 +989,7 @@ const commands = {
     const target = `origin/${runBranch(run)}`
     const r = releaseSlot({ path: slot.path, branch, target: refExists(target) ? target : `origin/${MAIN}` })
     const st = readStatus(run)
+    if (r.released) dropBuilderMarker(slot.path)
     if (r.released && st?.plans?.[nnn]) {
       delete st.plans[nnn].slot
       writeStatus(run, st)
@@ -1046,6 +1060,7 @@ const commands = {
         try {
           unlinkSync(join(folder, '.worktree-plan'))
         } catch { /* no marker */ }
+        dropBuilderMarker(folder)
         released = true
         if (st?.plans?.[nnn]) {
           delete st.plans[nnn].slot

@@ -61,6 +61,9 @@ test('park-save: uncommitted work goes to park/<run>-<NNN> on origin, the slot i
     const wt = t.state('worktree', '--run=r', '--plan=001')
     assert.equal(wt.ok, true, JSON.stringify(wt))
     assert.equal(wt.slot, 1, 'the idle slot was claimed')
+    // the builder marker the db-write ask reads, in the slot's own git dir (never among its files)
+    const marker = join(sh(t.slot, 'rev-parse', '--absolute-git-dir'), 'orch-builder.json')
+    assert.deepEqual(JSON.parse(readFileSync(marker, 'utf8')), { run: 'r', plan: '001', planPath: 'plans/001-x.plan.md', branch: 'feat/001-x' })
     const branch = 'park/r-001'
 
     // nothing uncommitted: no branch
@@ -81,6 +84,7 @@ test('park-save: uncommitted work goes to park/<run>-<NNN> on origin, the slot i
     // the slot: detached, no marker, clean
     assert.equal(sh(t.slot, 'branch', '--show-current'), '')
     assert.equal(existsSync(join(t.slot, '.worktree-plan')), false)
+    assert.equal(existsSync(marker), false, 'the builder marker goes with the slot')
     assert.equal(sh(t.slot, 'status', '--porcelain'), '')
     // the plan branch itself was not moved by the save: it is still at the run branch it was made from
     assert.equal(sh(t.dir, 'rev-parse', 'feat/001-x'), sh(t.dir, 'rev-parse', 'origin/orch/r'))
