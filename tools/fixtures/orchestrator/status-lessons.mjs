@@ -13,6 +13,12 @@ export const STATUS = {
       nnn: '101', title: 'Save form', state: 'merged', round: 2, tier: 'judgment', ready: true,
       models: { ...FINDERS, 'orch-security': { model: 'sonnet' } },
       roundCauses: ['round 1: checker: major src/form.ts:12 logic: empty value; blocker src/form.test.ts:4 runtime: path with spaces', 'round 2: gate: npm run test'],
+      // plan 065: the facts the script stored (git's diff list, finding ids, the failing command and the file it named)
+      diffFiles: ['src/form.ts', 'src/form.test.ts'],
+      causeFacts: [
+        { round: 1, kind: 'checker', findings: [{ id: 'check-bugs-1', file: 'src/form.ts' }, { id: 'check-plan-2', inv: 'INV-1', file: 'src/form.test.ts' }, { id: 'check-rules-1' }] },
+        { round: 2, kind: 'gate', cmd: 'npm run test', file: 'src/form.test.ts' },
+      ],
       escalations: [{ step: 'round 2', check: 'npm run test' }],
       verify: {
         candidates: 5, refuted: 3, refutedRules: ['logic: off by one', 'AGENTS.md: secrets'],
@@ -31,19 +37,20 @@ export const STATUS = {
     // Ready according to readiness, then parked on the environment.
     102: { nnn: '102', title: 'Export', state: 'parked', round: 0, tier: 'build', ready: true, reason: 'environment: dev server http://localhost:5173 does not answer', models: {} },
     // Parked for another reason; readiness had asked about it, so it was never "ready".
-    103: { nnn: '103', title: 'Import', state: 'parked', round: 2, tier: 'judgment', ready: false, reason: 'checker: major src/i.ts:3 logic (fix rounds used: 2 of 2)', models: {}, asked: ['which file types?', 'what happens on error?'] },
+    103: { nnn: '103', title: 'Import', state: 'parked', round: 2, tier: 'judgment', ready: false, reason: 'checker: major src/i.ts:3 logic (fix rounds used: 2 of 2) — needs the Human', models: {}, asked: ['which file types?', 'what happens on error?'] },
   },
 }
 
 // role -> the lesson lines (without the "- <date> <run>: " prefix), in the order lessonFacts gives them for plans 101, 102, 103.
 export const EXPECTED = {
   builder: [
-    'fix round caused by: logic: empty value (ts file)',
-    'fix round caused by: runtime: path with spaces (test file)',
-    'fix round caused by: a gate check failed (npm run test)',
+    'fix round caused by: finding check-bugs-1 in src/form.ts',
+    'fix round caused by: finding check-plan-2 (rule INV-1) in src/form.test.ts',
+    'fix round caused by: finding check-rules-1',
+    'fix round caused by: test failed at src/form.test.ts',
     'escalated to the judgment tier at round 2: npm run test',
     'parked: environment',
-    'parked: fix-rounds',
+    'parked: needs the Human',
   ],
   'check-bugs': ['1 of 2 candidates refuted: logic: off by one', 'missed: a [ui] card failed after the checkers passed'],
   'check-rules': ['2 of 2 candidates refuted: AGENTS.md: secrets, dead code', 'missed: a [ui] card failed after the checkers passed'],
@@ -57,9 +64,6 @@ export const EXPECTED = {
   gate: ['timed out: npm run test', 'env-fail rerun: npm run lint'],
   ui: ['a [ui] card failed after it had passed'],
   planner: [
-    'plan 101 had to be asked about: behaviour on edit, leave, cancel or error',
     'plan 101 drifted from its [ui] card',
-    'plan 103 had to be asked about: an open question',
-    'plan 103 had to be asked about: behaviour on edit, leave, cancel or error',
   ],
 }
