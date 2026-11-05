@@ -28,6 +28,8 @@
  *   ui login recipes  each --plans plan's [ui] cards: a role a card names ("as the admin user", "role: admin") with no
  *                recipe in ui.logins is a WARN `ui login: no recipe for role <r> (plan NNN card n)`; with recipes set, a
  *                card naming no role is a WARN too
+ *   leftovers    a --plans plan's feat/NNN-* branch the run branch (else main) does not contain, any park/* branch, and
+ *                an occupied slot or builder folder of an earlier run: a WARN `leftover: …` line each
  * --plan-checks runs only the plan checks (with --plans). The JSON line carries parkPlans { NNN: reason } and warnings.
  * --env-only runs disk, database and packages only (the retry check after an environment failure; pass --run too so
  * the merge folder's packages are checked).
@@ -394,9 +396,60 @@ function uiLogins() {
   if (!flagged) ok('ui login recipes')
 }
 
+// Leftovers of earlier runs, one WARN line each, so the Human sees them before a builder trips over one: a plan's own
+// feat/NNN-* branch (local or origin) that the run branch (else main) does not contain, any park/* branch (parked work
+// saved by an earlier run), and a slot or builder folder that is still occupied (a .worktree-plan marker or a branch).
+const RUN_PREFIX = '{{orchestrator.runBranchPrefix}}'
+function leftovers() {
+  const plans = planNumbers()
+  if (!plans.length) return
+  const target = run && git('rev-parse', '--verify', '--quiet', `origin/${RUN_PREFIX}${run}`).status === 0 ? `origin/${RUN_PREFIX}${run}` : `origin/${MAIN}`
+  const haveTarget = git('rev-parse', '--verify', '--quiet', target).status === 0
+  const refs = git('for-each-ref', '--format=%(refname)', 'refs/heads/feat', 'refs/heads/park', 'refs/remotes/origin/feat', 'refs/remotes/origin/park').out.split('\n').filter(Boolean)
+  const found = []
+  const seen = new Set()
+  for (const ref of refs) {
+    const name = ref.replace(/^refs\/heads\//, '').replace(/^refs\/remotes\/origin\//, '')
+    const where = ref.startsWith('refs/remotes/') ? 'origin' : 'local'
+    if (seen.has(`${name} ${where}`)) continue
+    seen.add(`${name} ${where}`)
+    if (name.startsWith('park/')) found.push(`park branch ${name} (${where}) holds work saved when an earlier run parked a plan`)
+    else {
+      const nnn = /^feat\/(\d{3,4})-/.exec(name)?.[1]
+      if (!nnn || !plans.includes(nnn)) continue
+      const merged = haveTarget && git('merge-base', '--is-ancestor', ref, target).status === 0
+      if (!merged) found.push(`branch ${name} (${where}) of plan ${nnn} is not in ${target} — an earlier run's work; the run reuses it`)
+    }
+  }
+  // Slots (…-wt-N) and builder folders (…-orch-<run>-NNN) beside the main folder that are still occupied.
+  const lines = git('worktree', 'list', '--porcelain').out.split('\n')
+  let wt = null
+  const trees = []
+  for (const l of [...lines, '']) {
+    if (l.startsWith('worktree ')) wt = { path: l.slice(9).trim(), branch: null }
+    else if (l.startsWith('branch ') && wt) wt.branch = l.slice(7).replace(/^refs\/heads\//, '')
+    else if (!l.trim() && wt) {
+      trees.push(wt)
+      wt = null
+    }
+  }
+  for (const t of trees) {
+    const base = t.path.replace(/\\/g, '/').split('/').pop()
+    const slot = /-wt-\d+$/.test(base)
+    const builder = /-orch-(?!merge-)[a-z0-9-]+-\d{3,4}$/.test(base)
+    if (!slot && !builder) continue
+    const marker = existsSync(join(t.path, '.worktree-plan')) ? readFileSync(join(t.path, '.worktree-plan'), 'utf8').trim() : ''
+    if (builder) found.push(`builder folder ${t.path} of an earlier run is still there${t.branch ? ` (on ${t.branch})` : ''}`)
+    else if (marker || t.branch) found.push(`slot ${t.path} is occupied (${[marker && `plan ${marker}`, t.branch && `on ${t.branch}`].filter(Boolean).join(', ')})`)
+  }
+  for (const f of found) warn('leftover', f)
+  if (!found.length) ok('leftovers')
+}
+
 async function planChecks() {
   await planGuards()
   uiLogins()
+  leftovers()
 }
 
 // A live run: status.json running, updated in the last two hours.

@@ -137,6 +137,43 @@ test('config: ui.logins holds role, url and the NAMES of the user and password v
   assert.match(orchestratorProblems({ 'ui.logins': [{ ...recipe('admin'), url: 'javascript:x' }] }).join(), /must be an http\(s\) URL/)
 })
 
+// ---- S1: leftovers of earlier runs ------------------------------------------------------------------------------------
+test('leftovers: an unmerged feat/NNN branch, a park branch and an occupied slot are listed one line each; a clean repo lists none', () => {
+  const p = project({ 101: plan('- [ ] S1: x') }, { guard: false, git: true })
+  const bare = realpathSync(mkdtempSync(join(tmpdir(), 'orch-plancheck-origin-')))
+  try {
+    sh(bare, 'init', '-q', '--bare', '-b', 'main')
+    sh(p.dir, 'remote', 'add', 'origin', bare)
+    sh(p.dir, 'push', '-q', '-u', 'origin', 'main')
+    const clean = preflight(p.dir, '--plans', '101', '--run', 'r2')
+    assert.equal(clean.json.warnings, undefined, clean.out)
+    assert.match(clean.out, /^OK\s+leftovers$/m)
+    // an earlier run's branch of plan 101 with a commit main does not have, and a park branch
+    sh(p.dir, 'switch', '-q', '-c', 'feat/101-x')
+    writeFileSync(join(p.dir, 'w.txt'), 'w\n')
+    sh(p.dir, 'add', 'w.txt')
+    sh(p.dir, 'commit', '-q', '-m', 'work')
+    sh(p.dir, 'branch', 'park/r1-101')
+    sh(p.dir, 'switch', '-q', 'main')
+    // a branch of a plan that is not in this run is not listed
+    sh(p.dir, 'branch', 'feat/205-other', 'feat/101-x')
+    // an occupied slot beside the main folder
+    const slot = join(p.parent, 'main-wt-1')
+    sh(p.dir, 'worktree', 'add', '-q', '--detach', slot, 'main')
+    writeFileSync(join(slot, '.worktree-plan'), 'plans/101-x.plan.md\n')
+    const { json, out } = preflight(p.dir, '--plans', '101', '--run', 'r2')
+    assert.deepEqual(json.warnings.map((w) => w.replace(/ \(local\)| \(origin\)/, '')).sort(), [
+      'leftover: branch feat/101-x of plan 101 is not in origin/main — an earlier run\'s work; the run reuses it',
+      'leftover: park branch park/r1-101 holds work saved when an earlier run parked a plan',
+      `leftover: slot ${slot.replace(/\\/g, '/')} is occupied (plan plans/101-x.plan.md)`,
+    ].sort(), out)
+    assert.equal(json.ok, true, 'leftovers are named, never a FAIL')
+  } finally {
+    drop(p.parent)
+    drop(bare)
+  }
+})
+
 // ---- the workflow parks a preflight-named plan before any builder; the others go on ----------------------------------
 async function runFlow(args, hooks = {}) {
   const calls = []
