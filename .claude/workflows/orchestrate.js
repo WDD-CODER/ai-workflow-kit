@@ -1207,12 +1207,35 @@ async function run() {
   const finalChecks = [...new Set([...PREPARE_CHECKS, ...PROJECT_CHECKS, ...(init.kitManifest === true ? [MANIFEST_CHECK] : []), ...mirrorOk])]
   for (const why of mirrorDropped) await note(`ci-mirror check dropped, not run: ${why}`)
   const startedAt = init.startedAt ?? null
-  const order = await state(['order', '--run', RUN, '--plans', PLANS.join(',')], 'plan order')
+  // A plan the preflight named as one that will fail (a commit guard refuses code it prescribes) is parked here, before
+  // any builder, with the preflight's reason; the other plans go on. Its warnings (a [ui] role without a login recipe,
+  // leftovers of earlier runs) are run notes.
+  const early = pre.parkPlans && typeof pre.parkPlans === 'object' ? pre.parkPlans : {}
+  const earlyParked = []
+  for (const nnn of PLANS.filter((p) => typeof early[p] === 'string' && early[p])) {
+    await setPlan(nnn, { state: 'parked', reason: `preflight: ${early[nnn]}`.slice(0, 380) })
+    earlyParked.push({ nnn, state: 'parked', reason: `preflight: ${early[nnn]}` })
+  }
+  for (const w of Array.isArray(pre.warnings) ? pre.warnings.slice(0, 10) : []) await note(`preflight: ${String(w).slice(0, 360)}`)
+  const runPlans = PLANS.filter((p) => !earlyParked.some((o) => o.nnn === p))
+  const order = runPlans.length ? await state(['order', '--run', RUN, '--plans', runPlans.join(',')], 'plan order') : { ok: true, waves: [], waveLocks: [], skipped: [], plans: {} }
   if (!order.ok) {
     await stopRun(`plan order: ${order.error}`)
     return { mode: 'run', run: RUN, ok: false, stopped: 'order', problems: [order.error] }
   }
   if (order.skipped?.length) log(`already merged into ${RUN_BRANCH} (from git): ${order.skipped.join(', ')}`)
+  // plan-order adds an open dependency that was not named: a plan parked by the preflight never comes back that way,
+  // and a plan that depends on it is skipped with the reason.
+  if (earlyParked.length) {
+    const ids = earlyParked.map((o) => o.nnn)
+    order.waves = (order.waves ?? []).map((wave) => wave.filter((p) => !ids.includes(p)))
+    const blocked = Array.isArray(order.edges) ? blockedBy(ids, order.waves.flat(), order.edges) : new Map()
+    for (const [nnn, reason] of blocked) {
+      await setPlan(nnn, { state: 'skipped', reason })
+      earlyParked.push({ nnn, state: 'skipped' })
+    }
+    order.waves = order.waves.map((wave) => wave.filter((p) => !blocked.has(p)))
+  }
   phase('Build')
   // The pilot (orchestrator.pilotSize): a run with more plans than the pilot size builds the first plans in wave order,
   // then stops with the report and the numbered decisions; the Human's `continue` relaunches with args.pilot false.
@@ -1230,7 +1253,7 @@ async function run() {
     log(`pilot: ${PILOT_SIZE} of ${PILOT_SIZE + waiting.length} plans first, ${waiting.length} wait for the Human's continue`)
   }
   const pilotWaiting = [...waiting]
-  const outcomes = []
+  const outcomes = [...earlyParked]
   const parkedRoots = []
   let stopReason = null
   let finalGate = null

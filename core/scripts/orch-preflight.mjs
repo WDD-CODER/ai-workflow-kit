@@ -22,6 +22,10 @@
  *   settings     the workflow, the /orchestrate command, the role agents and the state script are installed
  *   run          --run <name>: no run of that name is live (status.json phase running, updated in the last 2 hours);
  *                with --plans, no live run holds one of these plans or a plan whose scope overlaps one of them
+ *   plan guards  each --plans plan's prescribed code (fenced blocks and inline code) run through the project's commit
+ *                guards (scripts/pre-commit-*.mjs exporting scanGuardText): a hit is a `PARK plan NNN` line naming the
+ *                guard, its rule line and the plan line — that plan is parked before any builder, the others go on
+ * --plan-checks runs only the plan checks (with --plans). The JSON line carries parkPlans { NNN: reason } and warnings.
  * --env-only runs disk, database and packages only (the retry check after an environment failure; pass --run too so
  * the merge folder's packages are checked).
  *   probe        --probe "<command>" (repeatable): the precondition of a gate command that ended env-fail, derived from
@@ -43,7 +47,8 @@
 import { existsSync, readFileSync, readdirSync, statfsSync } from 'fs'
 import { spawnSync } from 'child_process'
 import { resolve, dirname, join } from 'path'
-import { fileURLToPath } from 'url'
+import { fileURLToPath, pathToFileURL } from 'url'
+import { planGuardHits, guardParkReason } from './lib/plan-guard-scan.mjs'
 import net from 'net'
 import { freeGb, runNameProblem, serverProblem, loginProblem, crossOriginProblem, watchModeProblem } from './lib/orch-run.mjs'
 import { findOpenPlan } from './lib/plan-paths.mjs'
@@ -288,6 +293,61 @@ function settings() {
   ok('settings')
 }
 
+// ---- plan checks: a plan that will fail is named before any builder starts --------------------------------------------
+const planNumbers = () => String(flag('--plans') ?? '').split(',').map((s) => s.trim()).filter((s) => /^\d{1,4}$/.test(s))
+const planText = (nnn) => {
+  const path = findOpenPlan(root, nnn)
+  if (!path) return null
+  try {
+    return readFileSync(join(root, path), 'utf8')
+  } catch {
+    return null
+  }
+}
+// The plans to park before any builder, with the reason: { NNN: reason } (a PARK line each; not a FAIL — the other
+// plans of the run go on).
+const parkPlans = {}
+const park = (nnn, why) => {
+  parkPlans[nnn] = parkPlans[nnn] ? `${parkPlans[nnn]}; ${why}` : why
+  results.push({ name: `plan ${nnn}`, status: 'PARK', why })
+}
+
+// The project's commit guards (scripts/pre-commit-*.mjs that export scanGuardText), run over the code each plan
+// prescribes: a plan that asks for a line a guard refuses is parked with the guard's rule and line.
+async function commitGuards() {
+  const dir = join(root, 'scripts')
+  const names = existsSync(dir) ? readdirSync(dir).filter((f) => /^pre-commit-[\w-]+\.mjs$/.test(f)).sort() : []
+  const guards = []
+  for (const name of names) {
+    try {
+      const mod = await import(pathToFileURL(join(dir, name)).href)
+      if (typeof mod.scanGuardText === 'function') guards.push({ name, scan: mod.scanGuardText })
+    } catch { /* a guard that cannot be loaded is the commit hook's business */ }
+  }
+  return guards
+}
+async function planGuards() {
+  const plans = planNumbers()
+  if (!plans.length) return
+  const guards = await commitGuards()
+  if (!guards.length) return skip('plan guards', 'no commit guard exports scanGuardText')
+  let parked = 0
+  for (const nnn of plans) {
+    const text = planText(nnn)
+    if (text === null) continue
+    const hits = planGuardHits(text, guards)
+    if (hits.length) {
+      parked++
+      park(nnn, hits.slice(0, 3).map(guardParkReason).join('; '))
+    }
+  }
+  if (!parked) ok('plan guards')
+}
+
+async function planChecks() {
+  await planGuards()
+}
+
 // A live run: status.json running, updated in the last two hours.
 function liveRuns() {
   const dir = join(root, '.claude', 'orchestrator-runs')
@@ -404,7 +464,10 @@ async function uiChecks() {
 }
 
 const uiOnly = argv.includes('--ui')
+// --plan-checks: only the checks of the --plans plans themselves (commit guards, login recipes, leftovers of earlier runs).
+const planOnly = argv.includes('--plan-checks')
 if (uiOnly) await uiChecks()
+else if (planOnly) await planChecks()
 else {
   disk()
   await database()
@@ -412,7 +475,7 @@ else {
   gate()
   probes()
 }
-if (!envOnly && !uiOnly) {
+if (!envOnly && !uiOnly && !planOnly) {
   await devServer()
   await backend()
   identity()
@@ -420,8 +483,10 @@ if (!envOnly && !uiOnly) {
   mainFolder()
   settings()
   await live()
+  await planChecks()
 }
 for (const r of results) console.log(`${r.status.padEnd(4)} ${r.name}${r.why ? `: ${r.why}` : ''}`)
 const problems = results.filter((r) => r.status === 'FAIL').map((r) => `${r.name}: ${r.why}`)
-console.log(`ORCH_JSON ${JSON.stringify({ ok: problems.length === 0, problems, ...(probeOut.length ? { probes: probeOut } : {}),...(problems.length ? { envFailure: true } : {}), ...(problems.length && uiOnly ? { uiBlocked: true } : {}) })}`)
+const warnings = results.filter((r) => r.status === 'WARN').map((r) => `${r.name}: ${r.why}`)
+console.log(`ORCH_JSON ${JSON.stringify({ ok: problems.length === 0, problems, ...(probeOut.length ? { probes: probeOut } : {}), ...(Object.keys(parkPlans).length ? { parkPlans } : {}), ...(warnings.length ? { warnings } : {}), ...(problems.length ? { envFailure: true } : {}), ...(problems.length && uiOnly ? { uiBlocked: true } : {}) })}`)
 process.exit(problems.length ? 1 : 0)
