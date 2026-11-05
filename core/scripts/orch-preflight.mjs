@@ -129,7 +129,7 @@ function packages() {
   ok('packages')
 }
 
-// --probe "<command>": the failed gate command's own precondition (plan 068). The command is split into words and
+// --probe "<command>": the failed gate command's own precondition. The command is split into words and
 // matched against two fixed shapes; it is never run and never handed to a shell.
 const probeCmds = argv.flatMap((a, i) => (a === '--probe' && i + 1 < argv.length ? [argv[i + 1]] : []))
 const probeOut = []
