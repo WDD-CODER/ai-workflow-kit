@@ -65,7 +65,12 @@ const SAFE_OPTIONS = new Set(['-m', '--message', '-a', '--all', '-A', '-n', '-i'
 const isSafe = (s) => {
   const own = flat(s).replace(new RegExp(`^${ASSIGN}`), '')
   if (!SAFE.test(own) || RUNS_CODE.test(own)) return false
-  const opts = own.replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, '""').match(/(?:^|\s)-\S*/g) ?? []
+  // Fail closed on any shell form this reader does not model: an expansion, a brace, an escape, or a quote that is
+  // not one whole word ("a b" alone between spaces). What is left after the whole-word quotes is read as plain words.
+  if (/[$\\{]/.test(own)) return false
+  const words = own.replace(/(^|\s)(?:"[^"]*"|'[^']*')(?=\s|$)/g, '$1Q')
+  if (/["']/.test(words)) return false
+  const opts = words.match(/(?:^|\s)-\S*/g) ?? []
   return opts.every((o) => SAFE_OPTIONS.has(o.trim()))
 }
 
