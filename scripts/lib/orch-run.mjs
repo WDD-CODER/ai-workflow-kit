@@ -427,6 +427,12 @@ function removalsOf(decisions, mergedSet) {
     .sort((a, b) => idNum(a) - idNum(b))
 }
 
+/** The report's "Builder tier" cell: every tier a builder of the plan ran on, in order (older status.json: the last one). */
+export function builderTiers(p) {
+  const tiers = Array.isArray(p?.tiers) && p.tiers.length ? p.tiers : p?.tier ? [p.tier] : []
+  return tiers.map((t) => String(t).replace(/\|/g, '/')).join(' → ')
+}
+
 export function formatReport({ status, merged, mainShaNow, finishedAt, runBranch, mainBranch, mainChangedFiles = null, appErrors = null, decisions = null, triage = {}, learning = null }) {
   const plans = Object.values(status.plans ?? {}).sort((a, b) => (a.nnn < b.nnn ? -1 : 1))
   const mergedSet = new Map(merged.map((m) => [m.nnn, m]))
@@ -449,7 +455,7 @@ export function formatReport({ status, merged, mainShaNow, finishedAt, runBranch
     ...plans.map((p) => {
       const m = mergedSet.get(p.nnn)
       const state = m ? 'merged' : p.state
-      return `| ${p.nnn} ${p.title ?? ''} | ${state} | ${p.round ?? 0} | ${p.tier ?? ''} | ${m ? m.sha.slice(0, 7) : ''} | ${(p.reason ?? '').replace(/\|/g, '/')} |`
+      return `| ${p.nnn} ${p.title ?? ''} | ${state} | ${p.round ?? 0} | ${builderTiers(p)} | ${m ? m.sha.slice(0, 7) : ''} | ${(p.reason ?? '').replace(/\|/g, '/')} |`
     }),
     '',
     ...flakySection(status, plans),
@@ -538,8 +544,18 @@ const stepTag = (s) => (/^round \d{1,2}$/.test(String(s ?? '').trim()) ? String(
 // The stored cause of a fix round (plans[N].causeFacts, written by orch-state.mjs from facts the code produced: the failing
 // command, a finding id, a path of the branch diff, an INV-n id of docs/brain/invariants.md) as lesson lines for the builder.
 // No stored fact, no line: a cause that names nothing the reader could look at is not written.
-const SAFE_ID = /^[\w.-]{1,40}$/
-const SAFE_PATH = /^[\w@.+/-]{1,200}$/
+// Only the shapes the code itself makes reach a lesson line, so an agent-written id or path cannot carry words to the
+// next builder. Ids: gate-N, scope-N, ui-N, merge-N (orchestrate.js makes them) and <role>-N for a finder role
+// (check-plan-N, check-bugs-N, check-rules-N, security-N; the RULES_GROUP roles too). Paths: at most four segments of at
+// most 40 characters each, no `.` or `..` segment.
+const ID_ROLES = [...new Set(['gate', 'scope', 'ui', 'merge', 'security', ...Object.keys(RULES_GROUP)])]
+const SAFE_ID = new RegExp(`^(?:${ID_ROLES.map((r) => r.replace(/[-]/g, '\\-')).join('|')})-\\d{1,3}$`)
+const SAFE_PATH = { test: (p) => {
+  const parts = String(p).split('/')
+  return parts.length <= 4 && parts.every((s) => /^[\w@.+-]{1,40}$/.test(s) && s !== '.' && s !== '..')
+} }
+export const safeLessonId = (id) => SAFE_ID.test(String(id ?? ''))
+export const safeLessonPath = (p) => SAFE_PATH.test(String(p ?? ''))
 function causeLessons(cause, fact) {
   const m = /^round \d+:\s*(.*)$/.exec(String(cause))
   const why = (m ? m[1] : String(cause)).trim()

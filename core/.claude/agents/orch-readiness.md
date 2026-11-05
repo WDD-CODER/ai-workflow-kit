@@ -58,6 +58,8 @@ your job is to find, before it starts, what would stop a builder. Follow the sha
    missing, add one `questions` entry (`<plan>: adds <path> but not its manifest entry — add manifest.json to scope and the
    check to Done-when? Default if unanswered: add both`). The per-plan gate runs that check, so a plan without the entry is
    sent back.
+   **Test location.** The code adds this one itself, from `scope-check --tests`: a plan that changes code and whose
+   scope names no test location gets a `<plan> test location: …` question next to yours. Do not repeat it.
 7. `state`: `ready` (nothing open), `questions` (the builder would have to guess), `blocked` (cannot run here at all).
    A plan item that can only be done in another project is not a blocker: list it under `questions` as a Human item.
 

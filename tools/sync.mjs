@@ -118,6 +118,18 @@ try {
 }
 const ignored = ignoredPaths(target, plan.files.filter((f) => !existsSync(join(target, f.dest))).map((f) => f.dest))
 
+// The workflow file bakes orchestrator.prepare and orchestrator.ciMirror in at render time: a config change does nothing
+// until the next sync --apply. Read before anything is written, so the dry run (and an override copy) says so.
+// The same check lives in tools/drift-check.mjs.
+const STALE_FILE = '.claude/workflows/orchestrate.js'
+const staleRender = (() => {
+  const f = plan.files.find((x) => x.dest === STALE_FILE)
+  const p = join(target, STALE_FILE)
+  if (!f || !existsSync(p)) return null
+  const baked = (t) => ['PREPARE', 'CI_MIRROR'].map((k) => new RegExp(`^const ${k} = .*$`, 'm').exec(t)?.[0] ?? '').join('\n')
+  return baked(readFileSync(p, 'utf8')) === baked(f.content) ? null : `STALE_RENDER: ${STALE_FILE} — run sync --apply`
+})()
+
 const rows = []
 const record = { ...inst.files }
 const planned = new Set()
@@ -219,6 +231,26 @@ for (const p of unknownOverrides) console.log(`NOTE override ${p} is not a file 
 if (feNote) console.log(feNote)
 if (beNote) console.log(beNote)
 for (const n of ciNotes) console.log(n)
+if (staleRender && !args.apply) console.log(staleRender)
+// The project's own rules file (a seed: never re-seeded) needs one section per role that reads it, or that role reads no
+// rules. --apply appends each missing header as an empty section at the end; no existing line is touched, and a second
+// apply finds nothing missing. tools/install-check.mjs --target holds the same section list.
+{
+  const RULES = 'docs/brain/agent-rules.md'
+  const file = join(target, RULES)
+  if (!overrides.has(RULES) && existsSync(file)) {
+    const text = readFileSync(file, 'utf8')
+    // Headings read the way the rules reader reads them (decision-log.mjs ruleLayout): `##`, spaces, any case.
+    const heads = new Set([...text.matchAll(/^##\s+(.+?)\s*$/gm)].map((m) => m[1].toLowerCase()))
+    const missing = ['builder', 'checkers', 'readiness', 'ui'].filter((s) => !heads.has(s))
+    if (missing.length && args.apply) {
+      const nl = text.includes('\r\n') ? '\r\n' : '\n'
+      const body = text === '' || text.endsWith('\n') ? text : `${text}${nl}`
+      writeFileSync(file, `${body}${missing.map((s) => `${nl}## ${s}${nl}`).join('')}`, 'utf8')
+    }
+    for (const s of missing) console.log(`RULES_SECTION_MISSING: ${RULES} has no "## ${s}" section — ${args.apply ? 'empty header added' : 'added on --apply'}`)
+  }
+}
 if (inst.kit?.version !== readJson(join(kitRoot, 'kit.json')).version) {
   console.log(`NOTE installed from kit ${inst.kit?.version}, this kit is ${readJson(join(kitRoot, 'kit.json')).version}`)
 }

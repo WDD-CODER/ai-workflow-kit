@@ -62,6 +62,7 @@ import { fileURLToPath } from 'url'
 import { createRequire } from 'module'
 import { findOpenPlan } from './lib/plan-paths.mjs'
 import { extractScopeGlobs, testFilesOutOfScope } from './lib/plan-scope.mjs'
+import { scopeTestsLint } from './lib/scope-tests-lint.mjs'
 import { planNumber, planTitle, mergeSubjectRe } from './lib/plan-deps.mjs'
 import { uiItems } from './lib/done-when.mjs'
 import { listSlots } from './lib/slot.mjs'
@@ -107,6 +108,8 @@ const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tie
   'replan', 'replan-why', 'not-done', 'failed',
   // queued run notes riding on set / stop / finish, and the one-call decisions list
   'note', 'notes-b64', 'b64', 'flakes-b64', 'with-worktree',
+  // a reason as base64 of its UTF-8 text (the workflow's way: quotes, brackets and $ survive the runner's shell)
+  'reason-b64',
   // `prepare`: the generated path, the npm script, the folder it runs in and the package manager
   'missing', 'script', 'in', 'pm'])
 function parseArgs(argv) {
@@ -130,6 +133,13 @@ function parseArgs(argv) {
 
 const parsed = parseArgs(process.argv.slice(2))
 const args = parsed.args ?? { _: [] }
+// --reason-b64 stands for --reason: decoded here, so every command that reads a reason takes either form.
+if (args['reason-b64'] !== undefined) {
+  const raw = String(args['reason-b64'])
+  const text = Buffer.from(raw, 'base64').toString('utf8')
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(raw) || Buffer.from(text, 'utf8').toString('base64').replace(/=+$/, '') !== raw.replace(/=+$/, '')) parsed.problem ??= '--reason-b64 is not base64 of UTF-8 text'
+  else args.reason = text
+}
 const cmd = args._[0]
 const root = resolve(join(__dirname, '..'))
 const repoName = REPO || root.split(/[\\/]/).pop()
@@ -477,6 +487,12 @@ function applyFinalGate(status, result, { command = '', plans = '', tail = '' } 
         changed = true
       }
     }
+    // and the run notes an earlier failing gate wrote, so the report does not show a failure next to "ok"
+    const notes = (status.notes ?? []).filter((n) => !/^final gate (failed|could not run)/.test(String(n?.text ?? '')))
+    if (notes.length !== (status.notes ?? []).length) {
+      status.notes = notes
+      changed = true
+    }
     if (/^final gate/.test(String(status.stopReason ?? ''))) {
       delete status.stopReason
       status.phase = status.finishedAt ? 'finished' : 'running'
@@ -789,8 +805,18 @@ const commands = {
       fail(`plan-order exit ${r.status}: ${(r.stderr || r.stdout).trim().split('\n').pop()}`)
     }
     if (r.status !== 0) fail(`plan-order exit ${r.status}: ${(r.stderr || '').trim().split('\n').join(' | ')}`, { order: j })
-    emit({ ok: true, waves: j.waves, waveLocks: j.waveLocks, edges: (j.edges ?? []).filter((e) => !e.met), plans: j.plans, skipped: j.skipped, done: Object.keys(j.done ?? {}) },
-      j.waves.map((w, i) => `WAVE ${i + 1}: ${w.join(', ')}`))
+    // The test-location check (`scope-check --tests`) for every plan of the run: a plan that changes code and names no
+    // test location is asked about at readiness, before any builder, instead of parking at the test-file gate later.
+    const testLocations = {}
+    for (const nnn of j.waves.flat()) {
+      const rel = j.plans?.[nnn]?.path
+      const text = rel ? readIf(join(root, rel)) : null
+      if (!text) continue
+      const lint = scopeTestsLint(text)
+      if (lint.status === 'warn') testLocations[nnn] = lint.codeGlobs
+    }
+    emit({ ok: true, waves: j.waves, waveLocks: j.waveLocks, edges: (j.edges ?? []).filter((e) => !e.met), plans: j.plans, skipped: j.skipped, done: Object.keys(j.done ?? {}), testLocations },
+      [...j.waves.map((w, i) => `WAVE ${i + 1}: ${w.join(', ')}`), ...Object.entries(testLocations).map(([n, g]) => `plan ${n}: changes code (${g.join(', ')}) and no scope line names a test location`)])
   },
 
   done() {
@@ -1179,6 +1205,12 @@ const commands = {
     if (args.round !== undefined) {
       if (!/^\d+$/.test(String(args.round))) fail('--round takes a whole number')
       p.round = Number(args.round)
+    }
+    // Every tier a builder of this plan ran on, in order (a change of tier appends): the report lists them all, not the last.
+    if (args.tier !== undefined && args.tier !== true) {
+      const tiers = p.tiers ?? (p.tier ? [p.tier] : [])
+      if (tiers[tiers.length - 1] !== String(args.tier)) tiers.push(String(args.tier))
+      p.tiers = tiers
     }
     for (const k of ['tier', 'sha', 'reason']) if (args[k] !== undefined && args[k] !== true) p[k] = String(args[k])
     // --checked-head <sha>: the branch head that passed the gate and the checkers (what `merge-ready` compares with).

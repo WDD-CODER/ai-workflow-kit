@@ -41,6 +41,34 @@ const problems = []
 const fail = (m) => problems.push(m)
 const run = (script, args) => spawnSync(process.execPath, [join(kit, 'tools', script), ...args], { encoding: 'utf8' })
 
+// --target <dir>: check one installed project instead of the fixtures. Its docs/brain/agent-rules.md is the project's own
+// (sync never re-seeds it), so a per-role section missing there means that role reads no rules: one
+// RULES_SECTION_MISSING line per missing section, exit 1. `sync --apply` adds the empty headers. tools/sync.mjs holds the
+// same section list.
+const RULE_SECTIONS = ['builder', 'checkers', 'readiness', 'ui']
+{
+  const at = process.argv.indexOf('--target')
+  if (at >= 0) {
+    const target = process.argv[at + 1]
+    if (!target || target.startsWith('--')) {
+      console.error('INSTALL_CHECK: --target needs a folder')
+      process.exit(2)
+    }
+    const rulesFile = join(resolve(target), 'docs', 'brain', 'agent-rules.md')
+    if (!existsSync(rulesFile)) {
+      console.log('INSTALL_CHECK: ok — no docs/brain/agent-rules.md (the seed is written on install)')
+      process.exit(0)
+    }
+    const text = readFileSync(rulesFile, 'utf8')
+    // Headings read the way the rules reader reads them (decision-log.mjs ruleLayout): `##`, spaces, any case.
+    const heads = new Set([...text.matchAll(/^##\s+(.+?)\s*$/gm)].map((m) => m[1].toLowerCase()))
+    const missing = RULE_SECTIONS.filter((s) => !heads.has(s))
+    for (const s of missing) console.log(`RULES_SECTION_MISSING: docs/brain/agent-rules.md has no "## ${s}" section — the ${s} role reads no rules; node tools/sync.mjs --apply adds the empty header`)
+    console.log(missing.length ? `INSTALL_CHECK: FAIL — ${missing.length} rule section(s) missing` : 'INSTALL_CHECK: ok — every rule section present')
+    process.exit(missing.length ? 1 : 0)
+  }
+}
+
 const files = (dir, base = dir, out = []) => {
   for (const e of readdirSync(dir)) {
     const p = join(dir, e)
