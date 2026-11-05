@@ -1,6 +1,6 @@
 # Plan 061 — A parked plan reruns without plan-file conflicts, and worktree branches track their own remote branch
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: fef8cff11a11cf5bfb7635be56bd7595bba68dbb
 Source: first orchestrator test run (test-512-422), findings F6 and D10
