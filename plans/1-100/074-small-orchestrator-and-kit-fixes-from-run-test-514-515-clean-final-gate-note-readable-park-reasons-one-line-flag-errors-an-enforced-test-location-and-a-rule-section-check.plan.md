@@ -1,6 +1,6 @@
 # Plan 074 — Small orchestrator and kit fixes from run test-514-515: clean final-gate note, readable park reasons, one-line flag errors, an enforced test location and a rule-section check
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: fef8cff11a11cf5bfb7635be56bd7595bba68dbb
 Source: kit run run-065 (security finding, D9, runner notes; added 2026-11-05) and FoodVibe run test-514-515 (PR #499) hand-off section 5 findings 2, 3, 4, 7, 10, B, F, G, and FoodVibe's missing `## checkers` section (Human, 2026-11-03); findings 8 and 9 stay "verify first" and are not here
