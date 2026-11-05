@@ -109,8 +109,10 @@ export function dbWrites(command) {
   // A segment that runs a database client, whose write keyword a quoted `;` or `|` split into the next segment.
   const client = segments.some((s) => runsClient(s))
   // A client fed through a pipe or a here-document runs a script the line does not show: a write.
-  const fed = new RegExp(`\\|\\s*(?:${PREFIX.source.slice(1)})?${BIN('(?:psql|mongosh|mongo|sqlite3)')}(?=\\s|$)|${BIN('(?:psql|mongosh|mongo|sqlite3)')}\\s[^|;&]*<<`).test(whole)
+  // (fail closed: any client on a line with a pipe or a here-document counts as fed)
+  const fed = client && /\||<</.test(whole)
   const raw = (client && (RAW_WRITE.test(whole) || RAW_SCRIPT.test(whole))) || fed
+  if (fed) return [...new Set([...out, whole])]
   // The whole line again for a client write split across segments (always), or for any write when a quote or an
   // escape may have made the split wrong.
   const split = /["'\\`]/.test(whole)
