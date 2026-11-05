@@ -844,3 +844,145 @@ test('config: orchestrator.prepare must be a list of { missing, script, in? } wi
   assert.match(bad.join('\n'), /unknown field "extra"/)
   assert.match(bad.join('\n'), /"script" must be one npm script name, not a command/)
 })
+
+// ---- plan 061: a plan branch never tracks the run branch; a rerun resolves a conflict in the plan's own file only -----
+const PLAN_061 = '# Plan 001 — X\n\nStatus: active\nDepends-on: none\n\n## Read-Write Scope\n\n```scope\nwork/**\n```\n\n## Atomic Sub-tasks\n\n- [ ] A1: first\n- [ ] A2: second\n\n## Execution Notes\n- Source: test.\n'
+// A main folder with a bare origin, one plan and the installed scripts (no slots: the kit's own config).
+function orchRepo() {
+  const parent = tmp()
+  const dir = join(parent, 'main')
+  mkdirSync(join(dir, 'plans'), { recursive: true })
+  sh(dir, 'init', '-q', '-b', 'main')
+  sh(dir, 'config', 'user.email', 't@t')
+  sh(dir, 'config', 'user.name', 't')
+  writeFileSync(join(dir, 'a.txt'), 'a\n')
+  writeFileSync(join(dir, 'plans', '001-x.plan.md'), PLAN_061)
+  sh(dir, 'add', '-A')
+  sh(dir, 'commit', '-q', '-m', 'plan')
+  const bare = tmp()
+  sh(bare, 'init', '-q', '--bare', '-b', 'main')
+  sh(dir, 'remote', 'add', 'origin', bare)
+  sh(dir, 'push', '-q', '-u', 'origin', 'main')
+  cpSync(join(root, 'scripts'), join(dir, 'scripts'), { recursive: true, dereference: true })
+  writeFileSync(join(dir, '.git', 'info', 'exclude'), 'scripts/\n.claude/\n')
+  const state = (...a) => {
+    const r = spawnSync(process.execPath, [join(dir, 'scripts', 'orch-state.mjs'), ...a], { cwd: dir, encoding: 'utf8', timeout: 120000 })
+    const line = String(r.stdout).split(/\r?\n/).reverse().find((l) => l.startsWith('ORCH_JSON '))
+    assert.ok(line, `${a.join(' ')}: ${r.stdout}${r.stderr}`)
+    return JSON.parse(line.slice('ORCH_JSON '.length))
+  }
+  const upstream = (cwd, branch) => spawnSync('git', ['config', '--get', `branch.${branch}.merge`], { cwd, encoding: 'utf8' }).status
+  return { parent, dir, bare, state, upstream }
+}
+
+test('a plan branch made by worktree or by a slot claim has no upstream; a reused branch that inherited the run branch loses it', () => {
+  const t = orchRepo()
+  try {
+    assert.equal(t.state('init', '--run=r').ok, true)
+    const wt = t.state('worktree', '--run=r', '--plan=001')
+    assert.equal(wt.ok, true, JSON.stringify(wt))
+    assert.equal(t.upstream(t.dir, 'feat/001-x'), 1, 'no branch.feat/001-x.merge')
+    // a branch from an earlier run that took the run branch as upstream (git's default before the fix)
+    sh(t.dir, 'config', 'branch.feat/001-x.remote', 'origin')
+    sh(t.dir, 'config', 'branch.feat/001-x.merge', 'refs/heads/orch/r')
+    assert.equal(t.state('worktree', '--run=r', '--plan=001').ok, true)
+    assert.equal(t.upstream(t.dir, 'feat/001-x'), 1, 'the inherited run-branch upstream is removed')
+    // an upstream that is the plan's own remote branch is kept
+    sh(t.dir, 'config', 'branch.feat/001-x.remote', 'origin')
+    sh(t.dir, 'config', 'branch.feat/001-x.merge', 'refs/heads/feat/001-x')
+    assert.equal(t.state('worktree', '--run=r', '--plan=001').ok, true)
+    assert.equal(t.upstream(t.dir, 'feat/001-x'), 0)
+    // a slot claim from a remote-tracking base
+    sh(t.dir, 'fetch', '-q', 'origin')
+    const slot = join(tmp(), 'proj-wt-1')
+    sh(t.dir, 'worktree', 'add', '-q', '--detach', slot, 'main')
+    assert.equal(folders.claimSlot({ slot: { slot: 1, path: slot }, branch: 'feat/002-y', base: 'origin/orch/r', planPath: 'plans/002-y.plan.md', branchExists: false }).ok, true)
+    assert.equal(t.upstream(t.dir, 'feat/002-y'), 1, 'no upstream on a slot branch')
+  } finally {
+    rmSync(t.parent, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+    rmSync(t.bare, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+  }
+})
+
+test('the builder is told to push with -u to its own remote branch', () => {
+  const builderDoc = readFileSync(join(root, '.claude', 'agents', 'orch-builder.md'), 'utf8')
+  assert.match(builderDoc, /git push -u origin <branch>/)
+  const wf = readFileSync(join(root, '.claude', 'workflows', 'orchestrate.js'), 'utf8')
+  assert.match(wf, /git push -u origin \$\{ctx\.info\.branch\}/)
+})
+
+test('rerun of a parked plan under a new run: a conflict in the plan file only is resolved (run text, builder ticks and notes kept); any other conflict still parks', () => {
+  const t = orchRepo()
+  try {
+    // run r1: the builder ticks A1, adds a note and pushes; the plan parks
+    assert.equal(t.state('init', '--run=r1').ok, true)
+    const wt = t.state('worktree', '--run=r1', '--plan=001')
+    assert.equal(wt.ok, true, JSON.stringify(wt))
+    const planIn = (p) => join(p, 'plans', '001-x.plan.md')
+    writeFileSync(planIn(wt.path), readFileSync(planIn(wt.path), 'utf8').replace('- [ ] A1:', '- [x] A1:') + '- decision: builder note from r1.\n')
+    mkdirSync(join(wt.path, 'work'), { recursive: true })
+    writeFileSync(join(wt.path, 'work', 'x.txt'), 'built\n')
+    sh(wt.path, 'add', '-A', 'plans', 'work')
+    sh(wt.path, 'commit', '-q', '-m', 'build A1')
+    sh(wt.path, 'push', '-q', 'origin', 'feat/001-x')
+    // meanwhile main gets a newer plan text (a readiness answer, a status change), pushed
+    writeFileSync(planIn(t.dir), readFileSync(planIn(t.dir), 'utf8').replace('Status: active', 'Status: active (re-run)') + '- Orchestrator readiness (2026-11-05): q → a\n')
+    sh(t.dir, 'commit', '-qam', 'plan(r2): readiness answers')
+    sh(t.dir, 'push', '-q', 'origin', 'main')
+    // a relaunch under a new run name: a fresh run branch from the newer main, the old plan branch reused
+    sh(wt.path, 'switch', '-q', '--detach')
+    rmSync(wt.path, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+    sh(t.dir, 'worktree', 'prune')
+    assert.equal(t.state('init', '--run=r2').ok, true)
+    const again = t.state('worktree', '--run=r2', '--plan=001')
+    assert.equal(again.ok, true, JSON.stringify(again))
+    const text = readFileSync(planIn(again.path), 'utf8')
+    assert.match(text, /Status: active \(re-run\)/, 'the run branch text is the base')
+    assert.match(text, /- \[x\] A1: first/, 'the builder tick is kept')
+    assert.match(text, /- \[ \] A2: second/)
+    assert.match(text, /- Orchestrator readiness \(2026-11-05\): q → a/)
+    assert.match(text, /- decision: builder note from r1\./, 'the builder note is kept')
+    assert.doesNotMatch(text, /<<<<<<<|>>>>>>>/)
+    assert.equal(sh(again.path, 'status', '--porcelain'), '', 'the merge is committed')
+    assert.equal(sh(again.path, 'rev-list', '--parents', '-n', '1', 'HEAD').split(' ').length, 3, 'HEAD is the merge commit')
+    assert.equal(readFileSync(join(again.path, 'work', 'x.txt'), 'utf8'), 'built\n')
+  } finally {
+    rmSync(t.parent, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+    rmSync(t.bare, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+  }
+})
+
+test('rerun with a conflict in another file still parks, naming the conflicted paths', () => {
+  const t = orchRepo()
+  try {
+    assert.equal(t.state('init', '--run=r1').ok, true)
+    const wt = t.state('worktree', '--run=r1', '--plan=001')
+    writeFileSync(join(wt.path, 'a.txt'), 'builder\n')
+    sh(wt.path, 'commit', '-qam', 'builder a')
+    sh(wt.path, 'push', '-q', 'origin', 'feat/001-x')
+    writeFileSync(join(t.dir, 'a.txt'), 'main\n')
+    sh(t.dir, 'commit', '-qam', 'main a')
+    sh(t.dir, 'push', '-q', 'origin', 'main')
+    sh(wt.path, 'switch', '-q', '--detach')
+    rmSync(wt.path, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+    sh(t.dir, 'worktree', 'prune')
+    assert.equal(t.state('init', '--run=r2').ok, true)
+    const again = t.state('worktree', '--run=r2', '--plan=001')
+    assert.equal(again.ok, false)
+    assert.match(again.error, /merging origin\/orch\/r2 into feat\/001-x conflicts.*a\.txt/)
+  } finally {
+    rmSync(t.parent, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+    rmSync(t.bare, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+  }
+})
+
+test('mergePlanFile: the run text with the builder ticks and its new Execution Notes lines', () => {
+  const ours = PLAN_061.replace('- [ ] A2:', '- [x] A2:') + '- decision: mine.\n'
+  const theirs = PLAN_061.replace('Status: active', 'Status: closed') + '- Orchestrator readiness: q → a\n'
+  const out = runLib.mergePlanFile({ ours, theirs })
+  assert.match(out, /Status: closed/)
+  assert.match(out, /- \[ \] A1: first/)
+  assert.match(out, /- \[x\] A2: second/)
+  assert.match(out, /- Orchestrator readiness: q → a\n- decision: mine\.\n$/)
+  assert.equal(runLib.mergePlanFile({ ours: theirs, theirs }), theirs, 'nothing of ours to add: the run text as it is')
+})
