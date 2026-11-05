@@ -20,6 +20,7 @@ kit branch + PR  ->  merge  ->  tag vX.Y.Z + GitHub release  ->  project: kit-sy
 - The kit is installed into itself: after editing a source, run `node tools/sync.mjs --target . --apply` and commit
   the re-rendered copies in the same PR (CI's `drift-check --target .` fails otherwise). Kit plans run solo: plan on
   `main`, work on `feat/NNN-<slug>` in the kit folder, `/ship` (README: **The kit uses itself**).
+- Every run, orchestrator or `/ship`, in any project, adds one row to the kit's scorecard (`docs/brain/scorecard.md`) before its lessons are read.
 
 ## 2. Cut a release
 
