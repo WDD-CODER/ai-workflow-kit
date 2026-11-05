@@ -25,6 +25,9 @@
  *   plan guards  each --plans plan's prescribed code (fenced blocks and inline code) run through the project's commit
  *                guards (scripts/pre-commit-*.mjs exporting scanGuardText): a hit is a `PARK plan NNN` line naming the
  *                guard, its rule line and the plan line — that plan is parked before any builder, the others go on
+ *   ui login recipes  each --plans plan's [ui] cards: a role a card names ("as the admin user", "role: admin") with no
+ *                recipe in ui.logins is a WARN `ui login: no recipe for role <r> (plan NNN card n)`; with recipes set, a
+ *                card naming no role is a WARN too
  * --plan-checks runs only the plan checks (with --plans). The JSON line carries parkPlans { NNN: reason } and warnings.
  * --env-only runs disk, database and packages only (the retry check after an environment failure; pass --run too so
  * the merge folder's packages are checked).
@@ -38,7 +41,8 @@
  * --ui is the check before any browser step of a [ui] card (docs/agent/orchestrator.md), and runs only these:
  *   ui server    each page's origin answers below 500 (--pages: the cards' page URLs; SKIP when none is given)
  *   ui login     the QA login answers 2xx/3xx (--login or ORCH_UI_LOGIN_URL; a POST of {username,password} from
- *                ORCH_QA_USER / ORCH_QA_PASSWORD when both are set, else a GET; never printed; SKIP when no URL)
+ *                ORCH_QA_USER / ORCH_QA_PASSWORD when both are set, else a GET; never printed; SKIP when no URL);
+ *                --role <r> uses that role's recipe from ui.logins (its url, and the variables userEnv / passEnv)
  *   ui backend   the backend (--api or ORCH_UI_API_URL) answers a request sent with the first page's Origin, and allows
  *                that origin when it is another origin (Access-Control-Allow-Origin); SKIP when no URL
  * A FAIL adds `uiBlocked: true`: the orchestrator stops before the browser agent, with no fix round spent.
@@ -52,7 +56,7 @@ import { planGuardHits, guardParkReason } from './lib/plan-guard-scan.mjs'
 import net from 'net'
 import { freeGb, runNameProblem, serverProblem, loginProblem, crossOriginProblem, watchModeProblem } from './lib/orch-run.mjs'
 import { findOpenPlan } from './lib/plan-paths.mjs'
-import { mainAutoItems } from './lib/done-when.mjs'
+import { mainAutoItems, uiItems } from './lib/done-when.mjs'
 import { extractScopeGlobs } from './lib/plan-scope.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -344,8 +348,55 @@ async function planGuards() {
   if (!parked) ok('plan guards')
 }
 
+// ui.logins in the project config: one login recipe per role — { role, url, userEnv, passEnv }; the variables are named,
+// never their values. Read when the check runs (like bePort), so a config change needs no re-render.
+function loginRecipes() {
+  for (const f of [join('.kit', 'config.json'), 'kit.config.json']) {
+    try {
+      const list = JSON.parse(readFileSync(join(root, f), 'utf8')).ui?.logins
+      if (Array.isArray(list)) return list.filter((r) => r && typeof r.role === 'string' && typeof r.url === 'string')
+    } catch { /* no such config */ }
+  }
+  return []
+}
+// The role a [ui] card names: "role: <name>", "as <the|a|an> <name> user|role", or "as <name>" for a role ui.logins has.
+const CARD_ROLE_WORDS = /\brole:\s*([a-z][\w-]*)|\bas\s+(?:an?\s+|the\s+)?([a-z][\w-]*)\s+(?:user|role)\b|\bas\s+(?:an?\s+|the\s+)?([a-z][\w-]*)\b/gi
+function cardRole(card, known) {
+  for (const m of String(card).matchAll(CARD_ROLE_WORDS)) {
+    if (m[1] || m[2]) return (m[1] || m[2]).toLowerCase()
+    if (m[3] && known.includes(m[3].toLowerCase())) return m[3].toLowerCase()
+  }
+  return null
+}
+// Each --plans plan's [ui] cards: a role with no recipe is flagged before any builder (the card would fail at its login
+// late in the run). With recipes configured, a card that names no role is flagged too: which login it needs is unknown.
+function uiLogins() {
+  const recipes = loginRecipes()
+  const known = recipes.map((r) => r.role.toLowerCase())
+  let flagged = 0
+  let cards = 0
+  for (const nnn of planNumbers()) {
+    const text = planText(nnn)
+    if (text === null) continue
+    uiItems(text).forEach((card, i) => {
+      cards++
+      const role = cardRole(card, known)
+      if (role && !known.includes(role)) {
+        flagged++
+        warn('ui login', `no recipe for role ${role} (plan ${nnn} card ${i + 1})`)
+      } else if (!role && recipes.length) {
+        flagged++
+        warn('ui login', `no role named (plan ${nnn} card ${i + 1}) — write "as the <role> user" in the card`)
+      }
+    })
+  }
+  if (!cards) return
+  if (!flagged) ok('ui login recipes')
+}
+
 async function planChecks() {
   await planGuards()
+  uiLogins()
 }
 
 // A live run: status.json running, updated in the last two hours.
@@ -439,12 +490,16 @@ async function uiChecks() {
     if (found.length) bad('ui server', found.join('; '))
     else ok('ui server')
   }
-  const login = flag('--login') ?? process.env.ORCH_UI_LOGIN_URL ?? ''
-  if (!login) skip('ui login', 'no login URL (--login or ORCH_UI_LOGIN_URL)')
+  // --role <role>: the login recipe of that role (ui.logins) — its URL and the names of the variables holding its user.
+  const role = flag('--role')
+  const recipe = role ? loginRecipes().find((r) => r.role === role) : null
+  if (role && !recipe) bad('ui login', `no login recipe for role ${role} in ui.logins — add { "role": "${role}", "url": …, "userEnv": …, "passEnv": … }`)
+  const login = recipe ? recipe.url : role ? '' : flag('--login') ?? process.env.ORCH_UI_LOGIN_URL ?? ''
+  if (role && !recipe) { /* reported above */ } else if (!login) skip('ui login', 'no login URL (--login or ORCH_UI_LOGIN_URL)')
   else {
     // The QA user comes from the environment (.env, loaded by the project); it is sent, never printed.
-    const user = process.env.ORCH_QA_USER
-    const pass = process.env.ORCH_QA_PASSWORD
+    const user = recipe ? process.env[recipe.userEnv] : process.env.ORCH_QA_USER
+    const pass = recipe ? process.env[recipe.passEnv] : process.env.ORCH_QA_PASSWORD
     const res = !originOf(login) ? { error: 'not a URL' } : user && pass
       ? await ask(login, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: user, password: pass }) })
       : await ask(login)

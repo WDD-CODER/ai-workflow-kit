@@ -83,6 +83,60 @@ test('plan guards: no guard installed → SKIP, nothing parked', () => {
   }
 })
 
+// ---- L1: a [ui] card's role needs a login recipe in ui.logins --------------------------------------------------------
+const uiPlan = (cards) => `# Plan — X\n\nStatus: draft\nDepends-on: none\n\n## Goals & Success Criteria\n\n${cards.map((c) => `- [ui] ${c}`).join('\n')}\n- [auto] passes\n\n## Atomic Sub-tasks\n\n- [ ] S1: x\n`
+const recipe = (role) => ({ role, url: 'http://localhost:3000/api/login', userEnv: `ORCH_QA_${role.toUpperCase()}_USER`, passEnv: `ORCH_QA_${role.toUpperCase()}_PASSWORD` })
+
+test('ui logins: a card for role admin with no recipe is flagged; a plan whose roles all have recipes is not', () => {
+  const none = project({ 101: uiPlan(['Save works as the admin user on /settings']) }, { guard: false })
+  const both = project({ 101: uiPlan(['Save works as the admin user on /settings', 'role: viewer — the list is read-only']) }, { guard: false, config: { ui: { logins: [recipe('admin'), recipe('viewer')] } } })
+  try {
+    const a = preflight(none.dir, '--plans', '101')
+    assert.match(a.out, /^WARN ui login: no recipe for role admin \(plan 101 card 1\)$/m)
+    assert.deepEqual(a.json.warnings, ['ui login: no recipe for role admin (plan 101 card 1)'])
+    assert.equal(a.json.ok, true, 'a flag, not a FAIL')
+    const b = preflight(both.dir, '--plans', '101')
+    assert.equal(b.json.warnings, undefined, b.out)
+    assert.match(b.out, /^OK\s+ui login recipes$/m)
+  } finally {
+    drop(none.parent)
+    drop(both.parent)
+  }
+})
+
+test('ui logins: with recipes set, a card that names no role is flagged; "as expected" is not a role', () => {
+  const p = project({ 101: uiPlan(['The list loads as expected', 'Delete works as admin']) }, { guard: false, config: { ui: { logins: [recipe('admin')] } } })
+  try {
+    const { json } = preflight(p.dir, '--plans', '101')
+    assert.deepEqual(json.warnings, ['ui login: no role named (plan 101 card 1) — write "as the <role> user" in the card'])
+  } finally {
+    drop(p.parent)
+  }
+})
+
+test('ui logins: the --ui check with --role uses that role\'s recipe and fails for a role without one', () => {
+  const p = project({}, { guard: false, config: { ui: { logins: [recipe('admin')] } } })
+  try {
+    const run = (...a) => spawnSync(process.execPath, [join(p.dir, 'scripts', 'orch-preflight.mjs'), '--ui', ...a], { cwd: p.dir, encoding: 'utf8', timeout: 60000 }).stdout
+    assert.match(run('--role', 'viewer'), /^FAIL ui login: no login recipe for role viewer in ui\.logins/m)
+    // admin's recipe URL is used (nothing answers on it here, so the login check fails on that URL, not on a missing recipe)
+    assert.match(run('--role', 'admin'), /^FAIL ui login: .*localhost:3000\/api\/login/m)
+  } finally {
+    drop(p.parent)
+  }
+})
+
+test('config: ui.logins holds role, url and the NAMES of the user and password variables only', async () => {
+  const { orchestratorProblems } = await import(new URL('../lib/kit.mjs', import.meta.url).href)
+  assert.deepEqual(orchestratorProblems({ 'ui.logins': [] }), [])
+  assert.deepEqual(orchestratorProblems({ 'ui.logins': [recipe('admin'), recipe('viewer')] }), [])
+  assert.match(orchestratorProblems({ 'ui.logins': {} }).join(), /must be a list/)
+  assert.match(orchestratorProblems({ 'ui.logins': [{ ...recipe('admin'), password: 'x' }] }).join(), /unknown key\(s\) password/)
+  assert.match(orchestratorProblems({ 'ui.logins': [{ ...recipe('admin'), passEnv: 'hunter2' }] }).join(), /passEnv "hunter2" must be the NAME/)
+  assert.match(orchestratorProblems({ 'ui.logins': [recipe('admin'), recipe('admin')] }).join(), /role admin has a recipe already/)
+  assert.match(orchestratorProblems({ 'ui.logins': [{ ...recipe('admin'), url: 'javascript:x' }] }).join(), /must be an http\(s\) URL/)
+})
+
 // ---- the workflow parks a preflight-named plan before any builder; the others go on ----------------------------------
 async function runFlow(args, hooks = {}) {
   const calls = []

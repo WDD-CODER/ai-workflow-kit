@@ -128,6 +128,10 @@
     "ciMirror": [],
     "prepare": []
   },
+  "ui": {
+    "$comment": "logins: one login recipe per role the plans' [ui] cards name ('as the admin user'): { \"role\": \"admin\", \"url\": \"http://localhost:3000/api/login\", \"userEnv\": \"ORCH_QA_ADMIN_USER\", \"passEnv\": \"ORCH_QA_ADMIN_PASSWORD\" }. Names of environment variables only, never their values. The orchestrator's preflight flags a card whose role has no recipe.",
+    "logins": []
+  },
   "brain": {
     "projectId": "",
     "enabled": true
