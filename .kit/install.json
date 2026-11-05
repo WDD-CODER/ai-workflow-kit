@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "52353a1080b0bbbe5e2658176dcae6dda7652413",
+  "commit": "33921ca696060f833de1405a58319626aaeb858b",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -710,7 +710,7 @@
       "source": "core/scripts/lib/brain-doc.mjs"
     },
     "scripts/lib/db-write.mjs": {
-      "sha256": "851ef7f2d2b8d85270f30b942afa62ed93751ff3dc7785491910662577709b1a",
+      "sha256": "8a94dea9680cc3e8b88579238ad53787b80d5c623ca557e9ed2d5fd3f63e4522",
       "kind": "managed",
       "source": "core/scripts/lib/db-write.mjs"
     },
