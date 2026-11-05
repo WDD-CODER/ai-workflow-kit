@@ -623,13 +623,8 @@ test('orch-state brain-commit commits docs/brain in the merge folder and pushes 
 // ---- plan 058: the preflight starts the main folder's servers itself (slot-serve.mjs --main, slot-stop.mjs --main) ------
 const { resolveConfig, render, applyConditionals } = await import(pathToFileURL(join(kit, 'tools', 'lib', 'kit.mjs')).href)
 const net = await import('node:net')
-const freePort = () => new Promise((done) => {
-  const s = net.createServer()
-  s.listen(0, '127.0.0.1', () => {
-    const { port } = s.address()
-    s.close(() => done(port))
-  })
-})
+// A port below the OS's dynamic range, never handed out twice (plan 084 A4: port 0 flaked under a loaded full suite).
+const { freePort } = await import(pathToFileURL(join(kit, 'tools', 'test', 'lib', 'free-port.mjs')).href)
 const answers = (port) => new Promise((done) => {
   const s = net.connect({ port, host: '127.0.0.1' })
   s.setTimeout(2000, () => { s.destroy(); done(false) })
