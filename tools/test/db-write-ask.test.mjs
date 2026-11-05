@@ -20,7 +20,7 @@ test('dbWriteKind names the kind of each command in the plan table, and null for
     'raw-write': ['psql -c "INSERT INTO users VALUES (1)"', 'psql $DATABASE_URL -c "drop table x"', 'mongosh app --eval "db.users.deleteMany({})"', 'sqlite3 app.db "UPDATE t SET a=1"'],
   }
   for (const [kind, cmds] of Object.entries(cases)) for (const c of cmds) assert.equal(dbWriteKind(c), kind, c)
-  for (const c of ['prisma migrate status', 'knex migrate:status', 'psql -c "SELECT * FROM users"', 'npm run test', 'node scripts/reseed-docs.mjs', 'npm run seeds-report', 'git status', '']) {
+  for (const c of ['prisma migrate status', 'knex migrate:status', 'psql -c "SELECT * FROM users"', 'npm run test', 'node scripts/reseed-docs.mjs', 'node --test tools/test/seed.test.mjs','npm run seeds-report', 'git status', '']) {
     assert.equal(dbWriteKind(c), null, c)
   }
   // a client fed a script it does not show counts as a write; a write hidden behind a quoted `;` is still found
@@ -28,6 +28,13 @@ test('dbWriteKind names the kind of each command in the plan table, and null for
   assert.equal(dbWriteKind('sqlite3 app.db < fixtures.sql'), 'raw-write')
   assert.deepEqual(dbWrites('psql -c "SELECT 1; DROP TABLE x"'), ['psql -c "SELECT 1; DROP TABLE x"'])
   assert.deepEqual(dbWrites('npm ci && npm run seed'), ['npm run seed'])
+  // a client name or a write word inside a commit message, a search or a package name is not a database write
+  for (const c of ['git commit -m "feat: add sqlite3 create-table helper"', 'git commit -m "docs: psql update steps"', 'rg -n sqlite3 src -e drop', 'npm install sqlite3 && node a.js < in.json', 'git commit -m "npm run seed fixed"', 'node --test tools/test/seed-parser.test.mjs']) {
+    assert.deepEqual(dbWrites(c), [], c)
+  }
+  // prefixes before the command word still count
+  assert.equal(dbWriteKind('DATABASE_URL=x npx prisma migrate deploy'), 'migrate')
+  assert.equal(dbWriteKind('sudo -u postgres psql -c "DROP TABLE x"'), 'raw-write')
   // a listed segment does not hide a client write split across quoted segments
   assert.deepEqual(dbWrites('npm run seed && psql -c "SELECT 1; DROP TABLE x"'), ['npm run seed', 'npm run seed && psql -c "SELECT 1; DROP TABLE x"'])
 })

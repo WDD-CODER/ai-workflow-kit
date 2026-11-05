@@ -4,21 +4,22 @@
  * 2) console.log / LoggingService calls with a likely-PII name — on the log line itself, or carried by a variable the
  *    same file assigned from a likely-PII expression earlier
  *
- * A deliberate exception is one line, never a folder: put `security-grep-allow: <reason of at least 10 characters>` in
- * a comment on the line the guard would block. The reason is printed when the guard passes that line, so every exception
+ * A deliberate exception to the log rule is one line, never a folder: put `security-grep-allow: <reason of at least 10
+ * characters>` in a comment (`//`, `/*` or `<!--`) on the log line the guard would block. The reason is printed when the guard passes that line, so every exception
  * shows in the commit output. No path, folder, option or environment variable turns the guard off.
  *
  * `scanGuardText(text, file)` is the rule set as a function (the orchestrator's preflight runs it over the code a plan
  * prescribes); run as a script it checks the staged files and exits 1 when one is blocked.
  */
 import { execSync } from 'child_process'
-import { readFileSync } from 'fs'
+import { readFileSync, realpathSync } from 'fs'
 import { fileURLToPath } from 'url'
 import { resolve } from 'path'
 
 const PII_NAMES = /\b(email|password|token|fullName|full_name|phone|ssn|creditCard|credit_card)\b/i
 const LOG_CALL = /\bconsole\.log\s*\(|\bLoggingService\b|\.log\s*\(/
-const ALLOW = /security-grep-allow:\s*(.*?)\s*(?:\*\/|-->)?\s*$/
+// The marker counts only inside a comment (`//`, `/*`, `<!--`), never inside a string literal.
+const ALLOW = /(?:\/\/|\/\*|<!--)\s*security-grep-allow:\s*(.*?)\s*(?:\*\/|-->)?\s*$/
 const MIN_REASON = 10
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
@@ -46,7 +47,7 @@ function allowReason(line) {
 
 /**
  * The lines of `text` the guard blocks: [{ line, rule, id, ruleLine, text }]. `file` is used for the message only — it
- * never exempts anything. A line with a valid allow marker is not a hit; its reason is returned in `allowed`.
+ * never exempts anything. A log line with a valid allow marker is not a hit; `allowedLines` lists the markers' reasons.
  */
 export function scanGuardText(text, file) {
   const lines = String(text).split(/\r?\n/)
@@ -54,10 +55,11 @@ export function scanGuardText(text, file) {
   const carriers = new Set()
   lines.forEach((line, i) => {
     // A variable assigned from a likely-PII expression carries the value to a later log call in the same file.
-    const assign = /(?:\b(?:const|let|var)\s+)?([A-Za-z_$][\w$]*)\s*=(?!=)\s*(.+)$/.exec(line)
+    const assign = /(?:\b(?:const|let|var)\s+)?([A-Za-z_$][\w$]*)\s*=(?![=>])\s*(.+)$/.exec(line)
     if (assign && !LOG_CALL.test(line) && PII_NAMES.test(assign[2])) carriers.add(assign[1])
     const hit = (id) => {
-      if (allowReason(line)) return
+      // The marker excuses a PII log only; an unsanitized innerHTML has no exception.
+      if (id === 'pii-log' && allowReason(line)) return
       hits.push({ line: i + 1, id, rule: ruleOf(id).rule, ruleLine: ruleLine(id), text: line.trim(), file: String(file ?? '') })
     }
     if (/\[innerHTML\]/.test(line) || /\binnerHTML\b/.test(line)) {
@@ -80,7 +82,15 @@ export function allowedLines(text) {
   })
 }
 
-const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+// Real paths on both sides: run through a symlink or a junction, the script must still check (never fail open).
+const real = (p) => {
+  try {
+    return realpathSync(p)
+  } catch {
+    return resolve(p)
+  }
+}
+const isMain = !!process.argv[1] && real(process.argv[1]) === real(fileURLToPath(import.meta.url))
 if (isMain) {
   const staged = execSync('git diff --cached --name-only --diff-filter=ACMR', { encoding: 'utf8' })
     .split('\n')

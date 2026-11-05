@@ -55,9 +55,15 @@ test('plan guards: a plan that prescribes a PII log line is parked, naming the g
     101: plan('- [ ] S1: log it:\n\n```ts\nconsole.log(user.token)\n```\n'),
     102: plan('- [ ] S1: log it, marked: `console.log(user.token) // security-grep-allow: masked by the logger before output`'),
     103: plan('- [ ] S1: never log the token; keep `user.name` only'),
+    // the bad line quoted where the plan describes the fault or its check, never prescribed
+    // a prohibition in a sub-task, and a bare name in a span, are not prescribed statements
+    105: plan('- [ ] S1: never bind `[innerHTML]` to user text; do not call `console.log(user.token)` anywhere'),
+    104: `# Plan — X\n\nStatus: draft\n\n## Problem Statement\n\nToday \`console.log(user.token)\` leaks.\n\n## Goals & Success Criteria\n\n- [auto] a plan with \`console.log(user.token)\` is parked\n\n## Atomic Sub-tasks\n\n- [ ] S1: mask it\n`,
   })
   try {
-    const { out, json } = preflight(p.dir, '--plans', '101,102,103')
+    const { out, json } = preflight(p.dir, '--plans', '101,102,103,104,105')
+    assert.equal(json.parkPlans['105'], undefined, 'a prohibition is not prescribed code')
+    assert.equal(json.parkPlans['104'], undefined, 'code quoted in Problem Statement or Goals is not prescribed')
     const guardSrc = readFileSync(join(p.dir, 'scripts', 'pre-commit-security-grep.mjs'), 'utf8').split(/\r?\n/)
     const ruleLine = guardSrc.findIndex((l) => l.includes('// RULE pii-log')) + 1
     assert.ok(ruleLine > 0)

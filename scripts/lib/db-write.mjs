@@ -20,27 +20,31 @@ import { join, resolve } from 'path'
 import { spawnSync } from 'child_process'
 import { prescribedSnippets } from './plan-guard-scan.mjs'
 
+// Every pattern is anchored at the command word of a segment (after variable assignments and npx / sudo / env /
+// pnpm exec|dlx): a word inside a commit message, a grep pattern or a package name is never a database write.
+const PREFIX = /^(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?:(?:sudo(?:\s+-u\s+\S+|\s+-[^u\s]\S*)*|npx(?:\s+-\S+)*|env|pnpm\s+exec|pnpm\s+dlx)\s+(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*)*/
+const BIN = (name) => `(?:\\S*[\\\\/])?${name}(?:\\.exe|\\.cmd)?`
 const MIGRATE = [
-  /\bprisma\s+migrate\s+(?!status\b|diff\b)\S+/,
-  /\bprisma\s+db\s+push\b/,
-  /\bdrizzle-kit\s+(?:push|migrate)\b/,
-  /\bknex\s+migrate(?::(?!status\b|list\b|currentVersion\b)\w+|(?=\s|$))/,
-  /\btypeorm(?:-ts-node-\w+)?\s+migration:run\b/,
-  /\b(?:npm|pnpm)\s+run\s+(?:migrate|db:migrate|db:push)(?=\s|$)/,
+  new RegExp(`^${BIN('prisma')}\\s+migrate\\s+(?!status\\b|diff\\b)\\S+`),
+  new RegExp(`^${BIN('prisma')}\\s+db\\s+push\\b`),
+  new RegExp(`^${BIN('drizzle-kit')}\\s+(?:push|migrate)\\b`),
+  new RegExp(`^${BIN('knex')}\\s+migrate(?::(?!status\\b|list\\b|currentVersion\\b)\\w+|(?=\\s|$))`),
+  new RegExp(`^${BIN('typeorm(?:-ts-node-\\w+)?')}\\s+migration:run\\b`),
+  /^(?:npm|pnpm)\s+run\s+(?:migrate|db:migrate|db:push)(?=\s|$)/,
 ]
 const SEED = [
-  /\b(?:npm|pnpm)\s+run\s+(?:seed|db:seed)(?=\s|$)/,
-  /\bprisma\s+db\s+seed\b/,
-  /\bnode\s+(?:\S+\s+)*?(?:\S*[\\/])?seed[\w.-]*(?=\s|$)/,
+  /^(?:npm|pnpm)\s+run\s+(?:seed|db:seed)(?=\s|$)/,
+  new RegExp(`^${BIN('prisma')}\\s+db\\s+seed\\b`),
+  /^node\s+(?!--test\b)(?:-\S+\s+)*(?:\S*[\\/])?seed(?![\w.-]*\.test\.)[\w.-]*(?=\s|$)/,
 ]
-const RAW_CLIENT = /(?:^|[\s;&|(])(?:psql|mongosh|mongo|sqlite3)(?:\.exe)?(?=\s|$)/
+const RAW_CLIENT = new RegExp(`^${BIN('(?:psql|mongosh|mongo|sqlite3)')}(?=\\s|$)`)
 const RAW_WRITE = /\b(?:INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE)\b|\b(?:insertOne|insertMany|updateOne|updateMany|deleteOne|deleteMany|replaceOne|drop)\b/i
 // A client fed a script it does not show (-f file, --file, < file, .read): what it runs is unknown — counted as a write.
 const RAW_SCRIPT = /(?:^|\s)(?:-f|--file)(?:\s|=)|<\s*\S|(?:^|\s)\.read\s/
 
 /** 'migrate' | 'seed' | 'raw-write' | null — the kind of database write a command is. */
 export function dbWriteKind(command) {
-  const c = String(command ?? '').replace(/\s+/g, ' ').trim()
+  const c = String(command ?? '').replace(/\s+/g, ' ').trim().replace(/^[({]\s*/, '').replace(PREFIX, '')
   if (!c) return null
   if (SEED.some((re) => re.test(c))) return 'seed'
   if (MIGRATE.some((re) => re.test(c))) return 'migrate'
@@ -59,9 +63,12 @@ export function commandSegments(command) {
 /** The database writes of a shell line: each segment that is one, and — because splitting ignores quotes — the whole
  *  line when a database client and a write keyword sit in different segments (`psql -c "SELECT 1; DROP TABLE x"`). */
 export function dbWrites(command) {
-  const out = commandSegments(command).filter((s) => dbWriteKind(s))
+  const segments = commandSegments(command)
+  const out = segments.filter((s) => dbWriteKind(s))
   const whole = String(command ?? '').replace(/\s+/g, ' ').trim()
-  const raw = RAW_CLIENT.test(whole) && (RAW_WRITE.test(whole) || RAW_SCRIPT.test(whole))
+  // A segment that runs a database client, whose write keyword a quoted `;` or `|` split into the next segment.
+  const client = segments.some((s) => RAW_CLIENT.test(s.replace(/^[({]\s*/, '').replace(PREFIX, '')))
+  const raw = client && (RAW_WRITE.test(whole) || RAW_SCRIPT.test(whole))
   if ((raw && !out.some((s) => dbWriteKind(s) === 'raw-write')) || (!out.length && dbWriteKind(whole))) out.push(whole)
   return out
 }
@@ -107,7 +114,7 @@ function listedCommands(marker) {
   if (!marker.planRef || !marker.planPath) return new Set()
   const r = spawnSync('git', ['-C', marker.root, 'show', `${marker.planRef}:${String(marker.planPath).replace(/\\/g, '/')}`], { encoding: 'utf8', timeout: 5000 })
   if (r.status !== 0) return new Set()
-  const lines = prescribedSnippets(r.stdout).flatMap((s) => s.code.split('\n'))
+  const lines = prescribedSnippets(r.stdout, { all: true }).flatMap((s) => s.code.split('\n'))
   return new Set(lines.map((l) => norm(l.replace(/^\s*\$\s+/, ''))).filter(Boolean))
 }
 

@@ -434,16 +434,19 @@ the runner. The one row to watch is `set` — see its recommendation.
 ## A plan that will fail is stopped before its builder
 
 - **Code a commit guard refuses.** The run's preflight (`orch-preflight.mjs --plans`) reads the code each plan
-  *prescribes* — its fenced code blocks (not ```` ```scope ````) and inline code spans, never prose — and runs it through
+  *prescribes* — its fenced code blocks (not ```` ```scope ````) and inline code spans, never prose, and none of the
+  sections that only describe the plan (Problem Statement, Goals, Out of Scope, Critical Questions, Execution Notes,
+  Step 0, Architecture Impact, the scope sections) — and runs it through
   every installed `scripts/pre-commit-*.mjs` guard that exports `scanGuardText(text, file)`
   (`scripts/lib/plan-guard-scan.mjs`). A hit parks the plan before any builder: `preflight: guard <script> line <n>:
   <rule> — plan line <n>: <text>`; a plan that depends on it is skipped. The security guard
   (`pre-commit-security-grep.mjs`) also reports a log call of a variable assigned from a PII-named expression earlier in
-  the file. Its one exception is a comment on the line it excuses, `// security-grep-allow: <reason of 10+ characters>`,
-  printed when the guard passes the line; no path, folder or setting turns the guard off.
-- **A [ui] card role with no login.** `ui.logins` in the project config maps a role to a login recipe — `{ "<role>": {
-  "url": "<login page>", "userEnv": "<ENV_NAME>", "passEnv": "<ENV_NAME>" } }`, environment variable **names** only,
-  never values. A card names its role as `as the <role> user` (or `role: <role>`); preflight warns `ui login: no recipe
+  the file. Its one exception is a comment (`//`, `/*` or `<!--`) on the log line it excuses, `// security-grep-allow:
+  <reason of 10+ characters>`, printed when the guard passes the line; it never excuses an innerHTML hit, and no path,
+  folder or setting turns the guard off.
+- **A [ui] card role with no login.** `ui.logins` in the project config is a list of login recipes, one per role —
+  `[{ "role": "<role>", "url": "<login page>", "userEnv": "<ENV_NAME>", "passEnv": "<ENV_NAME>" }]`, environment
+  variable **names** only, never values. A card names its role as `as the <role> user` (or `role: <role>`); preflight warns `ui login: no recipe
   for role <role> (plan NNN card <n>)`, and when recipes exist, `no role named` for a card without one. `--ui --role
   <role>` logs in with that recipe.
 - **Leftovers of earlier runs.** Preflight lists, one warning line each: a `feat/NNN-*` branch (local or on origin) of

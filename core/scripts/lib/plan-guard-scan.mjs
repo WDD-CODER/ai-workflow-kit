@@ -6,20 +6,33 @@
  * the plan's other lines. Prose is never scanned, so "never log the token" parks nothing.
  */
 
-/** [{ planLine, code }] — each fenced block as one snippet (its first code line is planLine), each inline span alone. */
-export function prescribedSnippets(planText) {
+// Sections that describe a plan (the fault it fixes, how it is checked, what it leaves out, what happened) quote code;
+// they never tell the builder to write it, so their code is not prescribed.
+const DESCRIBING = /^##\s+(Problem Statement|Goals|Out of Scope|Critical Questions|Execution Notes|Step 0|Architecture Impact|Escalation Protocol|Read Scope|Read-Write Scope)\b/i
+
+const NEGATED = /\b(?:never|not|no|don't|dont|avoid|instead of|without|forbid\w*|must not|stop)\b/i
+
+/** [{ planLine, code }] — each fenced block as one snippet (its first code line is planLine), each inline span alone;
+ *  the describing sections (DESCRIBING) are skipped unless `all` (the db-write listing reads every section). */
+export function prescribedSnippets(planText, { all = false } = {}) {
   const lines = String(planText ?? '').replace(/\r\n/g, '\n').split('\n')
   const out = []
+  let skip = false
   for (let i = 0; i < lines.length; i++) {
+    if (/^##\s/.test(lines[i])) skip = !all && DESCRIBING.test(lines[i])
     const fence = /^\s*(`{3,}|~{3,})\s*([\w-]*)/.exec(lines[i])
     if (fence) {
       const close = lines.findIndex((l, j) => j > i && l.trim().startsWith(fence[1]))
       const end = close < 0 ? lines.length : close
-      if (fence[2] !== 'scope') out.push({ planLine: i + 2, code: lines.slice(i + 1, end).join('\n') })
+      if (!skip && fence[2] !== 'scope') out.push({ planLine: i + 2, code: lines.slice(i + 1, end).join('\n') })
       i = end
       continue
     }
-    for (const m of lines[i].matchAll(/`([^`\n]+)`/g)) out.push({ planLine: i + 1, code: m[1] })
+    if (skip) continue
+    // An inline span prescribes only when it is a statement (a call or an assignment) on a line that does not forbid it
+    // ("never bind `[innerHTML]`", "do not `console.log(token)`"); a fenced block always prescribes.
+    if (!all && NEGATED.test(lines[i].replace(/`[^`\n]*`/g, ' '))) continue
+    for (const m of lines[i].matchAll(/`([^`\n]+)`/g)) if (all || /[(=]/.test(m[1])) out.push({ planLine: i + 1, code: m[1] })
   }
   return out
 }
