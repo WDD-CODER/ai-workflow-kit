@@ -477,6 +477,12 @@ function applyFinalGate(status, result, { command = '', plans = '', tail = '' } 
         changed = true
       }
     }
+    // and the run notes an earlier failing gate wrote, so the report does not show a failure next to "ok"
+    const notes = (status.notes ?? []).filter((n) => !/^final gate (failed|could not run)/.test(String(n?.text ?? '')))
+    if (notes.length !== (status.notes ?? []).length) {
+      status.notes = notes
+      changed = true
+    }
     if (/^final gate/.test(String(status.stopReason ?? ''))) {
       delete status.stopReason
       status.phase = status.finishedAt ? 'finished' : 'running'
