@@ -47,9 +47,11 @@ const run = (script, args) => spawnSync(process.execPath, [join(kit, 'tools', sc
 // same section list.
 const RULE_SECTIONS = ['builder', 'checkers', 'readiness', 'ui']
 {
-  const at = process.argv.indexOf('--target')
+  // `--target <dir>` and `--target=<dir>` both select the target; never fall through to the fixtures with one given.
+  const at = process.argv.findIndex((a) => a === '--target' || a.startsWith('--target='))
   if (at >= 0) {
-    const target = process.argv[at + 1]
+    const arg = process.argv[at]
+    const target = arg === '--target' ? process.argv[at + 1] : arg.slice('--target='.length)
     if (!target || target.startsWith('--')) {
       console.error('INSTALL_CHECK: --target needs a folder')
       process.exit(2)

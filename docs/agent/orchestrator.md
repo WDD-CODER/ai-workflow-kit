@@ -323,7 +323,7 @@ With the UI step off, a failed script is a finding for the builder, and a card n
   list the tests under it) is a `blocker` finding. The scope is read from the plan as the run branch (or, for
   `scope-check --diff`, the base ref) holds it, never from the branch's own copy: a test location the Human approves
   mid-run must be in the plan on the base first. The finding is
-  `test file outside the plan's scope`, raised by `orch-state.mjs diff` (`testsOutOfScope`) before any finder runs.
+  `no scope line names a test location`, raised by `orch-state.mjs diff` (`testsOutOfScope`) before any finder runs.
   `scope-check.mjs --diff` prints `SCOPE: test-out <path>` and exits 1 for the same files, so `/ship` gets it too.
 - **No progress stops the plan.** Two fix rounds in a row whose builder ends on the head sha the round started on park
   the plan with `no progress: head <sha> unchanged across 2 fix rounds (fix rounds used: n of maxFixRounds)`, before
