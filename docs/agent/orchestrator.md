@@ -385,6 +385,8 @@ to the number of sites in the file). `parsed` = the script reads the answer to b
 | Run start | `init` | 1 | parsed | keep |
 | Main tries | `main-tries` | 1 | parsed | merge: into `init` when the run delegates main-folder checks (follow-up) |
 | Slot give-back | `release` | 1 | write-only | merge: into the plan's last `set` (follow-up) |
+| Park save | `park-save` | 1 | parsed | keep: only when a plan with a folder parks |
+| Merge only | `merge-ready` | 1 | parsed | keep: once per plan in merge mode |
 | Decisions | `decisions` | 1 | write-only | done: one call for N decisions |
 
 No call is `script-only` yet: until the workflow runtime can run a script without a model, every row that stays needs
