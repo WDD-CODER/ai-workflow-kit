@@ -47,6 +47,7 @@ test('dbWriteKind names the kind of each command in the plan table, and null for
   assert.equal(dbWriteKind('git fetch --upload-pack="npm run seed" origin'), 'seed')
   assert.equal(dbWriteKind('git fetch "--upload-pack=npm run seed" origin'), 'seed')
   assert.equal(dbWriteKind('git fetch \\--upload-pack="npm run seed" origin'), 'seed')
+  assert.deepEqual(dbWrites('git status & npm run seed'), ['npm run seed'], 'a single & separates commands')
   // a plain commit whose message names the command is still not asked about
   assert.equal(dbWriteKind('git commit -m "docs: npm run seed loads the demo rows"'), null)
   assert.equal(dbWriteKind('git grep -O"psql -c \'DROP TABLE x\'" x'), 'raw-write')

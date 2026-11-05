@@ -69,7 +69,8 @@ const isSafe = (s) => {
   // not one whole word ("a b" alone between spaces). What is left after the whole-word quotes is read as plain words.
   if (/[$\\{]/.test(own)) return false
   const words = own.replace(/(^|\s)(?:"[^"]*"|'[^']*')(?=\s|$)/g, '$1Q')
-  if (/["'*?[~]/.test(words)) return false // a glue quote, or a glob / tilde that can expand into an option
+  // a glued quote, a glob / tilde that can expand into an option, or any control, redirect or comment character
+  if (/["'*?[~&|;<>()#%^\n\r]/.test(words)) return false
   const opts = words.match(/(?:^|\s)-\S*/g) ?? []
   return opts.every((o) => SAFE_OPTIONS.has(o.trim()))
 }
@@ -94,7 +95,7 @@ export function dbWriteKind(command) {
 /** The simple commands of a shell line: split on && || ; | and newlines (quotes are not parsed). */
 export function commandSegments(command) {
   return String(command ?? '')
-    .split(/&&|\|\||[;\n|]/)
+    .split(/&&|\|\||[;\n\r|&]/)
     .map((s) => s.trim())
     .filter(Boolean)
 }
@@ -108,7 +109,9 @@ export function dbWrites(command) {
   // A segment that runs a database client, whose write keyword a quoted `;` or `|` split into the next segment.
   const client = segments.some((s) => runsClient(s))
   const raw = client && (RAW_WRITE.test(whole) || RAW_SCRIPT.test(whole))
-  if ((raw && !out.some((s) => dbWriteKind(s) === 'raw-write')) || (!out.length && dbWriteKind(whole))) out.push(whole)
+  // Only a quote or an escape can make the split wrong; with neither, the segments are the commands.
+  const split = /["'\\`]/.test(whole)
+  if (split && ((raw && !out.some((s) => dbWriteKind(s) === 'raw-write')) || (!out.length && dbWriteKind(whole)))) out.push(whole)
   return out
 }
 
