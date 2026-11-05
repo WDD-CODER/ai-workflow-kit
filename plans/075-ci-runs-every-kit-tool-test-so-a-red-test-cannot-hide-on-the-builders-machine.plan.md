@@ -147,3 +147,5 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
 - decision: the scorecard's Project column says `app project` instead of the project's real name — CI's leak-check runs `--project-only` over `docs/brain/` and fails on that name (checked locally: `scorecard.md:8: product … (brain)`, LEAK_CHECK: FAIL); the file's intro says to use neutral labels. Reversible: rename the row if leak-check gets an allowance.
 - decision: `node tools/e2e-check.mjs` (named in the T1 Done-when item) was not run locally — the plan's own D1 text says it runs in CI and locally only to debug a CI failure; the PR's `e2e` job is the evidence.
 - decision: `ci-coverage.test.mjs` compares the change-loop text with whitespace collapsed, so a re-wrapped line does not break it.
+- review: checkers kept 0 dropped 0 rechecked 0 minutes 1.2 models check-plan=claude-sonnet-5-5,check-bugs=claude-sonnet-5-5,check-rules=claude-sonnet-5-5
+- review (independent, Human brief): Opus fresh context — PASS; all three decisions "a human would likely choose: same".
