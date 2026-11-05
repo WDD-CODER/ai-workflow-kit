@@ -112,10 +112,10 @@ append the path to the scope block above and retry.
 
 These are the plan's milestones: a Worker does them in order and ticks each one after it is checked.
 
-- [ ] T1: Fix the final-gate test that broke when the kit got its own CI mirror — base computed with an empty mirror (`withMirror([])`), for both the override assertion and the empty-mirror assertion — tools/test/orchestrator.test.mjs
-- [ ] C1: Run every kit tool test once in CI on every pull request, in its own job so the PR does not wait longer — job kit-tests: checkout, Node 22, npm ci --prefix scripts, node --test — .github/workflows/leak-check.yml
-- [ ] C2: Fail a test when the CI step goes missing or a test file falls outside the glob — tools/test/ci-coverage.test.mjs
-- [ ] D1: Say which checks a builder runs locally and which only CI runs — docs/CHANGE-LOOP.md section 1, and a changelog line — docs/CHANGE-LOOP.md, CHANGELOG.md
+- [x] T1: Fix the final-gate test that broke when the kit got its own CI mirror — base computed with an empty mirror (`withMirror([])`), for both the override assertion and the empty-mirror assertion — tools/test/orchestrator.test.mjs
+- [x] C1: Run every kit tool test once in CI on every pull request, in its own job so the PR does not wait longer — job kit-tests: checkout, Node 22, npm ci --prefix scripts, node --test — .github/workflows/leak-check.yml
+- [x] C2: Fail a test when the CI step goes missing or a test file falls outside the glob — tools/test/ci-coverage.test.mjs
+- [x] D1: Say which checks a builder runs locally and which only CI runs — docs/CHANGE-LOOP.md section 1, and a changelog line — docs/CHANGE-LOOP.md, CHANGELOG.md
 
 ## Technical Considerations
 - Dependencies: a new `kit-tests` job (Ubuntu, Node 22) beside `leak-check`. The full set took 285 s on Linux at
@@ -142,3 +142,8 @@ These are the plan's milestones: a Worker does them in order and ticks each one 
   `final gate: PROJECT_CHECKS, then the manifest check, then orchestrator.ciMirror …` (`orchestrator.test.mjs:1159`,
   actual list without the six mirror checks).
 - Review (Architect + PM, a separate agent against b075db1, 2026-11-03): mechanical gaps fixed in the draft (line references, scope and Depends-on, test names); open points answered with the recommended default in Critical Questions. The Planner's own review is still to run.
+- Run (2026-11-05, Human brief "reliability freeze", Part B plan 1 of 5). First commit: `docs/brain/scorecard.md` and the scorecard line in `docs/CHANGE-LOOP.md`, as the brief asked.
+- Step 0 (Windows, Node 22, before any edit): `node --test "tools/test/*.test.mjs"` — 460 tests, 459 pass, 1 fail, 6 min 2 s: only `final gate: PROJECT_CHECKS, then the manifest check, then orchestrator.ciMirror …`, the expected one.
+- decision: the scorecard's Project column says `app project` instead of the project's real name — CI's leak-check runs `--project-only` over `docs/brain/` and fails on that name (checked locally: `scorecard.md:8: product … (brain)`, LEAK_CHECK: FAIL); the file's intro says to use neutral labels. Reversible: rename the row if leak-check gets an allowance.
+- decision: `node tools/e2e-check.mjs` (named in the T1 Done-when item) was not run locally — the plan's own D1 text says it runs in CI and locally only to debug a CI failure; the PR's `e2e` job is the evidence.
+- decision: `ci-coverage.test.mjs` compares the change-loop text with whitespace collapsed, so a re-wrapped line does not break it.
