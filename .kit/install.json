@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "33921ca696060f833de1405a58319626aaeb858b",
+  "commit": "56d54e7eb988d03e2f8bb136abe328581e426d1b",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -185,7 +185,7 @@
       "source": "core/.claude/commands/security.md"
     },
     ".claude/commands/ship.md": {
-      "sha256": "aeb0481adda37ab958cf368d44c582707f013cef67e054070d37e54e281980f6",
+      "sha256": "1916eb14a662aed08819cc70cea345a3e2381a6f0d81e1c18211685fb5d296a3",
       "kind": "managed",
       "source": "core/.claude/commands/ship.md"
     },
