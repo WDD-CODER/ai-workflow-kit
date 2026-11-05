@@ -67,7 +67,7 @@ import { uiItems } from './lib/done-when.mjs'
 import { listSlots } from './lib/slot.mjs'
 import { ensureDeps, idleSlot, claimSlot, releaseSlot, releaseRunSlots } from './lib/orch-folders.mjs'
 import { agreementStats, addLesson, lessonParts, ruleLines, LESSON_ROLES } from './decision-log.mjs'
-import { triageForce, triageView, decisionsInView, decisionType, runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine, logQueryArgs, lessonFacts, commandTag, runLogRow, updateRunLog, parseRunLog, parseDecisionRows, trendOf, contextBudget, INJECTED_ROLES } from './lib/orch-run.mjs'
+import { triageForce, triageView, decisionsInView, mergePlanFile, decisionType, runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine, logQueryArgs, lessonFacts, commandTag, runLogRow, updateRunLog, parseRunLog, parseDecisionRows, trendOf, contextBudget, INJECTED_ROLES } from './lib/orch-run.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const MAIN = 'main'
@@ -935,7 +935,7 @@ const commands = {
         wt = free.path
         lines.push(`claimed slot wt-${free.slot} (${wt}) for plan ${nnn}: ${branch}`)
       } else {
-        const w = exists ? git(root, 'worktree', 'add', '--quiet', own, branch) : git(root, 'worktree', 'add', '--quiet', '-b', branch, own, base)
+        const w = exists ? git(root, 'worktree', 'add', '--quiet', own, branch) : git(root, 'worktree', 'add', '--quiet', '--no-track', '-b', branch, own, base)
         if (w.status !== 0) fail(`git worktree add ${own}: ${w.err}`)
         lines.push(`${exists ? 'reused branch' : 'created'} ${branch} in ${own}${USE_SLOTS ? ' (no idle slot)' : ''}`)
       }
@@ -958,12 +958,44 @@ const commands = {
     }
     const head = git(wt, 'rev-parse', '--abbrev-ref', 'HEAD').out
     if (head !== branch) fail(`${wt} is on ${head || '(no branch)'}, not ${branch}`)
+    // A plan branch never tracks the run branch: one an earlier run made with git's default upstream loses it (a bare
+    // push from the builder would go to the run branch). An upstream that is its own remote branch is kept.
+    if (git(root, 'config', '--get', `branch.${branch}.merge`).out === `refs/heads/${runBranch(run)}`) {
+      git(root, 'config', '--unset', `branch.${branch}.merge`)
+      git(root, 'config', '--unset', `branch.${branch}.remote`)
+      lines.push(`${branch}: upstream ${runBranch(run)} removed`)
+    }
     const dirty = git(wt, 'status', '--porcelain').out.split('\n').filter(Boolean).map((l) => l.slice(3))
     if (!dirty.length) {
       const m = git(wt, 'merge', '--quiet', '--no-edit', base)
       if (m.status !== 0) {
-        git(wt, 'merge', '--abort')
-        fail(`merging ${base} into ${branch} conflicts: ${m.out.split('\n').filter((l) => /CONFLICT/.test(l)).join(' | ') || m.err}`)
+        // The plan's own file is the one conflict the script resolves: the run branch's text (a later Planner or
+        // readiness edit) with the builder's ticks and its new Execution Notes lines put back (mergePlanFile). Any other
+        // conflicted path aborts the merge and parks as before, naming every conflicted path.
+        const conflicted = git(wt, 'diff', '--name-only', '--diff-filter=U').out.split('\n').map((l) => l.trim()).filter(Boolean)
+        const rel = planFile.replace(/\\/g, '/')
+        if (conflicted.length === 1 && conflicted[0] === rel) {
+          // the two sides untrimmed (git() trims): 2 = this branch, 3 = the run branch
+          const side = (stage) => spawnSync('git', ['show', `:${stage}:${rel}`], { cwd: wt, encoding: 'utf8' })
+          const ours = side(2)
+          const theirs = side(3)
+          if (ours.status === 0 && theirs.status === 0) {
+            writeFileSync(join(wt, rel), mergePlanFile({ ours: ours.stdout, theirs: theirs.stdout }))
+            const a = git(wt, 'add', '--', rel)
+            const c = a.status === 0 ? git(wt, 'commit', '--quiet', '--no-edit') : a
+            if (c.status === 0) lines.push(`merged ${base} into ${branch}: ${rel} conflicted — the run branch's text kept, the builder's ticks and notes put back`)
+            else {
+              git(wt, 'merge', '--abort')
+              fail(`merging ${base} into ${branch}: resolving ${rel} failed: ${c.err || c.out}`)
+            }
+          } else {
+            git(wt, 'merge', '--abort')
+            fail(`merging ${base} into ${branch} conflicts: ${rel} (its two sides could not be read)`)
+          }
+        } else {
+          git(wt, 'merge', '--abort')
+          fail(`merging ${base} into ${branch} conflicts: ${conflicted.length ? conflicted.join(', ') : m.out.split('\n').filter((l) => /CONFLICT/.test(l)).join(' | ') || m.err}`)
+        }
       }
     }
     // Commits the branch already has beyond the run branch: a relaunch or a stopped run continues from them.

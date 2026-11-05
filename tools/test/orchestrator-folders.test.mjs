@@ -945,7 +945,7 @@ test('rerun of a parked plan under a new run: a conflict in the plan file only i
     assert.doesNotMatch(text, /<<<<<<<|>>>>>>>/)
     assert.equal(sh(again.path, 'status', '--porcelain'), '', 'the merge is committed')
     assert.equal(sh(again.path, 'rev-list', '--parents', '-n', '1', 'HEAD').split(' ').length, 3, 'HEAD is the merge commit')
-    assert.equal(readFileSync(join(again.path, 'work', 'x.txt'), 'utf8'), 'built\n')
+    assert.equal(readFileSync(join(again.path, 'work', 'x.txt'), 'utf8').trim(), 'built', 'the builder work is on the branch')
   } finally {
     rmSync(t.parent, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
     rmSync(t.bare, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
