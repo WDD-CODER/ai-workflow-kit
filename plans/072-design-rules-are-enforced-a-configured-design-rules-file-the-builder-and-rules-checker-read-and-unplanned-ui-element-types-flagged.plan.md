@@ -1,6 +1,7 @@
 # Plan 072 — Design rules are enforced: a configured design-rules file the builder and rules checker read, and unplanned UI element types flagged
 
 Status: draft
+Parked: 2026-11-05 — reliability freeze, revisit 2026-11-15
 Depends-on: 070, 071
 Snapshot: 5784d6d3de92d41b9b08de0161cf3c31a430a8b2
 Source: FoodVibe run test-514-515 (PR #499) hand-off and eval file (Human, 2026-11-03); part 3 of 4 (070 records, 071 sorter, 073 quick-fix lane)

@@ -1,6 +1,7 @@
 # Plan 073 — A quick-fix lane for style-only notes, delta cards after a fix, and builder rules for the two traps that cost whole rounds
 
 Status: draft
+Parked: 2026-11-05 — reliability freeze, revisit 2026-11-15
 Depends-on: 069, 070, 071, 072
 Snapshot: 5784d6d3de92d41b9b08de0161cf3c31a430a8b2
 Source: FoodVibe run test-514-515 (PR #499) hand-off section 8, options a, c and d (Human, 2026-11-03); part 4 of 4 (070 records, 071 sorter, 072 design rules)

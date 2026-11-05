@@ -1,6 +1,6 @@
 # Plan 030 — The Orchestrator Learns From Run to Run: Role Lessons Written by Scripts, Rules for Every Role, a Run Log the Next Run Reads, and Trend Numbers
 
-Status: draft
+Status: done
 Depends-on: 029
 Snapshot: 7109f6143c2566b502f1fe8994b16b60f1a6b911
 

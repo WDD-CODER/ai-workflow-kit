@@ -1,6 +1,6 @@
 # Plan 065 — Lesson lines carry the run's code-made fact or nothing
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: b075db1e9c4876d4f210c95612df2e2a406a160a
 Source: first orchestrator test run (test-512-422) — lesson files held category-only lines; Human decision "approve: code facts only" (2026-11-02)

@@ -1,6 +1,7 @@
 # Plan 069 — Validation cards: a glance group, merged repeats, skipped untouched areas and one end-of-run layout
 
 Status: draft
+Parked: 2026-11-05 — reliability freeze, revisit 2026-11-15
 Depends-on: 049
 Snapshot: 2e00691cad9f286567c7ea8243c8c94675752161
 Source: merges plans 050, 051, 052 and 053 (Human decision, 2026-11-03); each came from the backlog of plan 024

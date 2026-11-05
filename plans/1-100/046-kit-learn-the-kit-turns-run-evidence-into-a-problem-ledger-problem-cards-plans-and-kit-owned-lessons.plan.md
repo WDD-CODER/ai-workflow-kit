@@ -1,6 +1,6 @@
 # Plan 046 — `/kit-learn`: the kit turns run evidence into a problem ledger, problem cards, plans and kit-owned lessons
 
-Status: draft
+Status: done
 Depends-on: 045
 Snapshot: a363b42
 

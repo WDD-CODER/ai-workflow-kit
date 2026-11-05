@@ -1,6 +1,7 @@
 # Plan 066 — Repeated lessons are counted on one line and each lesson reaches the role that can act on it
 
 Status: draft
+Parked: 2026-11-05 — reliability freeze, revisit 2026-11-15
 Depends-on: 065
 Snapshot: 9909c12f1572d8e1e0a4aa133ab2b362c468c1ee
 Source: first orchestrator test run (test-512-422) follow-up; Human decision "approve: code facts only" (2026-11-02)

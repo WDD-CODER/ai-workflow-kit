@@ -1,6 +1,7 @@
 # Plan 067 — A repeated lesson fact becomes a proposed kit lesson the Human approves
 
 Status: draft
+Parked: 2026-11-05 — reliability freeze, revisit 2026-11-15
 Depends-on: 066
 Snapshot: 9909c12f1572d8e1e0a4aa133ab2b362c468c1ee
 Source: Human decision "approve: code facts only" (2026-11-02); follows plans 046 (kit-learn) and 066 (counted lesson lines)

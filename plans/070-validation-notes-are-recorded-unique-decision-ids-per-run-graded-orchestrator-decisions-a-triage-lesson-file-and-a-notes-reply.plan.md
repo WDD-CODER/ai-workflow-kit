@@ -1,6 +1,7 @@
 # Plan 070 — Validation notes are recorded: unique decision ids per run, graded orchestrator decisions, a triage lesson file and a notes reply
 
 Status: draft
+Parked: 2026-11-05 — reliability freeze, revisit 2026-11-15
 Depends-on: 057, 065, 066, 069
 Snapshot: 5784d6d3de92d41b9b08de0161cf3c31a430a8b2
 Source: FoodVibe run test-514-515 (PR #499) hand-off and eval file (Human, 2026-11-03); part 1 of 4 with 071 (sorter), 072 (design rules), 073 (quick-fix lane)

@@ -1,6 +1,7 @@
 # Plan 071 — The notes sorter: a fresh-context agent turns raw validation notes into one approved table, measured against the Human's approved tables
 
 Status: draft
+Parked: 2026-11-05 — reliability freeze, revisit 2026-11-15
 Depends-on: 070
 Snapshot: 5784d6d3de92d41b9b08de0161cf3c31a430a8b2
 Source: FoodVibe run test-514-515 (PR #499) hand-off and eval file (Human, 2026-11-03); part 2 of 4 (070 records, 072 design rules, 073 quick-fix lane)

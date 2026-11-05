@@ -2,7 +2,7 @@
 
 Status: draft
 Depends-on: none
-Snapshot: 10cf6083eb3541236e967159ded9f6a389feca19
+Snapshot: fef8cff11a11cf5bfb7635be56bd7595bba68dbb
 Source: brain issue I1
 
 ## Problem Statement
@@ -11,10 +11,10 @@ A FoodVibe run (2026-10-27, kit v1.13.0) lost about 102 minutes: a gate command 
 environment check, the check passed, the plan was retried, the same command failed again, and the plan parked with
 `environment, again after one retry: gate env-fail: <command>`.
 
-Cause, read on `main` at the Snapshot (plan 058 is merged, PR #86): `envCheck()` in `core/.claude/workflows/orchestrate.js`
-(~l.906) runs `orch-preflight.mjs --env-only --run <run>`, which checks only disk, database and packages
+Cause, read on `main` at the Snapshot (line numbers refreshed 2026-11-05) (plan 058 is merged, PR #86): `envCheck()` in `core/.claude/workflows/orchestrate.js`
+(l.914) runs `orch-preflight.mjs --env-only --run <run>`, which checks only disk, database and packages
 (`core/scripts/orch-preflight.mjs` `packages()` l.111-125). It never looks at the command that failed, so it passes whenever
-disk, database and packages are fine, and the retry (l.1095-1101, one `envRetried` flag per plan) repeats the same failure.
+disk, database and packages are fine, and the retry (l.1101-1109, one `envRetried` flag per plan) repeats the same failure.
 
 ## Goals & Success Criteria
 
@@ -57,6 +57,7 @@ core/docs/agent/orchestrator.md
 scripts/orch-preflight.mjs
 docs/agent/orchestrator.md
 tools/test/orchestrator-env-retry.test.mjs
+docs/brain/scorecard.md
 ```
 
 ## Read Scope
@@ -92,10 +93,10 @@ line or file this plan names was removed, renamed or rewritten).
 
 ## Atomic Sub-tasks
 
-- [ ] A1: Reproduce the failure on `main` as it is now (058 included) — new test `reproduction` in a NEW file driving the stub orchestrator the way `tools/test/orchestrator.test.mjs` l.560-590 does (read that file for the stub setup; copy the harness code, do not edit that file): gate returns `env-fail` for `node scripts/x.mjs`, the environment check passes, the same command fails again → park `environment, again after one retry`. Commit it before A2 — `tools/test/orchestrator-env-retry.test.mjs`
+- [ ] A1: Reproduce the failure on `main` as it is now (058 included) — new test `reproduction` in a NEW file driving the stub orchestrator the way `tools/test/orchestrator.test.mjs` l.567-590 does (read that file for the stub setup; copy the harness code, do not edit that file): gate returns `env-fail` for `node scripts/x.mjs`, the environment check passes, the same command fails again → park `environment, again after one retry`. Commit it before A2 — `tools/test/orchestrator-env-retry.test.mjs`
 - [ ] A2: Add `--probe "<command>"` (repeatable) to the env-only preflight — `node <file>` → file exists in the root folder; `npm|pnpm run <name>` → `<name>` is in `package.json` `scripts` and `node_modules` exists; any other command → `SKIP probe: no precondition`; print `OK probe`/`FAIL probe <why>`/`SKIP probe` lines and keep the JSON line's `envFailure: true` on a FAIL — `core/scripts/orch-preflight.mjs`
-- [ ] A3: Set `probeCmds` on the gate result only where a command has the real status `env-fail` (the `env.length` return, ~l.707), not on the "returned no result, twice" return (~l.694) — `core/.claude/workflows/orchestrate.js`
-- [ ] A4: In the env branch (~l.1095): when the failure has `probeCmds`, call `envCheck` with them (`--probe` per command); every command `SKIP` → `park('environment: no precondition can be checked for <commands>')` with no retry; any `FAIL` → park with the probe message; otherwise retry once as today. A failure without `probeCmds` takes today's path unchanged — `core/.claude/workflows/orchestrate.js`
+- [ ] A3: Set `probeCmds` on the gate result only where a command has the real status `env-fail` (the `env.length` return, l.715), not on the "returned no result, twice" return (l.702) — `core/.claude/workflows/orchestrate.js`
+- [ ] A4: In the env branch (l.1101): when the failure has `probeCmds`, call `envCheck` with them (`--probe` per command); every command `SKIP` → `park('environment: no precondition can be checked for <commands>')` with no retry; any `FAIL` → park with the probe message; otherwise retry once as today. A failure without `probeCmds` takes today's path unchanged — `core/.claude/workflows/orchestrate.js`
 - [ ] A5: Add the cases of the Done-when list to the new file (probe forms, park at once, probe fail, probe pass then second failure, unchanged paths) — `tools/test/orchestrator-env-retry.test.mjs`
 - [ ] A6: Document the probe and the park-at-once rule where the environment retry is described — `core/docs/agent/orchestrator.md`
 - [ ] A7: `node tools/sync.mjs --target . --apply`, then `node tools/drift-check.mjs --target .` — the three installed copies listed in scope

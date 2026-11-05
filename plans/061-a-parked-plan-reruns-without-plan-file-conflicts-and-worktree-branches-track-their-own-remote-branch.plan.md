@@ -2,24 +2,24 @@
 
 Status: draft
 Depends-on: none
-Snapshot: aac496e051072bad36314d3b24767d2f7fa37469
+Snapshot: fef8cff11a11cf5bfb7635be56bd7595bba68dbb
 Source: first orchestrator test run (test-512-422), findings F6 and D10
 
 ## Problem Statement
 
 Two git-handling faults in how a plan branch is made and reused.
 
-1. **F6.** A parked plan's old branch is reused, never recreated (`core/scripts/orch-state.mjs:872`, `exists ? worktree add branch :
+1. **F6.** A parked plan's old branch is reused, never recreated (`core/scripts/orch-state.mjs:929`, `exists ? worktree add branch :
    worktree add -b branch base`; slot path `core/scripts/lib/orch-folders.mjs:87`). On a rerun the run branch is merged into it
-   (`orch-state.mjs:896-902`); a conflict aborts the merge and parks the plan again with
-   `merging origin/<run> into <branch> conflicts` (:900, parked at `orchestrate.js:979`). The conflicting file is the plan's own
-   file: the builder committed ticks and `## Execution Notes` lines to it (`orch-builder.md:26,49-50`) and the run branch holds
+   (`orch-state.mjs:950-958`); a conflict aborts the merge and parks the plan again with
+   `merging origin/<run> into <branch> conflicts` (:957, parked at `orchestrate.js:987`). The conflicting file is the plan's own
+   file: the builder committed ticks and `## Execution Notes` lines to it (`orch-builder.md:26,49,63-64`) and the run branch holds
    a newer text of it. Nothing in the builder or merge agents may resolve it (`orch-merge.md:21` aborts and returns
    `merged: false`).
-2. **D10.** The plan branch is created from `origin/<run branch>` (`orch-state.mjs:872`, `orch-folders.mjs:87`). With git's
+2. **D10.** The plan branch is created from `origin/<run branch>` (`orch-state.mjs:929`, `orch-folders.mjs:87`). With git's
    default `branch.autoSetupMerge` the new branch takes `origin/<run branch>` as its upstream, so a bare `git push` by the
-   builder (`orch-builder.md:50`, `orchestrate.js:654` give no command) errors or pushes to the wrong ref. The run branch itself
-   is created with `--no-track` (`orch-state.mjs:649`), which shows the intent.
+   builder (`orch-builder.md:50`, `orchestrate.js:662` give no command) errors or pushes to the wrong ref. The run branch itself
+   is created with `--no-track` (`orch-state.mjs:706`), which shows the intent.
 
 ## Goals & Success Criteria
 **Primary:** rerunning a parked plan never stops on a conflict in the plan's own file, and a plan branch's upstream is never the
@@ -28,7 +28,7 @@ run branch.
 - [auto] A worktree made by `orch-state.mjs worktree` and a slot branch made by `orch-folders.mjs` have no
   `branch.<name>.merge` set (`git config --get` exits 1), and a reused local branch that already inherited the run branch as
   upstream has it removed. Tests next to `orchestrator-folders.test.mjs:351` (worktree) and the slot helper tests near :91-125.
-- [auto] `orch-builder.md` step 7 and the builder prompt (`orchestrate.js:654`) say `git push -u origin <branch>`; string assertions.
+- [auto] `orch-builder.md` step 7 and the builder prompt (`orchestrate.js:662`) say `git push -u origin <branch>`; string assertions.
 - [auto] Rerun of a parked plan whose branch has builder commits touching `plans/NNN-*.plan.md` and whose run branch has a newer
   text of that file: `orch-state.mjs worktree` returns ok, the merge commit exists, the plan file has the run branch's text with
   the builder's ticked sub-tasks and its added Execution Notes lines kept, and no other file is resolved by the script. A conflict in
@@ -67,6 +67,7 @@ docs/agent/**
 docs/brain/**
 .kit/install.json
 CHANGELOG.md
+docs/brain/scorecard.md
 ```
 
 `scripts/**`, `.claude/**`, `docs/agent/**`, `docs/brain/**` and `.kit/install.json` are rendered copies, written only by
@@ -102,10 +103,10 @@ append the path to the scope block above and retry.
 ## Functional Requirements
 
 ### Must Have (P0)
-- [ ] `--no-track` on both branch creations (`orch-state.mjs:872`, `orch-folders.mjs:87`); for a reused branch whose
+- [ ] `--no-track` on both branch creations (`orch-state.mjs:929`, `orch-folders.mjs:87`); for a reused branch whose
       `branch.<b>.merge` equals the run branch, unset `branch.<b>.merge` and `branch.<b>.remote`.
-- [ ] `git push -u origin <branch>` in `orch-builder.md` step 7 and `orchestrate.js:654`.
-- [ ] Plan-file-only conflict handling in `worktree()` (`orch-state.mjs:897-900`): when the merge conflicts and the only
+- [ ] `git push -u origin <branch>` in `orch-builder.md` step 7 and `orchestrate.js:662`.
+- [ ] Plan-file-only conflict handling in `worktree()` (`orch-state.mjs:953-958`): when the merge conflicts and the only
       conflicted path is `plans/NNN-*.plan.md`, resolve it with a pure function `mergePlanFile({ ours, theirs })` in
       `orch-run.mjs`: take `theirs` (the run branch's text), tick every sub-task line whose id is `[x]` in `ours`, append the
       `## Execution Notes` lines of `ours` that `theirs` lacks; commit with the merge message. Any other conflicted path: abort
@@ -141,7 +142,7 @@ Every step names its own test location.
   plan with no builder left to resolve it, and `orch-merge` must never resolve (`orch-merge.md:21`).
 - **Why take the run branch's text as the base:** it carries any later Planner/plan-close edit (Status, scope); the builder's own
   work (ticks, notes) is additive and is re-applied.
-- **Why not recreate the branch:** it would drop the builder's earlier commits and break `resumed` (`orch-state.mjs:904-905`).
+- **Why not recreate the branch:** it would drop the builder's earlier commits and break `resumed` (`orch-state.mjs:960-962`).
 - **Alternative rejected:** the builder no longer commits the plan file — the gate and checkers read ticks from the branch.
 
 ## Out of Scope
