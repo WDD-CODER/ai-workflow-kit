@@ -779,7 +779,7 @@ async function checkers(ctx) {
   if (!diff.ok) return { env: !!diff.envFailure, fail: !diff.envFailure, why: `diff: ${diff.error}`, findings: [] }
   // Test-file gate: a test file the plan's scope does not name is a blocker found by script, before any finder.
   if (Array.isArray(diff.testsOutOfScope) && diff.testsOutOfScope.length) {
-    const findings = diff.testsOutOfScope.map((f, i) => ({ id: `scope-${i + 1}`, severity: 'blocker', file: f, line: 0, rule: "test file outside the plan's scope", reasoning: `${f} is a test file and no line of the plan's Read-Write Scope names a test location that matches it; a builder may not change the tests that would catch it. Revert it or ask the Human for \`approved: ${f}\`.` }))
+    const findings = diff.testsOutOfScope.map((f, i) => ({ id: `scope-${i + 1}`, severity: 'blocker', file: f, line: 0, rule: 'no scope line names a test location', reasoning: `${f} is a test file and no line of the plan's Read-Write Scope names a test location that matches it (a code-folder glob does not list the tests under it); a builder may not change the tests that would catch it. Revert it or ask the Human for \`approved: ${f}\`.` }))
     return { results: [], diff, fail: true, why: `checker: ${findings.map((k) => `${k.severity} ${k.file}:${k.line} ${k.rule}`).join('; ')}`, findings }
   }
   const roles = diff.sensitive ? [...FINDERS, 'orch-security'] : FINDERS

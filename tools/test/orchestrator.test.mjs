@@ -2097,7 +2097,8 @@ test('plan 049: a test file outside the plan scope is a blocker found by script,
   assert.equal(builders.length, 2, 'one fix round')
   const findings = JSON.parse(builders[1].task.FINDINGS)
   assert.equal(findings.length, 1)
-  assert.equal(findings[0].rule, "test file outside the plan's scope")
+  assert.equal(findings[0].rule, 'no scope line names a test location')
+  assert.doesNotMatch(`${findings[0].rule} ${findings[0].reasoning}`, /outside the plan's scope|does not cover the test/)
   assert.equal(findings[0].severity, 'blocker')
   assert.equal(findings[0].file, 'src/a.test.ts')
   const before = calls.slice(0, calls.indexOf(builders[1])).filter((c) => /^orch-check-/.test(c.type ?? ''))
@@ -2496,6 +2497,22 @@ test('orch-state final-gate: stores { ok, command, at, attempt, blamed }; attemp
       assert.equal(other.status().stopReason, 'agent-call limit')
       assert.equal(other.status().phase, 'stopped')
     } finally { other.clean() }
+  } finally { t.clean() }
+})
+
+test('a final gate that failed and then re-ran ok leaves no "final gate failed" note in status.json or the report; a gate that still fails keeps it', () => {
+  const failedNote = { at: 'T', text: 'final gate failed: npm run lint — breadcrumbs-check' }
+  const st = () => ({ run: 'g', phase: 'stopped', stopReason: 'final gate failed: npm run lint — x', plans: { 101: { nnn: '101', state: 'merged', models: {} } }, notes: [failedNote, { at: 'T', text: 'wave 1 merged 101' }, { at: 'T', text: 'final gate could not run: no folder' }] })
+  const report = (status) => lib.formatReport({ status, merged: [{ nnn: '101', branch: 'feat/101-a', sha: 'bbbbbbb2' }], mainShaNow: 'aaaaaaa1', finishedAt: 'T1', runBranch: 'orch/g', mainBranch: 'main' })
+  const t = learnDir(st())
+  try {
+    t.orch('final-gate', '--result=failed', '--command=npm run lint')
+    assert.equal(t.status().notes.filter((n) => /^final gate failed/.test(n.text)).length, 1, 'a gate that still fails keeps its note')
+    const ok = t.orch('final-gate', '--result=ok')
+    assert.equal(ok.status, 0, ok.stdout + ok.stderr)
+    const s = t.status()
+    assert.deepEqual(s.notes.map((n) => n.text), ['wave 1 merged 101'], 'the failure notes are gone, the others stay')
+    assert.doesNotMatch(report(s), /final gate failed|final gate could not run/)
   } finally { t.clean() }
 })
 

@@ -53,7 +53,7 @@ import { resolve, dirname, join, relative, isAbsolute } from 'path'
 import { fileURLToPath } from 'url'
 import picomatch from 'picomatch'
 import { activePlanPath, branchPlanPath } from './lib/slot.mjs'
-import { extractScopeGlobs, testFilesOutOfScope } from './lib/plan-scope.mjs'
+import { extractScopeGlobs, testFilesOutOfScope, testLocationReason } from './lib/plan-scope.mjs'
 import { listOpenPlans, OPEN_PLAN_DIRS } from './lib/plan-paths.mjs'
 import { parseDependsOn, parseProsePrerequisites } from './lib/plan-deps.mjs'
 import { doneWhenTagProblems } from './lib/done-when.mjs'
@@ -213,7 +213,7 @@ function cmdDiff(args) {
     console.log('SCOPE: out')
     for (const f of out) console.log(`  ${f}${isUpstream(f) ? ' (upstream-owned: ownership.upstreamPaths)' : ''}`)
   }
-  for (const f of testOut) console.log(`SCOPE: test-out ${f}`)
+  for (const f of testOut) console.log(`SCOPE: test-out ${f}\n  ${testLocationReason(f)}`)
   process.exit(1)
 }
 
@@ -364,6 +364,14 @@ function cmdTests(args) {
 }
 
 const args = parseArgs(process.argv.slice(2))
+// A flag that takes a value but came without one (`--diff`, or `--plan <path>` with a space) stops here with one usage
+// line, before git or a plan read could turn the word `true` into a verdict.
+for (const flag of ['diff', 'plan', 'base']) {
+  if (args[flag] === true || args[flag] === '') {
+    console.error(`SCOPE_CHECK: --${flag} needs a value: --${flag}=<${flag === 'plan' ? 'path' : 'ref'}>`)
+    process.exit(2)
+  }
+}
 
 if (args.arch && args.diff) cmdArchDiff(args)
 else if (args.arch && args.plan) cmdArchPlan(args)

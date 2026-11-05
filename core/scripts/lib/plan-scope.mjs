@@ -63,6 +63,15 @@ export function testScopeGlobs(scopeGlobs) {
 }
 
 /**
+ * Why a changed test file is refused. The file may well match a broad scope glob; what is missing is a scope line that
+ * names a test location, so the reason says that and never that the scope does not cover the file.
+ */
+export const TEST_LOCATION_RULE = 'no scope line names a test location'
+export function testLocationReason(file) {
+  return `${file}: ${TEST_LOCATION_RULE} — a code-folder glob does not list the tests under it; add a tests folder glob or this test file to the scope`
+}
+
+/**
  * Of the changed files, the test files no test-naming scope line matches. `matchGlobs(globs)` returns a path
  * predicate (picomatch with dot:true), passed in so this file keeps no dependency.
  */
