@@ -47,6 +47,12 @@ test('install-check --target names each missing rule section; sync --apply adds 
     assert.equal(again.status, 0)
     assert.doesNotMatch(again.stdout, /RULES_SECTION_MISSING/)
     assert.equal(readFileSync(join(dir, RULES), 'utf8'), after, 'a second apply changes nothing')
+    // headings are read as the rules reader reads them: any case, extra spaces
+    const loose = '# Agent rules\n\n## Builder\n\n##  checkers\n\n## READINESS  \n\n## ui\n'
+    writeFileSync(join(dir, RULES), loose)
+    assert.equal(check().status, 0, 'a "## Builder" heading counts')
+    node(join(kit, 'tools', 'sync.mjs'), ['--target', dir, '--source', kit, '--apply'], dir)
+    assert.equal(readFileSync(join(dir, RULES), 'utf8'), loose, 'no second header is added')
   } finally {
     rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
   }

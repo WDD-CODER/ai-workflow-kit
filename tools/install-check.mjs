@@ -60,7 +60,9 @@ const RULE_SECTIONS = ['builder', 'checkers', 'readiness', 'ui']
       process.exit(0)
     }
     const text = readFileSync(rulesFile, 'utf8')
-    const missing = RULE_SECTIONS.filter((s) => !new RegExp(`^## ${s}[ \\t]*\\r?$`, 'm').test(text))
+    // Headings read the way the rules reader reads them (decision-log.mjs ruleLayout): `##`, spaces, any case.
+    const heads = new Set([...text.matchAll(/^##\s+(.+?)\s*$/gm)].map((m) => m[1].toLowerCase()))
+    const missing = RULE_SECTIONS.filter((s) => !heads.has(s))
     for (const s of missing) console.log(`RULES_SECTION_MISSING: docs/brain/agent-rules.md has no "## ${s}" section — the ${s} role reads no rules; node tools/sync.mjs --apply adds the empty header`)
     console.log(missing.length ? `INSTALL_CHECK: FAIL — ${missing.length} rule section(s) missing` : 'INSTALL_CHECK: ok — every rule section present')
     process.exit(missing.length ? 1 : 0)

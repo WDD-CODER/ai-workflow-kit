@@ -240,7 +240,9 @@ if (staleRender && !args.apply) console.log(staleRender)
   const file = join(target, RULES)
   if (!overrides.has(RULES) && existsSync(file)) {
     const text = readFileSync(file, 'utf8')
-    const missing = ['builder', 'checkers', 'readiness', 'ui'].filter((s) => !new RegExp(`^## ${s}[ \\t]*\\r?$`, 'm').test(text))
+    // Headings read the way the rules reader reads them (decision-log.mjs ruleLayout): `##`, spaces, any case.
+    const heads = new Set([...text.matchAll(/^##\s+(.+?)\s*$/gm)].map((m) => m[1].toLowerCase()))
+    const missing = ['builder', 'checkers', 'readiness', 'ui'].filter((s) => !heads.has(s))
     if (missing.length && args.apply) {
       const nl = text.includes('\r\n') ? '\r\n' : '\n'
       const body = text === '' || text.endsWith('\n') ? text : `${text}${nl}`

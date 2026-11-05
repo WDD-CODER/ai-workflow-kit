@@ -213,7 +213,11 @@ function cmdDiff(args) {
     console.log('SCOPE: out')
     for (const f of out) console.log(`  ${f}${isUpstream(f) ? ' (upstream-owned: ownership.upstreamPaths)' : ''}`)
   }
-  for (const f of testOut) console.log(`SCOPE: test-out ${f}\n  ${testLocationReason(f)}`)
+  // The reason goes to stderr: ship-prep reads every stdout line as a path.
+  for (const f of testOut) {
+    console.log(`SCOPE: test-out ${f}`)
+    console.error(`SCOPE_CHECK: ${testLocationReason(f)}`)
+  }
   process.exit(1)
 }
 

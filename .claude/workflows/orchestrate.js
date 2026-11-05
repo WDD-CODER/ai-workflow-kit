@@ -352,7 +352,7 @@ async function setPlan(nnn, fields, results = []) {
   const argv = ['set', '--run', RUN, '--plan', nnn]
   // A reason goes base64-encoded (like the decisions and notes): a park reason with quotes, brackets or $ once broke
   // the runner's shell call, and the stored reason is then exactly the text the workflow wrote.
-  for (const [k, v] of Object.entries(fields)) if (v !== undefined && v !== null) argv.push(...(k === 'reason' ? ['--reason-b64', toB64(String(v))] : [`--${k}`, String(v)]))
+  for (const [k, v] of Object.entries(fields)) if (v !== undefined && v !== null) argv.push(...(k === 'reason' ? ['--reason-b64', toB64(String(v).slice(0, REASON_MAX))] : [`--${k}`, String(v)]))
   const roles = roleArg(results)
   if (roles) argv.push('--roles', roles)
   // Lesson facts queued for this plan go with this call.
@@ -439,7 +439,10 @@ async function withQueued(argv, label) {
   if (!r?.ok) q.restore()
   return r
 }
-const stopRun = (reason) => withQueued(['stop', '--run', RUN, '--reason-b64', toB64(String(reason))], 'stop')
+// A park or stop reason is cut at REASON_MAX characters before it is encoded: it stays readable in the report and
+// keeps the command line bounded.
+const REASON_MAX = 2000
+const stopRun = (reason) => withQueued(['stop', '--run', RUN, '--reason-b64', toB64(String(reason).slice(0, REASON_MAX))], 'stop')
 
 let mergeFolder = null
 // The files of each plan's last checked diff, for the triage agent (no extra call).
