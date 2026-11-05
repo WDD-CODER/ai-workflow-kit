@@ -1,6 +1,6 @@
 # Plan 068 — An environment failure retry checks the command that failed, and parks at once when nothing can be checked
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: fef8cff11a11cf5bfb7635be56bd7595bba68dbb
 Source: brain issue I1
