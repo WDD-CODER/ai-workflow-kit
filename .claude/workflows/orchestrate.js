@@ -349,7 +349,9 @@ async function setPlan(nnn, fields, results = []) {
     }
   }
   const argv = ['set', '--run', RUN, '--plan', nnn]
-  for (const [k, v] of Object.entries(fields)) if (v !== undefined && v !== null) argv.push(`--${k}`, String(v))
+  // A reason goes base64-encoded (like the decisions and notes): a park reason with quotes, brackets or $ once broke
+  // the runner's shell call, and the stored reason is then exactly the text the workflow wrote.
+  for (const [k, v] of Object.entries(fields)) if (v !== undefined && v !== null) argv.push(...(k === 'reason' ? ['--reason-b64', toB64(String(v))] : [`--${k}`, String(v)]))
   const roles = roleArg(results)
   if (roles) argv.push('--roles', roles)
   // Lesson facts queued for this plan go with this call.
@@ -436,7 +438,7 @@ async function withQueued(argv, label) {
   if (!r?.ok) q.restore()
   return r
 }
-const stopRun = (reason) => withQueued(['stop', '--run', RUN, '--reason', reason], 'stop')
+const stopRun = (reason) => withQueued(['stop', '--run', RUN, '--reason-b64', toB64(String(reason))], 'stop')
 
 let mergeFolder = null
 // The files of each plan's last checked diff, for the triage agent (no extra call).

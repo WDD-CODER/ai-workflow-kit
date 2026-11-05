@@ -107,6 +107,8 @@ const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tie
   'replan', 'replan-why', 'not-done', 'failed',
   // queued run notes riding on set / stop / finish, and the one-call decisions list
   'note', 'notes-b64', 'b64', 'flakes-b64', 'with-worktree',
+  // a reason as base64 of its UTF-8 text (the workflow's way: quotes, brackets and $ survive the runner's shell)
+  'reason-b64',
   // `prepare`: the generated path, the npm script, the folder it runs in and the package manager
   'missing', 'script', 'in', 'pm'])
 function parseArgs(argv) {
@@ -130,6 +132,13 @@ function parseArgs(argv) {
 
 const parsed = parseArgs(process.argv.slice(2))
 const args = parsed.args ?? { _: [] }
+// --reason-b64 stands for --reason: decoded here, so every command that reads a reason takes either form.
+if (args['reason-b64'] !== undefined) {
+  const raw = String(args['reason-b64'])
+  const text = Buffer.from(raw, 'base64').toString('utf8')
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(raw) || Buffer.from(text, 'utf8').toString('base64').replace(/=+$/, '') !== raw.replace(/=+$/, '')) parsed.problem ??= '--reason-b64 is not base64 of UTF-8 text'
+  else args.reason = text
+}
 const cmd = args._[0]
 const root = resolve(join(__dirname, '..'))
 const repoName = REPO || root.split(/[\\/]/).pop()
@@ -1185,6 +1194,12 @@ const commands = {
     if (args.round !== undefined) {
       if (!/^\d+$/.test(String(args.round))) fail('--round takes a whole number')
       p.round = Number(args.round)
+    }
+    // Every tier a builder of this plan ran on, in order (a change of tier appends): the report lists them all, not the last.
+    if (args.tier !== undefined && args.tier !== true) {
+      const tiers = p.tiers ?? (p.tier ? [p.tier] : [])
+      if (tiers[tiers.length - 1] !== String(args.tier)) tiers.push(String(args.tier))
+      p.tiers = tiers
     }
     for (const k of ['tier', 'sha', 'reason']) if (args[k] !== undefined && args[k] !== true) p[k] = String(args[k])
     // --checked-head <sha>: the branch head that passed the gate and the checkers (what `merge-ready` compares with).

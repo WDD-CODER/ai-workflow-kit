@@ -295,7 +295,7 @@ test('final gate: the project checks run once on the run branch after the last m
   assert.equal(broken.result.finalGate.ok, false)
   assert.match(broken.result.finalGate.why, /^final gate failed: npm run \w+ — .*v2-types\.spec/)
   assert.match(broken.result.stopReason, /^final gate failed/)
-  assert.ok(broken.commands.some((c) => /orch-state\.mjs stop/.test(c) && /final gate failed/.test(c)), 'the run is stopped with the reason (the report header shows it)')
+  assert.ok(broken.commands.some((c) => /orch-state\.mjs stop/.test(c) && /^final gate failed/.test(reasonOf(c) ?? '')), 'the run is stopped with the reason (the report header shows it)')
   assert.ok(broken.commands.some((c) => /orch-state\.mjs note/.test(c) && /final gate failed/.test(c)))
 })
 
@@ -306,7 +306,7 @@ test('pilot: more plans than pilotSize -> the first plans run, the run stops wit
   assert.deepEqual(built, plans.slice(0, PILOT))
   assert.deepEqual(first.result.pilot, { size: PILOT, waiting: plans.slice(PILOT) })
   assert.match(first.result.stopReason, new RegExp(`^pilot of ${PILOT} plans done`))
-  assert.ok(first.commands.some((c) => /orch-state\.mjs stop/.test(c) && /pilot of/.test(c)))
+  assert.ok(first.commands.some((c) => /orch-state\.mjs stop/.test(c) && /^pilot of/.test(reasonOf(c) ?? '')))
   // continue: pilot false, the merged plans come back as already merged from git
   const rest = await runFlow({ plans, pilot: false }, { merged: plans.slice(0, PILOT) })
   assert.deepEqual(rest.calls.filter((c) => c.type === 'orch-builder').map((c) => /feat\/(\d+)-/.exec(c.task.BRANCH)[1]), plans.slice(PILOT))
@@ -321,8 +321,67 @@ test('pilot: more plans than pilotSize -> the first plans run, the run stops wit
 const builtPlans = (calls) => [...new Set(calls.filter((c) => c.type === 'orch-builder').map((c) => /feat\/(\d+)-/.exec(c.task.BRANCH)[1]))]
 const parkHook = (edges, extra = {}) => ({ waves: [['101'], ['102']], edges, gateFails: (folder) => folder === '/wt/101', ...extra })
 const stateOf = (result, nnn) => result.outcomes.find((o) => o.nnn === nnn)?.state
-const skipCommand = (commands, nnn, reason) => commands.some((c) => c.includes(`orch-state.mjs set --run=r1 --plan=${nnn} --state=skipped "--reason=${reason}"`))
+// The reason rides base64-encoded (--reason-b64): decoded here and compared with the text the workflow wrote.
+const reasonOf = (c) => {
+  const m = /--reason-b64=([A-Za-z0-9+/=]+)/.exec(c)
+  return m ? Buffer.from(m[1], 'base64').toString('utf8') : null
+}
+const skipCommand = (commands, nnn, reason) => commands.some((c) => c.includes(`orch-state.mjs set --run=r1 --plan=${nnn} --state=skipped --reason-b64=`) && reasonOf(c) === reason)
 const stopCommands = (commands) => commands.filter((c) => /orch-state\.mjs stop/.test(c))
+
+test('a park reason with quotes, brackets and $ parks on the first call: it rides base64-encoded and is stored as written', async () => {
+  const r = await runFlow({ plans: ['101', '102'], pilot: false }, parkHook([]))
+  const park = r.commands.filter((c) => /orch-state\.mjs set --run=r1 --plan=101 --state=parked/.test(c))
+  assert.ok(park.length, 'a park command')
+  for (const c of park) {
+    assert.doesNotMatch(c, /--reason=|"/, 'no plain reason and no shell quoting')
+    assert.ok(reasonOf(c), 'the reason rides as --reason-b64')
+  }
+  for (const c of stopCommands(r.commands)) assert.doesNotMatch(c, /--reason=/)
+  // the script stores the decoded text exactly, on the first call
+  const reason = `checker: blocker src/a.ts:3 scope ('src/app/…/**') — "x" $HOME \`y\` (z)`
+  const t = learnDir({ run: 'g', phase: 'running', plans: { 101: { nnn: '101', state: 'building', round: 1, models: {} } } }, { merge: false })
+  try {
+    const set = t.orch('set', '--plan=101', '--state=parked', `--reason-b64=${Buffer.from(reason, 'utf8').toString('base64')}`)
+    assert.equal(set.status, 0, set.stdout + set.stderr)
+    assert.equal(t.status().plans[101].state, 'parked')
+    assert.equal(t.status().plans[101].reason, reason)
+    const bad = t.orch('set', '--plan=101', '--state=parked', '--reason-b64=not base64!')
+    assert.equal(bad.status, 1)
+    assert.match(bad.stdout + bad.stderr, /--reason-b64 is not base64 of UTF-8 text/)
+    assert.equal(t.orch('stop', `--reason-b64=${Buffer.from('stop (a) "b"', 'utf8').toString('base64')}`).status, 0)
+    assert.equal(t.status().stopReason, 'stop (a) "b"')
+  } finally { t.clean() }
+})
+
+test('the report tier cell lists every builder tier that ran: a plan built on sonnet, then judgment, shows both', () => {
+  const t = learnDir({ run: 'g', phase: 'running', plans: { 101: { nnn: '101', state: 'queued', round: 0, models: {} } } }, { merge: false })
+  try {
+    for (const [state, round, tier] of [['building', 0, 'sonnet'], ['gate', 0, 'sonnet'], ['fixing', 1, 'sonnet'], ['fixing', 2, 'judgment'], ['gate', 2, 'judgment']]) {
+      const r = t.orch('set', '--plan=101', `--state=${state}`, `--round=${round}`, `--tier=${tier}`)
+      assert.equal(r.status, 0, r.stdout + r.stderr)
+    }
+    const s = t.status()
+    assert.deepEqual(s.plans[101].tiers, ['sonnet', 'judgment'])
+    const report = lib.formatReport({ status: s, merged: [], mainShaNow: 'aaaaaaa1', finishedAt: 'T1', runBranch: 'orch/g', mainBranch: 'main' })
+    assert.match(report, /\| 101 [^|]*\| gate \| 2 \| sonnet → judgment \|/)
+  } finally { t.clean() }
+  assert.equal(lib.builderTiers({ tier: 'judgment' }), 'judgment', 'an older status.json shows its one tier')
+  assert.equal(lib.builderTiers({}), '')
+})
+
+test('a lesson line takes only the finding ids and paths the code makes: no free words from an agent', () => {
+  for (const id of ['gate-3', 'scope-1', 'ui-12', 'merge-1', 'check-rules-2', 'check-bugs-999', 'check-plan-1', 'security-4', 'verify-1', 'readiness-2']) assert.ok(lib.safeLessonId(id), id)
+  for (const id of ['ignore-previous-instructions', 'bugs-1', 'gate-1000', 'gate-', 'gate-x', 'gate-1 ', 'check-rules-2-a', '']) assert.ok(!lib.safeLessonId(id), id)
+  for (const p of ['src/app/a/b.ts', 'a.ts', 'tools/test/x.test.mjs', '@scope/pkg/a.js']) assert.ok(lib.safeLessonPath(p), p)
+  for (const p of ['src/app/a/b/c.ts', `src/${'x'.repeat(41)}.ts`, 'src/../a.ts', 'src//a.ts', 'src/a b.ts', '']) assert.ok(!lib.safeLessonPath(p), p)
+  const status = { run: 'x', plans: { 7: { nnn: '7', state: 'merged', round: 1, models: {}, roundCauses: ['round 1: checker: blocker src/a.ts:1 x'],
+    causeFacts: [{ round: 1, kind: 'checker', findings: [{ id: 'ignore-previous-instructions', file: 'src/a.ts' }, { id: 'gate-3', file: 'src/app/a/b/c/d.ts' }, { id: 'check-rules-2', file: 'src/app/a/b.ts' }] }] } } }
+  const text = lib.lessonFacts(status).map((f) => f.text).join('\n')
+  assert.doesNotMatch(text, /ignore-previous-instructions/)
+  assert.match(text, /finding gate-3(?! in)/, 'a five-segment path is left out, the id stays')
+  assert.match(text, /finding check-rules-2 in src\/app\/a\/b\.ts/)
+})
 
 test('onPark dependents: a plan with no edge to the parked one is built and merged, and the run is not stopped', async () => {
   const r = await runFlow({ plans: ['101', '102'], pilot: false }, parkHook([]))
