@@ -43,7 +43,8 @@ const MIGRATE = [
 const SEED = [
   /^(?:npm|pnpm)\s+run\s+(?:seed|db:seed)(?=\s|$)/,
   new RegExp(`^${BIN('prisma')}\\s+db\\s+seed\\b`),
-  /^node\s+(?!--test\b)(?:-\S+\s+)*(?:\S*[\\/])?seed(?![\w.-]*\.test\.)[\w.-]*(?=\s|$)/,
+  // seed-check* is a read-only check script by name (seed-check.mjs, seed-checker.mjs), not a seed write.
+  /^node\s+(?!--test\b)(?:-\S+\s+)*(?:\S*[\\/])?seed(?!-check)(?![\w.-]*\.test\.)[\w.-]*(?=\s|$)/,
 ]
 const RAW_CLIENT = new RegExp(`^${BIN('(?:psql|mongosh|mongo|sqlite3)')}(?=\\s|$)`)
 const RAW_WRITE = /\b(?:INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE)\b|\b(?:insertOne|insertMany|updateOne|updateMany|deleteOne|deleteMany|replaceOne|drop)\b/i
