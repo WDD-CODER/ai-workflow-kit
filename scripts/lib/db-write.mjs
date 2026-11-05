@@ -53,24 +53,30 @@ const RAW_SCRIPT = /(?:^|\s)(?:-f|--file)(?:\s|=)|<\s*\S|(?:^|\s)\.read\s/
 const SEED_LOOSE = SEED.map(loose)
 const MIGRATE_LOOSE = MIGRATE.map(loose)
 const RAW_CLIENT_LOOSE = loose(RAW_CLIENT)
-const stripped = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().replace(/^[({]\s*/, '').replace(PREFIX, '')
+const flat = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().replace(/^[({]\s*/, '')
+const stripped = (s) => flat(s).replace(PREFIX, '')
+// Safe only when the segment's own first word (variable assignments aside, no launcher) is the safe tool, and nothing
+// in it runs other code: no $( ), backticks, process substitution, -exec, --pre, git -c / an alias `!`.
+const RUNS_CODE = /\$\(|`|<\(|>\(|\s-exec\b|--pre\b|\s-c\s|!/
+const isSafe = (s) => {
+  const own = flat(s).replace(new RegExp(`^${ASSIGN}`), '')
+  return SAFE.test(own) && !RUNS_CODE.test(own)
+}
 
-/** Does this command run a database client (anchored; anywhere unless its command word is a safe tool)? */
+/** Does this command run a database client (anchored; anywhere unless it is a safe tool's own command)? */
 function runsClient(command) {
-  const c = stripped(command)
-  return RAW_CLIENT.test(c) || (!SAFE.test(c) && RAW_CLIENT_LOOSE.test(c))
+  return RAW_CLIENT.test(stripped(command)) || (!isSafe(command) && RAW_CLIENT_LOOSE.test(flat(command)))
 }
 
 /** 'migrate' | 'seed' | 'raw-write' | null — the kind of database write a command is. */
 export function dbWriteKind(command) {
   const c = stripped(command)
   if (!c) return null
-  const safe = SAFE.test(c)
-  const seed = safe ? SEED : SEED_LOOSE
-  const migrate = safe ? MIGRATE : MIGRATE_LOOSE
-  if (seed.some((re) => re.test(c))) return 'seed'
-  if (migrate.some((re) => re.test(c))) return 'migrate'
-  if (runsClient(c) && (RAW_WRITE.test(c) || RAW_SCRIPT.test(c))) return 'raw-write'
+  const all = flat(command)
+  const safe = isSafe(command)
+  if (SEED.some((re) => re.test(c)) || (!safe && SEED_LOOSE.some((re) => re.test(all)))) return 'seed'
+  if (MIGRATE.some((re) => re.test(c)) || (!safe && MIGRATE_LOOSE.some((re) => re.test(all)))) return 'migrate'
+  if (runsClient(command) && (RAW_WRITE.test(all) || RAW_SCRIPT.test(all))) return 'raw-write'
   return null
 }
 
