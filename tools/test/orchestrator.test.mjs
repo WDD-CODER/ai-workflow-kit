@@ -154,7 +154,7 @@ async function runFlow(args, hooks = {}) {
     if (cmd === 'init') return { ok: true, mergeFolder: '/merge', startedAt: '2026-01-01T00:00:00.000Z', ...(hooks.init ?? {}) }
     if (cmd === 'order') {
       const todo = plansIn.filter((p) => !(hooks.merged ?? []).includes(p))
-      return { ok: true, waves: hooks.waves ?? [todo], waveLocks: hooks.waveLocks ?? [], ...(hooks.edges ? { edges: hooks.edges } : {}), skipped: hooks.merged ?? [], plans: Object.fromEntries(plansIn.map((p) => [p, { path: `plans/${p}-x.plan.md` }])) }
+      return { ok: true, waves: hooks.waves ?? [todo], waveLocks: hooks.waveLocks ?? [], ...(hooks.edges ? { edges: hooks.edges } : {}), skipped: hooks.merged ?? [], plans: Object.fromEntries(plansIn.map((p) => [p, { path: `plans/${p}-x.plan.md` }])), ...(hooks.testLocations ? { testLocations: hooks.testLocations } : {}) }
     }
     if (cmd === 'plan-info') {
       const info = { ok: true, path: `plans/${f.plan}-x.plan.md`, branch: `feat/${f.plan}-x`, startTier: 'build', invariants: [], npmScripts: [], uiItems: [] }
@@ -352,6 +352,28 @@ test('a park reason with quotes, brackets and $ parks on the first call: it ride
     assert.match(bad.stdout + bad.stderr, /--reason-b64 is not base64 of UTF-8 text/)
     assert.equal(t.orch('stop', `--reason-b64=${Buffer.from('stop (a) "b"', 'utf8').toString('base64')}`).status, 0)
     assert.equal(t.status().stopReason, 'stop (a) "b"')
+  } finally { t.clean() }
+})
+
+test('readiness: a plan whose scope names no test location is asked about before any builder; a plan that names one is not', async () => {
+  const r = await runFlow({ mode: 'readiness', plans: ['101', '102'] }, { testLocations: { 101: ['src/**'] } })
+  const p101 = r.result.plans.find((p) => p.nnn === '101')
+  const p102 = r.result.plans.find((p) => p.nnn === '102')
+  assert.equal(p101.state, 'questions')
+  assert.ok(p101.questions.some((q) => /^101 test location: the plan changes code \(src\/\*\*\) but no scope line names a test location/.test(q)), JSON.stringify(p101.questions))
+  assert.ok(!p102.questions.some((q) => /test location/.test(q)))
+  assert.equal(r.result.askHuman, true)
+  assert.equal(r.calls.filter((c) => c.type === 'orch-builder').length, 0, 'no builder in readiness')
+  // the script side: `order` runs the test-location check on each plan's own text
+  const scoped = (globs) => ['# Plan — x', '', 'Status: active', 'Depends-on: none', '', '## Read-Write Scope', '', '```scope', ...globs, '```', '', '## Atomic Sub-tasks', '- [ ] A1: x', ''].join('\n')
+  const t = learnDir({ run: 'tl', phase: 'running', plans: {} }, { merge: false })
+  try {
+    t.writeRoot('plans/101-a.plan.md', scoped(['src/**']))
+    t.writeRoot('plans/102-b.plan.md', scoped(['src/**', 'tests/**']))
+    const o = t.orch('order', '--plans=101,102')
+    const j = JSON.parse(/ORCH_JSON (.*)/.exec(o.stdout)?.[1] ?? '{}')
+    assert.equal(j.ok, true, o.stdout + o.stderr)
+    assert.deepEqual(j.testLocations, { 101: ['src/**'] })
   } finally { t.clean() }
 })
 

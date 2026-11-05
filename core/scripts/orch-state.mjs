@@ -62,6 +62,7 @@ import { fileURLToPath } from 'url'
 import { createRequire } from 'module'
 import { findOpenPlan } from './lib/plan-paths.mjs'
 import { extractScopeGlobs, testFilesOutOfScope } from './lib/plan-scope.mjs'
+import { scopeTestsLint } from './lib/scope-tests-lint.mjs'
 import { planNumber, planTitle, mergeSubjectRe } from './lib/plan-deps.mjs'
 import { uiItems } from './lib/done-when.mjs'
 import { listSlots } from './lib/slot.mjs'
@@ -804,8 +805,18 @@ const commands = {
       fail(`plan-order exit ${r.status}: ${(r.stderr || r.stdout).trim().split('\n').pop()}`)
     }
     if (r.status !== 0) fail(`plan-order exit ${r.status}: ${(r.stderr || '').trim().split('\n').join(' | ')}`, { order: j })
-    emit({ ok: true, waves: j.waves, waveLocks: j.waveLocks, edges: (j.edges ?? []).filter((e) => !e.met), plans: j.plans, skipped: j.skipped, done: Object.keys(j.done ?? {}) },
-      j.waves.map((w, i) => `WAVE ${i + 1}: ${w.join(', ')}`))
+    // The test-location check (`scope-check --tests`) for every plan of the run: a plan that changes code and names no
+    // test location is asked about at readiness, before any builder, instead of parking at the test-file gate later.
+    const testLocations = {}
+    for (const nnn of j.waves.flat()) {
+      const rel = j.plans?.[nnn]?.path
+      const text = rel ? readIf(join(root, rel)) : null
+      if (!text) continue
+      const lint = scopeTestsLint(text)
+      if (lint.status === 'warn') testLocations[nnn] = lint.codeGlobs
+    }
+    emit({ ok: true, waves: j.waves, waveLocks: j.waveLocks, edges: (j.edges ?? []).filter((e) => !e.met), plans: j.plans, skipped: j.skipped, done: Object.keys(j.done ?? {}), testLocations },
+      [...j.waves.map((w, i) => `WAVE ${i + 1}: ${w.join(', ')}`), ...Object.entries(testLocations).map(([n, g]) => `plan ${n}: changes code (${g.join(', ')}) and no scope line names a test location`)])
   },
 
   done() {

@@ -649,6 +649,10 @@ async function readiness() {
     const claimQuestions = claims.filter((c) => typeof c.question === 'string' && c.question.trim() !== '')
       .map((c) => `${nnn} claim: ${c.claim.trim()} — found: ${c.found.trim()} — ${c.question.trim()} Default if unanswered: ${typeof c.default === 'string' && c.default.trim() !== '' ? c.default.trim() : 'none given — the Human answers'}`)
     if (claimsBad > 0) claimQuestions.push(`${nnn}: readiness returned ${claimsBad} unreadable claim(s) — check the plan's counts and every-X goals by hand`)
+    // The script's test-location check (`order` runs `scope-check --tests` for every plan): a plan that changes code and
+    // names no test location is asked about now, before any builder, not parked at the test-file gate rounds later.
+    const noTests = order.testLocations?.[nnn]
+    if (Array.isArray(noTests) && noTests.length) claimQuestions.push(`${nnn} test location: the plan changes code (${noTests.join(', ')}) but no scope line names a test location, so a builder may not touch a test file. Which test folder or file may it change? Default if unanswered: none — the plan parks at the first changed test file`)
     const questions = [...p.questions, ...claimQuestions]
     out.push({ nnn, path: order.plans[nnn]?.path, state: p.state === 'ready' && claimQuestions.length ? 'questions' : p.state, questions, envNeeds: p.envNeeds, commands: commands.filter((c) => !problem(c, false)), mainCommands: main.filter((c) => !problem(c, true)), denied, deniedWhy, missingFiles: [...missing], model: r.model, claims, claimsOver, claimsBad, mapped, npxDropped })
   }
