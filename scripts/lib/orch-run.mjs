@@ -364,9 +364,10 @@ export function mergePlanFile({ ours, theirs }) {
   const nl = /\r\n/.test(String(theirs)) ? '\r\n' : '\n'
   const mine = String(ours ?? '').split(/\r?\n/)
   const out = String(theirs ?? '').split(/\r?\n/)
-  const ticked = new Set(mine.map((l) => /^\s*- \[[xX]\] ([A-Z]+\d+):/.exec(l)?.[1]).filter(Boolean))
+  // A sub-task id: A1, B2a, R1.1.
+  const ticked = new Set(mine.map((l) => /^\s*- \[[xX]\] ([A-Z]+\d+(?:\.\d+)*[a-z]?):/.exec(l)?.[1]).filter(Boolean))
   for (let i = 0; i < out.length; i++) {
-    const m = /^(\s*- )\[ \]( ([A-Z]+\d+):.*)$/.exec(out[i])
+    const m = /^(\s*- )\[ \]( ([A-Z]+\d+(?:\.\d+)*[a-z]?):.*)$/.exec(out[i])
     if (m && ticked.has(m[3])) out[i] = `${m[1]}[x]${m[2]}`
   }
   const section = (lines) => {

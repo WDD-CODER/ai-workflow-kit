@@ -958,12 +958,14 @@ const commands = {
     }
     const head = git(wt, 'rev-parse', '--abbrev-ref', 'HEAD').out
     if (head !== branch) fail(`${wt} is on ${head || '(no branch)'}, not ${branch}`)
-    // A plan branch never tracks the run branch: one an earlier run made with git's default upstream loses it (a bare
-    // push from the builder would go to the run branch). An upstream that is its own remote branch is kept.
-    if (git(root, 'config', '--get', `branch.${branch}.merge`).out === `refs/heads/${runBranch(run)}`) {
+    // A plan branch tracks only its own remote branch: one an earlier run made with git's default upstream loses it
+    // (a bare push from the builder would go to that run branch — this run's, or an earlier run's after a relaunch under
+    // a new name). An upstream that is its own remote branch is kept.
+    const upstream = git(root, 'config', '--get', `branch.${branch}.merge`).out
+    if (upstream && upstream !== `refs/heads/${branch}`) {
       git(root, 'config', '--unset', `branch.${branch}.merge`)
       git(root, 'config', '--unset', `branch.${branch}.remote`)
-      lines.push(`${branch}: upstream ${runBranch(run)} removed`)
+      lines.push(`${branch}: upstream ${upstream.replace(/^refs\/heads\//, '')} removed`)
     }
     const dirty = git(wt, 'status', '--porcelain').out.split('\n').filter(Boolean).map((l) => l.slice(3))
     if (!dirty.length) {

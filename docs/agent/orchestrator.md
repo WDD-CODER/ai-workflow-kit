@@ -71,8 +71,8 @@ branch himself.
      nothing; a folder of its own installs once before the builder starts (with pnpm, quickly: one shared store).
      Packages are never linked in from the main folder: on Windows git follows a junction when it removes a worktree
      and would delete the main folder's packages. At most `orchestrator.concurrency` builders run at once (default 2).
-     The plan branch is made with `--no-track` (its upstream is never the run branch; a reused branch that took the run
-     branch as upstream loses it) and the builder pushes with `git push -u origin <branch>`. A branch from an earlier
+     The plan branch is made with `--no-track` (its upstream is never a run branch; a reused branch whose upstream is
+     anything but its own remote branch, such as this or an earlier run's branch, loses it) and the builder pushes with `git push -u origin <branch>`. A branch from an earlier
      run is reused and the run branch merged into it; when that merge conflicts in the plan's own file only, the script
      resolves it — the run branch's text, with the builder's ticked sub-tasks and its own Execution Notes lines put back
      (`mergePlanFile`) — and any other conflict parks the plan with the conflicted paths;

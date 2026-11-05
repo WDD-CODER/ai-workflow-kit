@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "0e14c19fd6ef2e9f949478fefe40e7490bbcaad1",
+  "commit": "a16d0efcef68ba15404cca5d51099a2bcb6288f7",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -415,7 +415,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "0c67ae9955342512be70f6dbae69b014f2a0ae5721bc7a3c0a6e3aabd64b80e0",
+      "sha256": "da28577baa803ca9259b35bb47d43470c61550ad28a56d72991e550d344a14b5",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -740,7 +740,7 @@
       "source": "core/scripts/lib/orch-folders.mjs"
     },
     "scripts/lib/orch-run.mjs": {
-      "sha256": "9bf473264378a6d23e7aa60e8870c53a822e8ea6410a7bf23c86eed2c2b3aafb",
+      "sha256": "2469c7bbddeec5fe39f10b37c1d98134ac3835162892ef19fc9bc1d7b8eaf0c0",
       "kind": "managed",
       "source": "core/scripts/lib/orch-run.mjs"
     },
@@ -815,7 +815,7 @@
       "source": "core/scripts/orch-preflight.mjs"
     },
     "scripts/orch-state.mjs": {
-      "sha256": "4d9e3e4fcaff7e633e5eb0e616003f85aeba7bbcf4903b149d96ed0c7a852bb3",
+      "sha256": "7a41d96ec7a6724021a612222e6e93b497e4961f4e35238aa5bffc295fc3b06f",
       "kind": "managed",
       "source": "core/scripts/orch-state.mjs"
     },

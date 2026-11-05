@@ -887,6 +887,11 @@ test('a plan branch made by worktree or by a slot claim has no upstream; a reuse
     sh(t.dir, 'config', 'branch.feat/001-x.merge', 'refs/heads/orch/r')
     assert.equal(t.state('worktree', '--run=r', '--plan=001').ok, true)
     assert.equal(t.upstream(t.dir, 'feat/001-x'), 1, 'the inherited run-branch upstream is removed')
+    // a relaunch under a new run name: the branch still tracks the earlier run's branch
+    sh(t.dir, 'config', 'branch.feat/001-x.remote', 'origin')
+    sh(t.dir, 'config', 'branch.feat/001-x.merge', 'refs/heads/orch/r-old')
+    assert.equal(t.state('worktree', '--run=r', '--plan=001').ok, true)
+    assert.equal(t.upstream(t.dir, 'feat/001-x'), 1, "an earlier run's branch as upstream is removed too")
     // an upstream that is the plan's own remote branch is kept
     sh(t.dir, 'config', 'branch.feat/001-x.remote', 'origin')
     sh(t.dir, 'config', 'branch.feat/001-x.merge', 'refs/heads/feat/001-x')
@@ -957,10 +962,14 @@ test('rerun with a conflict in another file still parks, naming the conflicted p
   try {
     assert.equal(t.state('init', '--run=r1').ok, true)
     const wt = t.state('worktree', '--run=r1', '--plan=001')
+    // both sides change a.txt and the plan file: the plan file alone would resolve, together they park
+    const planIn = (p) => join(p, 'plans', '001-x.plan.md')
     writeFileSync(join(wt.path, 'a.txt'), 'builder\n')
+    writeFileSync(planIn(wt.path), readFileSync(planIn(wt.path), 'utf8').replace('Status: active', 'Status: building'))
     sh(wt.path, 'commit', '-qam', 'builder a')
     sh(wt.path, 'push', '-q', 'origin', 'feat/001-x')
     writeFileSync(join(t.dir, 'a.txt'), 'main\n')
+    writeFileSync(planIn(t.dir), readFileSync(planIn(t.dir), 'utf8').replace('Status: active', 'Status: active (re-run)'))
     sh(t.dir, 'commit', '-qam', 'main a')
     sh(t.dir, 'push', '-q', 'origin', 'main')
     sh(wt.path, 'switch', '-q', '--detach')
@@ -970,6 +979,7 @@ test('rerun with a conflict in another file still parks, naming the conflicted p
     const again = t.state('worktree', '--run=r2', '--plan=001')
     assert.equal(again.ok, false)
     assert.match(again.error, /merging origin\/orch\/r2 into feat\/001-x conflicts.*a\.txt/)
+    assert.match(again.error, /plans\/001-x\.plan\.md/, 'every conflicted path is named')
   } finally {
     rmSync(t.parent, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
     rmSync(t.bare, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
@@ -985,4 +995,23 @@ test('mergePlanFile: the run text with the builder ticks and its new Execution N
   assert.match(out, /- \[x\] A2: second/)
   assert.match(out, /- Orchestrator readiness: q → a\n- decision: mine\.\n$/)
   assert.equal(runLib.mergePlanFile({ ours: theirs, theirs }), theirs, 'nothing of ours to add: the run text as it is')
+})
+
+test('mergePlanFile: CRLF, sub-ids, a missing Execution Notes section, and a section after it', () => {
+  const crlf = (s) => s.replace(/\n/g, '\r\n')
+  const base = PLAN_061.replace('- [ ] A2: second\n', '- [ ] A2: second\n- [ ] B2a: third\n- [ ] R1.1: fourth\n')
+  const ours = base.replace('- [ ] B2a:', '- [x] B2a:').replace('- [ ] R1.1:', '- [x] R1.1:') + '- decision: mine.\n'
+  // CRLF on the run side: the line ends stay CRLF, the sub-id ticks and the note come back
+  const out = runLib.mergePlanFile({ ours, theirs: crlf(base) })
+  assert.doesNotMatch(out.replace(/\r\n/g, ''), /\n/, 'every line end is CRLF')
+  assert.match(out, /- \[x\] B2a: third\r\n- \[x\] R1\.1: fourth\r\n/)
+  assert.match(out, /- Source: test\.\r\n- decision: mine\.\r\n$/)
+  // the run text has no Execution Notes section: one is added at the end with our lines
+  const noNotes = base.replace(/## Execution Notes\n- Source: test\.\n$/, '')
+  const added = runLib.mergePlanFile({ ours, theirs: noNotes })
+  assert.match(added, /## Execution Notes\n- Source: test\.\n- decision: mine\.\n$/)
+  // a section after Execution Notes: our lines go at the end of the notes, before it
+  const after = base + '\n## Later\n- other\n'
+  const mid = runLib.mergePlanFile({ ours, theirs: after })
+  assert.match(mid, /- Source: test\.\n- decision: mine\.\n\n## Later\n- other\n$/)
 })
