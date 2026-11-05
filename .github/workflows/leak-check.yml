@@ -56,6 +56,21 @@ jobs:
       - name: Every path the installed workflow docs name exists (packs [], angular, node-express, both, react-vite, react-vite + layers)
         run: node tools/workflow-link-check.mjs
 
+  kit-tests:
+    # Every kit tool test once per pull request, in its own job beside leak-check so the PR does not wait longer
+    # (plan 075). Local runs keep to the checks CI does not cover (docs/CHANGE-LOOP.md section 1).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # The workflow scripts import picomatch (scripts/package.json).
+      - name: Install the workflow scripts' packages
+        run: npm ci --prefix scripts
+      - name: Every kit tool test (node --test tools/test)
+        run: node --test "tools/test/*.test.mjs"
+
   e2e:
     # A fresh project taken through plan -> take-plan -> ship -> merge -> close-out (tools/e2e-check.mjs).
     strategy:

@@ -1151,7 +1151,8 @@ const finalCommands = (calls) => JSON.parse(calls.find((c) => c.type === 'orch-g
 const flakeCommands = (commands) => commands.filter((c) => /orch-state\.mjs flake /.test(c))
 
 test('final gate: PROJECT_CHECKS, then the manifest check, then orchestrator.ciMirror (deduplicated, bad shapes dropped with a note)', async () => {
-  const base = finalCommands((await runFlow({ plans: ['101'], pilot: false }, { init: { kitManifest: true } })).calls)
+  // The base has an empty mirror: the kit's own rendered workflow carries its .kit/config.json ciMirror, a fresh project's none.
+  const base = finalCommands((await runFlow({ plans: ['101'], pilot: false }, { init: { kitManifest: true }, source: withMirror([]) })).calls)
   assert.ok(base.includes('node scripts/kit-manifest-check.mjs'))
   const scripts = base.map((c) => /^(?:npm|pnpm) run ([\w:-]+)$/.exec(c)?.[1]).filter(Boolean)
   const mirror = ['node tools/ci-extra.mjs', base[0], 'node tools/ci-extra.mjs', 'git push origin main', 'node tools/x.mjs --apply', PM_RUN + ' run no-such-script']
@@ -1165,7 +1166,7 @@ test('final gate: PROJECT_CHECKS, then the manifest check, then orchestrator.ciM
   // Never in a plan's own gate or the merge step.
   assert.ok(!JSON.parse(r.calls.find((c) => c.type === 'orch-gate' && c.label === 'gate 101').task.COMMANDS).includes('node tools/ci-extra.mjs'))
   // An empty mirror changes nothing.
-  assert.deepEqual(finalCommands((await runFlow({ plans: ['101'], pilot: false }, { init: { kitManifest: true } })).calls), base)
+  assert.deepEqual(finalCommands((await runFlow({ plans: ['101'], pilot: false }, { init: { kitManifest: true }, source: withMirror([]) })).calls), base)
 })
 
 test('ciMirror: the workflow checkProblem and the config check ciCommandProblem refuse the same samples', () => {
