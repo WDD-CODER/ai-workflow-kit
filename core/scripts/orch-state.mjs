@@ -100,7 +100,7 @@ const SENSITIVE_CODE_RE = /auth|permission|password|jwt|session[_-]?id|tokens?\b
 // Every flag takes a value. The workflow passes `--key=value` (one token, so a value can never become a flag); a
 // human may write `--key value`, where a value starting with "-" is refused. An unknown flag (--root among them: the
 // folder is always this script's own project) or a second positional word stops the command.
-const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tier', 'sha', 'role', 'model', 'effort', 'roles', 'reason', 'card', 'card-status', 'page', 'shots', 'via', 'step', 'check', 'tail', 'tried', 'text', 'min', 'stale-min', 'files', 'cmd', 'id', 'verdict', 'kind', 'confidence', 'rec', 'why', 'forced', 'dup-of', 'command', 'where',
+const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tier', 'sha', 'checked-head','role', 'model', 'effort', 'roles', 'reason', 'card', 'card-status', 'page', 'shots', 'via', 'step', 'check', 'tail', 'tried', 'text', 'min', 'stale-min', 'files', 'cmd', 'id', 'verdict', 'kind', 'confidence', 'rec', 'why', 'forced', 'dup-of', 'command', 'where',
   // facts the workflow records for the lessons (docs/agent/orchestrator.md "status.json"), and `trend` / `finish` options
   'candidates', 'refuted', 'refuted-rules', 'verify-by', 'late-low', 'reappeared', 'miss', 'round-cause', 'gate-event', 'asked', 'ready', 'final-gate', 'final-gate-command', 'final-gate-command-b64', 'final-gate-tail-b64', 'final-gate-plans', 'causes-b64', 'result', 'last',
   // the hand-off's replan verdict and the builder's receipt
@@ -971,8 +971,29 @@ const commands = {
     // The builder marker, in the worktree's own git dir (never in its files): the scope guard asks about a database write
     // the plan does not list only where this marker names the branch checked out (lib/db-write.mjs).
     const gitDir = git(wt, 'rev-parse', '--absolute-git-dir').out
-    if (gitDir) writeFileSync(join(gitDir, 'orch-builder.json'), `${JSON.stringify({ run, plan: nnn, planPath: planFile, branch, planRef: base })}\n`)
+    if (gitDir) writeFileSync(join(gitDir, 'orch-builder.json'), `${JSON.stringify({ run, plan: nnn, planPath: planFile, branch, planRef: git(root, 'rev-parse', base).out })}\n`)
     emit({ ok: true, path: wt.replace(/\\/g, '/'), branch, base, head: git(wt, 'rev-parse', 'HEAD').out, dirty, ...(slot ? { slot: slot.slot } : {}), ...(ahead ? { resumed: ahead } : {}) }, lines)
+  },
+
+  // May a plan be merged on its own (`/orchestrate` merge mode: no builder, gate or checker)?
+  //   node scripts/orch-state.mjs merge-ready --run <name> --plan <NNN>
+  // Only when status.json recorded the head that passed its gate and checkers (checkedHead) and the plan branch on origin
+  // is still at that head. Answers { ready, branch, head, checkedHead, round, tier } or { ready: false, why }.
+  'merge-ready'() {
+    const run = runName()
+    const nnn = planNumber(args.plan ?? '')
+    if (!nnn) fail('--plan takes a plan number')
+    const p = needStatus(run).plans?.[nnn]
+    const no = (why) => emit({ ok: true, ready: false, why }, [`plan ${nnn}: not merged on its own — ${why}`])
+    if (!p) no(`plan ${nnn} is not in run ${run}`)
+    if (p.state === 'merged') no(`plan ${nnn} is already merged (${String(p.sha ?? '').slice(0, 7)})`)
+    if (!p.checkedHead) no(`no checked head recorded for plan ${nnn}: its gate and checkers never passed in this run — relaunch it in a normal run`)
+    const branch = p.branch || branchOf(planPath(nnn), nnn)
+    fetchOrigin()
+    const head = git(root, 'rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`).out
+    if (!head) no(`origin/${branch} not found`)
+    if (head !== p.checkedHead && !head.startsWith(p.checkedHead)) no(`origin/${branch} is at ${head.slice(0, 7)}, not the checked head ${String(p.checkedHead).slice(0, 7)} — the branch changed after its checks`)
+    emit({ ok: true, ready: true, branch, head, checkedHead: p.checkedHead, round: p.round ?? 0, tier: p.tier ?? '' }, [`plan ${nnn}: ${branch} at the checked head ${head.slice(0, 7)} — ready to merge on its own`])
   },
 
   // Gives the plan's slot back once the plan is merged or parked. Never discards: a slot with uncommitted files or
@@ -1126,6 +1147,11 @@ const commands = {
       p.round = Number(args.round)
     }
     for (const k of ['tier', 'sha', 'reason']) if (args[k] !== undefined && args[k] !== true) p[k] = String(args[k])
+    // --checked-head <sha>: the branch head that passed the gate and the checkers (what `merge-ready` compares with).
+    if (args['checked-head'] !== undefined && args['checked-head'] !== true) {
+      if (!/^[0-9a-f]{7,40}$/.test(String(args['checked-head']))) fail('--checked-head takes a commit sha')
+      p.checkedHead = String(args['checked-head'])
+    }
     p.models ??= {}
     if (args.role) p.models[String(args.role)] = { model: String(args.model ?? 'unknown'), ...(args.effort ? { effort: String(args.effort) } : {}) }
     // --roles orch-builder=sonnet/medium,orch-gate=haiku/low: the model each agent of this step echoed.

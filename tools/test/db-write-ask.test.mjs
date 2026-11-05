@@ -28,6 +28,8 @@ test('dbWriteKind names the kind of each command in the plan table, and null for
   assert.equal(dbWriteKind('sqlite3 app.db < fixtures.sql'), 'raw-write')
   assert.deepEqual(dbWrites('psql -c "SELECT 1; DROP TABLE x"'), ['psql -c "SELECT 1; DROP TABLE x"'])
   assert.deepEqual(dbWrites('npm ci && npm run seed'), ['npm run seed'])
+  // a listed segment does not hide a client write split across quoted segments
+  assert.deepEqual(dbWrites('npm run seed && psql -c "SELECT 1; DROP TABLE x"'), ['npm run seed', 'npm run seed && psql -c "SELECT 1; DROP TABLE x"'])
 })
 
 const sh = (cwd, ...a) => {
@@ -50,7 +52,7 @@ function setup(planBody) {
   const builder = join(parent, 'main-orch-r-001')
   sh(main, 'worktree', 'add', '-q', '-b', 'feat/001-x', builder)
   const gitDir = sh(builder, 'rev-parse', '--absolute-git-dir')
-  writeFileSync(join(gitDir, 'orch-builder.json'), JSON.stringify({ run: 'r', plan: '001', planPath: 'plans/001-x.plan.md', branch: 'feat/001-x', planRef: 'main' }))
+  writeFileSync(join(gitDir, 'orch-builder.json'), JSON.stringify({ run: 'r', plan: '001', planPath: 'plans/001-x.plan.md', branch: 'feat/001-x', planRef: sh(main, 'rev-parse', 'main') }))
   const plain = join(parent, 'main-wt-1')
   sh(main, 'worktree', 'add', '-q', '-b', 'feat/001-y', plain)
   return { parent, main, builder, plain, gitDir }

@@ -91,6 +91,14 @@ every prompt from the plans and the state script.
    highest earlier id and files a repeat of an earlier decision under it): it skips what is merged and builds the
    rest, with the graded decisions and any new rule in `docs/brain/agent-rules.md` already in place.
 
+   **Merge only** (`/orchestrate 065 <run> merge`): a plan of a run that was built and checked but lost its merge (an
+   environment problem at the merge, a stopped run) is merged on its own — no readiness, builder, gate or checker. Run
+   step 1, then start the workflow with `{ "mode": "merge", "run": "<run>", "plans": ["065"], "root": "<absolute main
+   folder path>" }`. Per plan, `orch-state.mjs merge-ready` checks that `status.json` recorded the head that passed the
+   plan's gate and checkers (`checkedHead`) and that the plan branch on origin is still at it; then the merge runs, then
+   the final gate. A plan without a checked head, or whose branch moved after its checks, is refused with the reason
+   and merges nothing — relaunch it in a normal run. Then step 4 as usual.
+
 4. **Finish.** From the workflow result and `.claude/orchestrator-runs/<run>/status.json` (never from memory), print:
    - first, when the result's `stuck` is set (the run ended on a limit: `agent-call limit`, `same reason twice`, or
      `run stopped with an error`), that line as it is — `STUCK: …` — before anything else; when the session's own model
@@ -111,7 +119,10 @@ every prompt from the plans and the state script.
    - when the report has an `App errors since the run started` section: its command and its lines as the report shows
      them (the project's own output — a line such as `no entries` means none); never run the log command again;
    - the **decisions** the workflow returned (`decisions`, each with `verdict`, `forced`, `kind`, `confidence`, `rec`,
-     `why` and `alsoFrom`; `triage` has the mode, the `line` and the id lists). Duplicates are already merged. When
+     `why` and `alsoFrom`; `triage` has the mode, the `line` and the id lists). Duplicates are already merged. On a
+     relaunch the list also holds an earlier launch's decisions that have no grade yet — they are graded now, like the
+     new ones. A decision with `forced: db-write` is a builder's database write the plan did not list: it is always to
+     grade, and the plan stays parked until the Human says whether to list the command and relaunch. When
      `triage.mode` is `shadow` or `filter` and `triage.note` is not set and some decision has a verdict other than
      `none`, print:
      1. `Run <run> — <n> merged. Decisions: <ask + askMore> to grade, <accepted> accepted by triage, <followUps> follow-ups (saved on your reply).`

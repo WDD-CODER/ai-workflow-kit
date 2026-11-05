@@ -6,7 +6,7 @@
  *   dbWriteAsk(command, folder)     the ESCALATE text for an unlisted database write in a builder worktree, or null
  *
  * The rule is for orchestrator builders only. `orch-state.mjs worktree` writes the marker `orch-builder.json`
- * ({ run, plan, planPath, branch, planRef }) into the builder worktree's own git dir; the guard reads it from the
+ * ({ run, plan, planPath, branch, planRef: the run branch's commit sha }) into the builder worktree's own git dir; the guard reads it from the
  * worktree that holds the command's folder. A worktree without it (a Human session, a Worker slot) is never asked
  * about, and a marker whose branch is not the branch checked out now (a slot given back, then reused) counts as none.
  *
@@ -61,7 +61,8 @@ export function commandSegments(command) {
 export function dbWrites(command) {
   const out = commandSegments(command).filter((s) => dbWriteKind(s))
   const whole = String(command ?? '').replace(/\s+/g, ' ').trim()
-  if (!out.length && dbWriteKind(whole)) out.push(whole)
+  const raw = RAW_CLIENT.test(whole) && (RAW_WRITE.test(whole) || RAW_SCRIPT.test(whole))
+  if (raw && !out.some((s) => dbWriteKind(s) === 'raw-write')) out.push(whole)
   return out
 }
 

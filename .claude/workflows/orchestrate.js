@@ -136,7 +136,9 @@ function cardProblem({ card, page, shots }) {
 }
 
 const A = args ?? {}
-const MODE = A.mode === 'readiness' ? 'readiness' : 'run'
+// readiness: read the plans only. merge: resume a run at the merge of plans already built and checked (merge-ready),
+// with no builder, gate or checker, then the final gate. run: everything.
+const MODE = A.mode === 'readiness' ? 'readiness' : A.mode === 'merge' ? 'merge' : 'run'
 const RUN = String(A.run ?? '')
 const ROOT = String(A.root ?? '.')
 const PLANS = (Array.isArray(A.plans) ? A.plans : String(A.plans ?? '').split(',')).map((p) => String(p).trim()).filter(Boolean)
@@ -930,7 +932,30 @@ async function envCheck(ctx, why, probeCmds = []) {
   return r
 }
 
+// Merge mode: a plan built and checked earlier in this run is merged on its own — no builder, gate or checker — when
+// `merge-ready` finds its branch still at the recorded checked head; any other plan is refused with the reason.
+async function mergeOnly(nnn) {
+  const ready = await state(['merge-ready', '--run', RUN, '--plan', nnn], `merge-ready ${nnn}`, nnn)
+  if (!ready?.ok || ready.ready !== true) {
+    const why = `merge only refused: ${String(ready?.why ?? ready?.error ?? 'no answer').slice(0, 300)}`
+    await note(why, nnn)
+    return { nnn, state: 'parked', reason: why, refused: true }
+  }
+  if (!PLAN_BRANCH_RE.test(String(ready.branch))) return { nnn, state: 'parked', reason: `merge only refused: plan branch ${JSON.stringify(ready.branch)} does not match feat/<NNN>-<lower-case words>`, refused: true }
+  const extra = (Array.isArray((A.checks ?? {})[nnn]) ? A.checks[nnn] : []).filter((c) => !checkProblem(c, null)).map((c) => String(c).trim())
+  const ctx = { nnn, info: { branch: ready.branch }, round: Number(ready.round) || 0, tier: ready.tier, mergeFolder, mergeChecks: mergeChecksOf([...new Set([...PREPARE_CHECKS, ...PROJECT_CHECKS, ...extra])]) }
+  const m = await merge(ctx)
+  if (m.merged) {
+    await setPlan(nnn, { state: 'merged', round: ctx.round, sha: m.sha, reason: m.stopRun }, m.r ? [m.r] : [])
+    return { nnn, state: 'merged', sha: m.sha, round: ctx.round, stopRun: m.stopRun }
+  }
+  const reason = `merge only: ${String(m.why ?? 'not merged').slice(0, 300)}`
+  await setPlan(nnn, { state: 'parked', round: ctx.round, reason }, m.r ? [m.r] : [])
+  return { nnn, state: 'parked', reason }
+}
+
 async function runPlan(nnn) {
+  if (MODE === 'merge') return mergeOnly(nnn)
   // plan-info also makes the plan's folder (`--with-worktree`, answer in info.wt): one runner call, not two.
   const info = await state(['plan-info', '--run', RUN, '--plan', nnn, '--with-worktree', 'yes'], `plan ${nnn}`, nnn)
   if (!info.ok) return { nnn, state: 'parked', reason: `plan-info: ${info.error}` }
@@ -1014,7 +1039,8 @@ async function runPlan(nnn) {
   // The merge step, on its own: after an environment failure at the merge (a merge folder without packages) the
   // branch is already built and verified, so the retry is this step only — no builder, gate or checkers again.
   const mergeStep = async (results) => {
-    await setPlan(nnn, { state: 'checking', round: ctx.round }, results)
+    // The head that passed the gate and the checkers: merge mode merges a plan on its own only at this head.
+    await setPlan(nnn, { state: 'checking', round: ctx.round, ...(/^[0-9a-f]{7,40}$/.test(String(ctx.lastHead ?? '')) ? { 'checked-head': ctx.lastHead } : {}) }, results)
     const m = await merge(ctx)
     const res = m.r ? [m.r] : []
     take(nnn, ctx.round, m.r)
@@ -1234,7 +1260,8 @@ async function run() {
   // A plan the preflight named as one that will fail (a commit guard refuses code it prescribes) is parked here, before
   // any builder, with the preflight's reason; the other plans go on. Its warnings (a [ui] role without a login recipe,
   // leftovers of earlier runs) are run notes.
-  const early = pre.parkPlans && typeof pre.parkPlans === 'object' ? pre.parkPlans : {}
+  // (Merge mode merges code that already passed its checks: the plan-text scan does not park it.)
+  const early = MODE !== 'merge' && pre.parkPlans && typeof pre.parkPlans === 'object' ? pre.parkPlans : {}
   const earlyParked = []
   for (const nnn of PLANS.filter((p) => typeof early[p] === 'string' && early[p])) {
     await setPlan(nnn, { state: 'parked', reason: `preflight: ${early[nnn]}`.slice(0, 380) })
@@ -1479,3 +1506,4 @@ async function run() {
 }
 
 return MODE === 'readiness' ? readiness() : run()
+
