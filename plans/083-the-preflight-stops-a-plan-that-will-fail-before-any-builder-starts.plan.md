@@ -86,6 +86,7 @@ tools/test/db-write-ask.test.mjs
 tools/test/orchestrator-decisions-count.test.mjs
 tools/test/orchestrator-merge-only.test.mjs
 docs/brain/scorecard.md
+docs/brain/follow-ups.md
 CHANGELOG.md
 ```
 
@@ -106,7 +107,7 @@ the path to the scope block and retry. Tags and releases: wait for the Human's g
 ## Step 0 — Reality Check
 
 1. Re-read, on `origin/main`, every file:line named in the Problem Statement after plan 068 merged (it edits `orch-preflight.mjs`); drop a sub-task the code already covers.
-2. Item 5 (decision count) has **no known cause**. Before writing any fix, reproduce it: read `.claude/orchestrator-runs/run-513-516c/status.json` in the FoodVibe project folder (read only) if the Human names its path; otherwise build a fixture from the shape of `docs/orchestrator/runs/run-065/status.json` with 16 decisions over two plans and two attempts. Run `orch-state.mjs finish` on it and name in Execution Notes which of these is the cause: decisions never written (`decisions --b64` rejected all-or-nothing, `orch-state.mjs` l.1195-1207), written to a different `status.json`, dropped by the attempt filter (`orch-state.mjs` l.1391), or lost by `formatReport`. If none reproduces, STOP and tell the Human.
+2. Item 5 (decision count) has **no known cause**. Before writing any fix, reproduce it: read `.claude/orchestrator-runs/run-513-516c/status.json` in the FoodVibe project folder (read only) if the Human names its path; otherwise build a fixture from the shape of `docs/orchestrator/runs/run-065/status.json` with 16 decisions over two plans and two attempts. Run `orch-state.mjs finish` on it and name in Execution Notes which of these is the cause: decisions never written (`decisions --b64` rejected all-or-nothing, `orch-state.mjs` l.1195-1207), written to a different `status.json`, dropped by the attempt filter (`orch-state.mjs` l.1391), or lost by `formatReport`. If none reproduces: do NOT stop the run — drop C1 from this plan, append an entry to `docs/brain/follow-ups.md` (what was tried, the fixture used, the result), record a `- decision:` line in Execution Notes, and continue with every other sub-task (Human, 2026-11-05).
 3. Item 6: read how a plan's state, `round` and checked head are stored in `status.json` today (`orch-state.mjs set`, `plans[N]`). If no checked head is recorded at the point where the gate and checkers pass, sub-task M1 records it first (in scope); say so in Execution Notes.
 4. [ui] cards: read how a card names its role today (`core/scripts/lib/done-when.mjs` and the card text in a real plan). If a card carries no role at all, sub-task L1 reads the role from the phrase `as <role>` in the card and flags a card with no role as `no role named` — and says so in Execution Notes.
 
