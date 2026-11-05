@@ -10,7 +10,7 @@ import { fileURLToPath, pathToFileURL } from 'url'
 
 const kit = resolve(fileURLToPath(new URL('../..', import.meta.url)))
 const root = process.env.ORCH_ROOT ? resolve(process.env.ORCH_ROOT) : kit
-const { dbWriteKind, dbWriteAsk } = await import(pathToFileURL(join(root, 'scripts', 'lib', 'db-write.mjs')).href)
+const { dbWriteKind, dbWriteAsk, dbWrites } = await import(pathToFileURL(join(root, 'scripts', 'lib', 'db-write.mjs')).href)
 const { decide, worktreeOf } = await import(pathToFileURL(join(root, 'scripts', 'lib', 'guard.mjs')).href)
 
 test('dbWriteKind names the kind of each command in the plan table, and null for read-only and other commands', () => {
@@ -23,6 +23,11 @@ test('dbWriteKind names the kind of each command in the plan table, and null for
   for (const c of ['prisma migrate status', 'knex migrate:status', 'psql -c "SELECT * FROM users"', 'npm run test', 'node scripts/reseed-docs.mjs', 'npm run seeds-report', 'git status', '']) {
     assert.equal(dbWriteKind(c), null, c)
   }
+  // a client fed a script it does not show counts as a write; a write hidden behind a quoted `;` is still found
+  assert.equal(dbWriteKind('psql -f seed.sql'), 'raw-write')
+  assert.equal(dbWriteKind('sqlite3 app.db < fixtures.sql'), 'raw-write')
+  assert.deepEqual(dbWrites('psql -c "SELECT 1; DROP TABLE x"'), ['psql -c "SELECT 1; DROP TABLE x"'])
+  assert.deepEqual(dbWrites('npm ci && npm run seed'), ['npm run seed'])
 })
 
 const sh = (cwd, ...a) => {
@@ -45,7 +50,7 @@ function setup(planBody) {
   const builder = join(parent, 'main-orch-r-001')
   sh(main, 'worktree', 'add', '-q', '-b', 'feat/001-x', builder)
   const gitDir = sh(builder, 'rev-parse', '--absolute-git-dir')
-  writeFileSync(join(gitDir, 'orch-builder.json'), JSON.stringify({ run: 'r', plan: '001', planPath: 'plans/001-x.plan.md', branch: 'feat/001-x' }))
+  writeFileSync(join(gitDir, 'orch-builder.json'), JSON.stringify({ run: 'r', plan: '001', planPath: 'plans/001-x.plan.md', branch: 'feat/001-x', planRef: 'main' }))
   const plain = join(parent, 'main-wt-1')
   sh(main, 'worktree', 'add', '-q', '-b', 'feat/001-y', plain)
   return { parent, main, builder, plain, gitDir }
@@ -76,12 +81,26 @@ test('the same unlisted "npm run seed" is asked about in a builder worktree and 
 })
 
 test('a database write the plan lists as written runs in the builder worktree', () => {
-  const t = setup('Step 3: run `npm run seed` to load the demo rows.')
+  const t = setup('Step 3: run `npm run seed` to load the demo rows.\n\n```bash\npsql -c "INSERT INTO t VALUES (1)"\n```')
   try {
     assert.equal(bash('npm run seed', t.builder, t.builder).decision, 'allow')
     assert.equal(dbWriteAsk('npm run seed', t.builder), null)
-    // a different, unlisted write in the same worktree is still asked about
+    assert.equal(dbWriteAsk('psql -c "INSERT INTO t VALUES (1)"', t.builder), null, 'a fenced block line lists it too')
+    // a different, unlisted write in the same worktree is still asked about; so is a longer variant of a listed one
     assert.match(dbWriteAsk('npx prisma migrate dev', t.builder), /^ESCALATE: db-write npx prisma migrate dev — a migrate command/)
+    assert.match(dbWriteAsk('npm run seed -- --reset', t.builder), /^ESCALATE: db-write npm run seed -- --reset/)
+  } finally {
+    rmSync(t.parent, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+  }
+})
+
+test('the plan is read from the run branch: prose does not list a command, and the builder cannot list one by editing its copy', () => {
+  const t = setup('Never run npm run seed against the shared database.')
+  try {
+    assert.match(dbWriteAsk('npm run seed', t.builder), /^ESCALATE: db-write npm run seed/, 'prose is not a listing')
+    writeFileSync(join(t.builder, 'plans', '001-x.plan.md'), '# Plan 001\n\nRun `npm run seed`.\n')
+    sh(t.builder, 'commit', '-qam', 'builder edits its plan')
+    assert.match(dbWriteAsk('npm run seed', t.builder), /^ESCALATE: db-write npm run seed/, 'the run branch copy decides')
   } finally {
     rmSync(t.parent, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
   }

@@ -36,7 +36,7 @@ import { spawnSync } from 'child_process'
 import { join, resolve, dirname, relative, isAbsolute, basename } from 'path'
 import { fileURLToPath } from 'url'
 import { OPEN_PLAN_RE, findOpenPlan } from './plan-paths.mjs'
-import { dbWriteAsk } from './db-write.mjs'
+import { dbWriteAsk, builderMarker } from './db-write.mjs'
 
 const MAIN_BRANCHES = ['{{git.mainBranch}}', 'master']
 // Gitignored runtime files the workflow writes on {{git.mainBranch}}: never a branch decision.
@@ -1245,19 +1245,28 @@ function filesOf(ti) {
   return []
 }
 
-/** The db-write ask for a command run from `cwd` or from a folder it `cd`s into, or null (also when the check fails). */
+/** The db-write ask for a command run from `cwd`, a folder it `cd`s into, or a folder it names with `--prefix` / `-C`;
+ *  null when none of them is a builder worktree. A check that throws where a builder marker exists refuses (fail closed). */
 function builderDbAsk(command, cwd) {
+  const folders = [cwd]
   try {
-    const folders = [cwd]
-    for (const m of String(command).matchAll(/(?:^|[;&|(\n])\s*(?:cd|pushd)\s+("[^"]*"|'[^']*'|[^\s;&|)]+)/g)) {
+    for (const m of String(command).matchAll(/(?:(?:^|[;&|(\n])\s*(?:cd|pushd)|\s(?:--prefix|-C|--dir))[\s=]+("[^"]*"|'[^']*'|[^\s;&|)]+)/g)) {
       folders.push(resolve(cwd, nativePath(m[1].replace(/^(["'])(.*)\1$/, '$2'))))
     }
     for (const f of folders) {
       const ask = dbWriteAsk(command, f)
       if (ask) return ask
     }
-  } catch {}
-  return null
+    return null
+  } catch (e) {
+    let marked = false
+    try {
+      marked = folders.some((f) => builderMarker(f))
+    } catch {
+      marked = true
+    }
+    return marked ? `ESCALATE: db-write check failed (${e && e.message}) in an orchestrator builder worktree — stop and return status ESCALATE with this line as the blocker.` : null
+  }
 }
 
 export function decide(mode, input, here) {

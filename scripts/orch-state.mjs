@@ -67,7 +67,7 @@ import { uiItems } from './lib/done-when.mjs'
 import { listSlots } from './lib/slot.mjs'
 import { ensureDeps, idleSlot, claimSlot, releaseSlot, releaseRunSlots } from './lib/orch-folders.mjs'
 import { agreementStats, addLesson, lessonParts, ruleLines, LESSON_ROLES } from './decision-log.mjs'
-import { triageForce, triageView, decisionType, runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine, logQueryArgs, lessonFacts, commandTag, runLogRow, updateRunLog, parseRunLog, parseDecisionRows, trendOf, contextBudget, INJECTED_ROLES } from './lib/orch-run.mjs'
+import { triageForce, triageView, decisionsInView, decisionType, runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine, logQueryArgs, lessonFacts, commandTag, runLogRow, updateRunLog, parseRunLog, parseDecisionRows, trendOf, contextBudget, INJECTED_ROLES } from './lib/orch-run.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const MAIN = 'main'
@@ -971,7 +971,7 @@ const commands = {
     // The builder marker, in the worktree's own git dir (never in its files): the scope guard asks about a database write
     // the plan does not list only where this marker names the branch checked out (lib/db-write.mjs).
     const gitDir = git(wt, 'rev-parse', '--absolute-git-dir').out
-    if (gitDir) writeFileSync(join(gitDir, 'orch-builder.json'), `${JSON.stringify({ run, plan: nnn, planPath: planFile, branch })}\n`)
+    if (gitDir) writeFileSync(join(gitDir, 'orch-builder.json'), `${JSON.stringify({ run, plan: nnn, planPath: planFile, branch, planRef: base })}\n`)
     emit({ ok: true, path: wt.replace(/\\/g, '/'), branch, base, head: git(wt, 'rev-parse', 'HEAD').out, dirty, ...(slot ? { slot: slot.slot } : {}), ...(ahead ? { resumed: ahead } : {}) }, lines)
   },
 
@@ -1480,8 +1480,11 @@ function publishReport(run, status, { merged, slots, message, brain }) {
       learnError = e.message
     }
     const report = formatReport({ status, merged, mainShaNow, finishedAt: status.finishedAt, runBranch: branch, mainBranch: MAIN, mainChangedFiles, appErrors, decisions: status.decisions ?? [], triage, learning: learned ? { budget: learned.budget.line, trend: learned.trend.line } : null })
-    // What the command prints: this launch's decisions only (the earlier launch's were graded when it ended).
-    const view = triageView({ decisions: (status.decisions ?? []).filter((d) => (d.attempt ?? 1) === (status.attempts ?? 1)), ...triage })
+    // What the command prints: this launch's decisions, and an earlier launch's that has no grade for this run yet.
+    const attempt = status.attempts ?? 1
+    const inView = decisionsInView(status.decisions ?? [], { attempt, run, gradeRows })
+    const earlier = inView.filter((d) => (d.attempt ?? 1) < attempt)
+    const view = triageView({ decisions: inView, ...triage })
     const ids = (list) => list.map((d) => d.id)
     const triageOut = { mode: TRIAGE, line: view.line, ask: ids(view.ask), askMore: ids(view.askMore), accepted: ids(view.accepted), followUps: ids(view.followUps), noise: ids(view.noise), none: ids(view.none), collapsed: ids(view.collapsed) }
     const local = join(runsDir(), `${run}.md`)
@@ -1494,7 +1497,7 @@ function publishReport(run, status, { merged, slots, message, brain }) {
     const rel = `docs/orchestrator/runs/${run}`
     const learningOut = learned ? { lessonsAdded: learned.added.length, lessonsDropped: learned.dropped.length, budget: learned.budget.line, chars: learned.budget.total, trend: learned.trend.line } : { error: learnError }
     const learningLines = learned ? [`lessons: ${learned.added.length} line(s) added, ${learned.dropped.length} dropped`, ...budgetLines(learned.budget), learned.trend.line] : [`lessons: not written (${learnError})`]
-    const base = { triage: triageOut, report: `${rel}/report.md`, local: local.replace(/\\/g, '/'), merged: merged.map((m) => m.nnn), parked, phase: status.phase, slots: slots.lines, learning: learningOut, ...(brainLine ? { brain: brainLine } : {}) }
+    const base = { triage: triageOut, ...(earlier.length ? { earlierDecisions: earlier } : {}), report: `${rel}/report.md`, local: local.replace(/\\/g, '/'), merged: merged.map((m) => m.nnn), parked, phase: status.phase, slots: slots.lines, learning: learningOut, ...(brainLine ? { brain: brainLine } : {}) }
     const notCommitted = (error, extra = {}) => emit({ ok: false, ...base, reportCommitted: false, error: `${error} — the report is in ${local}`, ...extra },
       [...slots.lines, `report: local copy ${local} (not committed to ${branch}: ${error})`, ...learningLines, ...(brainLine ? [brainLine] : [])])
     if (!existsSync(mf)) notCommitted(`no merge folder ${mf}`)

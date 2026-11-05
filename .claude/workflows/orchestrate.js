@@ -1465,7 +1465,12 @@ async function run() {
     mode: 'run', run: RUN, ok: !!fin.ok, branch: RUN_BRANCH, stopReason, startedAt,
     merged: fin.merged ?? [], parked: fin.parked ?? [], report: fin.report, local: fin.local, reportCommitted: fin.reportCommitted ?? !!fin.ok, outcomes,
     pilot: pilotWaiting.length ? { size: PILOT_SIZE, waiting: pilotWaiting } : null,
-    finalGate, decisions: decisions.map(({ prior, ...d }) => ({ ...d, alsoFrom: d.alsoFrom.map(({ fresh, ...x }) => x) })), decisionsDropped: DROPPED,
+    // This launch's decisions, then an earlier launch's that are still ungraded (finish lists them: a relaunch once
+    // printed `ask: 0` with 16 waiting).
+    finalGate, decisions: [
+      ...decisions.map(({ prior, dbAsk, ...d }) => ({ ...d, alsoFrom: d.alsoFrom.map(({ fresh, ...x }) => x) })),
+      ...(Array.isArray(fin.earlierDecisions) ? fin.earlierDecisions.filter((e) => e && !decisions.some((d) => d.id === e.id)) : []),
+    ], decisionsDropped: DROPPED,
     mergeFolder, triage: { ...(fin.triage ?? { mode: TRIAGE }), ...(triageNote ? { note: triageNote } : {}) },
     stuck: stuckWhy ? `STUCK: ${stuckWhy}` : null,
     learning: fin.learning ?? null,
