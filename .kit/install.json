@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "7c1ffd3da733e5e0325796f265c8f713af57ff18",
+  "commit": "b9a98e7cc8fe0f5d1c3466ae9b43cafce61d3f19",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -420,7 +420,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "9eb6af6f81e4197ef3b916d2afbbe700ebaa4b17319e50547cf89fdde32bec80",
+      "sha256": "e2591eac1f5b87e8dbc62fcad0a8bf2b8ceef06bbd4f050d509c595153a812cb",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -715,7 +715,7 @@
       "source": "core/scripts/lib/brain-doc.mjs"
     },
     "scripts/lib/claude-run.mjs": {
-      "sha256": "ca12a65086f66cee44d8d58c89ff1c7bd0316caa56b22934626f55cc8777f1cd",
+      "sha256": "d37f8890132bc2cebee7bfef47cef08ebe4d1e0f59a467e3f156ba64466c24c3",
       "kind": "managed",
       "source": "core/scripts/lib/claude-run.mjs"
     },
@@ -790,7 +790,7 @@
       "source": "core/scripts/lib/plan-paths.mjs"
     },
     "scripts/lib/plan-review.mjs": {
-      "sha256": "c05e04777678d3a8a801a1dc16274d7777d8412d9208295ca6c83330f446f39d",
+      "sha256": "6be289a7031473f2ddd8034dfd86b9aa9ad2d3bf24ce74d23ae235d2e8614365",
       "kind": "managed",
       "source": "core/scripts/lib/plan-review.mjs"
     },
@@ -845,7 +845,7 @@
       "source": "core/scripts/orch-preflight.mjs"
     },
     "scripts/orch-state.mjs": {
-      "sha256": "01370d97a38bfb12b88d273d9909c357d132a94ed3af2d4ea5cc6e327205dad4",
+      "sha256": "18f504bf4ceeeade1d049060b70241810674c07b5a130f0a3aaa4b3076ea5209",
       "kind": "managed",
       "source": "core/scripts/orch-state.mjs"
     },
@@ -920,7 +920,7 @@
       "source": "core/scripts/prune-old-sessions.sh"
     },
     "scripts/run-plans.mjs": {
-      "sha256": "9fb404dbab0a2d41db3f0009676173c063c724c0bc84aa5d256ff16a973a5da8",
+      "sha256": "16f4a23fe7b16ae614698e00da9408095081c24fc679c0be4aa36baadad8e1c3",
       "kind": "managed",
       "source": "core/scripts/run-plans.mjs"
     },

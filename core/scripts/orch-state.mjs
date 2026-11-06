@@ -1082,7 +1082,7 @@ const commands = {
     emit({ ok: true, ready: true, branch, head, checkedHead: p.checkedHead, round: p.round ?? 0, tier: p.tier ?? '' }, [`plan ${nnn}: ${branch} at the checked head ${head.slice(0, 7)} — ready to merge on its own`])
   },
 
-  // The merge pin (plan 085 shape A, plan 088): after `git merge --no-ff` of the plan branch in the merge folder and
+  // The merge pin (the script checks, then pushes — one push per merge): after `git merge --no-ff` of the plan branch in the merge folder and
   // before any push,
   //   node scripts/orch-state.mjs merge-verify --run <name> --plan <NNN>
   // checks that the merge commit's second parent (HEAD^2) is the head that passed the gate and the review

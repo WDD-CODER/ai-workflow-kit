@@ -7,8 +7,8 @@ a gate, a reviewer and a merge into one run branch `orch/<run>` — never into
 
 The loop is code (the kit's ADR 0017, "the orchestrator loop is a script"): `scripts/run-plans.mjs` runs it in
 a terminal, and only the builder and the reviewer are model calls. The older loop, the workflow
-`.claude/workflows/orchestrate.js` started by `/orchestrate`, drives every step through a model and stays until plan
-090 removes it; its own run is described in "The workflow's run" below.
+`.claude/workflows/orchestrate.js` started by `/orchestrate`, drives every step through a model and stays until a
+later kit release removes it; its own run is described in "The workflow's run" below.
 
 ## Pieces
 
@@ -21,7 +21,7 @@ a terminal, and only the builder and the reviewer are model calls. The older loo
 | Merge | `scripts/lib/plan-merge.mjs` | `git merge --no-ff` in the merge folder, `merge-verify` (the pin), the merge checks, one push |
 | Order | `scripts/lib/run-order.mjs` | Waves and edges from `plan-order.mjs --json`, what a park blocks (`onPark`) |
 | Command | `.claude/commands/orchestrate.md` | Starts the workflow from a clean turn: readiness, the batched questions, `go`, the run, the final instructions |
-| Workflow | `.claude/workflows/orchestrate.js` | The older model-driven loop (no file, git or clock access); removed by plan 090 |
+| Workflow | `.claude/workflows/orchestrate.js` | The older model-driven loop (no file, git or clock access); a later kit release removes it |
 | State | `scripts/orch-state.mjs` | Every file, git and time step: run branch, merge folder, builder folders, `status.json`, hand-off files, the merge pin, the report |
 | Preflight | `scripts/orch-preflight.mjs` | Environment checks before the run and before a retry: disk, database, packages, dev server (started when missing), backend (started for a plan with an `[auto:main]` item), git identity, remote, main folder, settings, a live run; `--ui` before any browser step: the pages' servers, the QA login, the backend from the page's origin |
 | Role agents | `.claude/agents/orch-builder.md`, `.claude/agents/plan-reviewer.md` (the script); `.claude/agents/orch-*.md` (the workflow) | One job each; shared contract in `docs/agent/agent-roles.md` |
@@ -51,7 +51,7 @@ the triage keys shape the report's decision list.
 | `triageMinGraded` | `20` | Graded decisions of that kind it needs first (5–500) |
 | `mergeChecks` | `build` | What the merge step runs on the merged tree: `build` = the project build plus the plan's scope check (lint and tests passed in the plan's gate and run once more at the final gate), `full` = the plan's whole check list on every merge |
 | `ciMirror` | `["node tools/pack-check.mjs","node tools/drift-check.mjs --target .","node tools/install-check.mjs","node tools/workflow-link-check.mjs","node tools/e2e-check.mjs","node tools/acceptance-check.mjs --e2e"]` | CI commands (`npm run <script>`, `pnpm run <script>`, `node scripts/…` or `node tools/…`, no write flag) the final gate runs after the project checks and the kit manifest check, so a green run is a green pull request. Install and sync print a `NOTE ci-mirror:` line for each workflow command the final gate does not run; they never write the list |
-| `reviewerMode` | `advisory` | What a STOP of the single reviewer does in `run-plans.mjs`: `advisory` = recorded in the run notes, the plan still merges; `gate` = one fix round with the findings, then the plan parks. `advisory` until the reviewer's measured precision reaches 0.50 (plan 087); `--reviewer-mode` overrides it for one run |
+| `reviewerMode` | `advisory` | What a STOP of the single reviewer does in `run-plans.mjs`: `advisory` = recorded in the run notes, the plan still merges; `gate` = one fix round with the findings, then the plan parks. `advisory` until the reviewer's measured precision reaches 0.50 in the kit's reviewer eval; `--reviewer-mode` overrides it for one run |
 | `reviewerModel` | `opus` | The model `.claude/agents/plan-reviewer.md` runs on (the kit's agent eval measured `opus` best). Never Haiku: install and sync refuse it |
 | `rateLimitWaitMin` | `30` | Minutes `run-plans.mjs` waits after a call hits a rate or usage limit before it retries that call once; a second limit stops the run (`stopped: rate-limit`) |
 | `prepare` | `[]` | Files the gate generates before the tests: a list of `{ "missing": "<repo-relative path>", "script": "<npm script>", "in": "<repo-relative folder, default .>" }`. Each entry is a first gate command of every plan gate and of the final gate (`node scripts/orch-state.mjs prepare --missing <path> --script <name> [--in <folder>]`): it runs `npm run <script>` in the folder only when `<path>` is absent, and fails with the last 20 output lines and the entry when the path is still missing. Not in the merge step's `build` list. Install and sync refuse an absolute path, a `..`, a script that is a full command or an unknown field |
@@ -126,7 +126,7 @@ builder is pre-approved its whole tool list; the reviewer gets `Read,Grep,Glob,B
 review folder holds its own `.claude/settings.local.json` — the one settings file `--setting-sources local` still reads.
 `RUN_PLANS_CLAUDE` replaces `claude` (tests pass a fake).
 
-## The workflow's run (until plan 090)
+## The workflow's run (until the workflow is removed)
 
 1. **Readiness.** `plan-order --json` gives the waves. One `orch-readiness` agent per plan reports open questions,
    environment needs and the commands the plan will run; `orch-preflight.mjs` checks the environment and starts what is
@@ -485,7 +485,7 @@ to the number of sites in the file). `parsed` = the script reads the answer to b
 | Decisions | `decisions` | 1 | write-only | done: one call for N decisions |
 
 In the workflow no call is `script-only`: its runtime cannot run a script without a model, so every row that stays
-needs the runner. `run-plans.mjs` makes every one of them script-only; the workflow and this table go in plan 090.
+needs the runner. `run-plans.mjs` makes every one of them script-only; the workflow and this table go together.
 
 ## State rules
 

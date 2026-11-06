@@ -24,7 +24,7 @@ import { spawn, spawnSync } from 'node:child_process'
 /** Tools that let an agent change files. */
 export const WRITE_TOOLS = ['Edit', 'Write', 'MultiEdit', 'NotebookEdit']
 
-/** The four flags that keep a headless call's context small (plan 035): no settings, no MCP, no slash commands, no session. */
+/** The four flags that keep a headless call's context small: no settings, no MCP, no slash commands, no session. */
 export const CONTEXT_FLAGS = ['--setting-sources', 'local', '--strict-mcp-config', '--disable-slash-commands', '--no-session-persistence']
 
 /** A rate or usage limit in a failed call's output: the run pauses and retries once instead of counting a failure. */

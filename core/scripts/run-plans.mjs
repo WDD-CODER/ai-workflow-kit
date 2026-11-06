@@ -2,8 +2,8 @@
  * run-plans — the orchestrator as one script (docs/agent/orchestrator.md; the kit's ADR 0017). Builds,
  * gates, reviews and merges saved plans into the run branch `<orchestrator.runBranchPrefix><run>`; never the main branch.
  *
- *   node scripts/run-plans.mjs --run <name> --plans 451,452,453 [--concurrency 1|2] [--db local|remote] [--reviewer-mode gate|advisory]
- *   node scripts/run-plans.mjs --dry-run [--run <name>] --plans 451,452
+ *   node scripts/run-plans.mjs --run <name> --plans <NNN,NNN> [--concurrency 1|2] [--db local|remote] [--reviewer-mode gate|advisory]
+ *   node scripts/run-plans.mjs --dry-run [--run <name>] --plans <NNN,NNN>
  *
  * Only two steps are model calls, each one headless `claude -p` (scripts/lib/claude-run.mjs): the builder
  * (.claude/agents/orch-builder.md, models.build; cwd = the plan's own folder) and the reviewer

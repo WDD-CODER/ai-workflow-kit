@@ -10,7 +10,7 @@
  * builder's own account never reaches the reviewer), the diff BASE...BRANCH and the gate receipt. The verdict is computed
  * here from the kept problems — STOP when any is `blocker` or `major` — never taken from the model; a model verdict
  * that disagrees is noted. `mode`: "gate" enforces a STOP (a fix round, then the plan parks); "advisory" (the default
- * until the reviewer's measured precision reaches 0.50, plan 087) records a STOP and lets the plan merge.
+ * until the reviewer's measured precision reaches 0.50 in the kit's eval) records a STOP and lets the plan merge.
  * Also the result validator for the reviewer (moved here from the kit's eval tool, which imports it). Node built-ins only.
  */
 import { runAgent, parseResult } from './claude-run.mjs'
