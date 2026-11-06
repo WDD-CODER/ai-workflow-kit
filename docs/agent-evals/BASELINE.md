@@ -115,3 +115,25 @@ orch-verify on sonnet: fixed-010-lockfile-and-false-alarms 0.00/1.00 · fixed-01
 The checkers were re-measured on the same 25 cases (Sonnet, 2 runs): a fresh before-run, the redaction and verifier-gate
 experiments, and an after-run, with a script-computed verdict per figure — see
 `docs/agent-evals/049-checkers-hardening.md`. The 2026-10-22 tables above stay as the reference.
+
+## 2026-11 — single reviewer
+
+Plan 087: one agent, `.claude/agents/plan-reviewer.md`, measured against the four checkers above. Sonnet, 2 runs per
+case, the same 25 cases (`--case-list docs/agent-evals/baseline-2026-10-22.cases.txt`), every case scored for the one
+reviewer (`--role all`; a verifier case counts its kept candidates as the findings to make), blinded (`--redact`).
+The checkers' row sums their four 2026-10-22 Sonnet reports above (`--combine`, `runs/087-checkers-sonnet-2026-10-22/`).
+Tables and verdicts printed by `tools/agent-eval-ab.mjs`: `docs/agent-evals/087-reviewer-ab.md`.
+
+| Run | Recall | Precision | Noise | Errors | Cost (USD) | Cases × runs |
+| --- | --- | --- | --- | --- | --- | --- |
+| four checkers, 2026-10-22 (summed) | 0.28 | 0.28 | 0.44 | 1 | 6.41 | 25 × 2 |
+| plan-reviewer `--redact` | 0.20 | 0.09 | 0.79 | 0 | 5.50 | 25 × 2 |
+| plan-reviewer `--redact --with-gate` | 0.24 | 0.10 | 0.76 | 0 | 7.36 | 25 × 2 |
+
+**Chosen:** model `sonnet` (= `models.review`), prompt arm `redact-gate`, by the rule fixed before the runs (highest
+recall among arms with precision ≥ 0.50; none reaches it, so the highest precision). Recall is within noise of the
+checkers; precision is about a third of theirs (about three unlabelled findings per labelled one, and false alarms on
+both clean bug cases), so the reviewer is **not yet trustworthy as a blocking gate** and runs advisory first. The Opus
+arm was not run (open question in plan 087). Raw reports: `runs/plan-reviewer-redact/`, `runs/plan-reviewer-redact-gate/`;
+a first run with 4 and 5 invalid results (before the prompt said `line` is one whole number) is kept in
+`runs/087-first-redact*/`.

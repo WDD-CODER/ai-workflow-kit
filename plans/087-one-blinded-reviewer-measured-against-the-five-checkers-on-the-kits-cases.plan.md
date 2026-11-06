@@ -71,7 +71,7 @@ the path to the scope block and retry.
 - [x] R3: Run arm 1 — `--model sonnet --redact --json` → `docs/agent-evals/runs/plan-reviewer-redact/plan-reviewer.json` — docs/agent-evals/runs/**
 - [x] R4: Run arm 2 — `--model sonnet --redact --with-gate --json` → `docs/agent-evals/runs/plan-reviewer-redact-gate/plan-reviewer.json` — docs/agent-evals/runs/**
 - [x] R5: A/B against the 2026-10-22 Sonnet checker runs: `node tools/agent-eval-ab.mjs --before <baseline dir> --after docs/agent-evals/runs/plan-reviewer-redact-gate --arm redact=docs/agent-evals/runs/plan-reviewer-redact --out docs/agent-evals/087-reviewer-ab.md`; apply the Step 0 rule; append the `REVIEWER:` line — docs/agent-evals/087-reviewer-ab.md
-- [ ] R6: Record the result: BASELINE.md section, model-routing.md row (`plan-reviewer` → review tier; the chosen model when it differs from `models.review`), CHANGELOG — docs/agent-evals/BASELINE.md, core/docs/agent/model-routing.md, CHANGELOG.md
+- [x] R6: Record the result: BASELINE.md section, model-routing.md row (`plan-reviewer` → review tier; the chosen model when it differs from `models.review`), CHANGELOG — docs/agent-evals/BASELINE.md, core/docs/agent/model-routing.md, CHANGELOG.md
 - [ ] T1: Resync the installed copies, run every check — CHANGELOG.md
 
 ## Technical Considerations
@@ -103,3 +103,4 @@ the path to the scope block and retry.
 - R4 done: same plus `--with-gate` → `docs/agent-evals/runs/plan-reviewer-redact-gate/plan-reviewer.json`: 25 × 2, 0 errors, recall 0.2391, precision 0.1019, cost $7.36.
 - R5 done: before = `--combine` of the four 2026-10-22 Sonnet reports (recall 0.2826, precision 0.2826, $6.41). `agent-eval-ab.mjs` → recall "no real change" for both arms, precision and noise "regressed" for both. Step 0 rule: no arm ≥ 0.50 precision → highest precision = `redact-gate` (0.1019 vs 0.0918); `REVIEWER: model=sonnet prompt=redact-gate …`, advisory only.
 - decision: behaviour: the plan's Critical Question says to rerun on Opus when arm 2's precision is below 0.50 (it is 0.10); the Opus arm was not run (the main session set it off for this build). Open for the Human: run it (+50 calls, ~3× a Sonnet arm) or keep Sonnet.
+- R6 done: BASELINE.md "2026-11 — single reviewer" (table + chosen model `sonnet`, arm `redact-gate`, advisory); model-routing.md row `plan-reviewer` → review (`models.review`; measured on Sonnet — same as the chosen model); CHANGELOG Unreleased entry. Sync `KIT_SYNC: applied`, `KIT_DRIFT: ok`.
