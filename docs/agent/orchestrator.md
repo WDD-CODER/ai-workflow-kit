@@ -16,7 +16,7 @@ a terminal, and only the builder and the reviewer are model calls. The older loo
 | --- | --- | --- |
 | Loop | `scripts/run-plans.mjs` | The run as one script: readiness lint, preflight, order, per plan builder → gate → review → merge, the fix round and the escalation, the park, the final gate, the report. `--dry-run` prints all of it and calls no model |
 | Headless calls | `scripts/lib/claude-run.mjs` | One agent file run once with `claude -p` (the four context-saving flags, the tier's model, the agent's tools); rate-limit detection. The kit's agent eval uses the same code |
-| Gate | `scripts/lib/plan-gate.mjs` | The check commands by script in the plan's folder, with the gate time limit; the receipt `.claude/gate-receipt.json` |
+| Gate | `scripts/lib/plan-gate.mjs` | The check commands by script in the plan's folder, with the gate time limit; the receipt (`gate-receipt.json` under the folder's `.claude/`, kept out of git) |
 | Review | `scripts/lib/plan-review.mjs` | The reviewer's prompt (plan without its Execution Notes, the diff, the gate receipt), its result validator, the verdict computed from the problems |
 | Merge | `scripts/lib/plan-merge.mjs` | `git merge --no-ff` in the merge folder, `merge-verify` (the pin), the merge checks, one push |
 | Order | `scripts/lib/run-order.mjs` | Waves and edges from `plan-order.mjs --json`, what a park blocks (`onPark`) |

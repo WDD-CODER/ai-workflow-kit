@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "d54c21267bb9b911d4ca790aeea2e1d6ba73f622",
+  "commit": "263dd399969e13297dbf0ea2012008f120dbea70",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -420,7 +420,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "144031068592d6bceaafd7571384308546925618b2a027f484795fed9ff02e2b",
+      "sha256": "6db46ad7d065226c4466d565b95fc8cb005051757c2ef2fb5b5025f49a071f2d",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
