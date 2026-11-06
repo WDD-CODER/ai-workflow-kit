@@ -26,6 +26,9 @@ test('dbWriteKind names the kind of each command in the plan table, and null for
   // a client fed a script it does not show counts as a write; a write hidden behind a quoted `;` is still found
   assert.equal(dbWriteKind('psql -f seed.sql'), 'raw-write')
   assert.equal(dbWriteKind('sqlite3 app.db < fixtures.sql'), 'raw-write')
+  // plan 084 A3: a read-only check script whose name starts with seed-check is not a write; a seed script still is
+  for (const c of ['node scripts/seed-check.mjs', 'node scripts/seed-checker.mjs --dry', 'bash -c "node scripts/seed-check.mjs"']) assert.equal(dbWriteKind(c), null, c)
+  for (const c of ['node scripts/seed.mjs', 'node scripts/seed-users.mjs', 'npm run seed', 'node scripts/seed-checks-off.mjs', 'node scripts/seed-checkout.mjs', 'node scripts/seed-check.mjs.bak']) assert.equal(dbWriteKind(c), 'seed', c)
   assert.deepEqual(dbWrites('psql -c "SELECT 1; DROP TABLE x"'), ['psql -c "SELECT 1; DROP TABLE x"'])
   assert.deepEqual(dbWrites('npm ci && npm run seed'), ['npm run seed'])
   // a client name or a write word inside a commit message, a search or a package name is not a database write

@@ -546,13 +546,13 @@ const stepTag = (s) => (/^round \d{1,2}$/.test(String(s ?? '').trim()) ? String(
 // No stored fact, no line: a cause that names nothing the reader could look at is not written.
 // Only the shapes the code itself makes reach a lesson line, so an agent-written id or path cannot carry words to the
 // next builder. Ids: gate-N, scope-N, ui-N, merge-N (orchestrate.js makes them) and <role>-N for a finder role
-// (check-plan-N, check-bugs-N, check-rules-N, security-N; the RULES_GROUP roles too). Paths: at most four segments of at
-// most 40 characters each, no `.` or `..` segment.
+// (check-plan-N, check-bugs-N, check-rules-N, security-N; the RULES_GROUP roles too). Paths: at most six segments of at
+// most 40 characters each, no `.` or `..` segment (six keeps most app paths, e.g. src/app/pages/x/x.component.ts).
 const ID_ROLES = [...new Set(['gate', 'scope', 'ui', 'merge', 'security', ...Object.keys(RULES_GROUP)])]
 const SAFE_ID = new RegExp(`^(?:${ID_ROLES.map((r) => r.replace(/[-]/g, '\\-')).join('|')})-\\d{1,3}$`)
 const SAFE_PATH = { test: (p) => {
   const parts = String(p).split('/')
-  return parts.length <= 4 && parts.every((s) => /^[\w@.+-]{1,40}$/.test(s) && s !== '.' && s !== '..')
+  return parts.length <= 6 && parts.every((s) => /^[\w@.+-]{1,40}$/.test(s) && s !== '.' && s !== '..')
 } }
 export const safeLessonId = (id) => SAFE_ID.test(String(id ?? ''))
 export const safeLessonPath = (p) => SAFE_PATH.test(String(p ?? ''))

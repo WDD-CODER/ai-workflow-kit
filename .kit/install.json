@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "a16d0efcef68ba15404cca5d51099a2bcb6288f7",
+  "commit": "689138e4b053f52502607af80ca7d51e8ae93cfd",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -20,7 +20,7 @@
       "source": "core/.claude/agents/kit-prevalidate.md"
     },
     ".claude/agents/kit-runner.md": {
-      "sha256": "3b75b890c7d071fe1a36bfdca8cdfea677f819defb4291a7496cfca58635772b",
+      "sha256": "9b4a4d579b259601eb5a5171d71d37a4c4a99e433fbd7470ff2cea661402b7a5",
       "kind": "managed",
       "source": "core/.claude/agents/kit-runner.md"
     },
@@ -55,7 +55,7 @@
       "source": "core/.claude/agents/orch-merge.md"
     },
     ".claude/agents/orch-readiness.md": {
-      "sha256": "031f7b9936c963ed7a800a3cb884dd5515e7d79be2d94b09eaad083296ccdce3",
+      "sha256": "d215fc7f67e43d4d17be709d606c2988ca9c7002b38de30e9f7174b02f03d8c5",
       "kind": "managed",
       "source": "core/.claude/agents/orch-readiness.md"
     },
@@ -185,7 +185,7 @@
       "source": "core/.claude/commands/security.md"
     },
     ".claude/commands/ship.md": {
-      "sha256": "aeb0481adda37ab958cf368d44c582707f013cef67e054070d37e54e281980f6",
+      "sha256": "1916eb14a662aed08819cc70cea345a3e2381a6f0d81e1c18211685fb5d296a3",
       "kind": "managed",
       "source": "core/.claude/commands/ship.md"
     },
@@ -275,7 +275,7 @@
       "source": "core/.claude/skills/worktree-setup/SKILL.md"
     },
     ".claude/workflows/orchestrate.js": {
-      "sha256": "7e13737f72c9b50ecc9abec740cceca93532e0888d43538cfc06cdac16bdc396",
+      "sha256": "9842e0b394881b7d4b21700e6df5ccfc7e2d51903e69c2f241526dbc342dc4fa",
       "kind": "managed",
       "source": "core/.claude/workflows/orchestrate.js"
     },
@@ -345,7 +345,7 @@
       "source": "core/docs/agent/decision-review.md"
     },
     "docs/agent/job-validation.md": {
-      "sha256": "3c9db662e56b34aef93c7ea9f422948bd6f2787564eebe4648065e82a074646f",
+      "sha256": "25c663e24398708af36b65cb9b775c798fc8717917f8050f1ec0a9cc94d91d11",
       "kind": "managed",
       "source": "core/docs/agent/job-validation.md"
     },
@@ -415,7 +415,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "da28577baa803ca9259b35bb47d43470c61550ad28a56d72991e550d344a14b5",
+      "sha256": "0f401e66c0c63a8c0d659b8de591491cd64d9437f587a8fc65a6586c6b2b432b",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -710,7 +710,7 @@
       "source": "core/scripts/lib/brain-doc.mjs"
     },
     "scripts/lib/db-write.mjs": {
-      "sha256": "ddcceacf35b81ffce1bf543347c0d5ed21a597443fca23684505bf5e0c54c131",
+      "sha256": "8a94dea9680cc3e8b88579238ad53787b80d5c623ca557e9ed2d5fd3f63e4522",
       "kind": "managed",
       "source": "core/scripts/lib/db-write.mjs"
     },
@@ -740,7 +740,7 @@
       "source": "core/scripts/lib/orch-folders.mjs"
     },
     "scripts/lib/orch-run.mjs": {
-      "sha256": "2469c7bbddeec5fe39f10b37c1d98134ac3835162892ef19fc9bc1d7b8eaf0c0",
+      "sha256": "aac6a37ec068a1a65f4471f8d2d7412b5d64f2e9aecd7fc59b18ad4d73a13f3b",
       "kind": "managed",
       "source": "core/scripts/lib/orch-run.mjs"
     },
@@ -770,7 +770,7 @@
       "source": "core/scripts/lib/plan-paths.mjs"
     },
     "scripts/lib/plan-scope.mjs": {
-      "sha256": "40d2afa5ce27b9c4c1e9a65302d6fdfcc72ff73c6951b7da5cb5acc0856e61a3",
+      "sha256": "eb019b8349a7139e726fe6024f84cdb007600243471e5fbc6607eb83e8936131",
       "kind": "managed",
       "source": "core/scripts/lib/plan-scope.mjs"
     },
@@ -810,12 +810,12 @@
       "source": "core/scripts/next-plan-number.mjs"
     },
     "scripts/orch-preflight.mjs": {
-      "sha256": "f5191a9028060b3246655e9c4e25f3b1f70964d797b6d4db740e1f737364e9b3",
+      "sha256": "dd135b7d309be337f00e818060f6695bd3551d133c39a3c4fa27341f2b02c8c3",
       "kind": "managed",
       "source": "core/scripts/orch-preflight.mjs"
     },
     "scripts/orch-state.mjs": {
-      "sha256": "7a41d96ec7a6724021a612222e6e93b497e4961f4e35238aa5bffc295fc3b06f",
+      "sha256": "1069c43cebe1a7e95187b1d510ef58aac1d452dba9459c507868ef1adc735710",
       "kind": "managed",
       "source": "core/scripts/orch-state.mjs"
     },
@@ -890,7 +890,7 @@
       "source": "core/scripts/run-python.sh"
     },
     "scripts/scope-check.mjs": {
-      "sha256": "1f5d43141f5f6354794d9827cff2a3ed50e8e6b6a54c11c74490c96a86c26d1c",
+      "sha256": "0edbe00411c99b7f5c9a6444f7b71a55f538981cd7d627262d23f85cc19832eb",
       "kind": "managed",
       "source": "core/scripts/scope-check.mjs"
     },

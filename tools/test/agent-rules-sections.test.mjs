@@ -33,6 +33,11 @@ test('install-check --target names each missing rule section; sync --apply adds 
     assert.equal(lines.length, 2, bad.stdout)
     assert.match(lines[0], /"## checkers"/)
     assert.match(lines[1], /"## ui"/)
+    // plan 084 A7: --target=<dir> acts like --target <dir> (it used to fall through to the fixtures)
+    const eq = node(join(kit, 'tools', 'install-check.mjs'), [`--target=${dir}`], dir)
+    assert.equal(eq.status, 1, eq.stdout + eq.stderr)
+    assert.equal(eq.stdout, bad.stdout)
+    assert.equal(node(join(kit, 'tools', 'install-check.mjs'), ['--target='], dir).status, 2, 'an empty --target= is refused')
     // sync: the dry run writes nothing, --apply appends the headers
     const dry = node(join(kit, 'tools', 'sync.mjs'), ['--target', dir, '--source', kit], dir)
     assert.match(dry.stdout, /RULES_SECTION_MISSING: docs\/brain\/agent-rules\.md has no "## checkers" section — added on --apply/)

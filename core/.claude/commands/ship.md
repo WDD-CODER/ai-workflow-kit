@@ -69,6 +69,7 @@ node scripts/override-check.mjs
 - `OK` (`scope: ok` in a slot) → proceed with this-chat-file staging.
 - Non-empty `overlaps` → STOP; `no_manifest` → never `git add -A`, prefer this-chat files.
 - Stage only this-chat dirty paths. Never `-A` unless Human overrode scope. Never stage secrets/`.env`.
+- `.kit/install.json` dirty because sync rewrote it on this branch → stage it with the job: every plan's scope allows it, and leaving it out makes the next sync on {{git.mainBranch}} see a stale manifest.
 
 Before Phase 4: `git fetch origin && git rebase origin/{{git.mainBranch}}`.
 - Conflict where both sides only *added to* a hotspot (`{{project.i18nFile}}`, `{{paths.hotspots}}`) → keep both sides (union), `git rebase --continue`.

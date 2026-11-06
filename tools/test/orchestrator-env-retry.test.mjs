@@ -140,6 +140,16 @@ test('a gate env-fail whose probe passes and whose retry passes merges', async (
   assert.equal(r.result.outcomes[0].state, 'merged')
 })
 
+test('plan 084 A2: the env check after a gate env-fail probes in the folder the gate ran in', async () => {
+  const r = await runFlow({ plans: ['101'], checks: { 101: [CMD] } }, {
+    gateEnv: (folder, n) => (folder === '/wt/101' && n === 1 ? [CMD] : []),
+    runner: preflight([{ command: CMD, status: 'OK' }]),
+  })
+  assert.equal(r.result.outcomes[0].state, 'merged')
+  assert.equal(envChecks(r).length, 1)
+  assert.match(envChecks(r)[0], /--probe-dir \/wt\/101 /, envChecks(r)[0])
+})
+
 test('a gate with lost results keeps today\'s path: the generic env check (no --probe), one retry', async () => {
   // Every gate call answers with no result at all: "returned no result, twice" carries no probeCmds.
   const lost = await runFlow({ plans: ['101'], checks: { 101: ['npm run test'] } }, { lost: (folder) => folder === '/wt/101' })
@@ -164,7 +174,9 @@ function probeProject({ modules = true } = {}) {
   writeFileSync(join(dir, 'scripts', 'here.mjs'), '')
   return dir
 }
-const probeRun = (dir, ...cmds) => spawnSync(process.execPath, [join(dir, 'scripts', 'orch-preflight.mjs'), '--env-only', ...cmds.flatMap((c) => ['--probe', c])], { cwd: dir, encoding: 'utf8', env: { ...process.env, ORCH_FREE_GB: '999', DB_PORT: '' }, timeout: 60000 }).stdout
+const probeRunWith = (dir, extra, cmds) => spawnSync(process.execPath, [join(dir, 'scripts', 'orch-preflight.mjs'), '--env-only', ...extra, ...cmds.flatMap((c) => ['--probe', c])], { cwd: dir, encoding: 'utf8', env: { ...process.env, ORCH_FREE_GB: '999', DB_PORT: '' }, timeout: 60000 }).stdout
+const probeRun = (dir, ...cmds) => probeRunWith(dir, [], cmds)
+const probeRunIn = (dir, gateDir, ...cmds) => probeRunWith(dir, ['--probe-dir', gateDir], cmds)
 const json = (out) => JSON.parse(/^ORCH_JSON (.*)$/m.exec(out)[1])
 const drop = (dir) => rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
 
@@ -198,5 +210,21 @@ test('probe: npm|pnpm run <name> needs the script in package.json and node_modul
   } finally {
     drop(dir)
     drop(bare)
+  }
+})
+
+test('probe --probe-dir: node <file> is OK when the file exists only in the folder the gate ran in, FAIL when in neither', () => {
+  const dir = probeProject()
+  const gateDir = mkdtempSync(join(tmpdir(), 'orch-probe-gate-'))
+  try {
+    mkdirSync(join(gateDir, 'tools'))
+    writeFileSync(join(gateDir, 'tools', 'x.mjs'), '')
+    assert.match(probeRunIn(dir, gateDir, 'node tools/x.mjs'), /^OK\s+probe node tools\/x\.mjs$/m)
+    assert.match(probeRun(dir, 'node tools/x.mjs'), /^FAIL probe: node tools\/x\.mjs — tools\/x\.mjs not found in the root folder$/m, 'without --probe-dir the root folder is searched')
+    assert.match(probeRunIn(dir, gateDir, 'node tools/y.mjs'), /^FAIL probe: node tools\/y\.mjs — tools\/y\.mjs not found in the folder the gate ran in$/m)
+    assert.match(probeRunIn(dir, 'relative/dir', 'node scripts/here.mjs'),/^OK\s+probe node scripts\/here\.mjs$/m, 'a relative folder falls back to the root folder')
+  } finally {
+    drop(dir)
+    drop(gateDir)
   }
 })
