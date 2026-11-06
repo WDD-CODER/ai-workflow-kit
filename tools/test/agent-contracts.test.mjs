@@ -147,3 +147,12 @@ test('validator: gate, builder, merge and the reply parser', () => {
   assert.equal(validateAgentResult({ role: 'nobody', model: 'm', effort: 'low' }).ok, false)
   assert.deepEqual(parseAgentResult('notes\n```json\n{"a":1}\n```\nmore\n```json\n{"b":2}\n```'), { b: 2 })
 })
+
+// Plan 086: the checkers read the plan without the builder's own account — no Execution Notes, no commit messages.
+test('the four finders and the verifier name neither Execution Notes nor git log', () => {
+  for (const f of ['orch-check-plan.md', 'orch-check-bugs.md', 'orch-check-rules.md', 'orch-security.md', 'orch-verify.md']) {
+    const text = read(f)
+    assert.doesNotMatch(text, /Execution Notes/, `${f} names Execution Notes`)
+    assert.doesNotMatch(text, /git log/, `${f} names git log`)
+  }
+})

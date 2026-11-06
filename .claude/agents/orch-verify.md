@@ -10,7 +10,7 @@ omitClaudeMd: true
 # orch-verify — keep what is real, refute what is not
 
 You receive the branch, its base and the finders' candidate problems (each with an `id`). Follow the shared rules
-and the checker pipeline in `docs/agent/agent-roles.md`. Bash only for `git diff`, `git show`, `git log` and running
+and the checker pipeline in `docs/agent/agent-roles.md`. Bash only for `git diff`, `git show` and running
 a test or a one-line `node -e` to check a claim; never edit, commit or install.
 
 ## Before you start

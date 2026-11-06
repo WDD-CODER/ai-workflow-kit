@@ -12,9 +12,13 @@
  *   node scripts/orch-state.mjs main-tries --run <name>                     main-folder checks that exited 0 in the last 2 hours, per plan
  *   node scripts/orch-state.mjs prepare    --missing <path> --script <name> [--in <folder>] [--pm npm|pnpm]   runs the script when <path> is absent (orchestrator.prepare)
  *   node scripts/orch-state.mjs plan-info  --run <name> --plan <NNN>        path, branch, start tier, [human] and [ui] items
+ *                                          [--no-notes]: also a copy without ## Execution Notes (reviewPath, the checkers' PLAN)
  *   node scripts/orch-state.mjs worktree   --run <name> --plan <NNN>        the builder's folder on its plan branch: an idle
  *                                          wt-N slot first (orchestrator.useSlots), else its own folder; packages installed
  *   node scripts/orch-state.mjs release    --run <name> --plan <NNN>        gives the plan's slot back (detached, marker removed)
+ *   node scripts/orch-state.mjs park-save  --run <name> --plan <NNN>        uncommitted work to park/<run>-<NNN> (pushed), slot released
+ *   node scripts/orch-state.mjs park-record --run <name> --plan <NNN> [--reason t] [--sha x]   the park, recorded once
+ *   node scripts/orch-state.mjs park       --run <name> --plan <NNN> [--reason-b64 b]   the whole teardown (runs plan-park.mjs)
  *   node scripts/orch-state.mjs diff       --run <name> --plan <NNN>        changed files vs the run branch, sensitive?
  *   node scripts/orch-state.mjs set        --run <name> --plan <NNN> [--state s] [--round n] [--tier t] [--sha x]
  *                                          [--role r --model m --effort e | --roles r=m/e,r2=m2/e2] [--reason "<text>"]
@@ -27,6 +31,8 @@
  *   node scripts/orch-state.mjs handoff    --run <name> --plan <NNN> --step s --check c --tail t --tried x [--failed t] [--replan yes|no --replan-why t --not-done t]
  *                                          the hand-off file a fresh judgment-tier builder reads (the escalation is recorded);
  *                                          its Done: line is derived here (ticked sub-task ids in the plan + the branch diff)
+ *                                          [--reset-base]: then the plan's folder goes back to the branch's base (clean,
+ *                                          origin/<branch> follows with a lease); status.json keeps resetToBase / resetFrom
  *   node scripts/orch-state.mjs context    [--run <name>]                   LESSONS / RULES / RECENT_RUNS for the roles (read-only) and their size
  *   node scripts/orch-state.mjs lessons    --run <name>                     lesson lines from status.json into docs/brain/agent-lessons/ (no model call)
  *   node scripts/orch-state.mjs trend      [--run <name>] [--last n]        ✗ / fix rounds per plan and parked per run from docs/brain/run-log.md
@@ -68,7 +74,7 @@ import { uiItems } from './lib/done-when.mjs'
 import { listSlots } from './lib/slot.mjs'
 import { ensureDeps, idleSlot, claimSlot, releaseSlot, releaseRunSlots } from './lib/orch-folders.mjs'
 import { agreementStats, addLesson, lessonParts, ruleLines, LESSON_ROLES } from './decision-log.mjs'
-import { triageForce, triageView, decisionsInView, mergePlanFile, decisionType, runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine, logQueryArgs, lessonFacts, commandTag, runLogRow, updateRunLog, parseRunLog, parseDecisionRows, trendOf, contextBudget, INJECTED_ROLES } from './lib/orch-run.mjs'
+import { planWithoutNotes, triageForce, triageView, decisionsInView, mergePlanFile, decisionType, runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine, logQueryArgs, lessonFacts, commandTag, runLogRow, updateRunLog, parseRunLog, parseDecisionRows, trendOf, contextBudget, INJECTED_ROLES } from './lib/orch-run.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const MAIN = 'main'
@@ -111,7 +117,10 @@ const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tie
   // a reason as base64 of its UTF-8 text (the workflow's way: quotes, brackets and $ survive the runner's shell)
   'reason-b64',
   // `prepare`: the generated path, the npm script, the folder it runs in and the package manager
-  'missing', 'script', 'in', 'pm'])
+  'missing', 'script', 'in', 'pm',
+  // switches (no value needed; `--key=<value>` is accepted too): plan-info's redacted copy, handoff's reset to the base
+  'no-notes', 'reset-base'])
+const SWITCHES = new Set(['no-notes', 'reset-base'])
 function parseArgs(argv) {
   const out = { _: [] }
   for (let i = 0; i < argv.length; i++) {
@@ -125,6 +134,7 @@ function parseArgs(argv) {
     const key = eq > 0 ? a.slice(2, eq) : a.slice(2)
     if (!FLAGS.has(key)) return { problem: `unknown flag --${key}` }
     if (eq > 0) out[key] = a.slice(eq + 1)
+    else if (SWITCHES.has(key)) out[key] = true
     else if (argv[i + 1] !== undefined && !argv[i + 1].startsWith('-')) out[key] = argv[++i]
     else return { problem: `--${key} needs a value (use --${key}=<value>)` }
   }
@@ -536,6 +546,14 @@ function mergedPlans(run) {
   return out
 }
 
+/** The plan without its ## Execution Notes, at .claude/orchestrator-runs/<run>/plan-<NNN>.reviewed.md; returns that path. */
+function writeReviewCopy(run, nnn, text) {
+  const rel = `.claude/orchestrator-runs/${run}/plan-${nnn}.reviewed.md`
+  mkdirSync(dirname(join(root, rel)), { recursive: true })
+  writeFileSync(join(root, rel), planWithoutNotes(text))
+  return rel
+}
+
 function planPath(nnn) {
   const p = findOpenPlan(root, nnn)
   if (!p) fail(`plan ${nnn} not found in the open plan folders`)
@@ -906,6 +924,9 @@ const commands = {
     const text = readFileSync(join(root, path), 'utf8')
     const { tier, invariants } = startTier(text)
     const info = { ok: true, nnn, path, title: planTitle(text), branch: branchOf(path, nnn), npmScripts: npmScripts(), worktree: builderFolder(run, nnn).replace(/\\/g, '/'), startTier: tier, invariants, humanItems: humanItems(text), uiItems: uiItems(text) }
+    // --no-notes: the plan without its ## Execution Notes section, next to the run's status file — the copy the checkers
+    // read (PLAN: reviewPath), so the builder's own account never reaches them. The plan file itself is not touched.
+    if (args['no-notes'] !== undefined) info.reviewPath = writeReviewCopy(run, nnn, text)
     const status = readStatus(run)
     if (status) {
       // plan-info starts each attempt at a plan: an earlier attempt (a relaunch) moves to `earlier`, so state, round,
@@ -1157,6 +1178,46 @@ const commands = {
     emit({ ok: true, saved: true, pushed: true, branch, sha: commit, released, ...(slot ? { slot: slot.slot } : {}) }, lines)
   },
 
+  // The whole teardown of a parked plan, through this script (every runner command of a run is orch-state.mjs or
+  // orch-preflight.mjs):
+  //   node scripts/orch-state.mjs park --run <name> --plan <NNN> [--reason-b64 <b64>]
+  // runs scripts/plan-park.mjs and hands back its answer (steps, recorded). plan-park itself calls park-save, release and
+  // park-record as separate orch-state processes, so this one holds no status lock while it runs.
+  park() {
+    const run = runName()
+    const nnn = planNumber(args.plan ?? '')
+    if (!nnn) fail('--plan takes a plan number')
+    const reason = args.reason && args.reason !== true ? String(args.reason) : ''
+    const r = spawnSync(process.execPath, [join(root, 'scripts', 'plan-park.mjs'), `--run=${run}`, `--plan=${nnn}`, ...(reason ? [`--reason-b64=${Buffer.from(reason, 'utf8').toString('base64')}`] : [])], { cwd: root, encoding: 'utf8', timeout: 600000 })
+    const out = String(r.stdout ?? '').split(/\r?\n/)
+    const line = out.slice().reverse().find((l) => l.startsWith('ORCH_JSON '))
+    let answer = null
+    try {
+      answer = line ? JSON.parse(line.slice('ORCH_JSON '.length)) : null
+    } catch { /* unreadable */ }
+    if (!answer) fail(`plan-park.mjs gave no answer (exit ${r.status}): ${String(r.stderr ?? '').trim().split('\n').pop() ?? ''}`)
+    emit({ ...answer, ok: true }, out.filter((l) => l.startsWith('plan-park: ')))
+  },
+
+  // A park, recorded once (plan-park.mjs's last step):
+  //   node scripts/orch-state.mjs park-record --run <name> --plan <NNN> [--reason "<why>"] [--sha <park commit>]
+  // plans[NNN].park = { at, reason, branch?, sha? } and the state parked. A plan that already has a park record keeps it as
+  // it is (recorded: false): a second teardown of the same park changes nothing.
+  'park-record'() {
+    const run = runName()
+    const nnn = planNumber(args.plan ?? '')
+    if (!nnn) fail('--plan takes a plan number')
+    const st = needStatus(run)
+    const p = (st.plans[nnn] ??= { nnn, state: 'parked', round: 0, models: {} })
+    if (p.park) emit({ ok: true, recorded: false, park: p.park }, [`plan ${nnn}: park already recorded at ${p.park.at}`])
+    const reason = args.reason && args.reason !== true ? cutText(args.reason, 400) : (p.reason ?? '(no reason given)')
+    p.park = { at: nowIso(), reason, ...(p.parkBranch ? { branch: p.parkBranch } : {}), ...(/^[0-9a-f]{40}$/.test(String(args.sha ?? '')) ? { sha: args.sha } : {}) }
+    p.state = 'parked'
+    p.reason ??= reason
+    writeStatus(run, st)
+    emit({ ok: true, recorded: true, park: p.park }, [`plan ${nnn}: park recorded`])
+  },
+
   diff() {
     const run = runName()
     const nnn = planNumber(args.plan ?? '')
@@ -1184,7 +1245,10 @@ const commands = {
     const planText = onBase.status === 0 ? onBase.out : (existsSync(join(root, rel)) ? readFileSync(join(root, rel), 'utf8') : '')
     const scopeGlobs = extractScopeGlobs(planText) ?? []
     const testsOutOfScope = testFilesOutOfScope(files.filter((f) => f !== rel && !f.startsWith('.claude/sessions/')), scopeGlobs, (g) => picomatch(g, { dot: true }))
-    emit({ ok: true, files, sensitive, sensitiveFiles, sensitiveCode: codeFiles, testsOutOfScope, ...(unread ? { diffUnread: true } : {}), head: git(root, 'rev-parse', head).out },
+    // --no-notes: the checkers' copy of the plan (the same run-branch text, without ## Execution Notes), written next to
+    // the status file just before the checkers read it.
+    const reviewPath = args['no-notes'] !== undefined && planText ? writeReviewCopy(run, nnn, planText) : null
+    emit({ ok: true, files, sensitive, sensitiveFiles, sensitiveCode: codeFiles, testsOutOfScope, ...(unread ? { diffUnread: true } : {}), ...(reviewPath ? { reviewPath } : {}), head: git(root, 'rev-parse', head).out },
       [`${files.length} file(s) changed, ${sensitiveFiles.length} sensitive by path, ${codeFiles.length} by added auth/permission code${testsOutOfScope.length ? `, ${testsOutOfScope.length} test file(s) outside the scope` : ''}${unread ? '; the diff could not be read in full: sensitive' : ''}`])
   },
 
@@ -1326,6 +1390,20 @@ const commands = {
       if (m && !ticked.includes(m[1])) ticked.push(m[1])
     }
     const done = `sub-tasks ticked: ${ticked.join(', ') || '(none)'}; files changed: ${files.join(', ') || '(none)'}`
+    // --reset-base: the fresh builder starts from the plan branch's base, not from the failed diff (a script step: the
+    // agents keep their deny list). Found before the file is written, so the file names it; done after.
+    let reset = null
+    if (args['reset-base'] !== undefined) {
+      const slot = USE_SLOTS ? listSlots().find((s) => s.plan === planPath(nnn)) ?? null : null
+      const own = builderFolder(run, nnn)
+      const folder = slot ? slot.path : existsSync(own) ? own : null
+      if (!folder) fail(`handoff --reset-base: plan ${nnn} has no folder to reset`)
+      fetchOrigin()
+      const from = git(folder, 'rev-parse', 'HEAD').out
+      const base = git(folder, 'merge-base', 'HEAD', `origin/${runBranch(run)}`).out
+      if (!/^[0-9a-f]{40}$/.test(base)) fail(`handoff --reset-base: no common base of ${branch} and origin/${runBranch(run)} in ${folder}`)
+      reset = { folder, from, base }
+    }
     // Does the plan itself have to change? yes | no; anything else is "no".
     const replan = args.replan === 'yes' ? 'yes' : 'no'
     const replanWhy = args['replan-why'] && args['replan-why'] !== true ? String(args['replan-why']) : '(not given)'
@@ -1341,17 +1419,36 @@ const commands = {
       'Suspected cause: (a guess) see the output tail; rerun the failing check first',
       `Replan:          ${replan} — ${replanWhy}`,
       ...(args['not-done'] && args['not-done'] !== true ? [`Not done:        ${String(args['not-done'])}`] : []),
+      ...(reset ? [`Reset:           the folder is back at the base ${reset.base.slice(0, 7)}; the discarded attempt is ${reset.from.slice(0, 7)} (git show ${reset.from.slice(0, 7)})`] : []),
       '',
     ].join('\n'))
+    if (reset) {
+      const { folder, from, base } = reset
+      for (const step of [['checkout', '--', '.'], ['clean', '-fdq', '--exclude=.worktree-*'], ['reset', '--quiet', '--hard', base]]) {
+        const r = git(folder, ...step)
+        if (r.status !== 0) fail(`handoff --reset-base: git ${step.join(' ')} in ${folder}: ${r.err}`)
+      }
+      // The plan branch on origin follows (lease: only while it is still at the head this script saw), so the fresh
+      // builder's own `git push -u origin <branch>` is a fast-forward. The discarded head stays in status.json (resetFrom).
+      const remote = git(folder, 'rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`).out
+      if (remote && remote !== base) {
+        const p = git(folder, 'push', '--quiet', `--force-with-lease=refs/heads/${branch}:${remote}`, 'origin', `${base}:refs/heads/${branch}`)
+        if (p.status !== 0) fail(`handoff --reset-base: moving origin/${branch} to the base ${base.slice(0, 7)} failed: ${p.err.split('\n').pop()}`)
+      }
+    }
     // The escalation is a fact the builder lessons are written from (lessonFacts): its step and the failing check.
     const st = readStatus(run)
     if (st?.plans?.[nnn]) {
       const e = { step: val('step'), check: val('check').slice(0, 200) }
       st.plans[nnn].escalations = [...(st.plans[nnn].escalations ?? []).filter((x) => x.step !== e.step || x.check !== e.check), e]
       st.plans[nnn].replan = `${replan} — ${replanWhy}`
+      if (reset) {
+        st.plans[nnn].resetToBase = reset.base
+        st.plans[nnn].resetFrom = reset.from
+      }
       writeStatus(run, st)
     }
-    emit({ ok: true, path: rel }, [`hand-off file ${rel}`])
+    emit({ ok: true, path: rel, ...(reset ? { resetToBase: reset.base, resetFrom: reset.from } : {}) }, [`hand-off file ${rel}`, ...(reset ? [`${reset.folder.replace(/\\/g, '/')}: reset to the base ${reset.base.slice(0, 7)} (discarded ${reset.from.slice(0, 7)})`] : [])])
   },
 
   note() {

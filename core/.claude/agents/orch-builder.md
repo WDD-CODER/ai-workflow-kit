@@ -54,8 +54,9 @@ rules in `docs/agent/agent-roles.md` (non-interactive, evidence, deny list, sche
 ## On a retry
 
 - **Findings from the checker:** fix exactly those, rerun the checks, return a new result.
-- **A hand-off file** (you are the fresh, stronger builder): read the hand-off file, the plan and `git diff` against
-  the run branch. Rerun the failing check first; the diff and that run are the truth, the suspected cause is a hint.
+- **A hand-off file** (you are the fresh, stronger builder): the worktree is at the plan's base commit; the hand-off
+  file holds what the first builder changed, what failed and the output tail. Re-implement the plan from the base; do
+  not reconstruct the discarded diff.
 
 ## When you stop
 

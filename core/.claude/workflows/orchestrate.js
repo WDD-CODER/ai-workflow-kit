@@ -782,8 +782,13 @@ function recordVerify(nnn, candidates, verdictOf, kept) {
   queueFact(nnn, 'reappeared', [...m.reappeared].slice(0, 4).join('|'))
 }
 
+// The checkers' plan copy: the path `diff --no-notes` writes (its reviewPath), built here from the run and the plan
+// number (code values, never a model's or a runner's text).
+const reviewPlanOf = (ctx) => `.claude/orchestrator-runs/${RUN}/plan-${ctx.nnn}.reviewed.md`
+
 async function checkers(ctx) {
-  const diff = await state(['diff', '--run', RUN, '--plan', ctx.nnn], `diff ${ctx.nnn}`, ctx.nnn)
+  // --no-notes: the same call writes the checkers' copy of the plan (no ## Execution Notes) at reviewPlanOf(ctx).
+  const diff = await state(['diff', '--run', RUN, '--plan', ctx.nnn, '--no-notes', 'yes'], `diff ${ctx.nnn}`, ctx.nnn)
   if (Array.isArray(diff.files)) CHANGED_FILES[ctx.nnn] = diff.files
   // The full sha the checkers read (origin/<branch>, resolved by the state script, never a builder's report).
   ctx.diffHead = /^[0-9a-f]{40}$/.test(String(diff.head ?? '')) ? diff.head : null
@@ -794,7 +799,10 @@ async function checkers(ctx) {
     return { results: [], diff, fail: true, why: `checker: ${findings.map((k) => `${k.severity} ${k.file}:${k.line} ${k.rule}`).join('; ')}`, findings }
   }
   const roles = diff.sensitive ? [...FINDERS, 'orch-security'] : FINDERS
-  const base =task({ PLAN: ctx.info.path, BRANCH: `origin/${ctx.info.branch}`, BASE: `origin/${RUN_BRANCH}`, FOLDER: ctx.wt.path, FILES: diff.files })
+  // PLAN: the redacted copy plan-info --no-notes wrote (no ## Execution Notes), never the plan file the builder writes
+  // into: a checker that reads the builder's own account of its work grades the account, not the diff.
+  const reviewPlan = reviewPlanOf(ctx)
+  const base =task({ PLAN: reviewPlan, BRANCH: `origin/${ctx.info.branch}`, BASE: `origin/${RUN_BRANCH}`, FOLDER: ctx.wt.path, FILES: diff.files })
   // Each finder's own lessons, and the `checkers` rules (the security reviewer reads the security standards instead).
   const own = (role) => task({ LESSONS: lessonsOf(role.replace('orch-', '')), RULES: role === 'orch-security' ? undefined : rulesOf('checkers') })
   // The plan's own `removes:` decisions so far: the plan checker does not call a removal the builder logged "unlogged".
@@ -812,7 +820,7 @@ async function checkers(ctx) {
   }
   if (missing.length) return { results, fail: true, env: false, why: `checker returned nothing: ${missing.join(', ')}`, findings: [] }
   if (!candidates.length) return { results, diff }
-  const v = await ask(`Verify the candidate problems of plan ${ctx.nnn} of run ${RUN}. Follow .claude/agents/orch-verify.md.\n\n${task({ PLAN: ctx.info.path, BRANCH: `origin/${ctx.info.branch}`, BASE: `origin/${RUN_BRANCH}`, FOLDER: ctx.wt.path, CANDIDATES: candidates, GATE: ctx.gateView?.length ? ctx.gateView : undefined, LESSONS: lessonsOf('verify'), RULES: rulesOf('checkers') })}`,
+  const v = await ask(`Verify the candidate problems of plan ${ctx.nnn} of run ${RUN}. Follow .claude/agents/orch-verify.md.\n\n${task({ PLAN: reviewPlan, BRANCH: `origin/${ctx.info.branch}`, BASE: `origin/${RUN_BRANCH}`, FOLDER: ctx.wt.path, CANDIDATES: candidates, GATE: ctx.gateView?.length ? ctx.gateView : undefined, LESSONS: lessonsOf('verify'), RULES: rulesOf('checkers') })}`,
     { agentType: 'orch-verify', schema: SCHEMA.verify, label: `verify ${ctx.nnn}`, phase: 'Build', plan: ctx.nnn })
   results.push(v)
   // A candidate without a verdict (or no verifier result) stays kept: dropping needs a concrete refutation.
@@ -1006,12 +1014,16 @@ async function runPlan(nnn) {
   // A parked plan closes with one `set` (the reason carries everything), not one note per closing step.
   const park = async (reason) => {
     await setPlan(nnn, { state: 'parked', round: ctx.round, tier: ctx.tier, reason })
-    // The builder's uncommitted work goes to the fixed branch park/<run>-<NNN> (pushed) and its slot is given back; a
-    // folder with nothing uncommitted is left as it is. A failed save is a note: the folder is then kept untouched.
+    // One teardown (`orch-state.mjs park`, which runs scripts/plan-park.mjs; safe to repeat): the folder's servers
+    // stopped, the uncommitted work saved on park/<run>-<NNN> (pushed), the session lock deleted, the slot freed or the
+    // plan's own folder removed, the local park/ branch deleted, the park recorded once. A step it could not do is in its
+    // answer; the folder is then kept.
     if (ctx.wt?.ok) {
-      const s = await state(['park-save', '--run', RUN, '--plan', nnn], `park save ${nnn}`, nnn)
-      if (s?.saved && s.pushed) await note(`parked work saved on ${s.branch} (${String(s.sha ?? '').slice(0, 7)})${s.released ? ', slot released' : ''}`, nnn)
-      else if (s && s.ok === false) await note(`parked work not saved: ${String(s.error ?? 'unknown').slice(0, 300)}`, nnn)
+      const s = await state(['park', '--run', RUN, '--plan', nnn, '--reason-b64', toB64(String(reason).slice(0, REASON_MAX))], `park ${nnn}`, nnn)
+      const steps = Array.isArray(s?.steps) ? s.steps : []
+      const saved = steps.find((x) => x?.step === 'save')
+      if (saved) await note(`parked: ${String(saved.what ?? '').slice(0, 200)}`, nnn)
+      else if (s && s.ok === false) await note(`park teardown not done: ${String(s.error ?? 'unknown').slice(0, 300)}`, nnn)
     }
     return { nnn, state: 'parked', reason, round: ctx.round }
   }
@@ -1215,7 +1227,9 @@ async function runPlan(nnn) {
     ctx.knownFindings = findings.filter((f) => /^ui-/.test(f.id)).map((f) => `${f.file}: ${f.reasoning}`)
     if (failure.escalate || ctx.round >= 2) {
       // A persisting failure, an ESCALATE / blocked builder or a second finding: a fresh builder on the judgment tier.
-      const w = await state(['handoff', '--run', RUN, '--plan', nnn, '--step', `round ${ctx.round}`, '--check', failure.check ?? failure.why, '--tail', failure.tail ?? failure.why, '--tried', `${ctx.tier} builder, mode ${mode}`,
+      // --reset-base: once the file is written, the script puts the folder back at the plan branch's base, so the fresh
+      // builder re-implements the plan from there instead of patching the failed diff (the file still describes it).
+      const w = await state(['handoff', '--run', RUN, '--plan', nnn, '--reset-base', 'yes', '--step', `round ${ctx.round}`, '--check', failure.check ?? failure.why, '--tail', failure.tail ?? failure.why, '--tried', `${ctx.tier} builder, mode ${mode}`,
         // Failed: the failing check with its tail and the round's open findings (id file:line rule), from gate and checker
         // results. Done: is derived by the script itself (ticked sub-task ids in the plan file + the branch diff), never
         // from the builder's receipt (Human amendment 1: run facts are written by scripts, not agents).
@@ -1358,7 +1372,8 @@ async function run() {
               continue
             }
             out.push(await runPlan(nnn))
-            // A plan that built in an idle wt-N slot gives it back, merged or parked (a slot with uncommitted or unpushed work stays).
+            // A plan that built in an idle wt-N slot gives it back, merged or parked (a slot with uncommitted or unpushed
+            // work stays; after a park's teardown it answers "no slot to release").
             await state(['release', '--run', RUN, '--plan', nnn], `release ${nnn}`, nnn)
           }
           done[i] = out

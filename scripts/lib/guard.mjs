@@ -4,6 +4,7 @@
  *   node scripts/lib/guard.mjs scope    plan Read-Write Scope (+ kit-owned files)
  *   node scripts/lib/guard.mjs branch   no code writes on main
  *   node scripts/lib/guard.mjs plan     a Bash command's new plans/*.plan.md files (the Bash half of plan-write-guard.sh)
+ *   node scripts/lib/guard.mjs write    the text an Edit/Write/MultiEdit writes, through every pre-commit guard's scanGuardText
  *
  * Input: the hook's JSON on stdin ({ tool_name, tool_input, cwd }). Output: one JSON decision on stdout, in both
  * formats (Cursor reads "permission", Claude Code reads hookSpecificOutput). Exit code is always 0.
@@ -34,7 +35,7 @@
 import { readFileSync, readdirSync, existsSync, statSync, realpathSync, unlinkSync } from 'fs'
 import { spawnSync } from 'child_process'
 import { join, resolve, dirname, relative, isAbsolute, basename } from 'path'
-import { fileURLToPath } from 'url'
+import { fileURLToPath, pathToFileURL } from 'url'
 import { OPEN_PLAN_RE, findOpenPlan } from './plan-paths.mjs'
 import { dbWriteAsk, builderMarker } from './db-write.mjs'
 
@@ -1375,6 +1376,63 @@ export function planWriteDecision(input, repo, similarity) {
   return allow(notes.join('\n'))
 }
 
+/**
+ * The write-time guard (`guard.mjs write`, an Edit|Write|MultiEdit hook): every `scripts/pre-commit-*.mjs` whose text
+ * exports `scanGuardText(text, file)` runs over the text the tool is about to put in a file — `content` (Write),
+ * `new_string` (Edit) or each `edits[].new_string` (MultiEdit) — and a hit is refused with
+ * `GUARD <script> line <n>: <rule>`, the same lines the commit would refuse after the whole build. A guard module may
+ * export `GUARD_FILES` (a RegExp of the paths it judges); without it the commit guard's own filter applies (.ts, .html,
+ * .js). No guard module, a file the guards do not judge, or input that cannot be read: allowed (the commit guard stays
+ * the backstop; this hook only ever blocks more).
+ */
+const GUARD_FILES_DEFAULT = /\.(ts|html|js)$/
+const EXPORTS_SCAN = /export\s+(?:async\s+)?function\s+scanGuardText\b|export\s+(?:const|let)\s+scanGuardText\b/
+export async function writeGuardDecision(input, scriptsDir) {
+  let d
+  try {
+    d = JSON.parse(input)
+  } catch {
+    return allow()
+  }
+  const ti = d.tool_input || d.input || {}
+  const file = toPosix(ti.file_path || ti.path || '')
+  const texts = typeof ti.content === 'string' ? [ti.content] : typeof ti.new_string === 'string' ? [ti.new_string] : Array.isArray(ti.edits) ? ti.edits.map((e) => e?.new_string).filter((s) => typeof s === 'string') : []
+  if (!file || !texts.length) return allow()
+  let names = []
+  try {
+    names = readdirSync(scriptsDir).filter((n) => /^pre-commit-.+\.mjs$/.test(n)).sort()
+  } catch {
+    return allow()
+  }
+  const hits = []
+  for (const name of names) {
+    const full = join(scriptsDir, name)
+    let mod
+    try {
+      if (!EXPORTS_SCAN.test(readFileSync(full, 'utf8'))) continue
+      mod = await import(pathToFileURL(full).href)
+    } catch {
+      continue
+    }
+    if (typeof mod.scanGuardText !== 'function') continue
+    const files = mod.GUARD_FILES instanceof RegExp ? mod.GUARD_FILES : GUARD_FILES_DEFAULT
+    if (!files.test(file)) continue
+    for (const text of texts) for (const h of mod.scanGuardText(text, file) ?? []) hits.push(`GUARD ${name} line ${h.line}: ${h.rule}${h.text ? ` — ${String(h.text).slice(0, 120)}` : ''}`)
+  }
+  if (!hits.length) return allow()
+  return deny(`${hits.slice(0, 5).join('\n')}${hits.length > 5 ? `\n(${hits.length - 5} more)` : ''}\nThe commit would refuse ${file.split('/').pop()} for this; write it without the line (or with the exception marker the guard script documents).`)
+}
+
+if (isMain && process.argv[2] === 'write') {
+  let result
+  try {
+    result = await writeGuardDecision(await readStdin(1000), resolve(dirname(fileURLToPath(import.meta.url)), '..'))
+  } catch {
+    result = allow()
+  }
+  emit(result)
+  process.exit(0)
+}
 if (isMain && process.argv[2] === 'plan') {
   const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
   const similarity = (rel) => {

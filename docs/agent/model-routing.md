@@ -23,9 +23,11 @@ checker. The measured recall, precision and cost per model are in the kit reposi
 (BASELINE.md next to its eval cases).
 
 **Builder escalation.** A builder never switches model inside its session. The first failure goes back to the same
-`build`-tier builder as one fix round. A fresh builder on the `judgment` tier continues — from the hand-off file (rule 5),
-the plan and `git diff` — when that fix round fails too (whatever `orchestrator.maxFixRounds` is), or when the builder
-returns `ESCALATE`/`blocked`. A plan whose Architecture Impact names an invariant (anything but `INV-none`) starts on the
+`build`-tier builder as one fix round. A fresh builder on the `judgment` tier takes over when that fix round fails too
+(whatever `orchestrator.maxFixRounds` is), or when the builder returns `ESCALATE`/`blocked`. It does not patch the failed
+diff: once the hand-off file (rule 5) is written, the script (`orch-state.mjs handoff --reset-base`) puts the worktree
+back at the plan branch's base commit, and the fresh builder re-implements the plan from there with the hand-off file —
+what the first builder changed, what failed and the output tail — and the plan. A plan whose Architecture Impact names an invariant (anything but `INV-none`) starts on the
 `judgment` tier. A failure of the `judgment`-tier builder that took over parks the plan for the Human (`needs the Human`);
 no third builder is started.
 
@@ -87,7 +89,7 @@ outside the orchestrator (`take-plan`, `auto-solve` Phase 3), and every verdict.
    ```
 
    The orchestrator script writes the orchestrator's hand-off file (`orch-state.mjs handoff`), so `Done:` and
-   `Failed:` come from run facts (the plan file's ticks, the branch diff, gate and checker results). The next agent reads this file, the plan and `git diff` — never the failed agent's transcript. The diff and a
+   `Failed:` come from run facts (the plan file's ticks, the branch diff, gate and checker results). The next agent reads this file, the plan and `git diff` — never the failed agent's transcript (the orchestrator's fresh builder finds its worktree reset to the base, so the file is its only view of the discarded diff). The diff and a
    fresh run of the failing check are the truth; the suspected cause is only a hint.
 6. **Environment overrides.** `CLAUDE_CODE_SUBAGENT_MODEL` (on Claude Code before v2.1.251) or
    `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` overrides every agent file's `model:`. SessionStart prints a

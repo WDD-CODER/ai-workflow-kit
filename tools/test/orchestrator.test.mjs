@@ -157,7 +157,7 @@ async function runFlow(args, hooks = {}) {
       return { ok: true, waves: hooks.waves ?? [todo], waveLocks: hooks.waveLocks ?? [], ...(hooks.edges ? { edges: hooks.edges } : {}), skipped: hooks.merged ?? [], plans: Object.fromEntries(plansIn.map((p) => [p, { path: `plans/${p}-x.plan.md` }])), ...(hooks.testLocations ? { testLocations: hooks.testLocations } : {}) }
     }
     if (cmd === 'plan-info') {
-      const info = { ok: true, path: `plans/${f.plan}-x.plan.md`, branch: `feat/${f.plan}-x`, startTier: 'build', invariants: [], npmScripts: [], uiItems: [] }
+      const info = { ok: true, path: `plans/${f.plan}-x.plan.md`, branch: `feat/${f.plan}-x`, startTier: 'build', invariants: [], npmScripts: [], uiItems: [], ...(f['no-notes'] ? { reviewPath: `.claude/orchestrator-runs/${f.run}/plan-${f.plan}.reviewed.md` } : {}) }
       if (!f['with-worktree']) return info
       // Plan 062: plan-info makes the folder in the same call. It is listed as the `worktree` command it stands for, and a
       // hooks.runner answer for that command is the folder's answer.
@@ -469,6 +469,17 @@ test('pilot still stops after pilotSize plans when onPark is dependents', { skip
   assert.match(r.result.stopReason, new RegExp(`^pilot of ${PILOT} plans done`))
 })
 
+test('plan 086: the finders and the verifier get PLAN: the redacted copy (diff --no-notes reviewPath), never the plan file the builder writes into', async () => {
+  const r = await runFlow({ plans: ['101'], pilot: false }, { problems: (type) => (type === 'orch-check-bugs' ? [{ id: 'x', file: 'src/a.js', line: 1, rule: 'r', reasoning: 'why', severity: 'minor' }] : []) })
+  assert.ok(r.commands.some((c) => /orch-state\.mjs diff /.test(c) && /--no-notes=yes/.test(c)), 'the diff call writes the redacted copy')
+  assert.ok(r.commands.filter((c) => /orch-state\.mjs plan-info /.test(c)).every((c) => !/--no-notes/.test(c)), 'plan-info keeps its exact command')
+  const checkers = r.calls.filter((c) => ['orch-check-plan', 'orch-check-bugs', 'orch-check-rules', 'orch-security', 'orch-verify'].includes(c.type))
+  assert.ok(checkers.some((c) => c.type === 'orch-verify'), 'the verifier ran')
+  for (const c of checkers) assert.equal(c.task.PLAN, '.claude/orchestrator-runs/r1/plan-101.reviewed.md', `${c.type}: PLAN`)
+  // the builder still edits the plan file itself
+  assert.ok(r.calls.filter((c) => c.type === 'orch-builder').every((c) => c.task.PLAN === 'plans/101-x.plan.md'))
+})
+
 test('removes: lines are kept in any case, numbered before every behaviour: and seen: line, and reach orch-check-plan only', async () => {
   const decisions = { 101: ['seen: src/a.js:12 — NaN', 'behaviour: saved on blur — reverse: remove it'], 102: ['Removes: the date chip typing — reverse: restore the chip'] }
   const r = await runFlow({ plans: ['101', '102'], pilot: false }, { builder: (nnn) => ({ decisions: decisions[nnn] }) })
@@ -710,6 +721,7 @@ test('INV-1: one failed fix round hands over to a fresh judgment builder, whatev
     assert.ok(!JSON.stringify(b[2]).includes('PREVIOUS-BUILDER-STORY'), 'the previous builder summary never reaches the fresh builder')
     const handoff = r.commands.filter((c) => /orch-state\.mjs handoff/.test(c))
     assert.equal(handoff.length, 1, `maxFixRounds ${rounds}: one hand-off`)
+    assert.match(handoff[0], /--reset-base=yes/, 'the escalated builder starts from the plan branch base (plan 086)')
     assert.match(handoff[0], /--failed=/, 'Failed: is filled from the gate result')
     assert.doesNotMatch(handoff[0], /--done/, 'Done: is derived by the script, never passed from the builder receipt')
     assert.doesNotMatch(handoff[0], /PREVIOUS-BUILDER-STORY/)
@@ -755,6 +767,21 @@ test('same reason twice: an identical gate failure in two rounds parks the plan 
   assert.ok(same.commands.some((c) => /orch-state\.mjs finish/.test(c)) && same.result.local === 'l', 'the report is written although every plan parked')
   const differs = await runFlow({ plans: ['101'], pilot: false }, { gateFails: (folder) => folder === '/wt/101', gateTail: (n) => `FAIL spec ${n}` })
   assert.match(differs.result.outcomes[0].reason, /fix rounds used: 2 of 2/, 'a new reason each round reaches maxFixRounds')
+})
+
+test('plan 086: a parked plan is torn down by one `orch-state.mjs park` call (plan-park.mjs; its reason base64), with no park-save; every runner command stays orch-state or orch-preflight', async () => {
+  const r = await runFlow({ plans: ['101', '102'], pilot: false }, { gateFails: (folder) => folder === '/wt/101' })
+  const [p101, p102] = ['101', '102'].map((n) => r.result.outcomes.find((o) => o.nnn === n))
+  assert.equal(p101.state, 'parked')
+  assert.equal(p102.state, 'merged')
+  const parks = r.rawCommands.filter((c) => /^node scripts\/orch-state\.mjs park /.test(c))
+  assert.equal(parks.length, 1, parks.join('\n'))
+  assert.match(parks[0], /--run=r1 --plan=101 --reason-b64=/)
+  const b64 = /--reason-b64=(\S+)/.exec(parks[0])[1].replace(/"$/, '')
+  assert.equal(Buffer.from(b64, 'base64').toString('utf8'), p101.reason)
+  assert.equal(r.commands.filter((c) => /orch-state\.mjs park-save /.test(c)).length, 0, 'park-save is plan-park\'s own step')
+  assert.deepEqual(r.rawCommands.filter((c) => !/^node scripts\/orch-(state|preflight)\.mjs /.test(c)), [], 'the runner runs no other script')
+  assert.equal(r.commands.filter((c) => /orch-state\.mjs release /.test(c) && /--plan=102/.test(c)).length, 1, 'a merged plan gives its slot back as before')
 })
 
 test('an environment failure at the merge retries the merge only: one builder, one gate, two merge calls, merged', async () => {
