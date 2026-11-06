@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "c0d6f17a2a6af18faafc538b53ca56e75d4cd9af",
+  "commit": "b309a841a0ce0d6c94e11d2d99e4cd2e55f38145",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -83,6 +83,11 @@
       "sha256": "6f45f168aea26a20e15bf3c5d83069a017724ea86ee74f21ef1f2ad400716c21",
       "kind": "managed",
       "source": "core/.claude/agents/orch-verify.md"
+    },
+    ".claude/agents/plan-reviewer.md": {
+      "sha256": "ab2c61af97f2cb8062e2c658afde6dc9704626ad2252c95852884c902ac62575",
+      "kind": "managed",
+      "source": "core/.claude/agents/plan-reviewer.md"
     },
     ".claude/agents/skill-judge.md": {
       "sha256": "130fb5fa2f3043a3546fee6bed18dc95d759b71a81a88140614f50bb33e86d1b",
@@ -330,7 +335,7 @@
       "source": "core/docs/agent/agent-evals.md"
     },
     "docs/agent/agent-roles.md": {
-      "sha256": "8a70b82c0f7c822b823761387e839c97fb10fedf6bdf5d1e0bb60d77ca0794e0",
+      "sha256": "7011e5089395c96ba8916b1225370b1fbad700d68b3887dd9cd4cf3d7ed9f3b4",
       "kind": "managed",
       "source": "core/docs/agent/agent-roles.md"
     },
