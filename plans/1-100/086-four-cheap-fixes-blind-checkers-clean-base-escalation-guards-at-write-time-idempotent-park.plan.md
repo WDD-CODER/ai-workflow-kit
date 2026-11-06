@@ -1,6 +1,6 @@
 # Plan 086 — Four cheap fixes: blind the checkers, escalate from a clean base, guards at write time, idempotent park
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: fd212e119ef16c0b26ebfaf6b44f450fee26d8f5
 Source: kit audit 2026-11-06 (NotebookLM review verified against the code), plan A.
