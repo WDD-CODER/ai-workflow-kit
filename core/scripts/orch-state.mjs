@@ -1,6 +1,6 @@
 /**
- * Orchestrator state — everything the orchestrator workflow (.claude/workflows/orchestrate.js) cannot do itself:
- * a workflow script has no file system, git or clock, so it runs this script through the mechanical runner agent.
+ * Orchestrator state — the run's state and git steps, called by scripts/run-plans.mjs (and by the older workflow,
+ * .claude/workflows/orchestrate.js, which has no file system, git or clock and runs it through the runner agent).
  * Git is the ledger; status.json is the readable state. Rules: docs/agent/orchestrator.md.
  *
  *   node scripts/orch-state.mjs init       --run <name> [--started <iso>]   run branch + merge folder + status.json
@@ -19,6 +19,8 @@
  *   node scripts/orch-state.mjs park-save  --run <name> --plan <NNN>        uncommitted work to park/<run>-<NNN> (pushed), slot released
  *   node scripts/orch-state.mjs park-record --run <name> --plan <NNN> [--reason t] [--sha x]   the park, recorded once
  *   node scripts/orch-state.mjs park       --run <name> --plan <NNN> [--reason-b64 b]   the whole teardown (runs plan-park.mjs)
+ *   node scripts/orch-state.mjs merge-verify --run <name> --plan <NNN>      HEAD^2 of the merge folder == checkedHead, else reset to HEAD^
+ *   node scripts/orch-state.mjs touch      --run <name>                     renews updatedAt (run-plans' heartbeat while a step runs)
  *   node scripts/orch-state.mjs diff       --run <name> --plan <NNN>        changed files vs the run branch, sensitive?
  *   node scripts/orch-state.mjs set        --run <name> --plan <NNN> [--state s] [--round n] [--tier t] [--sha x]
  *                                          [--role r --model m --effort e | --roles r=m/e,r2=m2/e2] [--reason "<text>"]
@@ -26,6 +28,7 @@
  *                                          facts for the lessons: [--candidates m --refuted n --refuted-rules "a|b" --verify-by "role=m/n/a|b;…"
  *                                          --late-low "a|b" --reappeared "a|b"] [--miss "<what>"] [--round-cause "round 2: <why>"]
  *                                          [--gate-event "<text>"] [--asked "q1 || q2" --ready yes|no]
+ *                                          [--calls-b64 <base64 JSON list of { stage, model, seconds, input, output, exit }>]
  *   node scripts/orch-state.mjs flake     --run <name> [--plan <NNN>] --command "<cmd>" [--round n] --via rerun|same-commit --where gate|main|final [--sha x]
  *                                          records a check that passed only on a rerun (plans[NNN].flakes[], run-level flakes[])
  *   node scripts/orch-state.mjs handoff    --run <name> --plan <NNN> --step s --check c --tail t --tried x [--failed t] [--replan yes|no --replan-why t --not-done t]
@@ -119,7 +122,9 @@ const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tie
   // `prepare`: the generated path, the npm script, the folder it runs in and the package manager
   'missing', 'script', 'in', 'pm',
   // switches (no value needed; `--key=<value>` is accepted too): plan-info's redacted copy, handoff's reset to the base
-  'no-notes', 'reset-base'])
+  'no-notes', 'reset-base',
+  // run-plans.mjs: the model calls of a step (base64 JSON list of { stage, model, seconds, input, output, exit })
+  'calls-b64'])
 const SWITCHES = new Set(['no-notes', 'reset-base'])
 function parseArgs(argv) {
   const out = { _: [] }
@@ -1077,6 +1082,50 @@ const commands = {
     emit({ ok: true, ready: true, branch, head, checkedHead: p.checkedHead, round: p.round ?? 0, tier: p.tier ?? '' }, [`plan ${nnn}: ${branch} at the checked head ${head.slice(0, 7)} — ready to merge on its own`])
   },
 
+  // The merge pin (plan 085 shape A, plan 088): after `git merge --no-ff` of the plan branch in the merge folder and
+  // before any push,
+  //   node scripts/orch-state.mjs merge-verify --run <name> --plan <NNN>
+  // checks that the merge commit's second parent (HEAD^2) is the head that passed the gate and the review
+  // (plans[NNN].checkedHead). Equal → ok. Different → the merge folder is reset to HEAD^ (the run branch on origin never
+  // saw the merge), the reason names both shas, exit 1. A plan with no checked head (an older status.json) is merged
+  // unpinned and a run note says the pin was not checked.
+  'merge-verify'() {
+    const run = runName()
+    const nnn = planNumber(args.plan ?? '')
+    if (!nnn) fail('--plan takes a plan number')
+    const mf = mergeFolder(run)
+    if (!existsSync(mf)) fail(`no merge folder ${mf}`)
+    const head = git(mf, 'rev-parse', 'HEAD').out
+    const second = git(mf, 'rev-parse', '--verify', '--quiet', 'HEAD^2').out
+    if (!/^[0-9a-f]{40}$/.test(second)) fail(`the merge folder's HEAD ${head.slice(0, 7)} is not a merge commit — nothing to verify`)
+    const status = needStatus(run)
+    const p = status.plans?.[nnn]
+    if (!p?.checkedHead) {
+      addNotes(status, [{ plan: nnn, text: `merge pin not checked: plan ${nnn} has no checked head recorded (merged ${second.slice(0, 7)})` }])
+      writeStatus(run, status)
+      emit({ ok: true, pinned: false, sha: head, merged: second }, [`plan ${nnn}: no checked head recorded — merged unpinned (${second.slice(0, 7)})`])
+    }
+    if (second === p.checkedHead) emit({ ok: true, pinned: true, sha: head, merged: second, checkedHead: p.checkedHead }, [`plan ${nnn}: merge ${head.slice(0, 7)} takes the checked head ${second.slice(0, 7)}`])
+    const reason = `the branch moved after its checks: the merge took ${second} but the checked head is ${p.checkedHead}`
+    // Only a merge the run branch on origin does not have yet is undone here; a pushed one is never rewritten.
+    const remote = git(mf, 'rev-parse', '--verify', '--quiet', `refs/remotes/origin/${runBranch(run)}`).out
+    if (remote === head) fail(`${reason} — and the merge is already on origin/${runBranch(run)}; not reset`, { refused: true, merged: second, checkedHead: p.checkedHead })
+    const r = git(mf, 'reset', '--quiet', '--hard', 'HEAD^')
+    if (r.status !== 0) fail(`${reason} — and git reset --hard HEAD^ in ${mf} failed: ${r.err}`, { refused: true, merged: second, checkedHead: p.checkedHead })
+    p.reason = reason
+    writeStatus(run, status)
+    emit({ ok: false, refused: true, error: reason, merged: second, checkedHead: p.checkedHead, resetTo: git(mf, 'rev-parse', 'HEAD').out }, [`plan ${nnn}: merge refused — ${reason}; the merge folder is back at HEAD^`])
+  },
+
+  // A heartbeat while a long step runs (a builder may work for many minutes): status.json's updatedAt is renewed, so
+  // `watch` does not print STUCK for a run that is busy. Nothing else changes.
+  touch() {
+    const run = runName()
+    const status = needStatus(run)
+    writeStatus(run, status)
+    emit({ ok: true, updatedAt: status.updatedAt })
+  },
+
   // Gives the plan's slot back once the plan is merged or parked. Never discards: a slot with uncommitted files or
   // unpushed commits stays claimed, and the line says why. A plan that built in its own folder has nothing to release.
   release() {
@@ -1348,6 +1397,18 @@ const commands = {
     }
     // --note "a || b": the run notes the workflow queued for this plan, in order (one call instead of one per note).
     // --notes-b64 is the same list as on stop / finish (the workflow sends this one: a plain argument is cut at 400 characters).
+    // --calls-b64: the model calls run-plans.mjs made for this plan since its last `set`, appended to plans[NNN].calls.
+    if (args['calls-b64'] !== undefined && args['calls-b64'] !== true) {
+      let items
+      try {
+        items = JSON.parse(Buffer.from(String(args['calls-b64']), 'base64').toString('utf8'))
+      } catch (e) {
+        fail(`--calls-b64 is not base64 of a JSON list: ${e.message}`)
+      }
+      if (!Array.isArray(items) || items.some((c) => !c || typeof c !== 'object')) fail('--calls-b64 must hold a JSON list of { stage, model, seconds, input, output, exit }')
+      const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0)
+      p.calls = [...(p.calls ?? []), ...items.map((c) => ({ stage: cutText(c.stage, 60), model: cutText(c.model, 60), seconds: num(c.seconds), tokens: { input: num(c.input), output: num(c.output) }, exit: c.exit === null || c.exit === undefined ? null : num(c.exit), ...(c.error ? { error: cutText(c.error, 200) } : {}) }))]
+    }
     if (args.note !== undefined) addNotes(status, text('note').split(' || ').map((t) => ({ plan: nnn, text: t })))
     addNotes(status, notesB64().map((i) => ({ id: i.id, plan: nnn, text: i.text })))
     addFlakes(status, nnn)
