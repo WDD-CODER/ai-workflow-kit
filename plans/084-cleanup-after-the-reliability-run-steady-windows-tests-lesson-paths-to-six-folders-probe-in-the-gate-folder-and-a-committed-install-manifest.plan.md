@@ -83,13 +83,13 @@ Checked on `origin/main` `a513c5e` (2026-11-05): every line named above exists a
 
 ## Atomic Sub-tasks
 
-- [ ] A1: Keep lesson paths up to six folders deep so most app paths stay in the lesson line — SAFE_PATH segment limit 4 → 6 — core/scripts/lib/orch-run.mjs, tools/test/orchestrator.test.mjs
-- [ ] A2: Check a failed command's file or script in the folder where the gate ran, so a branch-only file gets its retry — a --probe-dir the workflow fills with the gate's folder; root stays the default — core/scripts/orch-preflight.mjs, core/.claude/workflows/orchestrate.js, tools/test/orchestrator-env-retry.test.mjs
-- [ ] A3: Stop asking before a read-only check script whose name starts with seed — seed-check / seed-checker are not a write; seed.mjs, seed-users.mjs, npm run seed still are — core/scripts/lib/db-write.mjs, tools/test/db-write-ask.test.mjs
-- [ ] A4: Give each slot-serve test a port nothing else holds, so the full suite stops flaking on Windows — ask the OS for a free port per test — tools/test/orchestrator-folders.test.mjs, tools/test/lib/**
-- [ ] A5: Time the guard alone so the speed test measures the guard, not the machine's load — best of three timed runs, limit unchanged — tools/test/guards.test.mjs
-- [ ] A6: Commit the refreshed install manifest with each plan so main never goes stale — one sentence in /ship Phase 3, and this branch commits it — core/.claude/commands/ship.md, .kit/install.json
-- [ ] A7: Fix the old rule wording in the orchestrator doc and let install-check read --target=<dir> too — core/docs/agent/orchestrator.md, tools/install-check.mjs, tools/test/agent-rules-sections.test.mjs
+- [x] A1: Keep lesson paths up to six folders deep so most app paths stay in the lesson line — SAFE_PATH segment limit 4 → 6 — core/scripts/lib/orch-run.mjs, tools/test/orchestrator.test.mjs
+- [x] A2: Check a failed command's file or script in the folder where the gate ran, so a branch-only file gets its retry — a --probe-dir the workflow fills with the gate's folder; root stays the default — core/scripts/orch-preflight.mjs, core/.claude/workflows/orchestrate.js, tools/test/orchestrator-env-retry.test.mjs
+- [x] A3: Stop asking before a read-only check script whose name starts with seed — seed-check / seed-checker are not a write; seed.mjs, seed-users.mjs, npm run seed still are — core/scripts/lib/db-write.mjs, tools/test/db-write-ask.test.mjs
+- [x] A4: Give each slot-serve test a port nothing else holds, so the full suite stops flaking on Windows — ask the OS for a free port per test — tools/test/orchestrator-folders.test.mjs, tools/test/lib/**
+- [x] A5: Time the guard alone so the speed test measures the guard, not the machine's load — best of three timed runs, limit unchanged — tools/test/guards.test.mjs
+- [x] A6: Commit the refreshed install manifest with each plan so main never goes stale — one sentence in /ship Phase 3, and this branch commits it — core/.claude/commands/ship.md, .kit/install.json
+- [x] A7: Fix the old rule wording in the orchestrator doc and let install-check read --target=<dir> too — core/docs/agent/orchestrator.md, tools/install-check.mjs, tools/test/agent-rules-sections.test.mjs
 - [ ] T1: Resync installed copies, run every check, add a changelog entry and this plan's scorecard row — CHANGELOG.md, docs/brain/scorecard.md
 
 ## Technical Considerations
@@ -106,3 +106,10 @@ Checked on `origin/main` `a513c5e` (2026-11-05): every line named above exists a
 - None open. Lesson paths: six segments (Human, 2026-11-05).
 
 ## Execution Notes
+- 2026-11-05 A1 (`bcb05b4`): the first sync on this branch reported a conflict on `scripts/lib/orch-run.mjs` because `.kit/install.json` on main was stale (the A6 problem). The manifest was refreshed before the A1 change was synced; that refresh is part of this branch's diff.
+- A2 (`52353a1`): the gate's env-fail result carries `probeDir: ctx.wt.path` (the folder the code gave the gate; the main folder for `[auto:main]` checks). `orch-preflight.mjs --probe-dir` accepts only an absolute folder that exists, else the root folder.
+- A3 (`33921ca`, review `b58b8ac`): the security review flagged that `seed(?!-check)` also let `seed-checkout.mjs` through. Now only exactly `seed-check` / `seed-checker` (with an optional .js/.mjs/.cjs/.ts) is read-only; `seed-checkout.mjs`, `seed-checks-off.mjs` and `seed-check.mjs.bak` stay a seed write (tested).
+- A4 (`689138e`): reproduced in a full run: `SLOT_SERVE: fe server port 54067 was taken by PID 19848, not by this start`. Port 0 hands out the dynamic range (49152–65535) that every other connection uses. `tools/test/lib/free-port.mjs` picks a random port in 20000–31999 that can be bound and does not answer, never twice in one process. `ui-tier.test.mjs` also uses port 0 and is outside this plan's scope; it was left as is.
+- A5 (`56d54e7`): the test already took the fastest of three runs (Step 0), and still flaked (2488 ms in today's full run). Each sample is now the guard run minus a `bash -c "node -e 0"` start-up timed right before it. The limit is unchanged; a stubbed 5 s guard still fails the check (new test).
+- A6 (`5fa5c4f`), A7 (`118113a`): as written.
+- T1: three full-suite runs in a row, 519/519 each. Build, lint and `npm test` pass; drift-check ok. The plan checker found that the six-segment test path had only five segments; the test now keeps `src/app/pages/x/y/x.component.ts` (exactly six). The slow-guard stub is 8 s, so a slow start-up sample cannot bring it under the limit.

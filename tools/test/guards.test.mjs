@@ -256,12 +256,12 @@ const own = (run) => () => {
 }
 const fastest = (n, run) => Array.from({ length: n }, own(run)).reduce((a, b) => (b.ms < a.ms ? b : a))
 
-test('the speed check still fails a guard that is really slow (a stubbed 5 s guard)', () => {
+test('the speed check still fails a guard that is really slow (a stubbed 8 s guard: well past the limit even when the start-up sample is slow)', () => {
   const dir = join(base, 'slow-guard')
   mkdirSync(join(dir, 'scripts'), { recursive: true })
-  writeFileSync(join(dir, 'scripts', 'slow.sh'), 'cat >/dev/null\nnode -e "setTimeout(() => {}, 5000)"\necho \'{"hookSpecificOutput":{"permissionDecision":"allow"}}\'\n')
+  writeFileSync(join(dir, 'scripts', 'slow.sh'), 'cat >/dev/null\nnode -e "setTimeout(() => {}, 8000)"\necho \'{"hookSpecificOutput":{"permissionDecision":"allow"}}\'\n')
   const r = fastest(1, () => write(dir, 'slow.sh', join(dir, 'x.txt')))
-  assert.ok(r.ms >= LIMIT_MS, `a 5 s guard measured ${r.ms} ms (wall ${r.wall} ms): the check would pass it`)
+  assert.ok(r.ms >= LIMIT_MS, `an 8 s guard measured ${r.ms} ms (wall ${r.wall} ms): the check would pass it`)
 })
 
 test(`each guard run on a no-op input takes under ${LIMIT_MS} ms and makes at most one git call on the allow path`, () => {
