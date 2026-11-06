@@ -126,6 +126,12 @@ test('plan-park in a folder of its own: twice in a row exits 0; the folder is re
     assert.equal(second.status, 0, second.out)
     assert.equal(second.json?.ok, true, second.out)
     assert.deepEqual(statusOf(t).plans['123'].park, park1, 'the park is recorded once')
+    // the workflow's way in: `orch-state.mjs park` runs plan-park.mjs and hands back its answer
+    const viaState = t.state('park', '--run=r', '--plan=123', '--reason=x')
+    assert.equal(viaState.ok, true, JSON.stringify(viaState))
+    assert.equal(viaState.recorded, false, 'already recorded')
+    assert.ok(viaState.steps.some((s) => s.step === 'record'), JSON.stringify(viaState.steps))
+    assert.deepEqual(statusOf(t).plans['123'].park, park1)
   } finally {
     drop(t.parent)
     drop(t.bare)

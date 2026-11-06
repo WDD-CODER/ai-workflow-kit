@@ -18,6 +18,7 @@
  *   node scripts/orch-state.mjs release    --run <name> --plan <NNN>        gives the plan's slot back (detached, marker removed)
  *   node scripts/orch-state.mjs park-save  --run <name> --plan <NNN>        uncommitted work to park/<run>-<NNN> (pushed), slot released
  *   node scripts/orch-state.mjs park-record --run <name> --plan <NNN> [--reason t] [--sha x]   the park, recorded once
+ *   node scripts/orch-state.mjs park       --run <name> --plan <NNN> [--reason-b64 b]   the whole teardown (runs plan-park.mjs)
  *   node scripts/orch-state.mjs diff       --run <name> --plan <NNN>        changed files vs the run branch, sensitive?
  *   node scripts/orch-state.mjs set        --run <name> --plan <NNN> [--state s] [--round n] [--tier t] [--sha x]
  *                                          [--role r --model m --effort e | --roles r=m/e,r2=m2/e2] [--reason "<text>"]
@@ -545,6 +546,14 @@ function mergedPlans(run) {
   return out
 }
 
+/** The plan without its ## Execution Notes, at .claude/orchestrator-runs/<run>/plan-<NNN>.reviewed.md; returns that path. */
+function writeReviewCopy(run, nnn, text) {
+  const rel = `.claude/orchestrator-runs/${run}/plan-${nnn}.reviewed.md`
+  mkdirSync(dirname(join(root, rel)), { recursive: true })
+  writeFileSync(join(root, rel), planWithoutNotes(text))
+  return rel
+}
+
 function planPath(nnn) {
   const p = findOpenPlan(root, nnn)
   if (!p) fail(`plan ${nnn} not found in the open plan folders`)
@@ -917,12 +926,7 @@ const commands = {
     const info = { ok: true, nnn, path, title: planTitle(text), branch: branchOf(path, nnn), npmScripts: npmScripts(), worktree: builderFolder(run, nnn).replace(/\\/g, '/'), startTier: tier, invariants, humanItems: humanItems(text), uiItems: uiItems(text) }
     // --no-notes: the plan without its ## Execution Notes section, next to the run's status file — the copy the checkers
     // read (PLAN: reviewPath), so the builder's own account never reaches them. The plan file itself is not touched.
-    if (args['no-notes'] !== undefined) {
-      const reviewRel = `.claude/orchestrator-runs/${run}/plan-${nnn}.reviewed.md`
-      mkdirSync(dirname(join(root, reviewRel)), { recursive: true })
-      writeFileSync(join(root, reviewRel), planWithoutNotes(text))
-      info.reviewPath = reviewRel
-    }
+    if (args['no-notes'] !== undefined) info.reviewPath = writeReviewCopy(run, nnn, text)
     const status = readStatus(run)
     if (status) {
       // plan-info starts each attempt at a plan: an earlier attempt (a relaunch) moves to `earlier`, so state, round,
@@ -1174,6 +1178,27 @@ const commands = {
     emit({ ok: true, saved: true, pushed: true, branch, sha: commit, released, ...(slot ? { slot: slot.slot } : {}) }, lines)
   },
 
+  // The whole teardown of a parked plan, through this script (every runner command of a run is orch-state.mjs or
+  // orch-preflight.mjs):
+  //   node scripts/orch-state.mjs park --run <name> --plan <NNN> [--reason-b64 <b64>]
+  // runs scripts/plan-park.mjs and hands back its answer (steps, recorded). plan-park itself calls park-save, release and
+  // park-record as separate orch-state processes, so this one holds no status lock while it runs.
+  park() {
+    const run = runName()
+    const nnn = planNumber(args.plan ?? '')
+    if (!nnn) fail('--plan takes a plan number')
+    const reason = args.reason && args.reason !== true ? String(args.reason) : ''
+    const r = spawnSync(process.execPath, [join(root, 'scripts', 'plan-park.mjs'), `--run=${run}`, `--plan=${nnn}`, ...(reason ? [`--reason-b64=${Buffer.from(reason, 'utf8').toString('base64')}`] : [])], { cwd: root, encoding: 'utf8', timeout: 600000 })
+    const out = String(r.stdout ?? '').split(/\r?\n/)
+    const line = out.slice().reverse().find((l) => l.startsWith('ORCH_JSON '))
+    let answer = null
+    try {
+      answer = line ? JSON.parse(line.slice('ORCH_JSON '.length)) : null
+    } catch { /* unreadable */ }
+    if (!answer) fail(`plan-park.mjs gave no answer (exit ${r.status}): ${String(r.stderr ?? '').trim().split('\n').pop() ?? ''}`)
+    emit({ ...answer, ok: true }, out.filter((l) => l.startsWith('plan-park: ')))
+  },
+
   // A park, recorded once (plan-park.mjs's last step):
   //   node scripts/orch-state.mjs park-record --run <name> --plan <NNN> [--reason "<why>"] [--sha <park commit>]
   // plans[NNN].park = { at, reason, branch?, sha? } and the state parked. A plan that already has a park record keeps it as
@@ -1220,7 +1245,10 @@ const commands = {
     const planText = onBase.status === 0 ? onBase.out : (existsSync(join(root, rel)) ? readFileSync(join(root, rel), 'utf8') : '')
     const scopeGlobs = extractScopeGlobs(planText) ?? []
     const testsOutOfScope = testFilesOutOfScope(files.filter((f) => f !== rel && !f.startsWith('.claude/sessions/')), scopeGlobs, (g) => picomatch(g, { dot: true }))
-    emit({ ok: true, files, sensitive, sensitiveFiles, sensitiveCode: codeFiles, testsOutOfScope, ...(unread ? { diffUnread: true } : {}), head: git(root, 'rev-parse', head).out },
+    // --no-notes: the checkers' copy of the plan (the same run-branch text, without ## Execution Notes), written next to
+    // the status file just before the checkers read it.
+    const reviewPath = args['no-notes'] !== undefined && planText ? writeReviewCopy(run, nnn, planText) : null
+    emit({ ok: true, files, sensitive, sensitiveFiles, sensitiveCode: codeFiles, testsOutOfScope, ...(unread ? { diffUnread: true } : {}), ...(reviewPath ? { reviewPath } : {}), head: git(root, 'rev-parse', head).out },
       [`${files.length} file(s) changed, ${sensitiveFiles.length} sensitive by path, ${codeFiles.length} by added auth/permission code${testsOutOfScope.length ? `, ${testsOutOfScope.length} test file(s) outside the scope` : ''}${unread ? '; the diff could not be read in full: sensitive' : ''}`])
   },
 

@@ -50,7 +50,7 @@ result schema are in `docs/agent/agent-roles.md`.
    pin it); never pass a cheaper `model` to these calls.
    **The review copy** — the checkers never read the builder's own account of its work: run
    `node "<main folder>/scripts/orch-state.mjs" plan-info --run review --plan <NNN> --no-notes` and pass its
-   `reviewPath` (the plan without its `## Execution Notes`, under the main folder) as `PLAN:` to every finder and to the
+   `reviewPath` (the plan without its `## Execution Notes`, under the main folder; a run's workflow gets the same copy from `diff --no-notes`) as `PLAN:` to every finder and to the
    verifier — never the plan file itself.
    When the diff touches auth, guards, interceptors, secrets handling or `middleware`, start
    `orch-security` too, with the changed files on those paths and its `LESSONS` and `RULES`. Without sub-agents, read

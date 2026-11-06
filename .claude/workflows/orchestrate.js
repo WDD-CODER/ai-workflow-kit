@@ -782,12 +782,13 @@ function recordVerify(nnn, candidates, verdictOf, kept) {
   queueFact(nnn, 'reappeared', [...m.reappeared].slice(0, 4).join('|'))
 }
 
-// The checkers' plan copy: the path plan-info --no-notes writes (its reviewPath), built here from the run and the plan
+// The checkers' plan copy: the path `diff --no-notes` writes (its reviewPath), built here from the run and the plan
 // number (code values, never a model's or a runner's text).
 const reviewPlanOf = (ctx) => `.claude/orchestrator-runs/${RUN}/plan-${ctx.nnn}.reviewed.md`
 
 async function checkers(ctx) {
-  const diff = await state(['diff', '--run', RUN, '--plan', ctx.nnn], `diff ${ctx.nnn}`, ctx.nnn)
+  // --no-notes: the same call writes the checkers' copy of the plan (no ## Execution Notes) at reviewPlanOf(ctx).
+  const diff = await state(['diff', '--run', RUN, '--plan', ctx.nnn, '--no-notes', 'yes'], `diff ${ctx.nnn}`, ctx.nnn)
   if (Array.isArray(diff.files)) CHANGED_FILES[ctx.nnn] = diff.files
   // The full sha the checkers read (origin/<branch>, resolved by the state script, never a builder's report).
   ctx.diffHead = /^[0-9a-f]{40}$/.test(String(diff.head ?? '')) ? diff.head : null
@@ -980,9 +981,8 @@ async function mergeOnly(nnn) {
 
 async function runPlan(nnn) {
   if (MODE === 'merge') return mergeOnly(nnn)
-  // plan-info also makes the plan's folder (`--with-worktree`, answer in info.wt): one runner call, not two. --no-notes:
-  // the copy of the plan without its ## Execution Notes (info.reviewPath) that the checkers read.
-  const info = await state(['plan-info', '--run', RUN, '--plan', nnn, '--with-worktree', 'yes', '--no-notes', 'yes'], `plan ${nnn}`, nnn)
+  // plan-info also makes the plan's folder (`--with-worktree`, answer in info.wt): one runner call, not two.
+  const info = await state(['plan-info', '--run', RUN, '--plan', nnn, '--with-worktree', 'yes'], `plan ${nnn}`, nnn)
   if (!info.ok) return { nnn, state: 'parked', reason: `plan-info: ${info.error}` }
   if (!PLAN_BRANCH_RE.test(String(info.branch))) return { nnn, state: 'parked', reason: `plan-info: plan branch ${JSON.stringify(info.branch)} does not match feat/<NNN>-<lower-case words>` }
   const extra = Array.isArray((A.checks ?? {})[nnn]) ? A.checks[nnn] : []
@@ -1014,16 +1014,16 @@ async function runPlan(nnn) {
   // A parked plan closes with one `set` (the reason carries everything), not one note per closing step.
   const park = async (reason) => {
     await setPlan(nnn, { state: 'parked', round: ctx.round, tier: ctx.tier, reason })
-    // One teardown (scripts/plan-park.mjs, safe to repeat): the folder's servers stopped, the uncommitted work saved on
-    // park/<run>-<NNN> (pushed), the session lock deleted, the slot freed or the plan's own folder removed, the local
-    // park/ branch deleted, the park recorded once. A step it could not do is in its answer; the folder is then kept.
+    // One teardown (`orch-state.mjs park`, which runs scripts/plan-park.mjs; safe to repeat): the folder's servers
+    // stopped, the uncommitted work saved on park/<run>-<NNN> (pushed), the session lock deleted, the slot freed or the
+    // plan's own folder removed, the local park/ branch deleted, the park recorded once. A step it could not do is in its
+    // answer; the folder is then kept.
     if (ctx.wt?.ok) {
-      const s = await runner('plan-park.mjs', ['--run', RUN, '--plan', nnn, '--reason-b64', toB64(String(reason).slice(0, REASON_MAX))], `park ${nnn}`, nnn)
+      const s = await state(['park', '--run', RUN, '--plan', nnn, '--reason-b64', toB64(String(reason).slice(0, REASON_MAX))], `park ${nnn}`, nnn)
       const steps = Array.isArray(s?.steps) ? s.steps : []
       const saved = steps.find((x) => x?.step === 'save')
       if (saved) await note(`parked: ${String(saved.what ?? '').slice(0, 200)}`, nnn)
       else if (s && s.ok === false) await note(`park teardown not done: ${String(s.error ?? 'unknown').slice(0, 300)}`, nnn)
-      return { nnn, state: 'parked', reason, round: ctx.round, tornDown: true }
     }
     return { nnn, state: 'parked', reason, round: ctx.round }
   }
@@ -1371,11 +1371,10 @@ async function run() {
               out.push({ nnn, state: 'skipped' })
               continue
             }
-            const o = await runPlan(nnn)
-            out.push(o)
-            // A plan that built in an idle wt-N slot gives it back (a slot with uncommitted or unpushed work stays); a
-            // parked plan that plan-park.mjs tore down has nothing left to give back.
-            if (!o?.tornDown) await state(['release', '--run', RUN, '--plan', nnn], `release ${nnn}`, nnn)
+            out.push(await runPlan(nnn))
+            // A plan that built in an idle wt-N slot gives it back, merged or parked (a slot with uncommitted or unpushed
+            // work stays; after a park's teardown it answers "no slot to release").
+            await state(['release', '--run', RUN, '--plan', nnn], `release ${nnn}`, nnn)
           }
           done[i] = out
         } catch (e) {

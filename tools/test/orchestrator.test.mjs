@@ -469,9 +469,10 @@ test('pilot still stops after pilotSize plans when onPark is dependents', { skip
   assert.match(r.result.stopReason, new RegExp(`^pilot of ${PILOT} plans done`))
 })
 
-test('plan 086: the finders and the verifier get PLAN: the redacted copy (plan-info --no-notes reviewPath), never the plan file the builder writes into', async () => {
+test('plan 086: the finders and the verifier get PLAN: the redacted copy (diff --no-notes reviewPath), never the plan file the builder writes into', async () => {
   const r = await runFlow({ plans: ['101'], pilot: false }, { problems: (type) => (type === 'orch-check-bugs' ? [{ id: 'x', file: 'src/a.js', line: 1, rule: 'r', reasoning: 'why', severity: 'minor' }] : []) })
-  assert.ok(r.commands.some((c) => /orch-state\.mjs plan-info /.test(c) && /--no-notes=yes/.test(c)), 'plan-info is asked for the redacted copy')
+  assert.ok(r.commands.some((c) => /orch-state\.mjs diff /.test(c) && /--no-notes=yes/.test(c)), 'the diff call writes the redacted copy')
+  assert.ok(r.commands.filter((c) => /orch-state\.mjs plan-info /.test(c)).every((c) => !/--no-notes/.test(c)), 'plan-info keeps its exact command')
   const checkers = r.calls.filter((c) => ['orch-check-plan', 'orch-check-bugs', 'orch-check-rules', 'orch-security', 'orch-verify'].includes(c.type))
   assert.ok(checkers.some((c) => c.type === 'orch-verify'), 'the verifier ran')
   for (const c of checkers) assert.equal(c.task.PLAN, '.claude/orchestrator-runs/r1/plan-101.reviewed.md', `${c.type}: PLAN`)
@@ -768,18 +769,18 @@ test('same reason twice: an identical gate failure in two rounds parks the plan 
   assert.match(differs.result.outcomes[0].reason, /fix rounds used: 2 of 2/, 'a new reason each round reaches maxFixRounds')
 })
 
-test('plan 086: a parked plan is torn down by one plan-park.mjs call (its reason base64), with no park-save or release; a merged plan is still released', async () => {
+test('plan 086: a parked plan is torn down by one `orch-state.mjs park` call (plan-park.mjs; its reason base64), with no park-save; every runner command stays orch-state or orch-preflight', async () => {
   const r = await runFlow({ plans: ['101', '102'], pilot: false }, { gateFails: (folder) => folder === '/wt/101' })
   const [p101, p102] = ['101', '102'].map((n) => r.result.outcomes.find((o) => o.nnn === n))
   assert.equal(p101.state, 'parked')
   assert.equal(p102.state, 'merged')
-  const parks = r.rawCommands.filter((c) => /^node scripts\/plan-park\.mjs /.test(c))
+  const parks = r.rawCommands.filter((c) => /^node scripts\/orch-state\.mjs park /.test(c))
   assert.equal(parks.length, 1, parks.join('\n'))
-  assert.match(parks[0], /--run r1 --plan 101 --reason-b64 /)
-  const b64 = /--reason-b64 (\S+)/.exec(parks[0])[1].replace(/^"|"$/g, '')
+  assert.match(parks[0], /--run=r1 --plan=101 --reason-b64=/)
+  const b64 = /--reason-b64=(\S+)/.exec(parks[0])[1].replace(/"$/, '')
   assert.equal(Buffer.from(b64, 'base64').toString('utf8'), p101.reason)
   assert.equal(r.commands.filter((c) => /orch-state\.mjs park-save /.test(c)).length, 0, 'park-save is plan-park\'s own step')
-  assert.equal(r.commands.filter((c) => /orch-state\.mjs release /.test(c) && /--plan=101/.test(c)).length, 0, 'the parked plan is not released a second time')
+  assert.deepEqual(r.rawCommands.filter((c) => !/^node scripts\/orch-(state|preflight)\.mjs /.test(c)), [], 'the runner runs no other script')
   assert.equal(r.commands.filter((c) => /orch-state\.mjs release /.test(c) && /--plan=102/.test(c)).length, 1, 'a merged plan gives its slot back as before')
 })
 
@@ -1232,11 +1233,11 @@ test('runner: a bad copy of ORCH_JSON is retried once at medium with a note, twi
   assert.ok(once.notes.some((n) => /runner retry: plan 101 — first attempt: unreadable ORCH_JSON from: node scripts\/orch-state\.mjs plan-info /.test(n)), once.notes.join('\n'))
   const twice = await runFlow({ plans: ['101'], pilot: false }, { runner: (cmd) => (isWt(cmd) ? bad : undefined) })
   assert.equal(twice.commands.filter(isWt).length, 2, 'one retry, not more')
-  assert.match(twice.result.outcomes[0].reason, /^plan-info: unreadable ORCH_JSON from: node scripts\/orch-state\.mjs plan-info --run=r1 --plan=101 --with-worktree=yes --no-notes=yes after 2 attempts — .* — raw: "ORCH_JSON \{“ok\\"/)
+  assert.match(twice.result.outcomes[0].reason, /^plan-info: unreadable ORCH_JSON from: node scripts\/orch-state\.mjs plan-info --run=r1 --plan=101 --with-worktree=yes after 2 attempts — .* — raw: "ORCH_JSON \{“ok\\"/)
   assert.match(twice.result.outcomes[0].reason, / — non-ASCII U\+201C at 11 — raw: /, 'the hint comes before the raw line (a reason is cut at 400 characters)')
   const none = await runFlow({ plans: ['101'], pilot: false }, { runner: (cmd) => (isWt(cmd) ? 'RUN 1: node scripts/orch-state.mjs worktree → exit 0\nclaimed slot wt-2\n' : undefined) })
   assert.equal(none.commands.filter(isWt).length, 2)
-  assert.match(none.result.outcomes[0].reason, /^plan-info: no ORCH_JSON line from: node scripts\/orch-state\.mjs plan-info --run=r1 --plan=101 --with-worktree=yes --no-notes=yes \(exit 0\) after 2 attempts — last lines: "RUN 1: node scripts\/orch-state\.mjs worktree → exit 0 \| claimed slot wt-2"$/)
+  assert.match(none.result.outcomes[0].reason, /^plan-info: no ORCH_JSON line from: node scripts\/orch-state\.mjs plan-info --run=r1 --plan=101 --with-worktree=yes \(exit 0\) after 2 attempts — last lines: "RUN 1: node scripts\/orch-state\.mjs worktree → exit 0 \| claimed slot wt-2"$/)
   // A triage with no usable result makes the run write a note; that note and the final `finish` both come back unreadable.
   const nf = await runFlow({ plans: ['101'], pilot: false }, { builder: () => ({ decisions: ['behaviour: kept the flag — reverse: drop it'] }), triage: () => 'junk', runner: (cmd) => (/^node scripts\/orch-state\.mjs (note|finish) /.test(cmd) ? 'garbage' : undefined) })
   assert.equal(nf.commands.filter((c) => /^node scripts\/orch-state\.mjs finish /.test(c)).length, 1, 'finish is never run twice')
