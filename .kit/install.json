@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "6bdecc2daa31b0fca2978b387396f789564274f4",
+  "commit": "d54c21267bb9b911d4ca790aeea2e1d6ba73f622",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -85,7 +85,7 @@
       "source": "core/.claude/agents/orch-verify.md"
     },
     ".claude/agents/plan-reviewer.md": {
-      "sha256": "9ca0a80db67a453de3cb8955151f01c70b8f127fbdfc886a6bae9a505a29b6bd",
+      "sha256": "70766d59a8473f716fc08326f0aaaea6c3b24f2eddf26e5c8c29bdc514f53a20",
       "kind": "managed",
       "source": "core/.claude/agents/plan-reviewer.md"
     },
@@ -415,12 +415,12 @@
       "source": "core/docs/agent/kit-lessons/verify.md"
     },
     "docs/agent/model-routing.md": {
-      "sha256": "b544fa479e92d7c2c38d604587234efade7a4394cddeb4da16cdbf259651523d",
+      "sha256": "a188a6d9e5a8c2f78b27ca62977e6549445fcdb0dcbbf7d7f1554c24dc2a28c2",
       "kind": "managed",
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "e57fa138667654ea10a14476eb1bb568c6ca107d7c35ed0bb71f28ce067901d3",
+      "sha256": "144031068592d6bceaafd7571384308546925618b2a027f484795fed9ff02e2b",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -714,6 +714,11 @@
       "kind": "managed",
       "source": "core/scripts/lib/brain-doc.mjs"
     },
+    "scripts/lib/claude-run.mjs": {
+      "sha256": "0c277ea2798312cc583249b28add3a5ed6fb7787afb54f21c76963b078828d37",
+      "kind": "managed",
+      "source": "core/scripts/lib/claude-run.mjs"
+    },
     "scripts/lib/db-write.mjs": {
       "sha256": "8a94dea9680cc3e8b88579238ad53787b80d5c623ca557e9ed2d5fd3f63e4522",
       "kind": "managed",
@@ -759,6 +764,11 @@
       "kind": "managed",
       "source": "core/scripts/lib/plan-deps.mjs"
     },
+    "scripts/lib/plan-gate.mjs": {
+      "sha256": "99ff25e34c21c0779fa6fe4f48ff6a76a48100d7ad720f0987161282b9648510",
+      "kind": "managed",
+      "source": "core/scripts/lib/plan-gate.mjs"
+    },
     "scripts/lib/plan-graph.mjs": {
       "sha256": "2394585ae93c6d38b864f7cae5ff21c98509411577d07073c1ec62d593da682a",
       "kind": "managed",
@@ -769,10 +779,20 @@
       "kind": "managed",
       "source": "core/scripts/lib/plan-guard-scan.mjs"
     },
+    "scripts/lib/plan-merge.mjs": {
+      "sha256": "35f0086d6e42a28e33eb5b8f5a9f3257821b6fd002f9911de9d82c66c1fa67c5",
+      "kind": "managed",
+      "source": "core/scripts/lib/plan-merge.mjs"
+    },
     "scripts/lib/plan-paths.mjs": {
       "sha256": "97e2bac7abbd31fdc9431b18166bcb17b6a3505e69594bb738ad2a8bd4bb9eeb",
       "kind": "managed",
       "source": "core/scripts/lib/plan-paths.mjs"
+    },
+    "scripts/lib/plan-review.mjs": {
+      "sha256": "c05e04777678d3a8a801a1dc16274d7777d8412d9208295ca6c83330f446f39d",
+      "kind": "managed",
+      "source": "core/scripts/lib/plan-review.mjs"
     },
     "scripts/lib/plan-scope.mjs": {
       "sha256": "eb019b8349a7139e726fe6024f84cdb007600243471e5fbc6607eb83e8936131",
@@ -783,6 +803,11 @@
       "sha256": "ebbde39de060ebf84644a5e0d6a95f27525d6b84774b37f22ecff6778b4dbc4b",
       "kind": "managed",
       "source": "core/scripts/lib/redact.mjs"
+    },
+    "scripts/lib/run-order.mjs": {
+      "sha256": "8b833ab919298b2e7be3d4c1a39d6bb0087d74ca75fa762f61cf4db3b292b3ac",
+      "kind": "managed",
+      "source": "core/scripts/lib/run-order.mjs"
     },
     "scripts/lib/scope-tests-lint.mjs": {
       "sha256": "300b7d0efda98b7d343cf1c93be9ee587fc49d3c1789f370a59b452c30af18e3",
@@ -820,7 +845,7 @@
       "source": "core/scripts/orch-preflight.mjs"
     },
     "scripts/orch-state.mjs": {
-      "sha256": "c4dec37c8a5a0f58b9daf96abcc2e796482d1105f74ae97067fc1bae38c6af72",
+      "sha256": "01370d97a38bfb12b88d273d9909c357d132a94ed3af2d4ea5cc6e327205dad4",
       "kind": "managed",
       "source": "core/scripts/orch-state.mjs"
     },
@@ -893,6 +918,11 @@
       "sha256": "c19cf87ec4cbd4ad7f94c55aeca3306fe9bca13fd44b6b1f8d23c950b7c0bfcb",
       "kind": "managed",
       "source": "core/scripts/prune-old-sessions.sh"
+    },
+    "scripts/run-plans.mjs": {
+      "sha256": "0611e29af229efacedc560a72df502cf0edb94babde5d0c05c928c964dc5bd4d",
+      "kind": "managed",
+      "source": "core/scripts/run-plans.mjs"
     },
     "scripts/run-python.sh": {
       "sha256": "b89ab7652bde31489a733fe8a1cd309f423726877f0ea32ed7949ace9a5417cd",
