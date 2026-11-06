@@ -768,6 +768,21 @@ test('same reason twice: an identical gate failure in two rounds parks the plan 
   assert.match(differs.result.outcomes[0].reason, /fix rounds used: 2 of 2/, 'a new reason each round reaches maxFixRounds')
 })
 
+test('plan 086: a parked plan is torn down by one plan-park.mjs call (its reason base64), with no park-save or release; a merged plan is still released', async () => {
+  const r = await runFlow({ plans: ['101', '102'], pilot: false }, { gateFails: (folder) => folder === '/wt/101' })
+  const [p101, p102] = ['101', '102'].map((n) => r.result.outcomes.find((o) => o.nnn === n))
+  assert.equal(p101.state, 'parked')
+  assert.equal(p102.state, 'merged')
+  const parks = r.rawCommands.filter((c) => /^node scripts\/plan-park\.mjs /.test(c))
+  assert.equal(parks.length, 1, parks.join('\n'))
+  assert.match(parks[0], /--run r1 --plan 101 --reason-b64 /)
+  const b64 = /--reason-b64 (\S+)/.exec(parks[0])[1].replace(/^"|"$/g, '')
+  assert.equal(Buffer.from(b64, 'base64').toString('utf8'), p101.reason)
+  assert.equal(r.commands.filter((c) => /orch-state\.mjs park-save /.test(c)).length, 0, 'park-save is plan-park\'s own step')
+  assert.equal(r.commands.filter((c) => /orch-state\.mjs release /.test(c) && /--plan=101/.test(c)).length, 0, 'the parked plan is not released a second time')
+  assert.equal(r.commands.filter((c) => /orch-state\.mjs release /.test(c) && /--plan=102/.test(c)).length, 1, 'a merged plan gives its slot back as before')
+})
+
 test('an environment failure at the merge retries the merge only: one builder, one gate, two merge calls, merged', async () => {
   const { result, calls, notes, commands } = await runFlow({ plans: ['101'], pilot: false }, { mergeEnvOnce: true })
   const of = (type) => calls.filter((c) => c.type === type && /101/.test(c.label ?? '')).length

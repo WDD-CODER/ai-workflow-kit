@@ -1014,12 +1014,16 @@ async function runPlan(nnn) {
   // A parked plan closes with one `set` (the reason carries everything), not one note per closing step.
   const park = async (reason) => {
     await setPlan(nnn, { state: 'parked', round: ctx.round, tier: ctx.tier, reason })
-    // The builder's uncommitted work goes to the fixed branch park/<run>-<NNN> (pushed) and its slot is given back; a
-    // folder with nothing uncommitted is left as it is. A failed save is a note: the folder is then kept untouched.
+    // One teardown (scripts/plan-park.mjs, safe to repeat): the folder's servers stopped, the uncommitted work saved on
+    // park/<run>-<NNN> (pushed), the session lock deleted, the slot freed or the plan's own folder removed, the local
+    // park/ branch deleted, the park recorded once. A step it could not do is in its answer; the folder is then kept.
     if (ctx.wt?.ok) {
-      const s = await state(['park-save', '--run', RUN, '--plan', nnn], `park save ${nnn}`, nnn)
-      if (s?.saved && s.pushed) await note(`parked work saved on ${s.branch} (${String(s.sha ?? '').slice(0, 7)})${s.released ? ', slot released' : ''}`, nnn)
-      else if (s && s.ok === false) await note(`parked work not saved: ${String(s.error ?? 'unknown').slice(0, 300)}`, nnn)
+      const s = await runner('plan-park.mjs', ['--run', RUN, '--plan', nnn, '--reason-b64', toB64(String(reason).slice(0, REASON_MAX))], `park ${nnn}`, nnn)
+      const steps = Array.isArray(s?.steps) ? s.steps : []
+      const saved = steps.find((x) => x?.step === 'save')
+      if (saved) await note(`parked: ${String(saved.what ?? '').slice(0, 200)}`, nnn)
+      else if (s && s.ok === false) await note(`park teardown not done: ${String(s.error ?? 'unknown').slice(0, 300)}`, nnn)
+      return { nnn, state: 'parked', reason, round: ctx.round, tornDown: true }
     }
     return { nnn, state: 'parked', reason, round: ctx.round }
   }
@@ -1367,9 +1371,11 @@ async function run() {
               out.push({ nnn, state: 'skipped' })
               continue
             }
-            out.push(await runPlan(nnn))
-            // A plan that built in an idle wt-N slot gives it back, merged or parked (a slot with uncommitted or unpushed work stays).
-            await state(['release', '--run', RUN, '--plan', nnn], `release ${nnn}`, nnn)
+            const o = await runPlan(nnn)
+            out.push(o)
+            // A plan that built in an idle wt-N slot gives it back (a slot with uncommitted or unpushed work stays); a
+            // parked plan that plan-park.mjs tore down has nothing left to give back.
+            if (!o?.tornDown) await state(['release', '--run', RUN, '--plan', nnn], `release ${nnn}`, nnn)
           }
           done[i] = out
         } catch (e) {

@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "32c9c1aaaf6c088b56ed29170cb89c74b1f137e0",
+  "commit": "d22591d3c260fb61925272dc12631263d30e3515",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -275,7 +275,7 @@
       "source": "core/.claude/skills/worktree-setup/SKILL.md"
     },
     ".claude/workflows/orchestrate.js": {
-      "sha256": "eacc4a3d16a6bc6786f66fe3446f7c1cd9c72652c0e3a11a1628d34961ff785f",
+      "sha256": "1e5f79e2126cb4837efb7df2a340d83d08bd6f30c71cfbb7d028e75359bfcee4",
       "kind": "managed",
       "source": "core/.claude/workflows/orchestrate.js"
     },
@@ -415,7 +415,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "0f401e66c0c63a8c0d659b8de591491cd64d9437f587a8fc65a6586c6b2b432b",
+      "sha256": "dc34cf4b6fcdd00c561100c2419d2243521ab0ad1908aa29c7c86d47aa69baf8",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },

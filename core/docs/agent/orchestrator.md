@@ -389,8 +389,8 @@ to the number of sites in the file). `parsed` = the script reads the answer to b
 | Hand-off | `handoff` | 1 | parsed | keep: the path comes from the script |
 | Run start | `init` | 1 | parsed | keep |
 | Main tries | `main-tries` | 1 | parsed | merge: into `init` when the run delegates main-folder checks (follow-up) |
-| Slot give-back | `release` | 1 | write-only | merge: into the plan's last `set` (follow-up) |
-| Park save | `park-save` | 1 | parsed | keep: only when a plan with a folder parks |
+| Slot give-back | `release` | 1 | write-only | merge: into the plan's last `set` (follow-up); a parked plan torn down by `plan-park.mjs` skips it |
+| Park teardown | `plan-park.mjs` (servers, `park-save`, session lock, slot or own folder, local `park/` branch, `park-record`) | 1 | parsed | done: one call replaces `park-save` + `release` for a parked plan with a folder; safe to repeat |
 | Merge only | `merge-ready` | 1 | parsed | keep: once per plan in merge mode |
 | Decisions | `decisions` | 1 | write-only | done: one call for N decisions |
 
@@ -461,7 +461,12 @@ the runner. The one row to watch is `set` — see its recommendation.
   ignored one) is committed as `WIP: park <run> <NNN>` on the fixed branch `park/<run>-<NNN>` — on top of that branch
   when an earlier park made it — and pushed (`orch-state.mjs park-save`). The plan branch is not touched. Then the
   folder is cleaned and a slot is given back. Nothing uncommitted makes no branch; a failed push keeps the folder as it
-  was, with a run note.
+  was, with a run note. The workflow runs all of a park's teardown as one call, `node scripts/plan-park.mjs --run <run>
+  --plan <NNN> --reason-b64 <b64>`: the folder's dev servers stopped, `park-save`, the folder's `.claude/.session-lock`
+  deleted, a slot released or the plan's own builder folder removed (`git worktree remove --force`, only after the work
+  was saved), the local `park/<run>-<NNN>` branch deleted once origin holds the same commit, and the park recorded once
+  in status.json (`orch-state.mjs park-record`: `plans[NNN].park`). It exits 0 and logs every step; run again, it
+  changes nothing — so a Human can run it after a stopped run too.
 - **A database write the plan does not list.** `orch-state.mjs worktree` writes the marker `orch-builder.json` into the
   builder worktree's own git dir (run, plan, plan path, branch and the run branch's commit). Only there, the scope guard
   answers a migration, a seed or a raw database-client write (`scripts/lib/db-write.mjs`) that is not a line of the
