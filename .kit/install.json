@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "70b71f39c3680318fa8f5718927a108180a33db4",
+  "commit": "bfd23c7136537d0ca1cdd285699b49859fa3416e",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -25,7 +25,7 @@
       "source": "core/.claude/agents/kit-runner.md"
     },
     ".claude/agents/orch-builder.md": {
-      "sha256": "b231b25106afb03018b45823be5494e738134d5635b07dd04ceb920548cf097d",
+      "sha256": "29dc94735f5a747e54146f2b5c17ae0800ccaf55564edb20289a19b770d2ee86",
       "kind": "managed",
       "source": "core/.claude/agents/orch-builder.md"
     },
@@ -410,7 +410,7 @@
       "source": "core/docs/agent/kit-lessons/verify.md"
     },
     "docs/agent/model-routing.md": {
-      "sha256": "a0dc794da208fa2f921cd8605c6390d50ff5512f5e9c9aa38ccedf426662e841",
+      "sha256": "96c7ce78e73a9868fc4e1996e3f8540a9769b8f4b180e6caa563dc2677386a0a",
       "kind": "managed",
       "source": "core/docs/agent/model-routing.md"
     },
