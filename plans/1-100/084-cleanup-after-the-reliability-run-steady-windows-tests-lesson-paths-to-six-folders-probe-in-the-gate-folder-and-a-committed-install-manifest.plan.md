@@ -1,6 +1,6 @@
 # Plan 084 — Cleanup after the reliability run: steady Windows tests, lesson paths to six folders, the probe in the gate's folder and a committed install manifest
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: a513c5e40fe29742e8ee5d7cae573c7ba2d29095
 Source: the follow-ups of the 2026-11-05 run (plans 075, 068, 083, 061, 074; their Execution Notes), sorted with the Human the same day: fix these now, keep the C1 remainder waiting for a reproduction, the merge pin is plan 085.
@@ -90,7 +90,7 @@ Checked on `origin/main` `a513c5e` (2026-11-05): every line named above exists a
 - [x] A5: Time the guard alone so the speed test measures the guard, not the machine's load — best of three timed runs, limit unchanged — tools/test/guards.test.mjs
 - [x] A6: Commit the refreshed install manifest with each plan so main never goes stale — one sentence in /ship Phase 3, and this branch commits it — core/.claude/commands/ship.md, .kit/install.json
 - [x] A7: Fix the old rule wording in the orchestrator doc and let install-check read --target=<dir> too — core/docs/agent/orchestrator.md, tools/install-check.mjs, tools/test/agent-rules-sections.test.mjs
-- [ ] T1: Resync installed copies, run every check, add a changelog entry and this plan's scorecard row — CHANGELOG.md, docs/brain/scorecard.md
+- [x] T1: Resync installed copies, run every check, add a changelog entry and this plan's scorecard row — CHANGELOG.md, docs/brain/scorecard.md
 
 ## Technical Considerations
 - A2 keeps the probe read-only: it still reads only `package.json` and file existence, now in the given folder; an absolute or `..` path stays "no precondition".
