@@ -56,6 +56,11 @@
             "type": "command",
             "command": "\"{{hooks.shellPath}}\" \"${CLAUDE_PROJECT_DIR}/scripts/scope-guard.sh\"",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/scripts/lib/guard.mjs\" write",
+            "timeout": 10
           }
         ]
       },

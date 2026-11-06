@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "bfd23c7136537d0ca1cdd285699b49859fa3416e",
+  "commit": "38380a7a04927a97f156bd15974f7bc20351c71d",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -230,7 +230,7 @@
       "source": "core/.claude/references/prd-template.md"
     },
     ".claude/settings.json": {
-      "sha256": "0caf68e422857a035f1f3a5ae7a3d49537274ad04f23f5144aa06f60be62a455",
+      "sha256": "537c74b81a7019db5efcd5d9e99eecf22a1a57daee8b32fd1f932635c97aa880",
       "kind": "managed",
       "source": "core/.claude/settings.json"
     },
@@ -725,7 +725,7 @@
       "source": "core/scripts/lib/fe-command.mjs"
     },
     "scripts/lib/guard.mjs": {
-      "sha256": "4d98d4988a18667be216df87e3235cdd295ce9fe8cd1d81773cc6ddf240bc010",
+      "sha256": "d38666c473e01e8ea3dcfd7d31b11cda8f32087d7ae21ae1ac210aea9a764047",
       "kind": "managed",
       "source": "core/scripts/lib/guard.mjs"
     },

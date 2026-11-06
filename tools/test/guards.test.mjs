@@ -703,3 +703,67 @@ test('strict guard round 2 on main: each bypass is denied; the commit/PR heredoc
     assert.equal(r.decision, 'allow', `${JSON.stringify(cmd)}: ${r.out}`)
   }
 })
+
+// ---- plan 086: the write-time guard (`guard.mjs write`, the fourth Edit|Write|MultiEdit hook) ---------------------------
+// Every scripts/pre-commit-*.mjs that exports scanGuardText runs over the text a Write / Edit / MultiEdit is about to put
+// in a file, so a line the commit guard would refuse is refused at once, not after the whole build.
+const ANGULAR_GUARD = join(kit, 'packs', 'angular', 'scripts', 'pre-commit-security-grep.mjs')
+function guardFolder(name, { withGuard }) {
+  const dir = join(base, name)
+  mkdirSync(dir, { recursive: true })
+  addScripts(dir)
+  // only the guard this test names: an installed project may carry its own copy
+  rmSync(join(dir, 'scripts', 'pre-commit-security-grep.mjs'), { force: true })
+  if (withGuard) cpSync(ANGULAR_GUARD, join(dir, 'scripts', 'pre-commit-security-grep.mjs'))
+  return dir
+}
+function writeHook(dir, toolInput, tool = 'Write') {
+  const input = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: toolInput, cwd: dir })
+  const t0 = Date.now()
+  const r = spawnSync(process.execPath, [join(dir, 'scripts', 'lib', 'guard.mjs'), 'write'], { cwd: dir, input, encoding: 'utf8', timeout: 30000 })
+  const ms = Date.now() - t0
+  const m = (r.stdout ?? '').match(/"permission":"(allow|deny)"/)
+  return { decision: m ? m[1] : `unparsed (${`${r.stdout}${r.stderr}`.trim().slice(-300)})`, out: `${r.stdout ?? ''}${r.stderr ?? ''}`, status: r.status, ms }
+}
+const PII_LINE = "console.log('user', user.email)"
+
+test('write guard: a Write whose content holds a line the Angular scanGuardText refuses is blocked with the guard, its line and rule', () => {
+  const dir = guardFolder('write-guard-on', { withGuard: true })
+  const r = writeHook(dir, { file_path: join(dir, 'src', 'login.ts'), content: `export function login(user) {\n  const ok = true\n  ${PII_LINE}\n}\n` })
+  assert.equal(r.decision, 'deny', r.out)
+  assert.equal(r.status, 0)
+  assert.match(r.out, /GUARD pre-commit-security-grep\.mjs line 3: log call references likely-PII name/)
+  // an Edit's new_string and a MultiEdit's edits are read the same way
+  assert.equal(writeHook(dir, { file_path: join(dir, 'src', 'login.ts'), old_string: 'a', new_string: PII_LINE }, 'Edit').decision, 'deny')
+  assert.equal(writeHook(dir, { file_path: join(dir, 'src', 'login.ts'), edits: [{ old_string: 'a', new_string: 'const x = 1' }, { old_string: 'b', new_string: PII_LINE }] }, 'MultiEdit').decision, 'deny')
+})
+
+test('write guard: a Write with no hit passes', () => {
+  const dir = guardFolder('write-guard-clean', { withGuard: true })
+  const r = writeHook(dir, { file_path: join(dir, 'src', 'login.ts'), content: "export const greet = (name) => console.log('hello', name)\n" })
+  assert.equal(r.decision, 'allow', r.out)
+})
+
+test('write guard: a project with no scripts/pre-commit-*.mjs exporting scanGuardText passes everything', () => {
+  const dir = guardFolder('write-guard-none', { withGuard: false })
+  const r = writeHook(dir, { file_path: join(dir, 'src', 'login.ts'), content: `${PII_LINE}\n` })
+  assert.equal(r.decision, 'allow', r.out)
+})
+
+test('write guard: finishes in under 300 ms on the test fixture', () => {
+  const dir = guardFolder('write-guard-speed', { withGuard: true })
+  const input = { file_path: join(dir, 'src', 'login.ts'), content: `${PII_LINE}\n` }
+  writeHook(dir, input) // warm the file cache once
+  // wall time, node start-up included (about 135 ms of it on Windows); the fastest of 5 runs, so a busy machine's spike
+  // (the test files run in parallel) is not measured as the guard
+  const best = Array.from({ length: 5 }, () => writeHook(dir, input)).reduce((a, b) => (b.ms < a.ms ? b : a))
+  assert.equal(best.decision, 'deny', best.out)
+  assert.ok(best.ms < 300, `the write guard took ${best.ms} ms`)
+})
+
+test('settings.json runs the write guard as the fourth Edit|Write|MultiEdit hook', () => {
+  const s = JSON.parse(readFileSync(join(project, '.claude', 'settings.json'), 'utf8'))
+  const entry = s.hooks.PreToolUse.find((h) => h.matcher === 'Edit|Write|MultiEdit')
+  assert.equal(entry.hooks.length, 4)
+  assert.match(entry.hooks[3].command, /scripts\/lib\/guard\.mjs" write$/)
+})
