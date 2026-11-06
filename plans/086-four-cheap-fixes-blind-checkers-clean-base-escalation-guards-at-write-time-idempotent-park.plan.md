@@ -1,0 +1,123 @@
+# Plan 086 — Four cheap fixes: blind the checkers, escalate from a clean base, guards at write time, idempotent park
+
+Status: draft
+Depends-on: none
+Snapshot: fd212e119ef16c0b26ebfaf6b44f450fee26d8f5
+Source: kit audit 2026-11-06 (NotebookLM review verified against the code), plan A.
+
+## Problem Statement
+Four measured failures each have a one-day fix:
+1. The checkers read the builder's own `## Execution Notes` (`core/.claude/workflows/orchestrate.js:797` passes the plan file the builder wrote into; `core/.claude/agents/orch-check-plan.md:27` tells the finder to read those notes) — a known source of confirmation bias (Hamel Husain: context rot; Eugene Yan: self-enhancement bias). The kit's eval tool already has `--redact` for this and it was never adopted.
+2. The escalated judgment-tier builder patches on top of the failed diff (`core/.claude/agents/orch-builder.md:62-65`; the hand-off in `orchestrate.js:1216-1235` never resets the worktree). Applied LLMs: recovery inside a failed trajectory is poor; 66–80 % of reopened bugs are bad fixes (ICSE 2010, cited in plan 046).
+3. A forbidden line the builder writes (a log naming PII) is caught only at the commit, after the whole build (12.5 minutes lost three runs in a row). Plan 083 scans the plan's prescribed code before the build; it cannot see what the builder invents. Chip Huyen: a static guard belongs inline, synchronous, before downstream work.
+4. A stop or a park leaves a live `.claude/.session-lock`, a local `park/<run>-<NNN>` branch and a worktree with running servers behind; the next run collides with them (`core/scripts/orch-state.mjs:1088-1130` park-save; `core/scripts/session-lock.sh`).
+
+## Goals & Success Criteria
+**Primary:** each of the four failures is closed by code and proven by a test that fails on today's code.
+
+- [auto] `node --test tools/test/plan-info-no-notes.test.mjs` passes: `node scripts/orch-state.mjs plan-info --run r --plan 123 --no-notes` writes `<run folder>/plan-123.reviewed.md` with every line of the plan except the `## Execution Notes` section (heading included), and prints its path in `ORCH_JSON` as `reviewPath`; the original plan file is untouched.
+- [auto] `node --test tools/test/agent-contracts.test.mjs` passes with a test that `orch-check-plan.md`, `orch-check-bugs.md`, `orch-check-rules.md`, `orch-security.md` and `orch-verify.md` contain neither `Execution Notes` nor `git log`.
+- [auto] `node --test tools/test/orchestrator.test.mjs` passes with a test that the checkers' task carries `PLAN: <reviewPath>` (the redacted copy), never the plan's own path.
+- [auto] `node --test tools/test/handoff-reset-base.test.mjs` passes: `node scripts/orch-state.mjs handoff --run r --plan 123 --reset-base` leaves the builder worktree at the plan branch's base commit with no uncommitted change (`git status --porcelain` empty, `git rev-parse HEAD` = the recorded base), and the hand-off file's `Failed:` and `Output tail:` still describe the discarded attempt; without `--reset-base` nothing is reset (today's behaviour).
+- [auto] `node --test tools/test/guards.test.mjs` passes with new cases: a `Write` whose content holds a line the Angular pack's `scanGuardText` refuses is blocked by the PreToolUse hook with the guard's rule and line in the message; a `Write` with no hit passes; a project with no `scripts/pre-commit-*.mjs` exporting `scanGuardText` passes everything; the hook finishes in under 300 ms on the test fixture.
+- [auto] `node --test tools/test/plan-park.test.mjs` passes: `node scripts/plan-park.mjs --plan 123 --reason "x"` run twice in a row exits 0 both times; after it: no `.claude/.session-lock` in the slot, no local `park/` branch for that plan (the remote one keeps the WIP commit), the worktree folder removed, the slot freed in `.claude/slots.json`, and the park recorded once in `.claude/orchestrator-runs/<run>/status.json`.
+- [auto] `npm run build`, `npm run lint`, `npm test`, `node --test "tools/test/*.test.mjs"` pass; `node tools/sync.mjs --target . --apply` then `node tools/drift-check.mjs --target .` report no drift.
+
+## Execution Mode
+- Parallel: no.
+- Concurrent plans: none (goes first in the goal run).
+- Isolated DB: no.
+
+## Read-Write Scope
+
+Always allowed: this plan file itself, `.claude/sessions/**`, `.kit/install.json`, plus the append-only hotspot `CHANGELOG.md`.
+
+```scope
+core/scripts/orch-state.mjs
+scripts/orch-state.mjs
+core/scripts/plan-park.mjs
+scripts/plan-park.mjs
+core/scripts/lib/orch-run.mjs
+scripts/lib/orch-run.mjs
+core/scripts/lib/guard.mjs
+scripts/lib/guard.mjs
+core/scripts/lib/slot-procs.mjs
+scripts/lib/slot-procs.mjs
+core/.claude/settings.json
+.claude/settings.json
+core/.claude/workflows/orchestrate.js
+.claude/workflows/orchestrate.js
+core/.claude/agents/orch-builder.md
+.claude/agents/orch-builder.md
+core/.claude/agents/orch-check-plan.md
+.claude/agents/orch-check-plan.md
+core/.claude/agents/orch-check-bugs.md
+.claude/agents/orch-check-bugs.md
+core/.claude/agents/orch-check-rules.md
+.claude/agents/orch-check-rules.md
+core/.claude/agents/orch-security.md
+.claude/agents/orch-security.md
+core/.claude/agents/orch-verify.md
+.claude/agents/orch-verify.md
+core/.claude/commands/review-it.md
+.claude/commands/review-it.md
+core/docs/agent/orchestrator.md
+docs/agent/orchestrator.md
+core/docs/agent/model-routing.md
+docs/agent/model-routing.md
+tools/test/plan-info-no-notes.test.mjs
+tools/test/handoff-reset-base.test.mjs
+tools/test/plan-park.test.mjs
+tools/test/guards.test.mjs
+tools/test/agent-contracts.test.mjs
+tools/test/orchestrator.test.mjs
+tools/test/lib/**
+tools/test/fixtures/**
+CHANGELOG.md
+```
+
+## Read Scope
+
+Entire repo.
+
+## Escalation Protocol
+
+Thinking outside the box is expected; writing outside it requires explicit consent. If a Worker needs a file outside
+the `## Read-Write Scope`: STOP, tell the Human the file, the change, and why; offer `approved: <path>`; then append
+the path to the scope block and retry. In the goal run: a file under `core/scripts/lib/**` or `tools/test/**` is
+pre-approved; anything else stops the run.
+
+## Architecture Impact
+- INV-1: preserves — no model key or tier changes; the reset is a script step, the agents keep their deny list (no `git reset --hard` by an agent).
+- INV-none otherwise: four script and prompt changes; the run branch and main are untouched.
+
+## Step 0 — Reality Check
+On `origin/main`: read `plan-info` and `handoff` in `core/scripts/orch-state.mjs` (lines ~901 and ~1309), `checkers()` in `orchestrate.js` (~784–812), `park-save` (~1088), the PreToolUse `Edit|Write` hooks in `core/.claude/settings.json`, and `killPort`/`taskkill` in `core/scripts/lib/slot-procs.mjs` (~246). Confirm `scanGuardText(text, file)` in `packs/angular/scripts/pre-commit-security-grep.mjs:52` returns `[{ line, rule, ruleLine, text }]`. Print one `ok` / `conflict:` line per item.
+
+## Atomic Sub-tasks
+
+- [ ] B1: Give `plan-info` a `--no-notes` flag that writes a redacted copy of the plan (everything but `## Execution Notes`) next to the run's status file and reports it as `reviewPath` — core/scripts/orch-state.mjs, tools/test/plan-info-no-notes.test.mjs
+- [ ] B2: Pass the redacted copy to the finders and the verifier, in the workflow and in `/review-it` — `PLAN:` is `reviewPath`; delete the Execution-Notes bullet in orch-check-plan.md line 27; remove `git log` from the five checkers' Bash allowances; add the contract test — core/.claude/workflows/orchestrate.js, core/.claude/commands/review-it.md, core/.claude/agents/orch-check-plan.md, orch-check-bugs.md, orch-check-rules.md, orch-security.md, orch-verify.md, tools/test/agent-contracts.test.mjs, tools/test/orchestrator.test.mjs
+- [ ] B3: Give `handoff` a `--reset-base` flag that restores the builder worktree to the plan branch's base (`git checkout -- . && git clean -fd`, then `git reset --hard <base sha>` by the script — the script may, agents may not) after the hand-off file is written, and record `resetToBase: <sha>` in status.json; the workflow passes it when escalating to the judgment tier — core/scripts/orch-state.mjs, core/.claude/workflows/orchestrate.js, tools/test/handoff-reset-base.test.mjs
+- [ ] B4: Tell the escalated builder it starts from the base: replace lines 62–65 of orch-builder.md with "A hand-off file (you are the fresh, stronger builder): the worktree is at the plan's base commit; the hand-off file holds what the first builder changed, what failed and the output tail. Re-implement the plan from the base; do not reconstruct the discarded diff" — core/.claude/agents/orch-builder.md, core/docs/agent/model-routing.md (Builder escalation paragraph)
+- [ ] B5: Add a write-time guard: `node scripts/lib/guard.mjs write` runs every `scripts/pre-commit-*.mjs` that exports `scanGuardText` over the `content` (Write) or `new_string` (Edit/MultiEdit) of the tool input and blocks with `GUARD <script> line <n>: <rule>` on a hit; register it as the fourth PreToolUse `Edit|Write|MultiEdit` hook in settings.json; no guard module exporting the function → pass silently — core/scripts/lib/guard.mjs, core/.claude/settings.json, tools/test/guards.test.mjs, tools/test/fixtures/**
+- [ ] B6: Write `plan-park.mjs`, the one idempotent teardown: kill the slot's processes (slot-procs `taskkill /T /F` / POSIX kill), `park-save` the uncommitted work, delete `.claude/.session-lock` in the slot, `git worktree remove --force`, delete the local `park/` branch (the remote one stays), free the slot, record the park once (a second run finds it recorded and does nothing) — exit 0 always, every step logged — core/scripts/plan-park.mjs, core/scripts/orch-state.mjs (park-save reused), core/scripts/lib/slot-procs.mjs, tools/test/plan-park.test.mjs
+- [ ] B7: The workflow's park path calls `plan-park.mjs` instead of `park-save` + `release` — core/.claude/workflows/orchestrate.js, core/docs/agent/orchestrator.md (Runner calls table: one row replaces two)
+- [ ] T1: Resync the installed copies, run every check, add the changelog entry — CHANGELOG.md
+
+## Technical Considerations
+- Dependencies: `packs/angular/scripts/pre-commit-security-grep.mjs` (the only guard exporting `scanGuardText` today); `core/scripts/lib/guard.mjs` already runs as a Bash PreToolUse hook (`guard.mjs plan`) — B5 adds a second sub-command, same file, same hook shape.
+- New files: `core/scripts/plan-park.mjs`, three test files.
+- Hook input: Claude Code passes the tool call as JSON on stdin (`tool_name`, `tool_input.file_path`, `tool_input.content` / `new_string`); block = exit 2 with the message on stderr, like `scope-guard.sh`.
+- Windows: `taskkill` is already called through `execFileSync` in slot-procs; never through Git Bash (it rewrites `/PID`).
+- Backend / API: none. Auth and validation: none. Security surface: B5 blocks more, never less. Data / migration: none.
+- Project checks: `docs/project/plan-checks.md` when it exists.
+
+## Out of Scope
+- Replacing the five checkers with one reviewer (plan 087 measures it, plan 088 builds it).
+- The runner script (plan 088). Deleting the workflow (plan 090).
+
+## Critical Questions
+- none (the write-time guard blocks exactly what the commit guard would block later; no new rule).
+
+## Execution Notes

@@ -1,6 +1,6 @@
 # Plan 085 — The merge of a checked plan is pinned by script, not by the merge agent
 
-Status: draft
+Status: superseded by 088
 Depends-on: 084
 Snapshot: a513c5e40fe29742e8ee5d7cae573c7ba2d29095
 Source: plan 083 follow-up (Execution Notes, 2026-11-05): "the merge pin is an instruction to the merge agent; a script check after the merge would enforce it". Human, 2026-11-05: its own plan, started after the reliability freeze ends (2026-11-15).
