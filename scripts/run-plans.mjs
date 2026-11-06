@@ -55,6 +55,7 @@ const CONCURRENCY = 1
 const ON_PARK = "dependents"
 const MAX_FIX_ROUNDS = Number(2) || 2
 const REVIEWER_MODE = "advisory" === 'gate' ? 'gate' : 'advisory'
+const REVIEWER_MODEL = "opus"
 const RATE_LIMIT_WAIT_MIN = Number(30) >= 0 ? Number(30) : 30
 const STALE_MIN = Number(10) || 10
 // What every plan may touch and what none may (the same lists scope-check.mjs renders), for the trusted scope check.
@@ -273,7 +274,8 @@ async function main() {
   const agentsDir = join(ROOT, '.claude', 'agents')
   const builderAgent = readAgent(join(agentsDir, 'orch-builder.md'))
   const reviewerAgent = readAgent(join(agentsDir, 'plan-reviewer.md'))
-  const REVIEW_MODEL = reviewerAgent.model
+  // orchestrator.reviewerModel, passed as --model (the agent file's own model: line follows the tiers, models.review).
+  const REVIEW_MODEL = REVIEWER_MODEL || reviewerAgent.model
 
   const order = runOrder({ root: ROOT, plans: o.plans, runBranch: RUN_BRANCH })
   if (!order.ok) {

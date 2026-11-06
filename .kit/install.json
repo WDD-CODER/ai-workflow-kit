@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "b9a98e7cc8fe0f5d1c3466ae9b43cafce61d3f19",
+  "commit": "b740510806553442c6cdce652683835194554e9f",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -85,7 +85,7 @@
       "source": "core/.claude/agents/orch-verify.md"
     },
     ".claude/agents/plan-reviewer.md": {
-      "sha256": "70766d59a8473f716fc08326f0aaaea6c3b24f2eddf26e5c8c29bdc514f53a20",
+      "sha256": "b987be2eb059f2f7b1e51377645d87a47b5d2dcc40bb098a1f062c4b6a239aa8",
       "kind": "managed",
       "source": "core/.claude/agents/plan-reviewer.md"
     },
@@ -420,7 +420,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "e2591eac1f5b87e8dbc62fcad0a8bf2b8ceef06bbd4f050d509c595153a812cb",
+      "sha256": "960df40dcc0a89eed5d74fdb44cb2a723ce08a7a4b8c4ebea71f406a74806163",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -920,7 +920,7 @@
       "source": "core/scripts/prune-old-sessions.sh"
     },
     "scripts/run-plans.mjs": {
-      "sha256": "16f4a23fe7b16ae614698e00da9408095081c24fc679c0be4aa36baadad8e1c3",
+      "sha256": "5b37f8098a236523a8095d033c8657c754f86f3d0515fefe29d4e2c4e253be11",
       "kind": "managed",
       "source": "core/scripts/run-plans.mjs"
     },

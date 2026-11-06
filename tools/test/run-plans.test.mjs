@@ -34,7 +34,6 @@ test('claude-run: every call carries the four context-saving flags, json output,
   const r = claudeArgs({ agent: reviewer, model: reviewer.model, systemPromptFile: 's.md', allow: true })
   assert.equal(r[r.indexOf('--tools') + 1], 'Read,Grep,Glob,Bash')
   assert.equal(r[r.indexOf('--disallowedTools') + 1], 'Edit,Write,MultiEdit,NotebookEdit')
-  assert.equal(reviewer.model, 'opus', 'the reviewer runs on orchestrator.reviewerModel (plan 087 measured opus best)')
   assert.ok(!claudeArgs({ agent: reviewer, model: 'inherit', systemPromptFile: 's.md' }).includes('--model'))
 })
 
@@ -280,7 +279,7 @@ test('the argv of every call: the flags, the tier\'s model, the builder in its o
   assert.equal(b.argv[b.argv.indexOf('--model') + 1], 'sonnet')
   assert.equal(b.argv[b.argv.indexOf('--tools') + 1], 'Read,Edit,Write,Bash,Grep,Glob')
   assert.equal(basename(b.cwd), 'rp-app-orch-main-451')
-  assert.equal(r.argv[r.argv.indexOf('--model') + 1], 'opus')
+  assert.equal(r.argv[r.argv.indexOf('--model') + 1], 'opus', 'the reviewer runs on orchestrator.reviewerModel (default opus), whatever models.review is')
   assert.ok(!/Edit|Write/.test(r.argv[r.argv.indexOf('--tools') + 1]))
   assert.equal(r.argv[r.argv.indexOf('--disallowedTools') + 1], 'Edit,Write,MultiEdit,NotebookEdit')
   assert.equal(b.argv[b.argv.indexOf('--allowedTools') + 1], 'Read,Edit,Write,Bash,Grep,Glob', 'only the builder is pre-approved its whole list')
