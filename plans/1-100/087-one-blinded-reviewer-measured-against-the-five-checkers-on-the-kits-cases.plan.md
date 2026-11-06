@@ -1,6 +1,6 @@
 # Plan 087 — One blinded reviewer, measured against the five checkers on the kit's cases
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: fd212e119ef16c0b26ebfaf6b44f450fee26d8f5
 Source: kit audit 2026-11-06, plan D; `docs/agent-evals/BASELINE.md` (2026-10-22); 10-31 audit "redact builder claims (eval A/B on the 25 cases)".
