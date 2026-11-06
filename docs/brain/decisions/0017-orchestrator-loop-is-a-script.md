@@ -33,7 +33,10 @@ Approved by the Human on 2026-11-06 for the goal run (Arch-approved: Human 2026-
   (`orchestrator.reviewerMode`) until its measured precision reaches 0.50.
 - The merge takes the plan branch only at the head the gate and the review saw: `orch-state.mjs merge-verify` checks
   `HEAD^2 == checkedHead` before the one push (the merge pin, by script instead of a prompt instruction).
-- Security: only the builder is pre-approved its tools; the reviewer gets narrow Bash patterns (git diff, git show,
+- Security: the builder runs under the project's PreToolUse guard hooks (branch, plan-write, scope and write guards):
+  `--setting-sources local` loads no project settings, so the script writes the main folder's hooks block to a file
+  outside the builder's folder and passes it with `--settings` (a hook's deny wins over `--allowedTools`, checked with
+  a real call). Only the builder is pre-approved its tools, a bare Bash only while those hooks are loaded; the reviewer gets narrow Bash patterns (git diff, git show,
   node --test), no write tool, and is refused when the branch under review holds its own `.claude/settings.local.json`
   (the one settings file `--setting-sources local` still reads). The gate's scope and manifest checks are the main
   folder's trusted code, on the scope as the run branch holds it, never the branch's own `scripts/` copies.
@@ -42,8 +45,8 @@ Approved by the Human on 2026-11-06 for the goal run (Arch-approved: Human 2026-
 
 - A plan costs two model calls normally and five at worst; `calls.csv` records each call and gate command.
 - A rate or usage limit pauses the run and retries once; a second one stops it for a relaunch after the reset.
-- The project's hooks (the scope guard) do not run inside a headless call; the gate's trusted scope check replaces
-  them. A builder can no longer extend its own scope block: it escalates instead.
+- The project's guard hooks run in the builder's headless call through `--settings`; the gate's trusted scope check
+  is the backstop. A builder can no longer extend its own scope block: it escalates instead.
 - The workflow, its runner calls and the workflow-only config keys stay until a follow-up deletes them.
 
 ## Review

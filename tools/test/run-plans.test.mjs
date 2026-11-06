@@ -42,7 +42,11 @@ test('claude-run: tools are pre-approved only when asked; the builder gets its l
   const reviewer = readAgent(join(kit, '.claude', 'agents', 'plan-reviewer.md'))
   for (const agent of [builder, reviewer]) assert.ok(!claudeArgs({ agent, model: 'x', systemPromptFile: 's.md' }).includes('--allowedTools'), `${agent.name}: off by default`)
   const b = claudeArgs({ agent: builder, model: 'x', systemPromptFile: 's.md', allow: true })
-  assert.equal(b[b.indexOf('--allowedTools') + 1], 'Read,Edit,Write,Bash,Grep,Glob')
+  assert.equal(b[b.indexOf('--allowedTools') + 1], 'Read,Edit,Write,Grep,Glob,Bash(git:*),Bash(npm run:*),Bash(pnpm run:*),Bash(node:*)', 'no guard hooks: no bare Bash for the builder either')
+  assert.ok(!b.includes('--settings'))
+  const g = claudeArgs({ agent: builder, model: 'x', systemPromptFile: 's.md', allow: true, settings: 'C:/run/builder-settings.json' })
+  assert.equal(g[g.indexOf('--settings') + 1], 'C:/run/builder-settings.json')
+  assert.equal(g[g.indexOf('--allowedTools') + 1], 'Read,Edit,Write,Grep,Glob,Bash', 'with the guard hooks loaded the builder keeps a bare Bash')
   const r = claudeArgs({ agent: reviewer, model: 'x', systemPromptFile: 's.md', allow: true })
   const allowed = r[r.indexOf('--allowedTools') + 1].split(',')
   assert.deepEqual(allowed, ['Read', 'Grep', 'Glob', 'Bash(git diff:*)', 'Bash(git show:*)', 'Bash(node --test:*)'])
@@ -282,10 +286,31 @@ test('the argv of every call: the flags, the tier\'s model, the builder in its o
   assert.equal(r.argv[r.argv.indexOf('--model') + 1], 'opus', 'the reviewer runs on orchestrator.reviewerModel (default opus), whatever models.review is')
   assert.ok(!/Edit|Write/.test(r.argv[r.argv.indexOf('--tools') + 1]))
   assert.equal(r.argv[r.argv.indexOf('--disallowedTools') + 1], 'Edit,Write,MultiEdit,NotebookEdit')
-  assert.equal(b.argv[b.argv.indexOf('--allowedTools') + 1], 'Read,Edit,Write,Bash,Grep,Glob', 'only the builder is pre-approved its whole list')
+  assert.equal(b.argv[b.argv.indexOf('--allowedTools') + 1], 'Read,Edit,Write,Grep,Glob,Bash', 'only the builder, with its guard hooks loaded, keeps a bare Bash')
+  assert.ok(!r.argv.includes('--settings'), 'the reviewer gets no settings file')
   assert.equal(r.argv[r.argv.indexOf('--allowedTools') + 1], 'Read,Grep,Glob,Bash(git diff:*),Bash(git show:*),Bash(node --test:*)', 'the reviewer: no bare Bash')
   assert.equal(basename(r.cwd), 'rp-app-orch-review-main-451')
   assert.equal(existsSync(r.cwd), false, 'the review folder is removed after the review')
+})
+
+test('the builder runs under the project\'s guard hooks: --settings names a file outside its folder holding the PreToolUse hooks, and the scope guard there denies a write outside the plan', () => {
+  const b = main.calls.find((c) => c.plan === '451' && c.role === 'builder')
+  const file = b.argv[b.argv.indexOf('--settings') + 1]
+  assert.ok(b.argv.includes('--settings'), b.argv.join(' '))
+  assert.equal(resolve(file), resolve(join(p.proj, '.claude', 'orchestrator-runs', 'main', 'builder-settings.json')), 'outside the builder\'s folder, in the main folder\'s run folder')
+  const written = JSON.parse(readFileSync(file, 'utf8'))
+  const installed = JSON.parse(readFileSync(join(p.proj, '.claude', 'settings.json'), 'utf8')).hooks.PreToolUse
+  const root = p.proj.replace(/\\/g, '/')
+  assert.deepEqual(written.hooks.PreToolUse, JSON.parse(JSON.stringify(installed).split('${CLAUDE_PROJECT_DIR}').join(root)), 'the installed hooks block, pointed at the main folder\'s scripts')
+  assert.deepEqual(Object.keys(written), ['hooks'], 'nothing but the hooks')
+  const commands = written.hooks.PreToolUse.flatMap((h) => h.hooks.map((x) => x.command)).join('\n')
+  for (const g of ['branch-guard.sh', 'plan-write-guard.sh', 'scope-guard.sh', 'guard.mjs" write', 'guard.mjs" plan']) assert.ok(commands.includes(g), `${g} is in the builder's hooks`)
+  assert.ok(!commands.includes('CLAUDE_PROJECT_DIR'))
+  // What those hooks decide for the builder's folder (scope-guard.sh runs scripts/lib/guard.mjs scope).
+  const wt = b.cwd
+  const ask = (file) => spawnSync(process.execPath, [join(p.proj, 'scripts', 'lib', 'guard.mjs'), 'scope'], { input: JSON.stringify({ tool_name: 'Write', tool_input: { file_path: join(wt, file) }, cwd: wt }), encoding: 'utf8', env: p.env }).stdout
+  assert.match(ask('stray.txt'), /deny[\s\S]*SCOPE_GUARD: stray\.txt is outside this plan's Read-Write Scope/)
+  assert.doesNotMatch(ask('src/451.txt'), /deny/)
 })
 
 test('calls.csv: one row per model call and per gate command; the default concurrency 1 never overlaps two builders', () => {

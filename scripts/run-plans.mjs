@@ -297,8 +297,9 @@ async function main() {
     if (o.dryRun) {
       say('  gate commands:')
       for (const c of l.checks) say(`    ${c}`)
-      const show = (agent, model, cwd) => `claude ${claudeArgs({ agent, model, systemPromptFile: `<temp>/system.md`, allow: true }).join(' ')}  (cwd ${cwd})`
-      say(`  builder: ${show(builderAgent, MODELS.build, `<repo>-orch-${RUN}-${nnn}`)}`)
+      const show = (agent, model, cwd, settings = null) => `claude ${claudeArgs({ agent, model, systemPromptFile: `<temp>/system.md`, allow: true, settings }).join(' ')}  (cwd ${cwd})`
+      const guards = builderSettings(join(ROOT, '.claude', 'orchestrator-runs', RUN), { write: false })
+      say(`  builder: ${show(builderAgent, MODELS.build, `<repo>-orch-${RUN}-${nnn}`, guards ? `.claude/orchestrator-runs/${RUN}/builder-settings.json` : null)}`)
       say(`  reviewer: ${show(reviewerAgent, REVIEW_MODEL, `<repo>-orch-review-${RUN}-${nnn}`)}`)
       say(`  merge: git merge --no-ff origin/${l.branch} into ${RUN_BRANCH}, merge-verify, ${mergeChecksOf(l.checks).join(', ') || 'no check'}, git push origin ${RUN_BRANCH}`)
     }
@@ -333,6 +334,8 @@ async function main() {
   }
   const mergeFolder = init.mergeFolder
   const runDir = join(ROOT, '.claude', 'orchestrator-runs', RUN)
+  const guardSettings = builderSettings(runDir)
+  if (!guardSettings) say('RUN_PLANS: no PreToolUse hooks in .claude/settings.json — the builder runs without guard hooks and with narrow Bash patterns only')
   const csv = join(runDir, 'calls.csv')
   mkdirSync(runDir, { recursive: true })
   if (!existsSync(csv)) writeFileSync(csv, 'plan,stage,model,seconds,input_tokens,output_tokens,exit\n')
@@ -413,7 +416,7 @@ async function main() {
       const model = ctx.tier === 'judgment' ? MODELS.judgment : MODELS.build
       const prompt = builderPrompt({ RUN, RUN_BRANCH, ctx, l, LESSONS })
       say(`RUN_PLANS: plan ${nnn} ${stage} (${model}, round ${ctx.round})`)
-      const b = await modelCall(nnn, stage, () => runAgent({ agent: builderAgent, model, cwd: wt, prompt, timeoutMs: GATE_TIMEOUT_MIN * 60_000, bin: o.claude, allow: true }))
+      const b = await modelCall(nnn, stage, () => runAgent({ agent: builderAgent, model, cwd: wt, prompt, timeoutMs: GATE_TIMEOUT_MIN * 60_000, bin: o.claude, allow: true, settings: guardSettings }))
       let result = null
       try {
         result = b.ok ? parseResult(b.text) : null
@@ -625,6 +628,33 @@ async function main() {
   say(`RUN_PLANS: report ${fin.report ?? '(not committed)'} · local copy ${fin.local ?? '?'} · calls ${csv.replace(/\\/g, '/')}`)
   say(`RUN_PLANS_JSON ${JSON.stringify({ ok: !stopReason && !parkedList.length && !skippedList.length, run: RUN, branch: RUN_BRANCH, merged: mergedList, parked: parkedList, skipped: skippedList, outcomes, stopReason, ...(stopReason && /^rate-limit/.test(stopReason) ? { stopped: 'rate-limit' } : {}), finalGate, report: fin.report ?? null, local: fin.local ?? null, calls: csv.replace(/\\/g, '/') })}`)
   return mergedList.length === all.length && !stopReason ? 0 : 2
+}
+
+/**
+ * The builder's guard hooks in headless mode: `--setting-sources local` loads no project settings, so the project's
+ * PreToolUse hooks (branch guard, plan-write guard, scope guard, the write guard) come from a file the script writes
+ * outside the builder's folder — the hooks block of this folder's `.claude/settings.json`, with `${CLAUDE_PROJECT_DIR}`
+ * replaced by this folder's path (the same hooks, run from the same place, as the workflow's builder had). A guard that
+ * judges a file in the builder's folder hands it to that folder's own guard (scripts/lib/guard.mjs, like any other
+ * worktree); the gate's trusted scope check is the backstop. Returns the file, or null when there are no such hooks
+ * (the builder then gets narrow Bash patterns instead of a bare Bash). `write` false: the path only (the dry run).
+ */
+export function builderSettings(runDir, { write = true } = {}) {
+  let s
+  try {
+    s = JSON.parse(readFileSync(join(ROOT, '.claude', 'settings.json'), 'utf8'))
+  } catch {
+    return null
+  }
+  const pre = s?.hooks?.PreToolUse
+  if (!Array.isArray(pre) || !pre.length) return null
+  const file = join(runDir, 'builder-settings.json')
+  if (!write) return file
+  const root = ROOT.replace(/\\/g, '/')
+  const text = JSON.stringify(pre).split('${CLAUDE_PROJECT_DIR}').join(root).split('$CLAUDE_PROJECT_DIR').join(root)
+  mkdirSync(runDir, { recursive: true })
+  writeFileSync(file, `${JSON.stringify({ hooks: { PreToolUse: JSON.parse(text) } }, null, 2)}\n`)
+  return file
 }
 
 /** The merge step's checks (orchestrator.mergeChecks): "build" = the build plus the scope check, "full" = the plan's gate. */

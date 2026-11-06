@@ -11,7 +11,8 @@
  * `--output-format json`, `--model` (none for "inherit"), `--system-prompt-file` with the agent's body, and `--tools`
  * from the agent's front matter; an agent without a write tool also gets `--disallowedTools` for the write tools.
  * Tools are pre-approved (`--allowedTools`) only when the caller asks (`allow`), and a read-only agent then gets narrow
- * Bash patterns, never a bare Bash. `trustCwdSettings: false` (the reviewer) refuses a folder that holds its own
+ * Bash patterns, never a bare Bash; a writing agent gets a bare Bash only with a `settings` file (`--settings`: the
+ * guard hooks, which run under -p and whose deny wins over --allowedTools). `trustCwdSettings: false` (the reviewer) refuses a folder that holds its own
  * `.claude/settings.local.json`, the one settings file `--setting-sources local` still reads.
  * `bin` is the claude command (RUN_PLANS_CLAUDE or "claude"); a `.mjs`/`.js` file is run with node (tests' fake).
  * On Windows `claude` is a .cmd shim: it runs through the shell with every argument quoted. Node built-ins only.
@@ -50,11 +51,18 @@ export const canWrite = (agent) => Boolean(agent.tools?.some((t) => WRITE_TOOLS.
  */
 export const READ_ONLY_BASH = ['Bash(git diff:*)', 'Bash(git show:*)', 'Bash(node --test:*)']
 
-/** What `--allowedTools` pre-approves for an agent: its own tools when it writes (the builder), else read tools + READ_ONLY_BASH. */
-export function allowedTools(agent) {
+/** The Bash commands a writing agent may run without a prompt when no guard hooks watch the call (git, the checks). */
+export const BUILDER_BASH = ['Bash(git:*)', 'Bash(npm run:*)', 'Bash(pnpm run:*)', 'Bash(node:*)']
+
+/**
+ * What `--allowedTools` pre-approves for an agent. A writing agent (the builder) gets its own tools, with a bare Bash
+ * only when `guarded` (a `--settings` file brings the project's PreToolUse guard hooks into the call), else
+ * BUILDER_BASH; a read-only agent gets its read tools + READ_ONLY_BASH.
+ */
+export function allowedTools(agent, { guarded = false } = {}) {
   const tools = agent.tools ?? []
-  if (canWrite(agent)) return tools
-  return [...tools.filter((t) => t !== 'Bash'), ...(tools.includes('Bash') ? READ_ONLY_BASH : [])]
+  const bash = canWrite(agent) ? (guarded ? ['Bash'] : BUILDER_BASH) : READ_ONLY_BASH
+  return [...tools.filter((t) => t !== 'Bash'), ...(tools.includes('Bash') ? bash : [])]
 }
 
 /**
@@ -62,13 +70,16 @@ export function allowedTools(agent) {
  * permission prompt — `--allowedTools` from allowedTools(): the whole list only for an agent that writes (run-plans'
  * builder), narrow Bash patterns for a read-only one. An agent without a write tool always gets `--disallowedTools`.
  */
-export function claudeArgs({ agent, model, systemPromptFile, allow = false }) {
+export function claudeArgs({ agent, model, systemPromptFile, allow = false, settings = null }) {
   const args = ['-p', '--output-format', 'json', '--system-prompt-file', systemPromptFile, ...CONTEXT_FLAGS]
+  // `--settings`: a kit-written file (outside the agent's folder) with the guard hooks; it is read whatever
+  // --setting-sources says, and a hook's deny wins over --allowedTools.
+  if (settings) args.push('--settings', settings)
   // "inherit" is a kit model tier (the main session's model), not a model name: no --model, Claude Code's default.
   if (model && model !== 'inherit') args.push('--model', model)
   if (agent.tools?.length) {
     args.push('--tools', agent.tools.join(','))
-    if (allow) args.push('--allowedTools', allowedTools(agent).join(','))
+    if (allow) args.push('--allowedTools', allowedTools(agent, { guarded: Boolean(settings) }).join(','))
   }
   if (!canWrite(agent)) args.push('--disallowedTools', WRITE_TOOLS.join(','))
   return args
@@ -155,7 +166,7 @@ export function spawnClaude({ bin, args, cwd, input = '', timeoutMs = 600_000, e
  * agent's final reply (its JSON result inside), `ok` false on a non-zero exit, a timeout, an `is_error` answer or
  * unreadable output; `rateLimited` when the failure names a rate or usage limit.
  */
-export async function runAgent({ agent = null, agentFile = null, model = null, cwd, prompt, timeoutMs = 600_000, bin = process.env.RUN_PLANS_CLAUDE || 'claude', allow = false, trustCwdSettings = true, env = process.env }) {
+export async function runAgent({ agent = null, agentFile = null, model = null, cwd, prompt, timeoutMs = 600_000, bin = process.env.RUN_PLANS_CLAUDE || 'claude', allow = false, settings = null, trustCwdSettings = true, env = process.env }) {
   const a = agent ?? readAgent(agentFile)
   // An untrusted folder with its own local settings: refused before anything is spawned.
   const planted = trustCwdSettings ? null : untrustedSettings(cwd)
@@ -165,7 +176,7 @@ export async function runAgent({ agent = null, agentFile = null, model = null, c
   try {
     const systemPromptFile = join(tmp, 'system.md')
     writeFileSync(systemPromptFile, systemPromptOf(a))
-    const args = claudeArgs({ agent: a, model, systemPromptFile, allow })
+    const args = claudeArgs({ agent: a, model, systemPromptFile, allow, settings })
     const r = await spawnClaude({ bin, args, cwd, input: prompt, timeoutMs, env })
     const seconds = Math.round((Date.now() - started) / 100) / 10
     let json = null
