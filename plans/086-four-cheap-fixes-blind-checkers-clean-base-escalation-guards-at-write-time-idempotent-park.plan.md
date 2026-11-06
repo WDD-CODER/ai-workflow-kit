@@ -96,7 +96,7 @@ On `origin/main`: read `plan-info` and `handoff` in `core/scripts/orch-state.mjs
 
 ## Atomic Sub-tasks
 
-- [ ] B1: Give `plan-info` a `--no-notes` flag that writes a redacted copy of the plan (everything but `## Execution Notes`) next to the run's status file and reports it as `reviewPath` — core/scripts/orch-state.mjs, tools/test/plan-info-no-notes.test.mjs
+- [x] B1: Give `plan-info` a `--no-notes` flag that writes a redacted copy of the plan (everything but `## Execution Notes`) next to the run's status file and reports it as `reviewPath` — core/scripts/orch-state.mjs, tools/test/plan-info-no-notes.test.mjs
 - [ ] B2: Pass the redacted copy to the finders and the verifier, in the workflow and in `/review-it` — `PLAN:` is `reviewPath`; delete the Execution-Notes bullet in orch-check-plan.md line 27; remove `git log` from the five checkers' Bash allowances; add the contract test — core/.claude/workflows/orchestrate.js, core/.claude/commands/review-it.md, core/.claude/agents/orch-check-plan.md, orch-check-bugs.md, orch-check-rules.md, orch-security.md, orch-verify.md, tools/test/agent-contracts.test.mjs, tools/test/orchestrator.test.mjs
 - [ ] B3: Give `handoff` a `--reset-base` flag that restores the builder worktree to the plan branch's base (`git checkout -- . && git clean -fd`, then `git reset --hard <base sha>` by the script — the script may, agents may not) after the hand-off file is written, and record `resetToBase: <sha>` in status.json; the workflow passes it when escalating to the judgment tier — core/scripts/orch-state.mjs, core/.claude/workflows/orchestrate.js, tools/test/handoff-reset-base.test.mjs
 - [ ] B4: Tell the escalated builder it starts from the base: replace lines 62–65 of orch-builder.md with "A hand-off file (you are the fresh, stronger builder): the worktree is at the plan's base commit; the hand-off file holds what the first builder changed, what failed and the output tail. Re-implement the plan from the base; do not reconstruct the discarded diff" — core/.claude/agents/orch-builder.md, core/docs/agent/model-routing.md (Builder escalation paragraph)
@@ -121,3 +121,13 @@ On `origin/main`: read `plan-info` and `handoff` in `core/scripts/orch-state.mjs
 - none (the write-time guard blocks exactly what the commit guard would block later; no new rule).
 
 ## Execution Notes
+- Step 0 (origin/main 47d0804; since the snapshot only plan 084 touched orchestrate.js, in gate()/envCheck(), not the lines this plan edits):
+  - ok: `plan-info` (orch-state.mjs ~901) and `handoff` (~1309) as described.
+  - ok: `checkers()` in orchestrate.js 784–831 passes `PLAN: ctx.info.path` to the finders (797) and the verifier (815).
+  - ok: `park-save` (~1088) snapshots, pushes park/<run>-<NNN>, cleans and releases a slot.
+  - ok: PreToolUse `Edit|Write|MultiEdit` in core/.claude/settings.json holds 3 hooks (branch-guard, plan-write-guard, scope-guard).
+  - conflict: slot-procs.mjs has no `killPort`; the kill is `killTree(pid)` (~244, `taskkill /PID <pid> /T /F` via execFileSync) and `stopSlotServers({ root })`.
+  - ok: `scanGuardText(text, file)` (packs/angular/scripts/pre-commit-security-grep.mjs:52) returns `[{ line, id, rule, ruleLine, text, file }]`.
+  - conflict: `.claude/slots.json` does not exist anywhere in the kit; a slot is a `<repo>-wt-N` worktree, claimed by its `.worktree-plan` marker (lib/slot.mjs listSlots).
+- decision: behaviour: B6 "slot freed in .claude/slots.json" = the slot released the existing way (detached at the run branch, `.worktree-plan` and the builder marker removed, so `listSlots()` shows it idle); a permanent wt-N slot is freed, never removed; only a plan's own builder folder (`<repo>-orch-<run>-<NNN>`) is `git worktree remove --force`d. Reverse: add a slots.json writer in plan-park.mjs.
+- B1: `plan-info --no-notes` (switch; `--no-notes=yes` too) writes `.claude/orchestrator-runs/<run>/plan-<NNN>.reviewed.md` via `planWithoutNotes()` (lib/orch-run.mjs; a `## ` inside a code fence does not end the section) and returns `reviewPath`. Evidence: `node --test tools/test/plan-info-no-notes.test.mjs` failed before (`unknown flag --no-notes`), now 2/2 pass.

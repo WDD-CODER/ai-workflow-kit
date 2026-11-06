@@ -72,6 +72,25 @@ export function startTier(planText) {
   return { tier: named.length ? 'judgment' : 'build', invariants: named }
 }
 
+/**
+ * The plan without its `## Execution Notes` section (the heading and every line up to the next `## ` heading outside a
+ * code fence): what the checkers read, so the builder's own account of its work never reaches them. Every other line is
+ * kept as it is, line endings included.
+ */
+export function planWithoutNotes(planText) {
+  const lines = String(planText).split(/(?<=\n)/)
+  const out = []
+  let inNotes = false
+  let fence = false
+  for (const line of lines) {
+    const bare = line.replace(/\r?\n$/, '')
+    if (!fence && /^##\s/.test(bare)) inNotes = /^##\s+Execution Notes\s*$/i.test(bare)
+    if (/^\s*(```|~~~)/.test(bare)) fence = !fence
+    if (!inNotes) out.push(line)
+  }
+  return out.join('')
+}
+
 /** The plan's `[human]` items (Goals / Done-when), verbatim without the tag, in file order. */
 export function humanItems(planText) {
   const out = []

@@ -12,6 +12,7 @@
  *   node scripts/orch-state.mjs main-tries --run <name>                     main-folder checks that exited 0 in the last 2 hours, per plan
  *   node scripts/orch-state.mjs prepare    --missing <path> --script <name> [--in <folder>] [--pm npm|pnpm]   runs the script when <path> is absent (orchestrator.prepare)
  *   node scripts/orch-state.mjs plan-info  --run <name> --plan <NNN>        path, branch, start tier, [human] and [ui] items
+ *                                          [--no-notes]: also a copy without ## Execution Notes (reviewPath, the checkers' PLAN)
  *   node scripts/orch-state.mjs worktree   --run <name> --plan <NNN>        the builder's folder on its plan branch: an idle
  *                                          wt-N slot first (orchestrator.useSlots), else its own folder; packages installed
  *   node scripts/orch-state.mjs release    --run <name> --plan <NNN>        gives the plan's slot back (detached, marker removed)
@@ -68,7 +69,7 @@ import { uiItems } from './lib/done-when.mjs'
 import { listSlots } from './lib/slot.mjs'
 import { ensureDeps, idleSlot, claimSlot, releaseSlot, releaseRunSlots } from './lib/orch-folders.mjs'
 import { agreementStats, addLesson, lessonParts, ruleLines, LESSON_ROLES } from './decision-log.mjs'
-import { triageForce, triageView, decisionsInView, mergePlanFile, decisionType, runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine, logQueryArgs, lessonFacts, commandTag, runLogRow, updateRunLog, parseRunLog, parseDecisionRows, trendOf, contextBudget, INJECTED_ROLES } from './lib/orch-run.mjs'
+import { planWithoutNotes, triageForce, triageView, decisionsInView, mergePlanFile, decisionType, runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine, logQueryArgs, lessonFacts, commandTag, runLogRow, updateRunLog, parseRunLog, parseDecisionRows, trendOf, contextBudget, INJECTED_ROLES } from './lib/orch-run.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const MAIN = 'main'
@@ -111,7 +112,10 @@ const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tie
   // a reason as base64 of its UTF-8 text (the workflow's way: quotes, brackets and $ survive the runner's shell)
   'reason-b64',
   // `prepare`: the generated path, the npm script, the folder it runs in and the package manager
-  'missing', 'script', 'in', 'pm'])
+  'missing', 'script', 'in', 'pm',
+  // switches (no value needed; `--key=<value>` is accepted too): plan-info's redacted copy, handoff's reset to the base
+  'no-notes', 'reset-base'])
+const SWITCHES = new Set(['no-notes', 'reset-base'])
 function parseArgs(argv) {
   const out = { _: [] }
   for (let i = 0; i < argv.length; i++) {
@@ -125,6 +129,7 @@ function parseArgs(argv) {
     const key = eq > 0 ? a.slice(2, eq) : a.slice(2)
     if (!FLAGS.has(key)) return { problem: `unknown flag --${key}` }
     if (eq > 0) out[key] = a.slice(eq + 1)
+    else if (SWITCHES.has(key)) out[key] = true
     else if (argv[i + 1] !== undefined && !argv[i + 1].startsWith('-')) out[key] = argv[++i]
     else return { problem: `--${key} needs a value (use --${key}=<value>)` }
   }
@@ -906,6 +911,14 @@ const commands = {
     const text = readFileSync(join(root, path), 'utf8')
     const { tier, invariants } = startTier(text)
     const info = { ok: true, nnn, path, title: planTitle(text), branch: branchOf(path, nnn), npmScripts: npmScripts(), worktree: builderFolder(run, nnn).replace(/\\/g, '/'), startTier: tier, invariants, humanItems: humanItems(text), uiItems: uiItems(text) }
+    // --no-notes: the plan without its ## Execution Notes section, next to the run's status file — the copy the checkers
+    // read (PLAN: reviewPath), so the builder's own account never reaches them. The plan file itself is not touched.
+    if (args['no-notes'] !== undefined) {
+      const reviewRel = `.claude/orchestrator-runs/${run}/plan-${nnn}.reviewed.md`
+      mkdirSync(dirname(join(root, reviewRel)), { recursive: true })
+      writeFileSync(join(root, reviewRel), planWithoutNotes(text))
+      info.reviewPath = reviewRel
+    }
     const status = readStatus(run)
     if (status) {
       // plan-info starts each attempt at a plan: an earlier attempt (a relaunch) moves to `earlier`, so state, round,
