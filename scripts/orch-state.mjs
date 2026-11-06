@@ -28,6 +28,8 @@
  *   node scripts/orch-state.mjs handoff    --run <name> --plan <NNN> --step s --check c --tail t --tried x [--failed t] [--replan yes|no --replan-why t --not-done t]
  *                                          the hand-off file a fresh judgment-tier builder reads (the escalation is recorded);
  *                                          its Done: line is derived here (ticked sub-task ids in the plan + the branch diff)
+ *                                          [--reset-base]: then the plan's folder goes back to the branch's base (clean,
+ *                                          origin/<branch> follows with a lease); status.json keeps resetToBase / resetFrom
  *   node scripts/orch-state.mjs context    [--run <name>]                   LESSONS / RULES / RECENT_RUNS for the roles (read-only) and their size
  *   node scripts/orch-state.mjs lessons    --run <name>                     lesson lines from status.json into docs/brain/agent-lessons/ (no model call)
  *   node scripts/orch-state.mjs trend      [--run <name>] [--last n]        ✗ / fix rounds per plan and parked per run from docs/brain/run-log.md
@@ -1339,6 +1341,20 @@ const commands = {
       if (m && !ticked.includes(m[1])) ticked.push(m[1])
     }
     const done = `sub-tasks ticked: ${ticked.join(', ') || '(none)'}; files changed: ${files.join(', ') || '(none)'}`
+    // --reset-base: the fresh builder starts from the plan branch's base, not from the failed diff (a script step: the
+    // agents keep their deny list). Found before the file is written, so the file names it; done after.
+    let reset = null
+    if (args['reset-base'] !== undefined) {
+      const slot = USE_SLOTS ? listSlots().find((s) => s.plan === planPath(nnn)) ?? null : null
+      const own = builderFolder(run, nnn)
+      const folder = slot ? slot.path : existsSync(own) ? own : null
+      if (!folder) fail(`handoff --reset-base: plan ${nnn} has no folder to reset`)
+      fetchOrigin()
+      const from = git(folder, 'rev-parse', 'HEAD').out
+      const base = git(folder, 'merge-base', 'HEAD', `origin/${runBranch(run)}`).out
+      if (!/^[0-9a-f]{40}$/.test(base)) fail(`handoff --reset-base: no common base of ${branch} and origin/${runBranch(run)} in ${folder}`)
+      reset = { folder, from, base }
+    }
     // Does the plan itself have to change? yes | no; anything else is "no".
     const replan = args.replan === 'yes' ? 'yes' : 'no'
     const replanWhy = args['replan-why'] && args['replan-why'] !== true ? String(args['replan-why']) : '(not given)'
@@ -1354,17 +1370,36 @@ const commands = {
       'Suspected cause: (a guess) see the output tail; rerun the failing check first',
       `Replan:          ${replan} — ${replanWhy}`,
       ...(args['not-done'] && args['not-done'] !== true ? [`Not done:        ${String(args['not-done'])}`] : []),
+      ...(reset ? [`Reset:           the folder is back at the base ${reset.base.slice(0, 7)}; the discarded attempt is ${reset.from.slice(0, 7)} (git show ${reset.from.slice(0, 7)})`] : []),
       '',
     ].join('\n'))
+    if (reset) {
+      const { folder, from, base } = reset
+      for (const step of [['checkout', '--', '.'], ['clean', '-fdq', '--exclude=.worktree-*'], ['reset', '--quiet', '--hard', base]]) {
+        const r = git(folder, ...step)
+        if (r.status !== 0) fail(`handoff --reset-base: git ${step.join(' ')} in ${folder}: ${r.err}`)
+      }
+      // The plan branch on origin follows (lease: only while it is still at the head this script saw), so the fresh
+      // builder's own `git push -u origin <branch>` is a fast-forward. The discarded head stays in status.json (resetFrom).
+      const remote = git(folder, 'rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`).out
+      if (remote && remote !== base) {
+        const p = git(folder, 'push', '--quiet', `--force-with-lease=refs/heads/${branch}:${remote}`, 'origin', `${base}:refs/heads/${branch}`)
+        if (p.status !== 0) fail(`handoff --reset-base: moving origin/${branch} to the base ${base.slice(0, 7)} failed: ${p.err.split('\n').pop()}`)
+      }
+    }
     // The escalation is a fact the builder lessons are written from (lessonFacts): its step and the failing check.
     const st = readStatus(run)
     if (st?.plans?.[nnn]) {
       const e = { step: val('step'), check: val('check').slice(0, 200) }
       st.plans[nnn].escalations = [...(st.plans[nnn].escalations ?? []).filter((x) => x.step !== e.step || x.check !== e.check), e]
       st.plans[nnn].replan = `${replan} — ${replanWhy}`
+      if (reset) {
+        st.plans[nnn].resetToBase = reset.base
+        st.plans[nnn].resetFrom = reset.from
+      }
       writeStatus(run, st)
     }
-    emit({ ok: true, path: rel }, [`hand-off file ${rel}`])
+    emit({ ok: true, path: rel, ...(reset ? { resetToBase: reset.base, resetFrom: reset.from } : {}) }, [`hand-off file ${rel}`, ...(reset ? [`${reset.folder.replace(/\\/g, '/')}: reset to the base ${reset.base.slice(0, 7)} (discarded ${reset.from.slice(0, 7)})`] : [])])
   },
 
   note() {

@@ -1223,7 +1223,9 @@ async function runPlan(nnn) {
     ctx.knownFindings = findings.filter((f) => /^ui-/.test(f.id)).map((f) => `${f.file}: ${f.reasoning}`)
     if (failure.escalate || ctx.round >= 2) {
       // A persisting failure, an ESCALATE / blocked builder or a second finding: a fresh builder on the judgment tier.
-      const w = await state(['handoff', '--run', RUN, '--plan', nnn, '--step', `round ${ctx.round}`, '--check', failure.check ?? failure.why, '--tail', failure.tail ?? failure.why, '--tried', `${ctx.tier} builder, mode ${mode}`,
+      // --reset-base: once the file is written, the script puts the folder back at the plan branch's base, so the fresh
+      // builder re-implements the plan from there instead of patching the failed diff (the file still describes it).
+      const w = await state(['handoff', '--run', RUN, '--plan', nnn, '--reset-base', 'yes', '--step', `round ${ctx.round}`, '--check', failure.check ?? failure.why, '--tail', failure.tail ?? failure.why, '--tried', `${ctx.tier} builder, mode ${mode}`,
         // Failed: the failing check with its tail and the round's open findings (id file:line rule), from gate and checker
         // results. Done: is derived by the script itself (ticked sub-task ids in the plan file + the branch diff), never
         // from the builder's receipt (Human amendment 1: run facts are written by scripts, not agents).

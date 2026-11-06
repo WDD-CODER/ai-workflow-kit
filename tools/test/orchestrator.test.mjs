@@ -720,6 +720,7 @@ test('INV-1: one failed fix round hands over to a fresh judgment builder, whatev
     assert.ok(!JSON.stringify(b[2]).includes('PREVIOUS-BUILDER-STORY'), 'the previous builder summary never reaches the fresh builder')
     const handoff = r.commands.filter((c) => /orch-state\.mjs handoff/.test(c))
     assert.equal(handoff.length, 1, `maxFixRounds ${rounds}: one hand-off`)
+    assert.match(handoff[0], /--reset-base=yes/, 'the escalated builder starts from the plan branch base (plan 086)')
     assert.match(handoff[0], /--failed=/, 'Failed: is filled from the gate result')
     assert.doesNotMatch(handoff[0], /--done/, 'Done: is derived by the script, never passed from the builder receipt')
     assert.doesNotMatch(handoff[0], /PREVIOUS-BUILDER-STORY/)
