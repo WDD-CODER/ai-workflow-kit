@@ -1,23 +1,39 @@
 # Orchestrator — run saved plans unattended into one run branch
 
-An opt-in second workflow beside the Planner/Worker flow. Nothing changes unless the Human starts a run with
-`/orchestrate <plans>`. A run checks everything first, asks every open question in one batch, then runs without
-anyone: per plan a builder, a gate, independent checkers and a merge into one run branch
-`{{orchestrator.runBranchPrefix}}<run>` — never into `{{git.mainBranch}}`. The Human gets one report and merges the run
-branch himself.
+An opt-in second workflow beside the Planner/Worker flow. Nothing changes unless the Human starts a run. A run checks
+everything first and refuses to start while a plan has an open question, then runs without anyone: per plan a builder,
+a gate, a reviewer and a merge into one run branch `{{orchestrator.runBranchPrefix}}<run>` — never into
+`{{git.mainBranch}}`. The Human gets one report and merges the run branch himself.
+
+The loop is code (the kit's ADR 0017, "the orchestrator loop is a script"): `scripts/run-plans.mjs` runs it in
+a terminal, and only the builder and the reviewer are model calls. The older loop, the workflow
+`.claude/workflows/orchestrate.js` started by `/orchestrate`, drives every step through a model and stays until plan
+090 removes it; its own run is described in "The workflow's run" below.
 
 ## Pieces
 
 | Piece | File | Does |
 | --- | --- | --- |
-| Command | `.claude/commands/orchestrate.md` | Starts a run from a clean turn: readiness, the batched questions, `go`, the run, the final instructions |
-| Workflow | `.claude/workflows/orchestrate.js` | Readiness, ordering, the per-plan pipeline, the fix loop, the wave gate. No file, git or clock access |
-| State | `scripts/orch-state.mjs` | Every file, git and time step the workflow needs: run branch, merge folder, builder folders, `status.json`, hand-off files, the report |
+| Loop | `scripts/run-plans.mjs` | The run as one script: readiness lint, preflight, order, per plan builder → gate → review → merge, the fix round and the escalation, the park, the final gate, the report. `--dry-run` prints all of it and calls no model |
+| Headless calls | `scripts/lib/claude-run.mjs` | One agent file run once with `claude -p` (the four context-saving flags, the tier's model, the agent's tools); rate-limit detection. The kit's agent eval uses the same code |
+| Gate | `scripts/lib/plan-gate.mjs` | The check commands by script in the plan's folder, with the gate time limit; the receipt `.claude/gate-receipt.json` |
+| Review | `scripts/lib/plan-review.mjs` | The reviewer's prompt (plan without its Execution Notes, the diff, the gate receipt), its result validator, the verdict computed from the problems |
+| Merge | `scripts/lib/plan-merge.mjs` | `git merge --no-ff` in the merge folder, `merge-verify` (the pin), the merge checks, one push |
+| Order | `scripts/lib/run-order.mjs` | Waves and edges from `plan-order.mjs --json`, what a park blocks (`onPark`) |
+| Command | `.claude/commands/orchestrate.md` | Starts the workflow from a clean turn: readiness, the batched questions, `go`, the run, the final instructions |
+| Workflow | `.claude/workflows/orchestrate.js` | The older model-driven loop (no file, git or clock access); removed by plan 090 |
+| State | `scripts/orch-state.mjs` | Every file, git and time step: run branch, merge folder, builder folders, `status.json`, hand-off files, the merge pin, the report |
 | Preflight | `scripts/orch-preflight.mjs` | Environment checks before the run and before a retry: disk, database, packages, dev server (started when missing), backend (started for a plan with an `[auto:main]` item), git identity, remote, main folder, settings, a live run; `--ui` before any browser step: the pages' servers, the QA login, the backend from the page's origin |
-| Role agents | `.claude/agents/orch-*.md` | One job each; shared contract in `docs/agent/agent-roles.md` |
-| Runner | `.claude/agents/kit-runner.md` | Runs the state and preflight commands for the workflow (mechanical tier) |
+| Role agents | `.claude/agents/orch-builder.md`, `.claude/agents/plan-reviewer.md` (the script); `.claude/agents/orch-*.md` (the workflow) | One job each; shared contract in `docs/agent/agent-roles.md` |
+| Runner | `.claude/agents/kit-runner.md` | Runs the state and preflight commands for the workflow only (mechanical tier); the script needs none |
 
 ## Settings (`kit.config.json` → `orchestrator`)
+
+`run-plans.mjs` reads `runBranchPrefix`, `maxFixRounds`, `minFreeDiskGb` (through the preflight), `onPark`,
+`gateTimeoutMin`, `staleMin`, `mergeChecks`, `ciMirror`, `prepare`, `useSlots` (through `orch-state.mjs worktree`),
+`reviewerMode`, `reviewerModel` and `rateLimitWaitMin`; it runs one plan at a time unless `--concurrency 2` is given.
+`pilotSize`, `fallbackModel`, `maxNotesPerPlan`, `maxAgentCallsPerPlan` and `concurrency` are the workflow's only, and
+the triage keys shape the report's decision list.
 
 | Key | This project | Meaning |
 | --- | --- | --- |
@@ -35,9 +51,77 @@ branch himself.
 | `triageMinGraded` | `{{orchestrator.triageMinGraded}}` | Graded decisions of that kind it needs first (5–500) |
 | `mergeChecks` | `{{orchestrator.mergeChecks}}` | What the merge step runs on the merged tree: `build` = the project build plus the plan's scope check (lint and tests passed in the plan's gate and run once more at the final gate), `full` = the plan's whole check list on every merge |
 | `ciMirror` | `{{orchestrator.ciMirror|json}}` | CI commands (`npm run <script>`, `pnpm run <script>`, `node scripts/…` or `node tools/…`, no write flag) the final gate runs after the project checks and the kit manifest check, so a green run is a green pull request. Install and sync print a `NOTE ci-mirror:` line for each workflow command the final gate does not run; they never write the list |
+| `reviewerMode` | `{{orchestrator.reviewerMode}}` | What a STOP of the single reviewer does in `run-plans.mjs`: `advisory` = recorded in the run notes, the plan still merges; `gate` = one fix round with the findings, then the plan parks. `advisory` until the reviewer's measured precision reaches 0.50 (plan 087); `--reviewer-mode` overrides it for one run |
+| `reviewerModel` | `{{orchestrator.reviewerModel}}` | The model `.claude/agents/plan-reviewer.md` runs on (the kit's agent eval measured `opus` best). Never Haiku: install and sync refuse it |
+| `rateLimitWaitMin` | `{{orchestrator.rateLimitWaitMin}}` | Minutes `run-plans.mjs` waits after a call hits a rate or usage limit before it retries that call once; a second limit stops the run (`stopped: rate-limit`) |
 | `prepare` | `{{orchestrator.prepare|json}}` | Files the gate generates before the tests: a list of `{ "missing": "<repo-relative path>", "script": "<npm script>", "in": "<repo-relative folder, default .>" }`. Each entry is a first gate command of every plan gate and of the final gate (`node scripts/orch-state.mjs prepare --missing <path> --script <name> [--in <folder>]`): it runs `{{project.packageManager}} run <script>` in the folder only when `<path>` is absent, and fails with the last 20 output lines and the entry when the path is still missing. Not in the merge step's `build` list. Install and sync refuse an absolute path, a `..`, a script that is a full command or an unknown field |
 
 ## The run
+
+`node scripts/run-plans.mjs --run <run> --plans <NNN,NNN>` in a terminal (PowerShell or bash); the Human follows it with
+`node scripts/orch-state.mjs watch --run <run>`. Every step below is code except the two marked **model**.
+
+1. **Readiness lint, by script.** `plan-order.mjs --json` gives the waves (plans already merged into the run branch are
+   left out). Per plan: `scope-check.mjs --deps`, `--arch` and `--tags`; the plan branch name; every `Q:` of
+   `## Critical Questions` whose answer is `A: open` (or missing) is printed and refuses the run; the backticked commands
+   of the open `[auto]` Done-when items, an `npx …` one mapped to the package.json script that runs it, each held to the
+   check allowlist (one that is not allowed is dropped with the reason) and to `orch-state.mjs check-files`. Then
+   `orch-preflight.mjs` (which starts a missing dev server or backend, as below). A plan that is not ready, or a failed
+   preflight, refuses the whole run before anything is created (exit 1). `--dry-run` stops here and prints the waves,
+   each plan's lint, the preflight, the gate commands and the exact `claude -p` lines.
+2. **Start.** `orch-state.mjs init` (run branch, merge folder, `status.json`); the builder's lessons from `context`. A
+   heartbeat (`orch-state.mjs touch`) keeps `status.json` fresh while a builder works, so `watch` prints `RUNNING`.
+3. **Per plan, wave by wave** (one plan at a time; `--concurrency 2` runs two plans of a wave at once; plans that share
+   files run one after the other):
+   - `plan-info --with-worktree`: the plan's own folder on `feat/<NNN>-<slug>`.
+   - **model — builder** (`orch-builder.md` on `models.build`, or `models.judgment` when the plan names an invariant;
+     cwd = the plan's folder). Its result is read for `decisions` and `notDone`; its `pass` is never read. The script
+     then checks the folder is committed, the branch is ahead of the run branch, and pushes it.
+   - **gate**: `plan-gate.mjs` runs `prepare`, the project build, lint and test (`testCi` first), the kit manifest check
+     when the project has a manifest, `scope-check.mjs --diff=origin/<run branch>` (the scope guard's hooks do not run
+     inside a headless call: `--setting-sources local` loads no project settings, so the gate checks the scope instead)
+     and the plan's own `[auto]` commands, each with `gateTimeoutMin`; an environment error reruns once, then the
+     environment check, then the gate once more without a fix round.
+   - `orch-state.mjs diff --no-notes`: the changed files, the test-file gate, and the plan copy without its
+     `## Execution Notes` (the reviewer never reads the builder's own account); origin must hold the commit the gate ran on.
+   - **model — reviewer** (`plan-reviewer.md` on `reviewerModel`, no write tool, cwd = a detached review folder at the
+     checked head, removed after). The verdict is computed from its `blocker`/`major` problems. `reviewerMode`
+     `advisory` records a STOP as a run note; `gate` treats it like a failed gate.
+   - **merge** (one at a time): `git merge --no-ff origin/<plan branch>` in the merge folder with the anchored subject,
+     `orch-state.mjs merge-verify` (the merge commit's second parent must be the checked head; a branch that moved after
+     its checks is refused with both shas, the merge folder goes back to `HEAD^`, the plan parks), the `mergeChecks`
+     build, then one push of the run branch.
+   - **A failure** (gate, enforced review, merge conflict): one fix round on the same tier with the findings; a second
+     failure with a new reason gets `handoff --reset-base` and one fresh judgment-tier builder (INV-1); the same reason
+     twice, or a failure after that, parks the plan: `orch-state.mjs park` (plan-park.mjs: the work saved on
+     `park/<run>-<NNN>`, the folder removed), then `release`. A park skips only the later plans that depend on it or
+     share its files (`onPark`); the run goes on.
+   - **A rate or usage limit** on a call: the plan is `env-paused`, the run waits `rateLimitWaitMin`, the same call runs
+     once more; a second limit stops the run (`stopped: rate-limit`), the plans not started are `skipped`, and the
+     Human relaunches the same command after the reset (merged plans are left out from git).
+4. **Final gate** on the run branch in the merge folder (`prepare`, the project checks, the manifest check, `ciMirror`).
+5. **Report.** The builders' `behaviour:` / `seen:` / `removes:` decisions are recorded in one `decisions` call; then
+   `orch-state.mjs finish` writes the report (unchanged). Exit 0 = every plan merged, 2 = some parked or skipped.
+   `.claude/orchestrator-runs/<run>/calls.csv` has one row per model call and per gate command:
+   `plan,stage,model,seconds,input_tokens,output_tokens,exit`; `status.json` keeps each plan's `calls[]` and `checkedHead`.
+
+## Model calls
+
+Builder, builder fix, judgment builder, reviewer — everything else is code.
+
+| Stage | Agent | Model | Folder | When |
+| --- | --- | --- | --- | --- |
+| `builder` | `orch-builder.md` | `models.build` (`models.judgment` when the plan names an invariant) | the plan's own folder | once per plan |
+| `builder fix` | `orch-builder.md` | the same tier | the plan's own folder | after the first failure, with the findings |
+| `judgment builder` | `orch-builder.md` | `models.judgment` | the plan's folder, reset to the base | after a second failure with a new reason (`handoff --reset-base`) |
+| `reviewer` | `plan-reviewer.md` | `orchestrator.reviewerModel` | a read-only review folder at the checked head | after each passing gate |
+
+Two calls per plan normally, five at worst, then the plan parks. Every call is
+`claude -p --output-format json --system-prompt-file <agent body> --setting-sources local --strict-mcp-config
+--disable-slash-commands --no-session-persistence --model <model> --tools <agent tools>` (the reviewer also gets
+`--disallowedTools Edit,Write,MultiEdit,NotebookEdit`); `RUN_PLANS_CLAUDE` replaces `claude` (tests pass a fake).
+
+## The workflow's run (until plan 090)
 
 1. **Readiness.** `plan-order --json` gives the waves. One `orch-readiness` agent per plan reports open questions,
    environment needs and the commands the plan will run; `orch-preflight.mjs` checks the environment and starts what is
@@ -350,7 +434,8 @@ With the UI step off, a failed script is a finding for the builder, and a card n
 
 ## Runner calls
 
-Every shell command of a run goes through a `kit-runner` agent (a model call), because the workflow script has no file,
+The workflow only (`run-plans.mjs` runs every state, git and preflight step itself — see "Model calls"). Every shell
+command of a workflow run goes through a `kit-runner` agent (a model call), because the workflow script has no file,
 git or clock access and no way to run a script itself (checked against the harness globals). So the count of runner
 calls is the lever. What already saves calls:
 
@@ -394,8 +479,8 @@ to the number of sites in the file). `parsed` = the script reads the answer to b
 | Merge only | `merge-ready` | 1 | parsed | keep: once per plan in merge mode |
 | Decisions | `decisions` | 1 | write-only | done: one call for N decisions |
 
-No call is `script-only` yet: until the workflow runtime can run a script without a model, every row that stays needs
-the runner. The one row to watch is `set` — see its recommendation.
+In the workflow no call is `script-only`: its runtime cannot run a script without a model, so every row that stays
+needs the runner. `run-plans.mjs` makes every one of them script-only; the workflow and this table go in plan 090.
 
 ## State rules
 
