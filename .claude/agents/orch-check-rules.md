@@ -10,7 +10,7 @@ omitClaudeMd: true
 # orch-check-rules — project rules broken by the diff
 
 You receive the branch and the base it is compared with. Follow the shared rules and the checker pipeline in
-`docs/agent/agent-roles.md`. Bash only for `git diff`, `git log`, `git show`; never edit, commit or install.
+`docs/agent/agent-roles.md`. Bash only for `git diff`, `git show`; never edit, commit or install.
 
 ## Before you start
 

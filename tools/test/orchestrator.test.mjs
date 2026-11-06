@@ -157,7 +157,7 @@ async function runFlow(args, hooks = {}) {
       return { ok: true, waves: hooks.waves ?? [todo], waveLocks: hooks.waveLocks ?? [], ...(hooks.edges ? { edges: hooks.edges } : {}), skipped: hooks.merged ?? [], plans: Object.fromEntries(plansIn.map((p) => [p, { path: `plans/${p}-x.plan.md` }])), ...(hooks.testLocations ? { testLocations: hooks.testLocations } : {}) }
     }
     if (cmd === 'plan-info') {
-      const info = { ok: true, path: `plans/${f.plan}-x.plan.md`, branch: `feat/${f.plan}-x`, startTier: 'build', invariants: [], npmScripts: [], uiItems: [] }
+      const info = { ok: true, path: `plans/${f.plan}-x.plan.md`, branch: `feat/${f.plan}-x`, startTier: 'build', invariants: [], npmScripts: [], uiItems: [], ...(f['no-notes'] ? { reviewPath: `.claude/orchestrator-runs/${f.run}/plan-${f.plan}.reviewed.md` } : {}) }
       if (!f['with-worktree']) return info
       // Plan 062: plan-info makes the folder in the same call. It is listed as the `worktree` command it stands for, and a
       // hooks.runner answer for that command is the folder's answer.
@@ -467,6 +467,16 @@ test('pilot still stops after pilotSize plans when onPark is dependents', { skip
   const r = await runFlow({ plans }, { edges: [] })
   assert.deepEqual(r.result.pilot, { size: PILOT, waiting: plans.slice(PILOT) })
   assert.match(r.result.stopReason, new RegExp(`^pilot of ${PILOT} plans done`))
+})
+
+test('plan 086: the finders and the verifier get PLAN: the redacted copy (plan-info --no-notes reviewPath), never the plan file the builder writes into', async () => {
+  const r = await runFlow({ plans: ['101'], pilot: false }, { problems: (type) => (type === 'orch-check-bugs' ? [{ id: 'x', file: 'src/a.js', line: 1, rule: 'r', reasoning: 'why', severity: 'minor' }] : []) })
+  assert.ok(r.commands.some((c) => /orch-state\.mjs plan-info /.test(c) && /--no-notes=yes/.test(c)), 'plan-info is asked for the redacted copy')
+  const checkers = r.calls.filter((c) => ['orch-check-plan', 'orch-check-bugs', 'orch-check-rules', 'orch-security', 'orch-verify'].includes(c.type))
+  assert.ok(checkers.some((c) => c.type === 'orch-verify'), 'the verifier ran')
+  for (const c of checkers) assert.equal(c.task.PLAN, '.claude/orchestrator-runs/r1/plan-101.reviewed.md', `${c.type}: PLAN`)
+  // the builder still edits the plan file itself
+  assert.ok(r.calls.filter((c) => c.type === 'orch-builder').every((c) => c.task.PLAN === 'plans/101-x.plan.md'))
 })
 
 test('removes: lines are kept in any case, numbered before every behaviour: and seen: line, and reach orch-check-plan only', async () => {
@@ -1206,11 +1216,11 @@ test('runner: a bad copy of ORCH_JSON is retried once at medium with a note, twi
   assert.ok(once.notes.some((n) => /runner retry: plan 101 — first attempt: unreadable ORCH_JSON from: node scripts\/orch-state\.mjs plan-info /.test(n)), once.notes.join('\n'))
   const twice = await runFlow({ plans: ['101'], pilot: false }, { runner: (cmd) => (isWt(cmd) ? bad : undefined) })
   assert.equal(twice.commands.filter(isWt).length, 2, 'one retry, not more')
-  assert.match(twice.result.outcomes[0].reason, /^plan-info: unreadable ORCH_JSON from: node scripts\/orch-state\.mjs plan-info --run=r1 --plan=101 --with-worktree=yes after 2 attempts — .* — raw: "ORCH_JSON \{“ok\\"/)
+  assert.match(twice.result.outcomes[0].reason, /^plan-info: unreadable ORCH_JSON from: node scripts\/orch-state\.mjs plan-info --run=r1 --plan=101 --with-worktree=yes --no-notes=yes after 2 attempts — .* — raw: "ORCH_JSON \{“ok\\"/)
   assert.match(twice.result.outcomes[0].reason, / — non-ASCII U\+201C at 11 — raw: /, 'the hint comes before the raw line (a reason is cut at 400 characters)')
   const none = await runFlow({ plans: ['101'], pilot: false }, { runner: (cmd) => (isWt(cmd) ? 'RUN 1: node scripts/orch-state.mjs worktree → exit 0\nclaimed slot wt-2\n' : undefined) })
   assert.equal(none.commands.filter(isWt).length, 2)
-  assert.match(none.result.outcomes[0].reason, /^plan-info: no ORCH_JSON line from: node scripts\/orch-state\.mjs plan-info --run=r1 --plan=101 --with-worktree=yes \(exit 0\) after 2 attempts — last lines: "RUN 1: node scripts\/orch-state\.mjs worktree → exit 0 \| claimed slot wt-2"$/)
+  assert.match(none.result.outcomes[0].reason, /^plan-info: no ORCH_JSON line from: node scripts\/orch-state\.mjs plan-info --run=r1 --plan=101 --with-worktree=yes --no-notes=yes \(exit 0\) after 2 attempts — last lines: "RUN 1: node scripts\/orch-state\.mjs worktree → exit 0 \| claimed slot wt-2"$/)
   // A triage with no usable result makes the run write a note; that note and the final `finish` both come back unreadable.
   const nf = await runFlow({ plans: ['101'], pilot: false }, { builder: () => ({ decisions: ['behaviour: kept the flag — reverse: drop it'] }), triage: () => 'junk', runner: (cmd) => (/^node scripts\/orch-state\.mjs (note|finish) /.test(cmd) ? 'garbage' : undefined) })
   assert.equal(nf.commands.filter((c) => /^node scripts\/orch-state\.mjs finish /.test(c)).length, 1, 'finish is never run twice')

@@ -10,7 +10,7 @@ omitClaudeMd: true
 # orch-check-bugs — real bugs in the changed lines
 
 You receive the branch and the base it is compared with. Follow the shared rules and the checker pipeline in
-`docs/agent/agent-roles.md`. Bash only for `git diff`, `git log`, `git show` and running a test or a one-line
+`docs/agent/agent-roles.md`. Bash only for `git diff`, `git show` and running a test or a one-line
 `node -e` to confirm a bug; never edit, commit or install.
 
 ## Before you start

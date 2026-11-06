@@ -10,7 +10,7 @@ omitClaudeMd: true
 # orch-check-plan — does the diff do what the plan says, and only that?
 
 You receive the plan path, the branch and the base it is compared with. Follow the shared rules and the checker
-pipeline in `docs/agent/agent-roles.md`. Bash only for `git diff`, `git log`, `git show` and running a test file to
+pipeline in `docs/agent/agent-roles.md`. Bash only for `git diff`, `git show` and running a test file to
 confirm a claim; never edit, commit or install.
 
 ## Before you start
@@ -24,7 +24,6 @@ confirm a claim; never edit, commit or install.
 - An Atomic Sub-task ticked `[x]` whose change is not in the diff, or only partly.
 - A Must Have requirement or `[auto]` Done-when item the diff does not meet (name the item verbatim).
 - A change outside the plan's `## Read-Write Scope` with no `scope extended:` note.
-- A claim in `## Execution Notes` (a command passed, a file exists) that the code or a rerun contradicts.
 - Behavior the plan's Out of Scope excludes.
 - A removal nobody logged: in `git diff BASE...BRANCH`, a deleted key or pointer handler, input, form control, screen or
   shortcut whose behaviour is not re-added elsewhere in the diff, is not named by the plan and is not in `REMOVES` (the

@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "47d08044ae0c945e559f73cf53746b9778505177",
+  "commit": "71577871e3562373705fadc48e9d378fc6942f30",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -30,17 +30,17 @@
       "source": "core/.claude/agents/orch-builder.md"
     },
     ".claude/agents/orch-check-bugs.md": {
-      "sha256": "cc5ff0be81741b026fcda53f9e23093b5ce1b870a89b977fbc62a28fd6a18021",
+      "sha256": "e0b86b07d59b39c3f7e712b7189865f46b66654ec9940850fe33cd91b4bfa307",
       "kind": "managed",
       "source": "core/.claude/agents/orch-check-bugs.md"
     },
     ".claude/agents/orch-check-plan.md": {
-      "sha256": "ddf9f6eba70fe5a69c4a7a161e50e0bd43040db3e45e832ecf416fff9e819978",
+      "sha256": "c86e0875d911b5f20be21b98457f1e927c775a3948906c3d2e280a1a555898a6",
       "kind": "managed",
       "source": "core/.claude/agents/orch-check-plan.md"
     },
     ".claude/agents/orch-check-rules.md": {
-      "sha256": "b738900d6072c2275690c4fab290de17897cf26ca51f1c6f1887cdee8bc69933",
+      "sha256": "b4a9084a99e108ee50ae29c30713108a4de2f3a5891bc3e79ad16a0abaad2e05",
       "kind": "managed",
       "source": "core/.claude/agents/orch-check-rules.md"
     },
@@ -80,7 +80,7 @@
       "source": "core/.claude/agents/orch-ui.md"
     },
     ".claude/agents/orch-verify.md": {
-      "sha256": "0d29a0fefe68cc21f5f760aac3e6ad855e27752927e946737f07d3677c9167e4",
+      "sha256": "6f45f168aea26a20e15bf3c5d83069a017724ea86ee74f21ef1f2ad400716c21",
       "kind": "managed",
       "source": "core/.claude/agents/orch-verify.md"
     },
@@ -165,7 +165,7 @@
       "source": "core/.claude/commands/refactor.md"
     },
     ".claude/commands/review-it.md": {
-      "sha256": "e541ef0ea87f5af26c8089ac78489385c132c7306be3f5386dd2b77b1a69e97c",
+      "sha256": "62f239bdf66fd2279f30dd8ef781ffd0ccbb7f9bcb871b2006dda2465797889e",
       "kind": "managed",
       "source": "core/.claude/commands/review-it.md"
     },
@@ -275,7 +275,7 @@
       "source": "core/.claude/skills/worktree-setup/SKILL.md"
     },
     ".claude/workflows/orchestrate.js": {
-      "sha256": "9842e0b394881b7d4b21700e6df5ccfc7e2d51903e69c2f241526dbc342dc4fa",
+      "sha256": "84ee40db16ea69be47a0bdc59ccff1c61d13689f16a3badef27c75e872fbf09f",
       "kind": "managed",
       "source": "core/.claude/workflows/orchestrate.js"
     },

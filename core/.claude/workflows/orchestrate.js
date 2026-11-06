@@ -782,6 +782,10 @@ function recordVerify(nnn, candidates, verdictOf, kept) {
   queueFact(nnn, 'reappeared', [...m.reappeared].slice(0, 4).join('|'))
 }
 
+// The checkers' plan copy: the path plan-info --no-notes writes (its reviewPath), built here from the run and the plan
+// number (code values, never a model's or a runner's text).
+const reviewPlanOf = (ctx) => `.claude/orchestrator-runs/${RUN}/plan-${ctx.nnn}.reviewed.md`
+
 async function checkers(ctx) {
   const diff = await state(['diff', '--run', RUN, '--plan', ctx.nnn], `diff ${ctx.nnn}`, ctx.nnn)
   if (Array.isArray(diff.files)) CHANGED_FILES[ctx.nnn] = diff.files
@@ -794,7 +798,10 @@ async function checkers(ctx) {
     return { results: [], diff, fail: true, why: `checker: ${findings.map((k) => `${k.severity} ${k.file}:${k.line} ${k.rule}`).join('; ')}`, findings }
   }
   const roles = diff.sensitive ? [...FINDERS, 'orch-security'] : FINDERS
-  const base =task({ PLAN: ctx.info.path, BRANCH: `origin/${ctx.info.branch}`, BASE: `origin/${RUN_BRANCH}`, FOLDER: ctx.wt.path, FILES: diff.files })
+  // PLAN: the redacted copy plan-info --no-notes wrote (no ## Execution Notes), never the plan file the builder writes
+  // into: a checker that reads the builder's own account of its work grades the account, not the diff.
+  const reviewPlan = reviewPlanOf(ctx)
+  const base =task({ PLAN: reviewPlan, BRANCH: `origin/${ctx.info.branch}`, BASE: `origin/${RUN_BRANCH}`, FOLDER: ctx.wt.path, FILES: diff.files })
   // Each finder's own lessons, and the `checkers` rules (the security reviewer reads the security standards instead).
   const own = (role) => task({ LESSONS: lessonsOf(role.replace('orch-', '')), RULES: role === 'orch-security' ? undefined : rulesOf('checkers') })
   // The plan's own `removes:` decisions so far: the plan checker does not call a removal the builder logged "unlogged".
@@ -812,7 +819,7 @@ async function checkers(ctx) {
   }
   if (missing.length) return { results, fail: true, env: false, why: `checker returned nothing: ${missing.join(', ')}`, findings: [] }
   if (!candidates.length) return { results, diff }
-  const v = await ask(`Verify the candidate problems of plan ${ctx.nnn} of run ${RUN}. Follow .claude/agents/orch-verify.md.\n\n${task({ PLAN: ctx.info.path, BRANCH: `origin/${ctx.info.branch}`, BASE: `origin/${RUN_BRANCH}`, FOLDER: ctx.wt.path, CANDIDATES: candidates, GATE: ctx.gateView?.length ? ctx.gateView : undefined, LESSONS: lessonsOf('verify'), RULES: rulesOf('checkers') })}`,
+  const v = await ask(`Verify the candidate problems of plan ${ctx.nnn} of run ${RUN}. Follow .claude/agents/orch-verify.md.\n\n${task({ PLAN: reviewPlan, BRANCH: `origin/${ctx.info.branch}`, BASE: `origin/${RUN_BRANCH}`, FOLDER: ctx.wt.path, CANDIDATES: candidates, GATE: ctx.gateView?.length ? ctx.gateView : undefined, LESSONS: lessonsOf('verify'), RULES: rulesOf('checkers') })}`,
     { agentType: 'orch-verify', schema: SCHEMA.verify, label: `verify ${ctx.nnn}`, phase: 'Build', plan: ctx.nnn })
   results.push(v)
   // A candidate without a verdict (or no verifier result) stays kept: dropping needs a concrete refutation.
@@ -973,8 +980,9 @@ async function mergeOnly(nnn) {
 
 async function runPlan(nnn) {
   if (MODE === 'merge') return mergeOnly(nnn)
-  // plan-info also makes the plan's folder (`--with-worktree`, answer in info.wt): one runner call, not two.
-  const info = await state(['plan-info', '--run', RUN, '--plan', nnn, '--with-worktree', 'yes'], `plan ${nnn}`, nnn)
+  // plan-info also makes the plan's folder (`--with-worktree`, answer in info.wt): one runner call, not two. --no-notes:
+  // the copy of the plan without its ## Execution Notes (info.reviewPath) that the checkers read.
+  const info = await state(['plan-info', '--run', RUN, '--plan', nnn, '--with-worktree', 'yes', '--no-notes', 'yes'], `plan ${nnn}`, nnn)
   if (!info.ok) return { nnn, state: 'parked', reason: `plan-info: ${info.error}` }
   if (!PLAN_BRANCH_RE.test(String(info.branch))) return { nnn, state: 'parked', reason: `plan-info: plan branch ${JSON.stringify(info.branch)} does not match feat/<NNN>-<lower-case words>` }
   const extra = Array.isArray((A.checks ?? {})[nnn]) ? A.checks[nnn] : []
