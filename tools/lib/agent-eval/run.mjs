@@ -14,13 +14,26 @@ import { readFileSync, readdirSync, existsSync, statSync, writeFileSync, mkdtemp
 import { join, resolve, dirname, relative } from 'node:path'
 import { tmpdir } from 'node:os'
 import { spawn } from 'node:child_process'
-import { parseAgentResult, validateAgentResult } from '../agent-result.mjs'
+import { parseAgentResult, validateAgentResult, ROLES } from '../agent-result.mjs'
+import { validateReviewerResult } from './reviewer.mjs'
 import { compareCase, caseKind } from './compare.mjs'
 import { scoreCase, scoreTotal } from './score.mjs'
 import { redactPlan } from '../../../core/scripts/lib/redact.mjs'
 
 /** Tools that let an agent change files; an agent that has one is refused unless allowWrite is set. */
 export const WRITE_TOOLS = ['Edit', 'Write', 'MultiEdit', 'NotebookEdit']
+
+/** The four checker roles that have their own case folder; any other agent is scored on every case (`--role all`). */
+export const CHECKER_ROLES = ['orch-check-bugs', 'orch-check-plan', 'orch-check-rules', 'orch-verify']
+
+/** The orch-check-bugs prompt's categories (its "Look for" headings), accepted for a verifier case read as findings. */
+export const BUG_CATEGORIES = ['wrong result', 'wrong results', 'crash', 'crashes', 'broken contract', 'broken contracts', 'error handling']
+
+/** The case set an agent is scored on: the given role, else its own name for a checker, else 'all' (plan 087). */
+export function caseScope(agentName, role = null) {
+  if (role) return role
+  return CHECKER_ROLES.includes(agentName) ? agentName : 'all'
+}
 
 /** Parse an agent file: frontmatter fields and the body (the prompt). */
 export function loadAgent(agentFile) {
@@ -49,15 +62,44 @@ export function writeRefusal(agent, allowWrite = false, { isolated = false } = {
 }
 
 /**
- * The cases for an agent: `<casesDir>/<role>/<case>/` when a folder named after the agent exists, else the case
- * folders directly under casesDir. A case folder holds `expected.json` and an `input/` folder.
+ * A verifier case read as findings (plan 087, for an agent that returns problems, not verdicts): each `keep` verdict
+ * becomes an expected finding at the kept candidate's file, line and severity (rule: the candidate's category or one of
+ * the bug categories); the `refuted` candidates are false alarms the agent should not report.
  */
-export function findCases(casesDir, role, { only = null } = {}) {
-  const root = existsSync(join(casesDir, role)) && statSync(join(casesDir, role)).isDirectory() ? join(casesDir, role) : casesDir
+export function verdictsAsFindings(expected, inputDir) {
+  const file = join(inputDir, 'candidates.json')
+  if (!existsSync(file)) throw new Error(`${inputDir}: a verifier case needs candidates.json to be read as findings`)
+  const candidates = JSON.parse(readFileSync(file, 'utf8'))
+  const findings = expected.verdicts.filter((v) => v.verdict === 'keep').map((v) => {
+    const c = candidates.find((x) => String(x.id) === String(v.id))
+    if (!c) throw new Error(`${inputDir}: kept verdict ${v.id} has no candidate`)
+    const rule = String(c.rule ?? '')
+    const category = (rule.includes(':') ? rule.slice(0, rule.indexOf(':')) : rule).trim().toLowerCase()
+    return { file: c.file, line: c.line, rule: [...new Set([category, ...BUG_CATEGORIES].filter(Boolean))], severity: c.severity }
+  })
+  const { verdicts, ...rest } = expected
+  return { ...rest, findings, readAs: 'findings: the kept candidates of a verifier case' }
+}
+
+/**
+ * The cases for an agent: `<casesDir>/<role>/<case>/` when a folder named after the agent exists, else the case
+ * folders directly under casesDir. A case folder holds `expected.json` and an `input/` folder. `role: 'all'`
+ * (plan 087) takes the case folders directly under casesDir and every `<role>/<case>/`, named `<role>/<case>`.
+ * `asFindings` (default with 'all') reads a verifier case as findings and hides its candidates.json from the agent.
+ */
+export function findCases(casesDir, role, { only = null, asFindings = role === 'all' } = {}) {
+  const root = role !== 'all' && existsSync(join(casesDir, role)) && statSync(join(casesDir, role)).isDirectory() ? join(casesDir, role) : casesDir
   if (!existsSync(root)) throw new Error(`no case folder at ${casesDir}`)
-  const all = readdirSync(root, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && existsSync(join(root, d.name, 'expected.json')))
-    .map((d) => d.name)
+  const isCase = (dir) => existsSync(join(dir, 'expected.json'))
+  const top = readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory())
+  const all = top.filter((d) => isCase(join(root, d.name))).map((d) => d.name)
+  if (role === 'all') {
+    for (const d of top.filter((x) => !isCase(join(root, x.name)))) {
+      for (const sub of readdirSync(join(root, d.name), { withFileTypes: true })) {
+        if (sub.isDirectory() && isCase(join(root, d.name, sub.name))) all.push(`${d.name}/${sub.name}`)
+      }
+    }
+  }
   // A case list names the exact cases to run; one it names that is not there is an error, so "the same cases" holds.
   if (only) {
     const lost = only.filter((n) => !all.includes(n))
@@ -67,10 +109,12 @@ export function findCases(casesDir, role, { only = null } = {}) {
     .filter((n) => !only || only.includes(n))
     .sort()
     .map((name) => {
-      const caseDir = join(root, name)
-      const expected = JSON.parse(readFileSync(join(caseDir, 'expected.json'), 'utf8'))
-      caseKind(expected) // throws on a malformed expectation
-      return { name, caseDir, inputDir: join(caseDir, 'input'), expected }
+      const caseDir = join(root, ...name.split('/'))
+      const inputDir = join(caseDir, 'input')
+      let expected = JSON.parse(readFileSync(join(caseDir, 'expected.json'), 'utf8'))
+      // caseKind throws on a malformed expectation.
+      if (caseKind(expected) === 'verdicts' && asFindings) expected = verdictsAsFindings(expected, inputDir)
+      return { name, caseDir, inputDir, expected, hide: asFindings ? ['candidates.json'] : [] }
     })
   if (cases.length === 0) throw new Error(`no cases (folders with expected.json) under ${root}`)
   return cases
@@ -83,7 +127,8 @@ export function scoreRun(expected, reply, role) {
   let pass = null
   try {
     result = parseAgentResult(reply.text ?? '')
-    const v = validateAgentResult(result)
+    // A role outside the shared list (the single reviewer, plan 087) is checked as a finder plus its verdict.
+    const v = ROLES.includes(role) ? validateAgentResult(result) : validateReviewerResult(result, role)
     pass = v.pass
     if (!v.ok) error = `invalid result: ${v.errors.slice(0, 2).join('; ')}`
     else if (result.role !== role) error = `result role ${result.role} is not ${role}`
@@ -99,8 +144,13 @@ export function scoreRun(expected, reply, role) {
  * A list with no line for the role is an error: "the same cases" must not silently become zero or all.
  */
 export function caseListFor(text, role) {
-  const names = String(text).split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'))
-    .map((l) => l.split('/')).filter((p) => p.length === 2 && p[0] === role).map((p) => p[1])
+  const lines = String(text).split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'))
+  // 'all' (plan 087): every line, as the `<role>/<case>` name findCases gives it.
+  if (role === 'all') {
+    if (!lines.length) throw new Error('the case list has no line')
+    return lines
+  }
+  const names = lines.map((l) => l.split('/')).filter((p) => p.length === 2 && p[0] === role).map((p) => p[1])
   if (!names.length) throw new Error(`the case list has no line for ${role}`)
   return names
 }
@@ -143,13 +193,15 @@ export function spreadOf(totals, figure) {
  * `caseNames` (a case list) limits the run to those cases; `redact` and `withGate` change what the agent is shown
  * (see casePrompt) and are passed to the runner.
  */
-export async function evaluate({ agentFile, casesDir, runs = 2, model = null, runner, allowWrite = false, caseNames = null, redact = false, withGate = false }) {
+export async function evaluate({ agentFile, casesDir, runs = 2, model = null, runner, allowWrite = false, caseNames = null, redact = false, withGate = false, role = null }) {
   const agent = loadAgent(agentFile)
   const refusal = writeRefusal(agent, allowWrite, { isolated: runner?.isolated === true })
   if (refusal) throw new Error(refusal)
   if (!Number.isInteger(runs) || runs < 1) throw new Error('--runs must be a whole number ≥ 1')
   const useModel = model ?? agent.model
-  const cases = findCases(casesDir, agent.name, { only: caseNames })
+  const scope = caseScope(agent.name, role)
+  // An agent that returns problems reads a verifier case as findings; only the verifier itself sees the candidates.
+  const cases = findCases(casesDir, scope, { only: caseNames, asFindings: agent.name !== 'orch-verify' })
   const scored = []
   const caseRuns = []
   for (const c of cases) {
@@ -157,7 +209,7 @@ export async function evaluate({ agentFile, casesDir, runs = 2, model = null, ru
     for (let run = 1; run <= runs; run++) {
       let reply
       try {
-        reply = await runner({ agent, model: useModel, role: agent.name, caseName: c.name, caseDir: c.caseDir, inputDir: c.inputDir, run, redact, withGate })
+        reply = await runner({ agent, model: useModel, role: agent.name, caseName: c.name, caseDir: c.caseDir, inputDir: c.inputDir, run, redact, withGate, hide: c.hide })
       } catch (e) {
         results.push({ ...compareCase(c.expected, null), tokens: 0, costUsd: 0, error: `runner failed: ${e.message}` })
         continue
@@ -169,7 +221,7 @@ export async function evaluate({ agentFile, casesDir, runs = 2, model = null, ru
   }
   const totals = runTotals(caseRuns)
   const total = { ...scoreTotal(scored), spread: { recall: spreadOf(totals, 'recall'), precision: spreadOf(totals, 'precision'), noise: spreadOf(totals, 'noise') } }
-  return { agent: agent.name, model: useModel, ...(redact ? { redact: true } : {}), ...(withGate ? { withGate: true } : {}), cases: scored, total, runTotals: totals }
+  return { agent: agent.name, model: useModel, role: scope, ...(redact ? { redact: true } : {}), ...(withGate ? { withGate: true } : {}), cases: scored, total, runTotals: totals }
 }
 
 const pct = (x) => x.toFixed(2)
@@ -197,9 +249,10 @@ function listFiles(dir, base = dir) {
 }
 
 /** The user prompt for one case: what the input is and the input files inline (bounded). */
-export function casePrompt({ role, inputDir, redact = false, withGate = false }) {
-  // gate.json (what the project checks printed on the case's commit) is shown only with --with-gate (plan 049).
-  const files = listFiles(inputDir).filter((f) => withGate || f !== 'gate.json')
+export function casePrompt({ role, inputDir, redact = false, withGate = false, hide = [] }) {
+  // gate.json (what the project checks printed on the case's commit) is shown only with --with-gate (plan 049);
+  // a hidden file (plan 087: candidates.json for an agent that is not the verifier) never.
+  const files = listFiles(inputDir).filter((f) => (withGate || f !== 'gate.json') && !hide.includes(f))
   let budget = MAX_INLINE
   const parts = files.map((f) => {
     let body = readFileSync(join(inputDir, f), 'utf8')
@@ -244,12 +297,20 @@ export function usageTokens(usage) {
  * repository. `isolated: true` says so to evaluate().
  */
 export function claudeRunner({ bin = process.env.AGENT_EVAL_CLAUDE ?? 'claude', timeoutMs = 600_000 } = {}) {
-  const run = async ({ agent, model, role, inputDir: caseInput, redact = false, withGate = false }) => {
+  const run = async ({ agent, model, role, inputDir: caseInput, redact = false, withGate = false, hide = [] }) => {
     const tmp = mkdtempSync(join(tmpdir(), 'agent-eval-'))
     const inputDir = join(tmp, 'input')
     try {
-      if (existsSync(caseInput)) cpSync(caseInput, inputDir, { recursive: true })
+      // The scratch copy holds what the prompt shows (plan 087): no hidden file, gate.json only with --with-gate and,
+      // with --redact, the redacted plan.md, so the agent cannot read around the blinding from its working folder.
+      const shown = (src) => {
+        const rel = relative(caseInput, src).replace(/\\/g, '/')
+        return !hide.includes(rel) && (withGate || rel !== 'gate.json')
+      }
+      if (existsSync(caseInput)) cpSync(caseInput, inputDir, { recursive: true, filter: shown })
       else mkdirSync(inputDir)
+      const planCopy = join(inputDir, 'plan.md')
+      if (redact && existsSync(planCopy)) writeFileSync(planCopy, redactPlan(readFileSync(planCopy, 'utf8')))
       const roles = join(dirname(agent.file), '..', '..', 'docs', 'agent', 'agent-roles.md')
       const system = existsSync(roles) ? `${agent.body}\n\n---\n# docs/agent/agent-roles.md\n\n${readFileSync(roles, 'utf8')}` : agent.body
       const systemPromptFile = join(tmp, 'system.md')
@@ -269,7 +330,7 @@ export function claudeRunner({ bin = process.env.AGENT_EVAL_CLAUDE ?? 'claude', 
           if (code !== 0) reject(new Error(`claude exited ${code}: ${stderr.trim().split(/\r?\n/).slice(-2).join(' | ')}`))
           else resolveRun(stdout)
         })
-        child.stdin.end(casePrompt({ role, inputDir, redact, withGate }))
+        child.stdin.end(casePrompt({ role, inputDir, redact, withGate, hide }))
       })
       const json = JSON.parse(out)
       return { text: String(json.result ?? ''), tokens: usageTokens(json.usage), costUsd: Number(json.total_cost_usd) || 0 }

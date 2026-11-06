@@ -7,14 +7,16 @@
 // Uses the kit's installed agents (after `node tools/sync.mjs --target . --apply`) and the kit fixture cases.
 import { test, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, chmodSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, chmodSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { findingMatches, matchFindings, compareCase, ruleMatches } from '../lib/agent-eval/compare.mjs'
 import { noise } from '../lib/agent-eval/score.mjs'
-import { evaluate, loadAgent, writeRefusal, claudeArgs, claudeRunner, usageTokens, formatTable, casePrompt } from '../lib/agent-eval/run.mjs'
+import { evaluate, loadAgent, writeRefusal, claudeArgs, claudeRunner, usageTokens, formatTable, casePrompt, findCases } from '../lib/agent-eval/run.mjs'
+import { validateReviewerResult } from '../lib/agent-eval/reviewer.mjs'
+import { combineReports } from '../lib/agent-eval/combine.mjs'
 import { makeStub } from './fixtures/agent-eval-stub.mjs'
 
 const kit = resolve(fileURLToPath(new URL('../..', import.meta.url)))
@@ -250,4 +252,136 @@ test('plan 049 --case-list runs only the listed cases and reports the run-to-run
   assert.equal(bad.status, 2)
   writeFileSync(list, 'orch-check-bugs/not-a-case\n')
   assert.equal(runCli(['--agent', agent('orch-check-bugs'), '--cases', cases, '--runner', stubFile, '--case-list', list]).status, 2, 'a listed case that is missing is an error')
+})
+
+// ---- plan 087: one reviewer scored against every case (--role all), the reviewer schema, the combined before-run ----
+
+const reviewerAgent = join(tmp, 'agents-087', 'plan-reviewer.md')
+mkdirSync(join(tmp, 'agents-087'), { recursive: true })
+writeFileSync(reviewerAgent, '---\nname: plan-reviewer\ntools: Read, Grep, Glob, Bash\nmodel: sonnet\neffort: high\n---\nbody\n')
+
+// A reviewer stub: answers every case with its expected findings (a verifier case's kept candidates) and a verdict.
+// `stub.hidden` records, per case, the files the runner was told to hide.
+const reviewerStub = (mode = 'perfect') => {
+  const stub = async ({ role, model, caseName, caseDir, inputDir, hide = [] }) => {
+    stub.hidden[caseName] = hide
+    const expected = JSON.parse(readFileSync(join(caseDir, 'expected.json'), 'utf8'))
+    let findings = expected.findings ?? []
+    if (Array.isArray(expected.verdicts)) {
+      const cands = JSON.parse(readFileSync(join(inputDir, 'candidates.json'), 'utf8'))
+      findings = expected.verdicts.filter((v) => v.verdict === 'keep').map((v) => cands.find((c) => c.id === v.id))
+    }
+    const problems = findings.map((f, i) => ({ id: `rev-${i + 1}`, file: f.file, line: f.line ?? 1, rule: `${Array.isArray(f.rule) ? f.rule[0] : f.rule.split(':')[0]}: stub`, reasoning: 'stub', severity: f.severity }))
+    const fails = problems.some((p) => ['blocker', 'major'].includes(p.severity))
+    const verdict = mode === 'lying-verdict' ? 'PASS' : fails ? 'STOP' : 'PASS'
+    const pass = mode === 'lying-verdict' ? undefined : !fails
+    return { text: '```json\n' + JSON.stringify({ role, model: model ?? 'stub', effort: 'high', problems, pass, verdict }) + '\n```', tokens: 10, costUsd: 0.01 }
+  }
+  stub.hidden = {}
+  stub.isolated = true
+  return stub
+}
+
+test('plan 087 --role all: an agent that is not a checker is scored on every <role>/<case>, verifier cases as findings', async () => {
+  const all = findCases(cases, 'all')
+  const names = all.map((c) => c.name)
+  for (const n of ['orch-check-bugs/off-by-one', 'orch-check-plan/claim-no-evidence', 'orch-verify/refutable-false-alarm']) assert.ok(names.includes(n), `${n} in ${names.join(', ')}`)
+  const verify = all.find((c) => c.name === 'orch-verify/refutable-false-alarm')
+  assert.deepEqual(verify.expected.findings.map((f) => [f.file, f.line, f.severity]), [['src/list.mjs', 2, 'major']], 'only the kept candidate is expected')
+  assert.ok(verify.expected.findings[0].rule.includes('logic') && verify.expected.findings[0].rule.includes('wrong result'))
+  assert.deepEqual(verify.hide, ['candidates.json'])
+  const stub = reviewerStub()
+  const r = await evaluate({ agentFile: reviewerAgent, casesDir: cases, runs: 2, runner: stub })
+  assert.equal(r.role, 'all')
+  assert.equal(r.cases.length, all.length)
+  assert.equal(r.total.errors, 0, JSON.stringify(r.cases.flatMap((c) => c.errorDetails)))
+  assert.equal(r.total.recall, 1)
+  assert.equal(r.total.precision, 1)
+  assert.deepEqual(stub.hidden['orch-verify/refutable-false-alarm'], ['candidates.json'], 'the runner is told to hide the finders\' candidates')
+})
+
+test('plan 087 --role: a checker keeps its own folder by default; --role all and --role <name> override it', async () => {
+  const own = await evaluate({ agentFile: agent('orch-check-bugs'), casesDir: cases, runs: 1, runner: makeStub('perfect') })
+  assert.ok(own.cases.every((c) => !c.name.includes('/')), 'a checker on its own folder: plain case names')
+  assert.equal(own.role, 'orch-check-bugs')
+  const one = await evaluate({ agentFile: reviewerAgent, casesDir: cases, runs: 1, runner: reviewerStub(), role: 'orch-check-bugs' })
+  assert.deepEqual(one.cases.map((c) => c.name).sort(), ['clean-change', 'off-by-one', 'regex-backslash'])
+  const list = join(tmp, 'all-cases.txt')
+  writeFileSync(list, '# 087\norch-check-bugs/off-by-one\norch-verify/refutable-false-alarm\n')
+  const r = runCli(['--agent', reviewerAgent, '--cases', cases, '--runs', '1', '--runner', stubFile, '--case-list', list, '--role', 'all', '--json'], 'perfect')
+  const report = JSON.parse(r.out.slice(r.out.indexOf('{')))
+  assert.deepEqual(report.cases.map((c) => c.name), ['orch-check-bugs/off-by-one', 'orch-verify/refutable-false-alarm'])
+  assert.equal(runCli(['--agent', reviewerAgent, '--cases', cases, '--runner', stubFile, '--role']).status, 2, '--role needs a value')
+})
+
+test('plan 087 reviewer schema: the finder schema plus verdict PASS|STOP, and the verdict is computed, never trusted', async () => {
+  const ok = { role: 'plan-reviewer', model: 'm', effort: 'high', problems: [], pass: true, verdict: 'PASS' }
+  assert.deepEqual(validateReviewerResult(ok, 'plan-reviewer').errors, [])
+  const major = { id: 'r1', file: 'a.mjs', line: 3, rule: 'wrong result: x', reasoning: 'y', severity: 'major' }
+  assert.equal(validateReviewerResult({ ...ok, problems: [major], pass: false, verdict: 'STOP' }, 'plan-reviewer').ok, true)
+  assert.equal(validateReviewerResult({ ...ok, problems: [{ ...major, severity: 'minor' }], verdict: 'PASS' }, 'plan-reviewer').ok, true, 'a minor problem does not stop; pass may be left out')
+  assert.match(validateReviewerResult({ ...ok, problems: [major], pass: undefined, verdict: 'PASS' }, 'plan-reviewer').errors.join('\n'), /never trusted/)
+  assert.match(validateReviewerResult({ ...ok, verdict: 'MAYBE' }, 'plan-reviewer').errors.join('\n'), /PASS or STOP/)
+  assert.match(validateReviewerResult({ ...ok, role: 'orch-check-bugs' }, 'plan-reviewer').errors.join('\n'), /role must be plan-reviewer/)
+  assert.match(validateReviewerResult({ ...ok, problems: [{ ...major, line: undefined }], pass: false, verdict: 'STOP' }, 'plan-reviewer').errors.join('\n'), /line must be a line number/)
+  const r = await evaluate({ agentFile: reviewerAgent, casesDir: cases, runs: 1, runner: reviewerStub('lying-verdict') })
+  assert.ok(r.total.errors > 0, 'a STOP-worthy result that says PASS is an invalid result')
+})
+
+test('plan 087 the real runner copies only what the prompt shows: redacted plan, no hidden file, gate.json only with --with-gate', async () => {
+  const caseInput = join(tmp, 'blind-case', 'input')
+  mkdirSync(caseInput, { recursive: true })
+  writeFileSync(join(caseInput, 'plan.md'), '# P\n\n## Goals\n- g\n\n## Execution Notes\n- tests pass\n')
+  writeFileSync(join(caseInput, 'candidates.json'), '[]')
+  writeFileSync(join(caseInput, 'gate.json'), '[]')
+  writeFileSync(join(caseInput, 'diff.patch'), '')
+  const fake = join(tmp, 'fake-claude-087.mjs')
+  writeFileSync(fake, [
+    "import { readFileSync, existsSync } from 'node:fs'",
+    "let input = ''",
+    "process.stdin.on('data', (d) => { input += d })",
+    "process.stdin.on('end', () => console.log(JSON.stringify({ result: JSON.stringify({ plan: readFileSync('plan.md', 'utf8'), cand: existsSync('candidates.json'), gate: existsSync('gate.json'), promptCand: input.includes('--- candidates.json ---') }), usage: {}, total_cost_usd: 0 })))",
+  ].join('\n'))
+  let bin
+  if (process.platform === 'win32') bin = `"${process.execPath}" "${fake}"`
+  else {
+    bin = join(tmp, 'fake-claude-087')
+    writeFileSync(bin, `#!/bin/sh\nexec "${process.execPath}" "${fake}" "$@"\n`)
+    chmodSync(bin, 0o755)
+  }
+  const run = claudeRunner({ bin, timeoutMs: 60_000 })
+  const a = loadAgent(reviewerAgent)
+  const blind = JSON.parse((await run({ agent: a, model: 'inherit', role: 'plan-reviewer', inputDir: caseInput, redact: true, hide: ['candidates.json'] })).text)
+  assert.doesNotMatch(blind.plan, /Execution Notes|tests pass/, 'the copy holds the redacted plan')
+  assert.equal(blind.cand, false, 'a hidden file is not copied')
+  assert.equal(blind.promptCand, false, 'nor shown')
+  assert.equal(blind.gate, false, 'gate.json is copied only with --with-gate')
+  const gated = JSON.parse((await run({ agent: a, model: 'inherit', role: 'plan-reviewer', inputDir: caseInput, withGate: true })).text)
+  assert.equal(gated.gate, true)
+  assert.match(gated.plan, /Execution Notes/, 'without --redact the plan is copied as it is')
+})
+
+test('plan 087 --combine: several role reports summed into one report under one agent name (the before arm of the A/B)', () => {
+  const dir = join(tmp, 'combine')
+  mkdirSync(dir, { recursive: true })
+  const rep = (agentName, cs) => ({ agent: agentName, model: 'sonnet', cases: cs, total: {} })
+  const c = (name, tp, fn, fp, noiseV, cost, errors = 0) => ({ name, runs: 2, tp, fn, fp, recall: 0, precision: 0, noise: noiseV, tokens: 100, costUsd: cost, errors, errorDetails: [] })
+  const a = rep('orch-check-bugs', [c('x', 1, 1, 2, 0.5, 1), c('y', 0, 0, 0, 0, 1, 1)])
+  const b = rep('orch-verify', [c('z', 1, 1, 0, 0, 2)])
+  writeFileSync(join(dir, 'a.json'), JSON.stringify(a))
+  writeFileSync(join(dir, 'b.json'), JSON.stringify(b))
+  const merged = combineReports([a, b], { agent: 'plan-reviewer' })
+  assert.equal(merged.agent, 'plan-reviewer')
+  assert.deepEqual(merged.combinedFrom, ['orch-check-bugs', 'orch-verify'])
+  assert.deepEqual(merged.cases.map((x) => x.name), ['orch-check-bugs/x', 'orch-check-bugs/y', 'orch-verify/z'])
+  assert.deepEqual([merged.total.tp, merged.total.fn, merged.total.fp, merged.total.errors], [2, 2, 2, 1])
+  assert.equal(merged.total.recall, 0.5)
+  assert.equal(merged.total.precision, 0.5)
+  assert.equal(merged.total.costUsd, 4)
+  assert.equal(merged.total.noise, 0.5 / 3)
+  const out = join(dir, 'out', 'plan-reviewer.json')
+  const r = runCli(['--combine', join(dir, 'a.json'), '--combine', join(dir, 'b.json'), '--as', 'plan-reviewer', '--out', out])
+  assert.equal(r.status, 0, r.out)
+  assert.equal(JSON.parse(readFileSync(out, 'utf8')).total.tp, 2)
+  assert.equal(runCli(['--combine', join(dir, 'a.json')]).status, 2, '--combine needs --as and --out')
 })
