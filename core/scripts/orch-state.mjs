@@ -16,6 +16,8 @@
  *   node scripts/orch-state.mjs worktree   --run <name> --plan <NNN>        the builder's folder on its plan branch: an idle
  *                                          wt-N slot first (orchestrator.useSlots), else its own folder; packages installed
  *   node scripts/orch-state.mjs release    --run <name> --plan <NNN>        gives the plan's slot back (detached, marker removed)
+ *   node scripts/orch-state.mjs park-save  --run <name> --plan <NNN>        uncommitted work to park/<run>-<NNN> (pushed), slot released
+ *   node scripts/orch-state.mjs park-record --run <name> --plan <NNN> [--reason t] [--sha x]   the park, recorded once
  *   node scripts/orch-state.mjs diff       --run <name> --plan <NNN>        changed files vs the run branch, sensitive?
  *   node scripts/orch-state.mjs set        --run <name> --plan <NNN> [--state s] [--round n] [--tier t] [--sha x]
  *                                          [--role r --model m --effort e | --roles r=m/e,r2=m2/e2] [--reason "<text>"]
@@ -1170,6 +1172,25 @@ const commands = {
       writeStatus(run, st)
     }
     emit({ ok: true, saved: true, pushed: true, branch, sha: commit, released, ...(slot ? { slot: slot.slot } : {}) }, lines)
+  },
+
+  // A park, recorded once (plan-park.mjs's last step):
+  //   node scripts/orch-state.mjs park-record --run <name> --plan <NNN> [--reason "<why>"] [--sha <park commit>]
+  // plans[NNN].park = { at, reason, branch?, sha? } and the state parked. A plan that already has a park record keeps it as
+  // it is (recorded: false): a second teardown of the same park changes nothing.
+  'park-record'() {
+    const run = runName()
+    const nnn = planNumber(args.plan ?? '')
+    if (!nnn) fail('--plan takes a plan number')
+    const st = needStatus(run)
+    const p = (st.plans[nnn] ??= { nnn, state: 'parked', round: 0, models: {} })
+    if (p.park) emit({ ok: true, recorded: false, park: p.park }, [`plan ${nnn}: park already recorded at ${p.park.at}`])
+    const reason = args.reason && args.reason !== true ? cutText(args.reason, 400) : (p.reason ?? '(no reason given)')
+    p.park = { at: nowIso(), reason, ...(p.parkBranch ? { branch: p.parkBranch } : {}), ...(/^[0-9a-f]{40}$/.test(String(args.sha ?? '')) ? { sha: args.sha } : {}) }
+    p.state = 'parked'
+    p.reason ??= reason
+    writeStatus(run, st)
+    emit({ ok: true, recorded: true, park: p.park }, [`plan ${nnn}: park recorded`])
   },
 
   diff() {

@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "38380a7a04927a97f156bd15974f7bc20351c71d",
+  "commit": "32c9c1aaaf6c088b56ed29170cb89c74b1f137e0",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -815,7 +815,7 @@
       "source": "core/scripts/orch-preflight.mjs"
     },
     "scripts/orch-state.mjs": {
-      "sha256": "8225a8a5817176b0c350573e7870cfb3aca3a4ae5801f2358748ff31fd1bcf2a",
+      "sha256": "bbbc2f94191d6277dfe31ed8e08a54aa11422d4c71bf6c619ff362517e820feb",
       "kind": "managed",
       "source": "core/scripts/orch-state.mjs"
     },
@@ -853,6 +853,11 @@
       "sha256": "277050b45f364af2796c37a3d061bdd4a147ee168af154fff96b96856fa9e051",
       "kind": "managed",
       "source": "core/scripts/plan-order.mjs"
+    },
+    "scripts/plan-park.mjs": {
+      "sha256": "6c7b03a770cf6c4c23d0bf16fb3b72ed43021a637cabed989e038bb4c6b6d6f8",
+      "kind": "managed",
+      "source": "core/scripts/plan-park.mjs"
     },
     "scripts/plan-write-guard.sh": {
       "sha256": "c038d4672e18500b449024d6528492201e86951a89d5546444a36bfbbda54387",
