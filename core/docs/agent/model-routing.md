@@ -49,7 +49,7 @@ the model's own `pass` flag (`docs/agent/agent-roles.md`).
 | `.claude/agents/orch-check-plan.md`, `orch-check-bugs.md`, `orch-check-rules.md`, `orch-verify.md` | review | the orchestrator, `/review-it`, `/ship` Phase 2 (checker review on a plan branch; the re-check is `orch-verify` only) |
 | `.claude/agents/orch-security.md` | review | the orchestrator, `/review-it` and `/ship` Phase 2 (sensitive paths only) |
 | `.claude/agents/orch-ui.md`, `orch-triage.md` | review | the orchestrator |
-| `.claude/agents/plan-reviewer.md` | review (`models.review`; measured on Sonnet) | the kit's agent eval only, until a later plan wires it in to replace the finders and the verifier |
+| `.claude/agents/plan-reviewer.md` | review (`models.review`); the kit's agent-eval baseline picked `opus` for it (highest precision, still advisory only) | the kit's agent eval only, until a later plan wires it in to replace the finders and the verifier |
 | `.claude/agents/orch-merge.md` | analysis | the orchestrator |
 
 The role agents (`orch-*`) share one contract — non-interactive, evidence for every claim, a JSON result that names

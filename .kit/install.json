@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "45f1124d3e3d99d219dac4a8ea12e079fbaeeb8d",
+  "commit": "6bdecc2daa31b0fca2978b387396f789564274f4",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -415,7 +415,7 @@
       "source": "core/docs/agent/kit-lessons/verify.md"
     },
     "docs/agent/model-routing.md": {
-      "sha256": "f2446c23b7ba9a7786c2ee3126cbf521181075ef6c8803237daa78726669419d",
+      "sha256": "b544fa479e92d7c2c38d604587234efade7a4394cddeb4da16cdbf259651523d",
       "kind": "managed",
       "source": "core/docs/agent/model-routing.md"
     },
