@@ -12,20 +12,28 @@
  *     [--case-list <file>]      run only the cases the file names, one `<role>/<case>` per line (the same cases twice)
  *     [--redact]                show the agent the case plan without its `## Execution Notes`, and tell it to read diffs only
  *     [--with-gate]             show the agent the case's input/gate.json (what the project checks printed)
+ *     [--role <name>|all]       the cases to score on: one role's folder, or every <role>/<case> (default: the agent's
+ *                               own folder for the four checkers, `all` for any other agent — plan 087's one reviewer;
+ *                               a verifier case is then read as findings and its candidates.json is hidden)
+ *
+ *   node tools/agent-eval.mjs --combine <report.json> [--combine <report.json> ...] --as <agent> --out <file.json>
+ *     sums several --json reports into one under the name <agent> (the before arm when one agent replaces several:
+ *     agent-eval-ab.mjs compares a role only when both folders hold it). Spends nothing.
  *
  * The default runner calls `claude -p` once per case and run, and spends tokens. Prints a table (case, recall,
  * precision, noise, tokens, cost) with a total line. Exit 0 = thresholds met, 1 = below a threshold, 2 = usage error
  * or a refused agent. Node built-ins only.
  */
-import { resolve } from 'node:path'
-import { readFileSync } from 'node:fs'
+import { resolve, dirname } from 'node:path'
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
-import { evaluate, formatTable, claudeRunner, caseListFor, loadAgent } from './lib/agent-eval/run.mjs'
+import { evaluate, formatTable, claudeRunner, caseListFor, loadAgent, caseScope } from './lib/agent-eval/run.mjs'
+import { combineReports } from './lib/agent-eval/combine.mjs'
 
-const USAGE = 'usage: node tools/agent-eval.mjs --agent <agent.md> --cases <dir> [--runs 2] [--model <id>] [--min-recall x] [--min-precision y] [--runner <module.mjs>] [--allow-write] [--json] [--case-list <file>] [--redact] [--with-gate]'
+const USAGE = 'usage: node tools/agent-eval.mjs --agent <agent.md> --cases <dir> [--runs 2] [--model <id>] [--min-recall x] [--min-precision y] [--runner <module.mjs>] [--allow-write] [--json] [--case-list <file>] [--redact] [--with-gate] [--role <name>|all]\n       node tools/agent-eval.mjs --combine <report.json> [--combine <report.json> ...] --as <agent> --out <file.json>'
 
 function parseArgs(argv) {
-  const opts = { runs: 2, model: null, minRecall: null, minPrecision: null, runner: null, allowWrite: false, json: false, caseList: null, redact: false, withGate: false }
+  const opts = { runs: 2, model: null, minRecall: null, minPrecision: null, runner: null, allowWrite: false, json: false, caseList: null, redact: false, withGate: false, role: null, combine: [], as: null, out: null }
   const value = (i, name) => {
     const v = argv[i + 1]
     if (v === undefined || v.startsWith('--')) throw new Error(`${name} needs a value`)
@@ -50,10 +58,34 @@ function parseArgs(argv) {
     else if (a === '--case-list') opts.caseList = value(i++, a)
     else if (a === '--redact') opts.redact = true
     else if (a === '--with-gate') opts.withGate = true
+    else if (a === '--role') opts.role = value(i++, a)
+    else if (a === '--combine') opts.combine.push(value(i++, a))
+    else if (a === '--as') opts.as = value(i++, a)
+    else if (a === '--out') opts.out = value(i++, a)
     else throw new Error(`unknown argument ${a}`)
+  }
+  if (opts.combine.length) {
+    if (!opts.as || !opts.out) throw new Error('--combine needs --as <agent> and --out <file.json>')
+    return opts
   }
   if (!opts.agent || !opts.cases) throw new Error('--agent and --cases are required')
   return opts
+}
+
+/** --combine: several reports into one (plan 087). */
+function combine(opts) {
+  try {
+    const reports = opts.combine.map((f) => JSON.parse(readFileSync(resolve(f), 'utf8')))
+    const merged = combineReports(reports, { agent: opts.as, note: `combined by agent-eval.mjs --combine from ${opts.combine.join(', ')}` })
+    mkdirSync(dirname(resolve(opts.out)), { recursive: true })
+    writeFileSync(resolve(opts.out), `${JSON.stringify(merged, null, 2)}\n`)
+    const t = merged.total
+    console.log(`AGENT_EVAL: combined ${reports.length} report(s) as ${opts.as} → ${opts.out} (${merged.cases.length} cases, recall ${t.recall.toFixed(2)}, precision ${t.precision.toFixed(2)})`)
+    return 0
+  } catch (e) {
+    console.error(`AGENT_EVAL: ${e.message}`)
+    return 2
+  }
 }
 
 async function main() {
@@ -64,6 +96,7 @@ async function main() {
     console.error(`AGENT_EVAL: ${e.message}\n${USAGE}`)
     return 2
   }
+  if (opts.combine.length) return combine(opts)
   let runner
   try {
     runner = opts.runner ? (await import(pathToFileURL(resolve(opts.runner)).href)).default : claudeRunner()
@@ -74,8 +107,8 @@ async function main() {
   }
   let report
   try {
-    const caseNames = opts.caseList ? caseListFor(readFileSync(resolve(opts.caseList), 'utf8'), loadAgent(resolve(opts.agent)).name) : null
-    report = await evaluate({ agentFile: resolve(opts.agent), casesDir: resolve(opts.cases), runs: opts.runs, model: opts.model, runner, allowWrite: opts.allowWrite, caseNames, redact: opts.redact, withGate: opts.withGate })
+    const caseNames = opts.caseList ? caseListFor(readFileSync(resolve(opts.caseList), 'utf8'), caseScope(loadAgent(resolve(opts.agent)).name, opts.role)) : null
+    report = await evaluate({ agentFile: resolve(opts.agent), casesDir: resolve(opts.cases), runs: opts.runs, model: opts.model, runner, allowWrite: opts.allowWrite, caseNames, redact: opts.redact, withGate: opts.withGate, role: opts.role })
   } catch (e) {
     console.error(`AGENT_EVAL: refused — ${e.message}`)
     return 2

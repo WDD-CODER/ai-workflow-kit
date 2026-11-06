@@ -11,6 +11,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { validateAgentResult, parseAgentResult, outputExample, ROLES } from '../lib/agent-result.mjs'
+import { validateReviewerResult } from '../lib/agent-eval/reviewer.mjs'
 
 const kit = resolve(fileURLToPath(new URL('../..', import.meta.url)))
 const project = process.env.AGENT_CONTRACTS_ROOT ? resolve(process.env.AGENT_CONTRACTS_ROOT) : kit
@@ -60,6 +61,38 @@ test('the security reviewer is read-only', () => {
   const tools = frontmatter(read('orch-security.md')).tools.split(',').map((t) => t.trim())
   assert.deepEqual(tools.filter((t) => !['Read', 'Grep', 'Glob'].includes(t)), [])
 })
+
+// Plan 087: the single reviewer — the agents this file checks beyond ROLES (measured before the pipeline uses them).
+const REVIEWERS = ['plan-reviewer']
+
+for (const name of REVIEWERS) {
+  test(`${name}: installed, pinned, read-only but Bash, and its ## Output example passes the reviewer validator`, () => {
+    assert.ok(agentFiles.includes(`${name}.md`), `${name}.md is installed in ${agentsDir}`)
+    const text = read(`${name}.md`)
+    const fm = frontmatter(text)
+    assert.equal(fm.name, name)
+    assert.equal(fm.effort, 'high')
+    assert.equal(fm.omitClaudeMd, 'true')
+    assert.deepEqual(fm.tools.split(',').map((t) => t.trim()), ['Read', 'Grep', 'Glob', 'Bash'])
+    const example = outputExample(text)
+    assert.equal(example.role, name)
+    const r = validateReviewerResult(example, name)
+    assert.deepEqual(r.errors, [], `${name} example: ${r.errors.join('; ')}`)
+    assert.equal(example.verdict, 'STOP')
+  })
+
+  test(`${name}: names its three inputs, the three rules against a false STOP, and never the builder's own account`, () => {
+    const text = read(`${name}.md`)
+    for (const input of ['## Goals & Success Criteria', '## Functional Requirements', '## Out of Scope', 'BASE...BRANCH', 'gate receipt']) assert.ok(text.includes(input), `${name} names ${input}`)
+    assert.match(text, /\*\*Changed lines only\.\*\*/)
+    assert.match(text, /\*\*Trust the gate output\.\*\*/)
+    assert.match(text, /\*\*A STOP needs a criterion or a concrete failing input\.\*\*/)
+    assert.match(text, /`verdict` is `STOP` when any problem is `blocker` or `major`/)
+    assert.doesNotMatch(text, /Execution Notes/)
+    assert.doesNotMatch(text, /git log/)
+    for (const re of DENY) assert.ok(!re.test(text), `${name}.md contains ${re}`)
+  })
+}
 
 test('no role agent names a deny-listed command', () => {
   for (const f of agentFiles.filter((x) => x.startsWith('orch-'))) {

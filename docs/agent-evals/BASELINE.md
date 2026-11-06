@@ -115,3 +115,28 @@ orch-verify on sonnet: fixed-010-lockfile-and-false-alarms 0.00/1.00 · fixed-01
 The checkers were re-measured on the same 25 cases (Sonnet, 2 runs): a fresh before-run, the redaction and verifier-gate
 experiments, and an after-run, with a script-computed verdict per figure — see
 `docs/agent-evals/049-checkers-hardening.md`. The 2026-10-22 tables above stay as the reference.
+
+## 2026-11 — single reviewer
+
+Plan 087: one agent, `.claude/agents/plan-reviewer.md`, measured against the four checkers above. Sonnet, 2 runs per
+case, the same 25 cases (`--case-list docs/agent-evals/baseline-2026-10-22.cases.txt`), every case scored for the one
+reviewer (`--role all`; a verifier case counts its kept candidates as the findings to make), blinded (`--redact`).
+The checkers' row sums their four 2026-10-22 Sonnet reports above (`--combine`, `runs/087-checkers-sonnet-2026-10-22/`).
+Tables and verdicts printed by `tools/agent-eval-ab.mjs`: `docs/agent-evals/087-reviewer-ab.md`.
+
+| Run | Recall | Precision | Noise | Errors | Cost (USD) | Cases × runs |
+| --- | --- | --- | --- | --- | --- | --- |
+| four checkers, 2026-10-22 (summed) | 0.28 | 0.28 | 0.44 | 1 | 6.41 | 25 × 2 |
+| plan-reviewer `--redact` | 0.20 | 0.09 | 0.79 | 0 | 5.50 | 25 × 2 |
+| plan-reviewer `--redact --with-gate` | 0.24 | 0.10 | 0.76 | 0 | 7.36 | 25 × 2 |
+| plan-reviewer `--redact --with-gate`, `--model opus` | 0.46 | 0.12 | 0.86 | 0 | 18.29 | 25 × 2 |
+
+**Chosen:** model `opus` (not `models.review`, which stays `sonnet`), prompt arm `redact-gate`, by the rule fixed
+before the runs (highest recall among arms with precision ≥ 0.50; none reaches it, so the highest precision: Opus 0.12
+against Sonnet 0.10 and 0.09). Recall is within noise of the checkers on every arm (Opus 0.46 vs 0.28 is under the A/B
+tool's d = 0.26); precision is under half of theirs (8–10 unlabelled findings per labelled one, and false alarms on both
+clean bug cases), so the reviewer is **not yet trustworthy as a blocking gate** and runs advisory first. Opus costs
+2.9× the checkers per case (0.73 vs 0.26 USD). The Opus arm ran because arm 2's precision is below 0.50 (plan 087's
+Critical Question). Raw reports: `runs/plan-reviewer-redact/`, `runs/plan-reviewer-redact-gate/`,
+`runs/plan-reviewer-opus-redact-gate/`; a first Sonnet run with 4 and 5 invalid results (before the prompt said `line`
+is one whole number) is kept in `runs/087-first-redact*/`.

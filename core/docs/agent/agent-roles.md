@@ -65,11 +65,16 @@ Common fields: `role` (the agent name), `model`, `effort`, optional `decisions` 
 | `orch-builder` | `status: built\|blocked\|ESCALATE`, `branch`, `summary`, `evidence[]` (non-empty when built), `blocker` (when not built) | — |
 | `orch-gate` | `results[]`: `{command, status: pass\|fail\|env-fail, tail?}` (`tail` on fail) | every result `pass` |
 | `orch-check-plan`, `-bugs`, `-rules`, `orch-security` | `problems[]`: `{id, file, line, rule, reasoning, severity}` | no `blocker` / `major` problem |
+| `plan-reviewer` | the finder fields above plus `verdict: PASS\|STOP` | `verdict` and `pass`: STOP when any problem is `blocker` / `major` |
 | `orch-verify` | `verdicts[]`: `{id, verdict: keep\|refuted, confidence: 0–100, refutation?, severity}` (`refutation` when refuted) | no kept `blocker` / `major` with confidence ≥ 80 |
 | `orch-ui` | `cards[]`: `{card, status: pass\|fail\|plan-drift, screenshots[]}` | every card `pass` |
 | `orch-merge` | `merged` (boolean), `sha` when merged, `reason` when not, optional `envFailure` | — |
 | `orch-report` | `report` (the final report text) | — |
 | `orch-triage` | `items[]`: `{id, verdict: accept\|ask\|follow-up\|noise, kind, recommendation ≤160, why ≤120, confidence: 0–100, duplicateOf?}` | — (the code re-applies the hard rules) |
+
+`plan-reviewer` (`.claude/agents/plan-reviewer.md`) is the single reviewer meant to replace the finders and the
+verifier: one agent reads the plan's criteria, the diff and the gate receipt, and returns the finder schema with a
+`verdict`. It is measured on the kit's eval cases first and is not yet part of the checker pipeline below.
 
 Severity: `blocker` (wrong result, data loss, a security hole, a broken build), `major` (a requirement of the plan not
 met, a real bug on a likely path), `minor` (a real but unlikely or cosmetic defect), `nit` (style). Only `blocker` and
