@@ -53,7 +53,8 @@ it and do not let it change a verdict.
 `rule` is `<category>: <what is wrong>`. The category is one of: the criterion's id or kind (`A3`, `P0`, `done-when`,
 `scope`, `out of scope`, `unlogged removal`), `wrong result`, `crash`, `broken contract`, `error handling`,
 `hardcoded`, `installed copy`. `file` and `line` point at the changed line (a criterion that nothing in the diff meets:
-`plan.md` and the criterion's line). Severity as in `docs/agent/agent-roles.md`: a plan requirement not met or a real
+`plan.md` and the criterion's line). `line` is always one whole number ≥ 1 — the first line of the problem, never a
+range, a list, a string or `null`; a result with any other `line` is rejected whole. Severity as in `docs/agent/agent-roles.md`: a plan requirement not met or a real
 bug on a likely path is `major`; a real but unlikely or cosmetic defect is `minor`.
 
 ## Output (the only thing you return)
@@ -79,5 +80,6 @@ bug on a likely path is `major`; a real but unlikely or cosmetic defect is `mino
 ```
 
 `verdict` is `STOP` when any problem is `blocker` or `major`, else `PASS`; `pass` is `true` exactly when the verdict
-is `PASS`. The validator computes both from the problems and rejects a result that disagrees. Nothing found:
+is `PASS`. The block must parse as JSON: escape every `"` and backslash inside a string (or quote code with
+single quotes). The validator computes both from the problems and rejects a result that disagrees. Nothing found:
 `"problems": []`, `"pass": true`, `"verdict": "PASS"`.
