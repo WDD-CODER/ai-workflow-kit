@@ -291,6 +291,20 @@ export function orchestratorProblems(vals) {
   if (minGraded !== undefined && !(Number.isInteger(minGraded) && minGraded >= 5 && minGraded <= 500)) {
     out.push(`orchestrator.triageMinGraded is ${JSON.stringify(minGraded)} — it must be a whole number from 5 to 500`)
   }
+  // run-plans.mjs (plan 088): the single reviewer's mode and model, and the wait after a rate or usage limit.
+  const reviewerMode = vals['orchestrator.reviewerMode']
+  if (reviewerMode !== undefined && !['gate', 'advisory'].includes(reviewerMode)) {
+    out.push(`orchestrator.reviewerMode is ${JSON.stringify(reviewerMode)} — it must be "advisory" (a review STOP is recorded, the plan still merges) or "gate" (a STOP gets a fix round, then parks)`)
+  }
+  // The reviewer validates: INV-1's review rule holds — never Haiku.
+  const reviewerModel = vals['orchestrator.reviewerModel']
+  if (reviewerModel !== undefined && (typeof reviewerModel !== 'string' || !MODEL_VALUE.test(reviewerModel) || /haiku/i.test(reviewerModel))) {
+    out.push(`orchestrator.reviewerModel is ${JSON.stringify(reviewerModel)} — the reviewer validates, so never Haiku: "sonnet", "opus", "fable", "inherit" or a non-Haiku model id starting "claude-"`)
+  }
+  const wait = vals['orchestrator.rateLimitWaitMin']
+  if (wait !== undefined && !(Number.isInteger(wait) && wait >= 0 && wait <= 600)) {
+    out.push(`orchestrator.rateLimitWaitMin is ${JSON.stringify(wait)} — it must be a whole number of minutes from 0 to 600`)
+  }
   return out
 }
 

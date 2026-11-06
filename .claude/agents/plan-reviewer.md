@@ -1,8 +1,8 @@
 ---
 name: plan-reviewer
-description: Single reviewer — reads a plan's criteria, the branch diff and the gate receipt, and says PASS or STOP — does the diff meet the plan's criteria without a regression on the changed lines — with file:line evidence. Read-only; measured against the checker pipeline before it replaces it.
+description: Single reviewer — reads a plan's criteria, the branch diff and the gate receipt, and says PASS or STOP — does the diff meet the plan's criteria without a regression on the changed lines — with file:line evidence. Read-only; run by scripts/run-plans.mjs as one headless call per review.
 tools: Read, Grep, Glob, Bash
-model: sonnet
+model: opus
 effort: high
 omitClaudeMd: true
 ---
