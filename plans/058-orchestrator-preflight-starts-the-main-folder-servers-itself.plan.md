@@ -316,3 +316,17 @@ Every step names its own test location.
 - review: checkers kept 3 dropped 0 rechecked 3 minutes 30.3 models check-plan=claude-sonnet-5-5,check-bugs=claude-sonnet-5-5,check-rules=claude-sonnet-5-5,verify=claude-sonnet-5-5
 - Open: the two `[human]` Done-when items (a real `/orchestrate` on the Human's PC: frontend started; an `[auto:main]`
   plan gets the backend on `dev:local`); sub-task H1 keeps the plan open until the Human validates.
+- Reality check (2026-11-06, `feat/058-preflight-starts-servers` from `origin/main` `24b80c0`): the build above merged in
+  PR #86 (`aac496e`, commits `f3a2e1b` + `8dd7a91`); both are ancestors of `24b80c0`. `--drift` lists the later commits
+  (068, 074, 083, 084, 086, 087); the ones touching this plan's files (`b2f5c9a`, `e001075`, `e4b579c`, `1984fba`, `52353a1`
+  on `orch-preflight.mjs`; 084 A4 on the slot-serve tests) — ok, no conflict: `--main` in `slot-serve.mjs`/`slot-stop.mjs`,
+  `spawnPm`/`CHAIN_CMD`/`MAIN_PIDS` in `slot-procs.mjs`, `backend()` + `slot-serve --main` in `orch-preflight.mjs`,
+  `mainAutoItems`, `commands.devRemote` (config, `SCRIPT_NAME_KEYS`, `$comment`), `.main-serve-pids` in
+  `local-excludes.mjs` and `.gitignore`, `--db remote` in `orchestrate.js`/`orchestrate.md` are all present. Step 0 items
+  2–5 unchanged from the findings above. Nothing rebuilt. The two stub processes left running on 2026-11-02 are gone.
+- decision: behaviour: no new code on this branch — every sub-task is already on `main`; this branch carries only this
+  note, so the plan can be closed after the Human validates H1.
+- Evidence (2026-11-06, on `24b80c0`): install-check ok; drift-check 0 undeclared; build PACK_CHECK ok; lint 0 leaks
+  (3 roots); `npm test` exit 0; orchestrator-e2e 90 cases; e2e-check 55 passed, 1 skipped; acceptance-check --e2e 122
+  passed; leak-check 0 leaks; `scope-check --tests` SCOPE_TESTS: ok; orchestrator-folders + ui-tier + orchestrator tests
+  195/195; `tools/test` 540/540.
