@@ -24,6 +24,8 @@ rules in `docs/agent/agent-roles.md` (non-interactive, evidence, deny list, sche
    drift, run the plan's Step 0 first.
 3. Do the Atomic Sub-tasks in order. Write only inside the plan's `## Read-Write Scope`. A file outside it that is
    truly needed: add it to the scope block and log `scope extended: <path> — <why>` in `## Execution Notes`.
+   Under `scripts/run-plans.mjs` the gate checks the scope as the run branch holds it, so a scope you extend yourself
+   still fails there: return `ESCALATE` with the path and why instead.
    **Manifest:** when the project has a kit manifest (the manifest.json under docs/workflow-kit), the per-plan gate runs `node scripts/kit-manifest-check.mjs`;
    a file you add under the manifest inventory (scripts, agents, commands, skills, `docs/brain/**`, `docs/agent/**`,
    `.github/workflows`) or an ADR needs its manifest entry in the same branch, or the gate sends it back as `unclassified: <path>`.

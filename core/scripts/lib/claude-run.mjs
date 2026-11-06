@@ -10,6 +10,9 @@
  * commands, no saved session — a call then loads a few thousand tokens of context instead of tens of thousands),
  * `--output-format json`, `--model` (none for "inherit"), `--system-prompt-file` with the agent's body, and `--tools`
  * from the agent's front matter; an agent without a write tool also gets `--disallowedTools` for the write tools.
+ * Tools are pre-approved (`--allowedTools`) only when the caller asks (`allow`), and a read-only agent then gets narrow
+ * Bash patterns, never a bare Bash. `trustCwdSettings: false` (the reviewer) refuses a folder that holds its own
+ * `.claude/settings.local.json`, the one settings file `--setting-sources local` still reads.
  * `bin` is the claude command (RUN_PLANS_CLAUDE or "claude"); a `.mjs`/`.js` file is run with node (tests' fake).
  * On Windows `claude` is a .cmd shim: it runs through the shell with every argument quoted. Node built-ins only.
  */
@@ -42,8 +45,22 @@ export function readAgent(agentFile) {
 export const canWrite = (agent) => Boolean(agent.tools?.some((t) => WRITE_TOOLS.includes(t)))
 
 /**
- * Arguments for `claude -p` (no model is called here). `allow`: the agent's tools also go in `--allowedTools`, so a
- * headless call may use them without a permission prompt (run-plans; the eval leaves it off).
+ * The Bash commands a read-only agent may run without a prompt (the reviewer's contract: diffs and one test file).
+ * A read-only agent is never pre-approved a bare `Bash`.
+ */
+export const READ_ONLY_BASH = ['Bash(git diff:*)', 'Bash(git show:*)', 'Bash(node --test:*)']
+
+/** What `--allowedTools` pre-approves for an agent: its own tools when it writes (the builder), else read tools + READ_ONLY_BASH. */
+export function allowedTools(agent) {
+  const tools = agent.tools ?? []
+  if (canWrite(agent)) return tools
+  return [...tools.filter((t) => t !== 'Bash'), ...(tools.includes('Bash') ? READ_ONLY_BASH : [])]
+}
+
+/**
+ * Arguments for `claude -p` (no model is called here). `allow` (off by default): the call may use tools without a
+ * permission prompt — `--allowedTools` from allowedTools(): the whole list only for an agent that writes (run-plans'
+ * builder), narrow Bash patterns for a read-only one. An agent without a write tool always gets `--disallowedTools`.
  */
 export function claudeArgs({ agent, model, systemPromptFile, allow = false }) {
   const args = ['-p', '--output-format', 'json', '--system-prompt-file', systemPromptFile, ...CONTEXT_FLAGS]
@@ -51,10 +68,20 @@ export function claudeArgs({ agent, model, systemPromptFile, allow = false }) {
   if (model && model !== 'inherit') args.push('--model', model)
   if (agent.tools?.length) {
     args.push('--tools', agent.tools.join(','))
-    if (allow) args.push('--allowedTools', agent.tools.join(','))
+    if (allow) args.push('--allowedTools', allowedTools(agent).join(','))
   }
   if (!canWrite(agent)) args.push('--disallowedTools', WRITE_TOOLS.join(','))
   return args
+}
+
+/**
+ * `--setting-sources local` still loads `.claude/settings.local.json` from the call's folder. In a folder the caller does
+ * not trust (the reviewer's: the branch under review, written by the builder) that file could pre-approve tools or add
+ * hooks, so the call is refused when it exists. Returns the reason, or null.
+ */
+export function untrustedSettings(cwd) {
+  const f = join(cwd, '.claude', 'settings.local.json')
+  return existsSync(f) ? `${f.replace(/\\/g, '/')} exists in the folder under review — a branch may not bring its own local settings into a headless call` : null
 }
 
 /** Sum every numeric *_tokens field of a Claude Code usage object. */
@@ -128,8 +155,11 @@ export function spawnClaude({ bin, args, cwd, input = '', timeoutMs = 600_000, e
  * agent's final reply (its JSON result inside), `ok` false on a non-zero exit, a timeout, an `is_error` answer or
  * unreadable output; `rateLimited` when the failure names a rate or usage limit.
  */
-export async function runAgent({ agent = null, agentFile = null, model = null, cwd, prompt, timeoutMs = 600_000, bin = process.env.RUN_PLANS_CLAUDE || 'claude', allow = true, env = process.env }) {
+export async function runAgent({ agent = null, agentFile = null, model = null, cwd, prompt, timeoutMs = 600_000, bin = process.env.RUN_PLANS_CLAUDE || 'claude', allow = false, trustCwdSettings = true, env = process.env }) {
   const a = agent ?? readAgent(agentFile)
+  // An untrusted folder with its own local settings: refused before anything is spawned.
+  const planted = trustCwdSettings ? null : untrustedSettings(cwd)
+  if (planted) return { ok: false, refused: true, error: `refused: ${planted}`, rateLimited: false, text: '', usage: null, tokens: { input: 0, output: 0 }, costUsd: 0, exit: null, seconds: 0, timedOut: false, argv: [], agent: a.name, model: model ?? a.model }
   const tmp = mkdtempSync(join(tmpdir(), 'claude-run-'))
   const started = Date.now()
   try {

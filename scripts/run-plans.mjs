@@ -33,7 +33,7 @@ import { spawnSync } from 'node:child_process'
 import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readAgent, claudeArgs, runAgent, parseResult } from './lib/claude-run.mjs'
-import { gateCommands, runGate } from './lib/plan-gate.mjs'
+import { gateCommands, runGate, scopeCheck, scopeMarker } from './lib/plan-gate.mjs'
 import { review, blocking, problemLine } from './lib/plan-review.mjs'
 import { mergePlan, orchState } from './lib/plan-merge.mjs'
 import { runOrder, unitsOf, afterPark } from './lib/run-order.mjs'
@@ -57,6 +57,12 @@ const MAX_FIX_ROUNDS = Number(2) || 2
 const REVIEWER_MODE = "advisory" === 'gate' ? 'gate' : 'advisory'
 const RATE_LIMIT_WAIT_MIN = Number(30) >= 0 ? Number(30) : 30
 const STALE_MIN = Number(10) || 10
+// What every plan may touch and what none may (the same lists scope-check.mjs renders), for the trusted scope check.
+const HOTSPOTS = [
+  '',
+  'CHANGELOG.md', 'README.md'
+].filter(Boolean)
+const UPSTREAM = [].concat([]).filter(Boolean)
 const REVIEW_TIMEOUT_MIN = 10
 const MAX_CONCURRENCY = 2
 
@@ -246,7 +252,7 @@ function lintPlan(nnn, path, runBranch) {
   lines.push(`check files: ${files.length ? (missing.length ? `missing ${missing.join(', ')}` : `ok (${files.length})`) : 'none named'}`)
   if (mapped.length) lines.push(`npx: ${mapped.join('; ')}`)
   for (const d of dropped) lines.push(`dropped: ${d}`)
-  const checks = gateCommands({ prepare: PREPARE, pm: PM, ...COMMANDS, manifest: existsSync(join(ROOT, 'scripts', 'kit-manifest-check.mjs')) && existsSync(join(ROOT, 'docs', 'workflow-kit', 'manifest.json')), scope: { base: `origin/${runBranch}`, plan: path }, extra: extra.filter((c) => !missing.some((f) => checkFilesOf(c).includes(f))) })
+  const checks = gateCommands({ prepare: PREPARE, pm: PM, ...COMMANDS, kitRoot: ROOT, manifest: existsSync(join(ROOT, 'scripts', 'kit-manifest-check.mjs')) && existsSync(join(ROOT, 'docs', 'workflow-kit', 'manifest.json')), scope: { base: `origin/${runBranch}`, plan: path }, extra: extra.filter((c) => !missing.some((f) => checkFilesOf(c).includes(f))) })
   return { nnn, path, title: (/^#\s+(.*)$/m.exec(text)?.[1] ?? '').trim(), branch, lines, problems, notes, dropped, checks, ready: problems.length === 0 }
 }
 
@@ -405,7 +411,7 @@ async function main() {
       const model = ctx.tier === 'judgment' ? MODELS.judgment : MODELS.build
       const prompt = builderPrompt({ RUN, RUN_BRANCH, ctx, l, LESSONS })
       say(`RUN_PLANS: plan ${nnn} ${stage} (${model}, round ${ctx.round})`)
-      const b = await modelCall(nnn, stage, () => runAgent({ agent: builderAgent, model, cwd: wt, prompt, timeoutMs: GATE_TIMEOUT_MIN * 60_000, bin: o.claude }))
+      const b = await modelCall(nnn, stage, () => runAgent({ agent: builderAgent, model, cwd: wt, prompt, timeoutMs: GATE_TIMEOUT_MIN * 60_000, bin: o.claude, allow: true }))
       let result = null
       try {
         result = b.ok ? parseResult(b.text) : null
@@ -424,13 +430,18 @@ async function main() {
       if (!failure) {
         setPlan(nnn, { state: 'gate', round: ctx.round, tier: ctx.tier, sha: git(wt, 'rev-parse', 'HEAD').out })
         const onResult = (row) => csvRow(nnn, `gate: ${row.command}`, '-', row.seconds, 0, 0, row.exit)
-        let g = await runGate({ folder: wt, commands: l.checks, timeoutMin: GATE_TIMEOUT_MIN, onResult })
+        // The scope check runs here, from this folder's code, on the plan text as the run branch holds it.
+        const base = `origin/${RUN_BRANCH}`
+        const onBase = git(ROOT, 'show', `${base}:${l.path}`)
+        const planText = onBase.status === 0 ? onBase.out : readFileSync(join(ROOT, l.path), 'utf8')
+        const builtins = { [scopeMarker(base, l.path)]: () => scopeCheck({ folder: wt, base, planText, planPath: l.path, hotspots: HOTSPOTS, upstream: UPSTREAM }) }
+        let g = await runGate({ folder: wt, commands: l.checks, timeoutMin: GATE_TIMEOUT_MIN, onResult, builtins })
         if (g.status === 'env') {
           setPlan(nnn, { state: 'env-paused', round: ctx.round, reason: `gate env-fail: ${g.failed.join(', ')}` })
           const env = node('orch-preflight.mjs', ['--env-only', '--run', RUN, '--probe-dir', wt, ...g.failed.flatMap((c) => ['--probe', c])])
           if (env.status !== 0) return park(`environment: ${(orchJson(env.out)?.problems ?? [lastLine(env.out)]).join('; ')}`)
           note(`environment failure (gate env-fail: ${g.failed.join(', ')}); the environment check passed, the gate runs once more without a fix round`, nnn)
-          g = await runGate({ folder: wt, commands: l.checks, timeoutMin: GATE_TIMEOUT_MIN, onResult })
+          g = await runGate({ folder: wt, commands: l.checks, timeoutMin: GATE_TIMEOUT_MIN, onResult, builtins })
           if (g.status === 'env') return park(`environment, again after one retry: gate env-fail: ${g.failed.join(', ')}`)
         }
         for (const c of g.flaky) state('flake', { run: RUN, plan: nnn, command: c, round: ctx.round, via: 'rerun', where: 'gate', sha: g.head ?? undefined })
@@ -455,6 +466,8 @@ async function main() {
           const r = await reviewStep({ nnn, RUN, RUN_BRANCH, branch: info.branch, checkedHead, reviewPath: diff.reviewPath, receipt, reviewerAgent, REVIEW_MODEL, bin: o.claude, modelCall, mode: o.reviewerMode })
           if (r.note) note(r.note, nnn)
           if (r.error) {
+            // A branch that brings its own local settings into the review is parked in either mode.
+            if (r.refused) return park(`review ${r.error}`)
             if (o.reviewerMode === 'gate') return park(`review could not run: ${r.error}`)
             note(`review could not run (advisory, not enforced): ${r.error}`, nnn)
           } else if (r.enforced) {
@@ -614,7 +627,7 @@ async function main() {
 
 /** The merge step's checks (orchestrator.mergeChecks): "build" = the build plus the scope check, "full" = the plan's gate. */
 function mergeChecksOf(checks) {
-  if (MERGE_CHECKS_MODE === 'full') return checks.filter((c) => !/kit-manifest-check|scope-check\.mjs --diff/.test(c))
+  if (MERGE_CHECKS_MODE === 'full') return checks.filter((c) => !/kit-manifest-check|^scope-check \(kit copy\)/.test(c))
   const build = typeof COMMANDS.build === 'string' && COMMANDS.build ? `${PM} run ${COMMANDS.build}` : null
   return build ? [build] : []
 }
@@ -664,11 +677,13 @@ async function reviewStep({ nnn, RUN, RUN_BRANCH, branch, checkedHead, reviewPat
     const r = await review({
       agentFile: reviewerAgent.file, model: REVIEW_MODEL, cwd: folder, nnn, run: RUN, planText, base: `origin/${RUN_BRANCH}`, branch: `origin/${branch}`, diffText, receipt, mode,
       call: async (args) => {
-        callAnswer = await modelCall(nnn, 'reviewer', () => runAgent({ ...args, agent: reviewerAgent, timeoutMs: REVIEW_TIMEOUT_MIN * 60_000, bin }))
+        // allow: the reviewer is read-only, so only narrow Bash patterns are pre-approved; trustCwdSettings false: the
+        // folder is the branch under review, and a .claude/settings.local.json in it refuses the call.
+        callAnswer = await modelCall(nnn, 'reviewer', () => runAgent({ ...args, agent: reviewerAgent, timeoutMs: REVIEW_TIMEOUT_MIN * 60_000, bin, allow: true, trustCwdSettings: false }))
         return callAnswer
       },
     })
-    if (!r.call.ok) return { error: r.call.error }
+    if (!r.call.ok) return { error: r.call.error, refused: r.call.refused === true }
     say(`RUN_PLANS: plan ${nnn} review ${r.verdict}${r.verdict === 'STOP' && !r.enforced ? ' (advisory, not enforced)' : ''}`)
     return r
   } finally {

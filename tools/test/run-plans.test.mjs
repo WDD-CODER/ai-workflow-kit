@@ -5,7 +5,7 @@
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { join, resolve, basename } from 'node:path'
-import { existsSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, mkdtempSync, rmSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -14,7 +14,7 @@ import { makeProject, toyPlan, overlaps, FAKE } from './lib/run-plans-fixture.mj
 const kit = resolve(fileURLToPath(new URL('../..', import.meta.url)))
 const lib = (f) => import(pathToFileURL(join(kit, 'scripts', 'lib', f)).href)
 const { claudeArgs, runAgent, readAgent, CONTEXT_FLAGS, RATE_LIMIT_RE, parseResult } = await lib('claude-run.mjs')
-const { gateCommands, runGate } = await lib('plan-gate.mjs')
+const { gateCommands, runGate, scopeCheck, scopeMarker } = await lib('plan-gate.mjs')
 const { readReview, review, validateReviewerResult, reviewVerdict } = await lib('plan-review.mjs')
 const { blockedBy, unitsOf, afterPark } = await lib('run-order.mjs')
 const runPlans = await import(pathToFileURL(join(kit, 'scripts', 'run-plans.mjs')).href)
@@ -36,6 +36,72 @@ test('claude-run: every call carries the four context-saving flags, json output,
   assert.equal(r[r.indexOf('--disallowedTools') + 1], 'Edit,Write,MultiEdit,NotebookEdit')
   assert.equal(reviewer.model, 'opus', 'the reviewer runs on orchestrator.reviewerModel (plan 087 measured opus best)')
   assert.ok(!claudeArgs({ agent: reviewer, model: 'inherit', systemPromptFile: 's.md' }).includes('--model'))
+})
+
+test('claude-run: tools are pre-approved only when asked; the builder gets its list, a read-only agent never a bare Bash', () => {
+  const builder = readAgent(join(kit, '.claude', 'agents', 'orch-builder.md'))
+  const reviewer = readAgent(join(kit, '.claude', 'agents', 'plan-reviewer.md'))
+  for (const agent of [builder, reviewer]) assert.ok(!claudeArgs({ agent, model: 'x', systemPromptFile: 's.md' }).includes('--allowedTools'), `${agent.name}: off by default`)
+  const b = claudeArgs({ agent: builder, model: 'x', systemPromptFile: 's.md', allow: true })
+  assert.equal(b[b.indexOf('--allowedTools') + 1], 'Read,Edit,Write,Bash,Grep,Glob')
+  const r = claudeArgs({ agent: reviewer, model: 'x', systemPromptFile: 's.md', allow: true })
+  const allowed = r[r.indexOf('--allowedTools') + 1].split(',')
+  assert.deepEqual(allowed, ['Read', 'Grep', 'Glob', 'Bash(git diff:*)', 'Bash(git show:*)', 'Bash(node --test:*)'])
+  assert.ok(!allowed.includes('Bash'), 'no bare Bash for the reviewer')
+  assert.equal(r[r.indexOf('--disallowedTools') + 1], 'Edit,Write,MultiEdit,NotebookEdit')
+})
+
+test('claude-run: runAgent pre-approves nothing by default, and refuses a folder that brings its own .claude/settings.local.json', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'rp-set-'))
+  try {
+    const bin = join(tmp, 'answer.mjs')
+    writeFileSync(bin, `import { writeFileSync } from 'node:fs'\nwriteFileSync(${JSON.stringify(join(tmp, 'spawned.txt'))}, 'x')\nprocess.stdin.resume(); process.stdin.on('end', () => console.log(JSON.stringify({ result: 'ok', usage: {} })))\n`)
+    const agentFile = join(kit, '.claude', 'agents', 'plan-reviewer.md')
+    const plain = await runAgent({ agentFile, model: 'opus', cwd: tmp, prompt: 'x', bin })
+    assert.equal(plain.ok, true, plain.error)
+    assert.ok(!plain.argv.includes('--allowedTools'))
+    const review = join(tmp, 'review')
+    mkdirSync(join(review, '.claude'), { recursive: true })
+    writeFileSync(join(review, '.claude', 'settings.local.json'), JSON.stringify({ permissions: { allow: ['Bash'] } }))
+    rmSync(join(tmp, 'spawned.txt'))
+    const r = await runAgent({ agentFile, model: 'opus', cwd: review, prompt: 'x', bin, allow: true, trustCwdSettings: false })
+    assert.deepEqual([r.ok, r.refused], [false, true])
+    assert.match(r.error, /settings\.local\.json exists in the folder under review/)
+    assert.equal(existsSync(join(tmp, 'spawned.txt')), false, 'nothing was spawned')
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
+})
+
+test('plan-gate: the scope check is the kit\'s own code — a branch that rewrites its scripts/scope-check.mjs still fails with SCOPE: out', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'rp-scope-'))
+  const g = (...a) => spawnSync('git', a, { cwd: tmp, encoding: 'utf8' })
+  try {
+    g('init', '-q', '-b', 'main')
+    g('config', 'user.email', 't@t')
+    g('config', 'user.name', 't')
+    mkdirSync(join(tmp, 'scripts'), { recursive: true })
+    mkdirSync(join(tmp, 'plans'), { recursive: true })
+    const plan = toyPlan(1)
+    writeFileSync(join(tmp, 'plans', '001-toy.plan.md'), plan)
+    writeFileSync(join(tmp, 'scripts', 'scope-check.mjs'), 'process.exit(1)\n')
+    g('add', '-A')
+    g('commit', '-q', '-m', 'base')
+    const base = g('rev-parse', 'HEAD').stdout.trim()
+    mkdirSync(join(tmp, 'src'))
+    writeFileSync(join(tmp, 'src', '1.txt'), 'x\n')
+    writeFileSync(join(tmp, 'scripts', 'scope-check.mjs'), "console.log('SCOPE: ok'); process.exit(0)\n")
+    g('add', '-A')
+    g('commit', '-q', '-m', 'tampered')
+    const marker = scopeMarker(base, 'plans/001-toy.plan.md')
+    const builtins = { [marker]: () => scopeCheck({ folder: tmp, base, planText: plan, planPath: 'plans/001-toy.plan.md' }) }
+    const r = await runGate({ folder: tmp, commands: [marker], builtins, receipt: false })
+    assert.equal(r.status, 'fail')
+    assert.match(r.results[0].tail, /^SCOPE: out scripts\/scope-check\.mjs$/m)
+    assert.doesNotMatch(r.results[0].tail, /SCOPE: out src\/1\.txt/, 'the plan\'s own file is in scope')
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
 })
 
 test('claude-run: a rate or usage limit is recognised; the recorded headless answer parses', async () => {
@@ -97,8 +163,8 @@ test('run-order: blockedBy follows dependencies and shared files; units keep a l
 })
 
 test('plan-gate: the command list is prepare, project checks, manifest, scope, then the plan\'s own; a failing command is in the receipt', async () => {
-  const cmds = gateCommands({ prepare: [{ missing: 'gen/x', script: 'gen' }], pm: 'npm', build: 'build', lint: 'lint', test: 'test', testCi: 'test:ci', manifest: true, scope: { base: 'origin/orch/r', plan: 'plans/1-x.plan.md' }, extra: ['npm run build', 'node --test a.test.mjs'] })
-  assert.deepEqual(cmds, ['node scripts/orch-state.mjs prepare --missing gen/x --script gen', 'npm run build', 'npm run lint', 'npm run test:ci', 'node scripts/kit-manifest-check.mjs', 'node scripts/scope-check.mjs --diff=origin/orch/r --plan=plans/1-x.plan.md', 'node --test a.test.mjs'])
+  const cmds = gateCommands({ prepare: [{ missing: 'gen/x', script: 'gen' }], pm: 'npm', build: 'build', lint: 'lint', test: 'test', testCi: 'test:ci', manifest: true, kitRoot: 'C:/main folder', scope: { base: 'origin/orch/r', plan: 'plans/1-x.plan.md' }, extra: ['npm run build', 'node --test a.test.mjs'] })
+  assert.deepEqual(cmds, ['node scripts/orch-state.mjs prepare --missing gen/x --script gen', 'npm run build', 'npm run lint', 'npm run test:ci', 'node "C:/main folder/scripts/kit-manifest-check.mjs"', 'scope-check (kit copy) --diff=origin/orch/r --plan=plans/1-x.plan.md', 'node --test a.test.mjs'])
   const tmp = mkdtempSync(join(tmpdir(), 'rp-gate-'))
   try {
     spawnSync('git', ['init', '-q'], { cwd: tmp })
@@ -131,7 +197,7 @@ let p
 before(() => {
   p = makeProject({ kit })
   p.addPlans({
-    451: toyPlan(451), 452: toyPlan(452), 453: toyPlan(453), 455: toyPlan(455, { deps: '453' }), 457: toyPlan(457), 458: toyPlan(458), 462: toyPlan(462),
+    474: toyPlan(474), 451: toyPlan(451), 452: toyPlan(452), 453: toyPlan(453), 455: toyPlan(455, { deps: '453' }), 457: toyPlan(457), 458: toyPlan(458), 462: toyPlan(462),
     456: toyPlan(456), 459: toyPlan(459, { question: 'Which database does the toy write to?' }),
     463: toyPlan(463), 464: toyPlan(464, { deps: '463' }),
     465: toyPlan(465), 466: toyPlan(466),
@@ -143,8 +209,9 @@ after(() => p?.cleanup())
 const stagesOf = (st, nnn) => (st.plans[nnn].calls ?? []).map((c) => c.stage)
 let main
 test('one run of seven plans: (a) a passing plan merges --no-ff at its checked head; (b) one fix round; (c) a twice-failing gate parks and only its dependent is skipped; (d) advisory STOP merges; (e) a moved branch is refused; escalation', () => {
-  main = p.runPlans(['--run', 'main', '--plans', '451,452,453,455,457,458,462'], {
+  main = p.runPlans(['--run', 'main', '--plans', '451,452,453,455,457,458,462,474'], {
     scenario: {
+      474: { builder: [{ tamper: true }, { tamper: true }] },
       452: { builder: [{ gate: 'fail', text: 'toy 452 broke' }, { gate: 'pass' }] },
       453: { builder: [{ gate: 'fail', text: 'same failure' }, { gate: 'fail', text: 'same failure' }] },
       457: { reviewer: [{ verdict: 'STOP' }] },
@@ -154,7 +221,7 @@ test('one run of seven plans: (a) a passing plan merges --no-ff at its checked h
   })
   assert.equal(main.status, 2, main.out)
   assert.deepEqual(main.json.merged.sort(), ['451', '452', '457', '462'], main.out)
-  assert.deepEqual(main.json.parked.sort(), ['453', '458'])
+  assert.deepEqual(main.json.parked.sort(), ['453', '458', '474'])
   assert.deepEqual(main.json.skipped, ['455'])
   const st = p.status('main')
   // (a) the merge commit's second parent is the checked head
@@ -183,6 +250,11 @@ test('one run of seven plans: (a) a passing plan merges --no-ff at its checked h
   assert.equal(st.plans['458'].state, 'parked')
   assert.match(st.plans['458'].reason, new RegExp(`the branch moved after its checks: the merge took [0-9a-f]{40} but the checked head is ${st.plans['458'].checkedHead}`))
   assert.ok(!log.some((l) => /\(plan 458\)$/.test(l)), 'no merge of 458 on the run branch')
+  // a builder that rewrites the branch's own scripts/scope-check.mjs: the gate's scope check is the kit's copy, it fails
+  assert.equal(st.plans['474'].state, 'parked')
+  assert.match(st.plans['474'].reason, /^same reason twice: gate: scope-check \(kit copy\) --diff=origin\/orch\/main --plan=plans\/474-toy-474\.plan\.md/)
+  assert.ok((st.plans['474'].roundCauses ?? []).some((c) => /scope-check \(kit copy\)/.test(c)), JSON.stringify(st.plans['474']))
+  assert.ok(!log.some((l) => /\(plan 474\)$/.test(l)))
   // escalation: a second, different failure gets the hand-off and one judgment-tier builder
   assert.deepEqual(stagesOf(st, '462'), ['builder', 'builder fix', 'judgment builder', 'reviewer'])
   const judge = main.calls.find((c) => c.plan === '462' && c.handoff)
@@ -211,6 +283,8 @@ test('the argv of every call: the flags, the tier\'s model, the builder in its o
   assert.equal(r.argv[r.argv.indexOf('--model') + 1], 'opus')
   assert.ok(!/Edit|Write/.test(r.argv[r.argv.indexOf('--tools') + 1]))
   assert.equal(r.argv[r.argv.indexOf('--disallowedTools') + 1], 'Edit,Write,MultiEdit,NotebookEdit')
+  assert.equal(b.argv[b.argv.indexOf('--allowedTools') + 1], 'Read,Edit,Write,Bash,Grep,Glob', 'only the builder is pre-approved its whole list')
+  assert.equal(r.argv[r.argv.indexOf('--allowedTools') + 1], 'Read,Grep,Glob,Bash(git diff:*),Bash(git show:*),Bash(node --test:*)', 'the reviewer: no bare Bash')
   assert.equal(basename(r.cwd), 'rp-app-orch-review-main-451')
   assert.equal(existsSync(r.cwd), false, 'the review folder is removed after the review')
 })

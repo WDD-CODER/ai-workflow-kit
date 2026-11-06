@@ -78,10 +78,12 @@ the triage keys shape the report's decision list.
      cwd = the plan's folder). Its result is read for `decisions` and `notDone`; its `pass` is never read. The script
      then checks the folder is committed, the branch is ahead of the run branch, and pushes it.
    - **gate**: `plan-gate.mjs` runs `prepare`, the project build, lint and test (`testCi` first), the kit manifest check
-     when the project has a manifest, `scope-check.mjs --diff=origin/<run branch>` (the scope guard's hooks do not run
-     inside a headless call: `--setting-sources local` loads no project settings, so the gate checks the scope instead)
-     and the plan's own `[auto]` commands, each with `gateTimeoutMin`; an environment error reruns once, then the
-     environment check, then the gate once more without a fix round.
+     when the project has a manifest, the scope check and the plan's own `[auto]` commands, each with `gateTimeoutMin`;
+     an environment error reruns once, then the environment check, then the gate once more without a fix round. The
+     scope guard's hooks do not run inside a headless call (`--setting-sources local` loads no project settings), so the
+     gate checks the scope — with trusted code: the script's own copy, never the branch's `scripts/scope-check.mjs`, on
+     the scope as the run branch holds it (a builder cannot widen it; a changed `scripts/**` or `.claude/**` copy the
+     scope does not name fails). The manifest check is the main folder's copy run against the plan's folder.
    - `orch-state.mjs diff --no-notes`: the changed files, the test-file gate, and the plan copy without its
      `## Execution Notes` (the reviewer never reads the builder's own account); origin must hold the commit the gate ran on.
    - **model — reviewer** (`plan-reviewer.md` on `reviewerModel`, no write tool, cwd = a detached review folder at the
@@ -118,8 +120,11 @@ Builder, builder fix, judgment builder, reviewer — everything else is code.
 
 Two calls per plan normally, five at worst, then the plan parks. Every call is
 `claude -p --output-format json --system-prompt-file <agent body> --setting-sources local --strict-mcp-config
---disable-slash-commands --no-session-persistence --model <model> --tools <agent tools>` (the reviewer also gets
-`--disallowedTools Edit,Write,MultiEdit,NotebookEdit`); `RUN_PLANS_CLAUDE` replaces `claude` (tests pass a fake).
+--disable-slash-commands --no-session-persistence --model <model> --tools <agent tools> --allowedTools <…>`. Only the
+builder is pre-approved its whole tool list; the reviewer gets `Read,Grep,Glob,Bash(git diff:*),Bash(git show:*),Bash(node --test:*)`
+(never a bare Bash) and `--disallowedTools Edit,Write,MultiEdit,NotebookEdit`, and is refused (the plan parks) when the
+review folder holds its own `.claude/settings.local.json` — the one settings file `--setting-sources local` still reads.
+`RUN_PLANS_CLAUDE` replaces `claude` (tests pass a fake).
 
 ## The workflow's run (until plan 090)
 

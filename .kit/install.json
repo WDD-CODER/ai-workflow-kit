@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "263dd399969e13297dbf0ea2012008f120dbea70",
+  "commit": "7c1ffd3da733e5e0325796f265c8f713af57ff18",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -25,7 +25,7 @@
       "source": "core/.claude/agents/kit-runner.md"
     },
     ".claude/agents/orch-builder.md": {
-      "sha256": "29dc94735f5a747e54146f2b5c17ae0800ccaf55564edb20289a19b770d2ee86",
+      "sha256": "106b492343fb9423ed564ecdfaffa57782f4fa6b17769de65700413ca08b628a",
       "kind": "managed",
       "source": "core/.claude/agents/orch-builder.md"
     },
@@ -420,7 +420,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "6db46ad7d065226c4466d565b95fc8cb005051757c2ef2fb5b5025f49a071f2d",
+      "sha256": "9eb6af6f81e4197ef3b916d2afbbe700ebaa4b17319e50547cf89fdde32bec80",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -715,7 +715,7 @@
       "source": "core/scripts/lib/brain-doc.mjs"
     },
     "scripts/lib/claude-run.mjs": {
-      "sha256": "0c277ea2798312cc583249b28add3a5ed6fb7787afb54f21c76963b078828d37",
+      "sha256": "ca12a65086f66cee44d8d58c89ff1c7bd0316caa56b22934626f55cc8777f1cd",
       "kind": "managed",
       "source": "core/scripts/lib/claude-run.mjs"
     },
@@ -765,7 +765,7 @@
       "source": "core/scripts/lib/plan-deps.mjs"
     },
     "scripts/lib/plan-gate.mjs": {
-      "sha256": "99ff25e34c21c0779fa6fe4f48ff6a76a48100d7ad720f0987161282b9648510",
+      "sha256": "381c3655ea53aeb06913a7361bf93e25d1818e70aca7ad225e16d808509ab323",
       "kind": "managed",
       "source": "core/scripts/lib/plan-gate.mjs"
     },
@@ -920,7 +920,7 @@
       "source": "core/scripts/prune-old-sessions.sh"
     },
     "scripts/run-plans.mjs": {
-      "sha256": "0611e29af229efacedc560a72df502cf0edb94babde5d0c05c928c964dc5bd4d",
+      "sha256": "9fb404dbab0a2d41db3f0009676173c063c724c0bc84aa5d256ff16a973a5da8",
       "kind": "managed",
       "source": "core/scripts/run-plans.mjs"
     },

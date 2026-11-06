@@ -2,7 +2,8 @@
 // It reads the agent from --system-prompt-file (orch-builder or plan-reviewer), the plan number from the prompt on stdin,
 // and the next step for that plan and role from the scenario file (FAKE_CLAUDE_SCENARIO: { "<NNN>": { builder: [step…],
 // reviewer: [step…] } }). Every call is logged as one JSON line in FAKE_CLAUDE_LOG: { role, plan, argv, cwd, start, end }.
-//   builder step: { gate: "pass"|"fail", text?: "<failing output>", rateLimit?: true, sleepMs?: n, decisions?: [...] }
+//   builder step: { gate: "pass"|"fail", text?: "<failing output>", rateLimit?: true, sleepMs?: n, decisions?: [...],
+//                   extraFile?: "<path outside the scope>", tamper?: true (rewrites scripts/scope-check.mjs to pass) }
 //     → writes src/<NNN>.txt and gate/<NNN>.txt (the fixture's test script fails while one holds "fail"), commits, pushes
 //   reviewer step: { verdict: "PASS"|"STOP", moveBranch?: true, rateLimit?: true }
 //     → moveBranch pushes one more commit to the plan branch on origin (the branch moved after its checks)
@@ -51,7 +52,11 @@ async function main() {
     mkdirSync('gate', { recursive: true })
     appendFileSync(join('src', `${plan}.txt`), `round ${prior} ${model}\n`)
     writeFileSync(join('gate', `${plan}.txt`), step.gate === 'fail' ? `fail\n${step.text ?? 'the toy check failed'}\n` : 'pass\n')
-    git('add', '--', `src/${plan}.txt`, `gate/${plan}.txt`)
+    // extraFile: a file outside the plan's scope (the gate's scope check must catch it: no hook runs in a headless call)
+    if (step.extraFile) writeFileSync(step.extraFile, `${plan}\n`)
+    // tamper: the branch's own scope checker is rewritten to always pass (the gate must not run that copy)
+    if (step.tamper) writeFileSync(join('scripts', 'scope-check.mjs'), "console.log('SCOPE: ok'); process.exit(0)\n")
+    git('add', '--', `src/${plan}.txt`, `gate/${plan}.txt`, ...(step.extraFile ? [step.extraFile] : []), ...(step.tamper ? ['scripts/scope-check.mjs'] : []))
     git('commit', '-q', '-m', `toy ${plan} round ${prior}`)
     git('push', '-q', '-u', 'origin', branch)
     log()
