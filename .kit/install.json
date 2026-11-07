@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "8929657f2d2a4d8991bfb74bb2d209a1aa11abe8",
+  "commit": "dbd9a3ba68af32251465f92e163f1e62003bd1e2",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -330,7 +330,7 @@
       "source": "core/README_WORKFLOW.md"
     },
     "docs/agent/agent-evals.md": {
-      "sha256": "5b784ada9d2a27261070827532495316bd45377be6b89dbc4ada22c09b4014ae",
+      "sha256": "60eb46cb7588a6d8c8680fb80213a0710e910ee599568e82ba7c8de44b203787",
       "kind": "managed",
       "source": "core/docs/agent/agent-evals.md"
     },
@@ -415,12 +415,12 @@
       "source": "core/docs/agent/kit-lessons/verify.md"
     },
     "docs/agent/model-routing.md": {
-      "sha256": "a188a6d9e5a8c2f78b27ca62977e6549445fcdb0dcbbf7d7f1554c24dc2a28c2",
+      "sha256": "82f74fe80e350b6a68cf2da14dd415308bb8e6bfa28df20e8a18d6fc0dc63630",
       "kind": "managed",
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "f0036eddf676d93e168338b665c8f51935a84ecd80a793791a49ad2200392bf0",
+      "sha256": "e6e4708190a3ec2a782d31452a1bc72d85eca76a131352fef89c8f7a67174d44",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -920,7 +920,7 @@
       "source": "core/scripts/prune-old-sessions.sh"
     },
     "scripts/run-plans.mjs": {
-      "sha256": "5216501c938ddd8675fc9d7e69244b9fb34c7a33cbc8664fa5876be19efb0a89",
+      "sha256": "3d182242f174e4b622361658c683e5dd352f63a79a5c4d64ad2a61babb2733bf",
       "kind": "managed",
       "source": "core/scripts/run-plans.mjs"
     },

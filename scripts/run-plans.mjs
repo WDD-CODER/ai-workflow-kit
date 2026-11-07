@@ -55,7 +55,7 @@ const CONCURRENCY = 1
 const ON_PARK = "dependents"
 const MAX_FIX_ROUNDS = Number(2) || 2
 const REVIEWER_MODE = "advisory" === 'gate' ? 'gate' : 'advisory'
-const REVIEWER_MODEL = "opus"
+const REVIEWER_MODEL = "sonnet"
 const RATE_LIMIT_WAIT_MIN = Number(30) >= 0 ? Number(30) : 30
 const STALE_MIN = Number(10) || 10
 // What every plan may touch and what none may (the same lists scope-check.mjs renders), for the trusted scope check.

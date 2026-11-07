@@ -44,7 +44,7 @@ the model's own `pass` flag (`docs/agent/agent-roles.md`).
 | `.claude/skills/techdebt/SKILL.md` (forked) | analysis | `/techdebt`, before a PR |
 | `/docs-refresh` agent call | analysis | `/docs-refresh` |
 | `.claude/agents/orch-builder.md` | build (escalation: judgment) | `scripts/run-plans.mjs` (a headless `claude -p` call per build) and the workflow |
-| `.claude/agents/plan-reviewer.md` | `orchestrator.reviewerModel` (default `opus`: the kit's agent eval measured it best; never Haiku); advisory until its precision reaches 0.50 (`orchestrator.reviewerMode`) | `scripts/run-plans.mjs` (one headless call per review), the kit's agent eval |
+| `.claude/agents/plan-reviewer.md` | `orchestrator.reviewerModel` (default `sonnet`: Human 2026-11-07, until the fixed reviewer eval says otherwise; never Haiku); advisory until its precision reaches 0.50 (`orchestrator.reviewerMode`) | `scripts/run-plans.mjs` (one headless call per review), the kit's agent eval |
 | `.claude/agents/orch-readiness.md` | judgment | the workflow (`run-plans.mjs` lints readiness by script) |
 | `.claude/agents/orch-gate.md`, `orch-report.md` | mechanical | the workflow |
 | `.claude/agents/orch-check-plan.md`, `orch-check-bugs.md`, `orch-check-rules.md`, `orch-verify.md` | review | the workflow, `/review-it`, `/ship` Phase 2 (checker review on a plan branch; the re-check is `orch-verify` only) |

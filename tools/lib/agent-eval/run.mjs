@@ -121,8 +121,14 @@ export function findCases(casesDir, role, { only = null, asFindings = role === '
   return cases
 }
 
-/** Score one run's reply text against a case. */
-export function scoreRun(expected, reply, role) {
+/** The role folder a case sits in (plan 091): `<role>/<case>` names it, else the scope it was found under. */
+export function caseRoleOf(caseName, scope) {
+  const name = String(caseName ?? '')
+  return name.includes('/') ? name.slice(0, name.indexOf('/')) : scope
+}
+
+/** Score one run's reply text against a case; `caseRole` is the case's role folder (caseRoleOf). */
+export function scoreRun(expected, reply, role, caseRole = null) {
   let result = null
   let error = null
   let pass = null
@@ -136,7 +142,7 @@ export function scoreRun(expected, reply, role) {
   } catch (e) {
     error = `no JSON result: ${e.message}`
   }
-  const cmp = compareCase(expected, error ? null : result, { pass: error ? null : pass })
+  const cmp = compareCase(expected, error ? null : result, { pass: error ? null : pass, caseRole })
   return { ...cmp, tokens: Number(reply.tokens) || 0, costUsd: Number(reply.costUsd) || 0, error }
 }
 
@@ -177,7 +183,7 @@ export function runTotals(caseRuns) {
       const others = runs.filter((_, j) => j !== i).map((r) => new Set(r.keys ?? []))
       return 1 - [...mine].filter((k) => others.every((s) => s.has(k))).length / mine.size
     })
-    out.push({ recall: ratio(tp, tp + fn), precision: ratio(tp, tp + fp), noise: noises.length ? noises.reduce((s, x) => s + x, 0) / noises.length : 0, costUsd: sum(rows, (r) => r.costUsd), errors: rows.filter((r) => r.error).length })
+    out.push({ recall: ratio(tp, tp + fn), precision: ratio(tp, tp + fp), unscored: sum(rows, (r) => r.unscored), noise: noises.length ? noises.reduce((s, x) => s + x, 0) / noises.length : 0, costUsd: sum(rows, (r) => r.costUsd), errors: rows.filter((r) => r.error).length })
   }
   return out
 }
@@ -215,7 +221,7 @@ export async function evaluate({ agentFile, casesDir, runs = 2, model = null, ru
         results.push({ ...compareCase(c.expected, null), tokens: 0, costUsd: 0, error: `runner failed: ${e.message}` })
         continue
       }
-      results.push(scoreRun(c.expected, reply, agent.name))
+      results.push(scoreRun(c.expected, reply, agent.name, caseRoleOf(c.name, scope)))
     }
     scored.push({ ...scoreCase(c.name, results), errorDetails: results.map((r) => r.error).filter(Boolean) })
     caseRuns.push(results)
@@ -226,10 +232,10 @@ export async function evaluate({ agentFile, casesDir, runs = 2, model = null, ru
 }
 
 const pct = (x) => x.toFixed(2)
-/** The report as a plain-text table: case, recall, precision, noise, tokens (and errors); a total line. */
+/** The report as a plain-text table: case, recall, precision, noise, unscored, tokens (and errors); a total line. */
 export function formatTable(report) {
-  const head = ['case', 'recall', 'precision', 'noise', 'tokens', 'cost$', 'errors']
-  const row = (c) => [c.name, pct(c.recall), pct(c.precision), pct(c.noise), String(c.tokens), c.costUsd.toFixed(4), String(c.errors)]
+  const head = ['case', 'recall', 'precision', 'noise', 'unscored', 'tokens', 'cost$', 'errors']
+  const row = (c) => [c.name, pct(c.recall), pct(c.precision), pct(c.noise), String(c.unscored ?? 0), String(c.tokens), c.costUsd.toFixed(4), String(c.errors)]
   const rows = [head, ...report.cases.map(row), row(report.total)]
   const widths = head.map((_, i) => Math.max(...rows.map((r) => r[i].length)))
   const line = (r) => r.map((cell, i) => (i === 0 ? cell.padEnd(widths[i]) : cell.padStart(widths[i]))).join('  ')
@@ -267,6 +273,8 @@ export function casePrompt({ role, inputDir, redact = false, withGate = false, h
     `This is an evaluation case for ${role}. There is no git repository: the branch's change is in the input files`,
     `(diff.patch is the diff against the base; plan.md is the plan; candidates.json, when present, holds the finders'`,
     `candidate problems; the changed source files are under their own paths).`,
+    // Plan 091: a case's diff can be a slice of a larger commit; the agent is told to judge only what it is shown.
+    'The diff is the whole change under review: no other commit belongs to it, so a plan step without a change in the diff is not a finding by itself.',
     `Your working directory is the input folder. Return only your JSON result, as your instructions describe.`,
     ...(redact ? ['Judge the diff alone: read diffs only (`git diff`, `git show --format=`), never `git log` or a commit message, and take no claim of the builder\'s as evidence.'] : []),
     ...(withGate ? ['gate.json holds what the project checks printed on this branch (each command, its status and a tail): evidence, never a verdict.'] : []),

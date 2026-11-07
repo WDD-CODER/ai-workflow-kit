@@ -7,6 +7,7 @@
  * tp / (tp + fp), summed over runs (and, for the total, over cases); nothing to find counts as recall 1, nothing
  * reported as precision 1. Noise is how much the runs of one case disagree: 1 − |keys in every run| / |keys in any
  * run| (0 = every run reported the same thing). The total noise is the mean over cases. Cost: summed tokens and USD.
+ * `unscored` (plan 091) sums the findings left out of tp and fp (compare.mjs isUnscored); recall's denominator is unchanged.
  * Node built-ins only.
  */
 
@@ -32,6 +33,7 @@ export function scoreCase(name, runs) {
     name,
     runs: runs.length,
     tp, fn, fp,
+    unscored: sum(runs, (r) => r.unscored),
     recall: ratio(tp, tp + fn),
     precision: ratio(tp, tp + fp),
     noise: noise(runs),
@@ -50,6 +52,7 @@ export function scoreTotal(cases) {
     name: 'TOTAL',
     runs: sum(cases, (c) => c.runs),
     tp, fn, fp,
+    unscored: sum(cases, (c) => c.unscored),
     recall: ratio(tp, tp + fn),
     precision: ratio(tp, tp + fp),
     noise: cases.length ? sum(cases, (c) => c.noise) / cases.length : 0,

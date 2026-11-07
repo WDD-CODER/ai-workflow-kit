@@ -47,12 +47,28 @@ test('a reworded finding still matches: file, rule and severity match, line with
   const reworded = { file: './src/paginate.mjs', line: 6, rule: 'Logic: loop bound is inclusive', severity: 'major', reasoning: 'Entirely different words.' }
   assert.equal(findingMatches(expected, reworded), true)
   assert.equal(findingMatches(expected, { ...reworded, line: 8 }), false, 'line 4 lines away does not match')
-  assert.equal(findingMatches(expected, { ...reworded, severity: 'minor' }), false, 'severity must match')
+  assert.equal(findingMatches(expected, { ...reworded, severity: 'blocker' }), true, 'plan 091: one severity level away matches')
   assert.equal(findingMatches(expected, { ...reworded, file: 'src/other.mjs' }), false, 'file must match')
   assert.equal(findingMatches(expected, { ...reworded, rule: 'runtime: null input' }), false, 'rule category must match')
   assert.equal(ruleMatches('logic: exact detail', 'logic: other detail'), false, 'a full expected rule needs the same rule')
   assert.equal(ruleMatches(['evidence', 'A1'], 'A1: test file missing'), true, 'any listed rule is accepted')
   assert.equal(findingMatches({ file: 'plan.md', rule: 'evidence', severity: 'major' }, { file: 'plan.md', line: 99, rule: 'evidence: no command', severity: 'major' }), true, 'no expected line = any line')
+})
+
+test('plan 091 severity: a finding one level from the label is a tp (blocker~major, major~minor); two levels apart is not', () => {
+  const exp = (severity) => ({ file: 'src/a.mjs', line: 10, rule: 'logic', severity })
+  const act = (severity) => ({ file: 'src/a.mjs', line: 11, rule: 'logic: x', severity })
+  for (const [e, a] of [['major', 'blocker'], ['blocker', 'major'], ['major', 'minor'], ['minor', 'major']]) {
+    assert.equal(findingMatches(exp(e), act(a)), true, `${e} ~ ${a}`)
+    const c = compareCase({ findings: [exp(e)] }, { problems: [act(a)] })
+    assert.deepEqual([c.tp, c.fn, c.fp], [1, 0, 0], `${e} vs ${a} is one tp, no fp and no fn`)
+  }
+  for (const [e, a] of [['blocker', 'minor'], ['minor', 'blocker']]) {
+    assert.equal(findingMatches(exp(e), act(a)), false, `${e} vs ${a}: two levels apart`)
+    const c = compareCase({ findings: [exp(e)] }, { problems: [act(a)] })
+    assert.deepEqual([c.tp, c.fn, c.fp], [0, 1, 1])
+  }
+  assert.equal(findingMatches(exp('major'), act('weird')), false, 'an unknown severity matches only itself')
 })
 
 test('matching is one-to-one: two expected findings are not both satisfied by one actual finding', () => {
@@ -136,7 +152,7 @@ test('CLI: the table has a row per case and a total line', () => {
   const r = runCli(['--agent', agent('orch-check-bugs'), '--cases', cases, '--runner', stubFile])
   assert.equal(r.status, 0, r.out)
   for (const c of ['off-by-one', 'regex-backslash', 'clean-change', 'TOTAL']) assert.match(r.out, new RegExp(`^${c}\\s`, 'm'))
-  assert.match(r.out, /case\s+recall\s+precision\s+noise\s+tokens/)
+  assert.match(r.out, /case\s+recall\s+precision\s+noise\s+unscored\s+tokens/)
 })
 
 test('a write-capable agent is refused unless --allow-write is passed', () => {
@@ -384,4 +400,69 @@ test('plan 087 --combine: several role reports summed into one report under one 
   assert.equal(r.status, 0, r.out)
   assert.equal(JSON.parse(readFileSync(out, 'utf8')).total.tp, 2)
   assert.equal(runCli(['--combine', join(dir, 'a.json')]).status, 2, '--combine needs --as and --out')
+})
+
+test('plan 091 casePrompt: one sentence says the diff is the whole change under review, for every agent', () => {
+  const input = join(cases, 'orch-check-bugs', 'off-by-one', 'input')
+  const sentence = /The diff is the whole change under review: no other commit belongs to it, so a plan step without a change in the diff is not a finding by itself\./
+  for (const role of ['orch-check-bugs', 'orch-check-plan', 'orch-verify', 'plan-reviewer']) {
+    const prompt = casePrompt({ role, inputDir: input })
+    assert.match(prompt, sentence, role)
+    assert.equal(prompt.match(/whole change under review/g).length, 1, 'said once')
+  }
+  assert.match(casePrompt({ role: 'plan-reviewer', inputDir: input, redact: true, withGate: true }), sentence)
+})
+
+// ---- plan 091: plan-step findings on plan.md are not scored on bug and verify cases (their diff is only a slice) ----
+
+test('plan 091 unscored: on a bug or verify case, a plan.md finding of category done-when, scope or a sub-task id is neither tp nor fp', () => {
+  const code = { file: 'src/a.mjs', line: 10, rule: 'logic', severity: 'major' }
+  const found = { ...code, rule: 'logic: x' }
+  const steps = [
+    { file: 'plan.md', line: 40, rule: 'done-when: the test item has no change in the diff', severity: 'major' },
+    { file: './plan.md', line: 12, rule: 'Scope: out of scope', severity: 'minor' },
+    { file: 'plan.md', line: 20, rule: 'A2: ticked but not in the diff', severity: 'major' },
+    { file: 'plan.md', line: 21, rule: 'm6', severity: 'blocker' },
+  ]
+  for (const caseRole of ['orch-check-bugs', 'orch-verify']) {
+    const c = compareCase({ findings: [code] }, { problems: [found, ...steps] }, { caseRole })
+    assert.deepEqual([c.tp, c.fn, c.fp, c.unscored], [1, 0, 0, 4], caseRole)
+    assert.ok(c.keys.every((k) => !k.includes('plan.md')), 'unscored findings are left out of the noise keys')
+  }
+  for (const caseRole of ['orch-check-plan', 'orch-check-rules', null]) {
+    const c = compareCase({ findings: [code] }, { problems: [found, ...steps] }, { caseRole })
+    assert.deepEqual([c.tp, c.fn, c.fp, c.unscored], [1, 0, 4, 0], `${caseRole}: scored as before`)
+  }
+  const other = compareCase({ findings: [code] }, { problems: [found, { file: 'plan.md', line: 3, rule: 'evidence: no command', severity: 'major' }, { file: 'src/b.mjs', line: 3, rule: 'done-when: x', severity: 'major' }] }, { caseRole: 'orch-check-bugs' })
+  assert.deepEqual([other.fp, other.unscored], [2, 0], 'another plan.md category, or done-when on a code file, is still scored')
+})
+
+test('plan 091 unscored: evaluate passes the case role, the report and the A/B table carry the unscored figure', async () => {
+  const dir = join(tmp, 'cases-091')
+  for (const role of ['orch-check-bugs', 'orch-check-plan']) {
+    mkdirSync(join(dir, role, 'c1', 'input'), { recursive: true })
+    writeFileSync(join(dir, role, 'c1', 'input', 'diff.patch'), '')
+    writeFileSync(join(dir, role, 'c1', 'expected.json'), JSON.stringify({ findings: [{ file: 'src/a.mjs', line: 5, rule: 'logic', severity: 'major' }] }))
+  }
+  const stub = async ({ role }) => ({ text: JSON.stringify({ role, model: 'stub', effort: 'high', problems: [
+    { id: 'r1', file: 'src/a.mjs', line: 5, rule: 'logic: x', reasoning: 'y', severity: 'blocker' },
+    { id: 'r2', file: 'plan.md', line: 30, rule: 'D1: ticked, no change in the diff', reasoning: 'y', severity: 'major' },
+  ], pass: false, verdict: 'STOP' }), tokens: 1, costUsd: 0 })
+  stub.isolated = true
+  const r = await evaluate({ agentFile: reviewerAgent, casesDir: dir, runs: 2, runner: stub })
+  const byName = Object.fromEntries(r.cases.map((c) => [c.name, c]))
+  assert.deepEqual([byName['orch-check-bugs/c1'].tp, byName['orch-check-bugs/c1'].fp, byName['orch-check-bugs/c1'].unscored], [2, 0, 2])
+  assert.deepEqual([byName['orch-check-plan/c1'].tp, byName['orch-check-plan/c1'].fp, byName['orch-check-plan/c1'].unscored], [2, 2, 0])
+  assert.deepEqual([r.total.tp, r.total.fp, r.total.unscored], [4, 2, 2])
+  assert.ok(r.runTotals.every((t) => t.unscored === 1), 'each run unscored one finding')
+  assert.match(formatTable(r), /unscored/)
+  // A checker on its own folder (plain case names): the scope is the case role.
+  const ownStub = async (a) => stub({ ...a, role: 'orch-check-bugs' })
+  ownStub.isolated = true
+  const own = await evaluate({ agentFile: agent('orch-check-bugs'), casesDir: dir, runs: 1, runner: ownStub })
+  assert.equal(own.total.unscored, 1)
+  const { compare } = await import('../agent-eval-ab.mjs')
+  const { text } = compare({ before: { 'plan-reviewer': r }, arms: [{ name: 'after', reports: { 'plan-reviewer': r } }] })
+  assert.match(text, /\| Run \| Recall \| Precision \| Noise \| Unscored \|/)
+  assert.match(text, /\| before \| 1\.00 \| 0\.67 \| 0\.00 \| 2 \|/)
 })

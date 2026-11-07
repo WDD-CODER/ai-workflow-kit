@@ -38,17 +38,19 @@ compares two folders of `--json` reports and prints a verdict per figure — `im
 
 The default runner spends tokens: one non-interactive Claude Code call per case and run, with the agent body (plus
 `docs/agent/agent-roles.md` when it sits next to it) as the system prompt and the case input inline as the prompt.
-The working directory is the case `input/` folder; there is no git repository there.
+The working directory is the case `input/` folder; there is no git repository there. The prompt says the diff is the
+whole change under review (no other commit belongs to it, so a plan step without a change in the diff is not a finding
+by itself): a case's `diff.patch` may be only the slice of a real commit around the labelled problem.
 
 ## Output
 
 ```text
 AGENT_EVAL: orch-check-bugs on sonnet, 2 run(s) per case
-case             recall  precision  noise  tokens   cost$  errors
-off-by-one         1.00       1.00   0.00   18200  0.0710       0
-regex-backslash    0.50       1.00   1.00   17950  0.0690       0
------------------------------------------------------------------
-TOTAL              0.75       1.00   0.50   36150  0.1400       0
+case             recall  precision  noise  unscored  tokens   cost$  errors
+off-by-one         1.00       1.00   0.00         0   18200  0.0710       0
+regex-backslash    0.50       1.00   1.00         0   17950  0.0690       0
+---------------------------------------------------------------------------
+TOTAL              0.75       1.00   0.50         0   36150  0.1400       0
 AGENT_EVAL: ok
 ```
 
@@ -56,6 +58,9 @@ AGENT_EVAL: ok
 - **Precision** = found expected items / all reported items. Nothing reported counts as 1.
 - **Noise** = how much the runs of one case disagree: 1 − (items every run reported) / (items any run reported).
   0 means every run said the same thing. The total is the mean over cases.
+- **Unscored** = reported items left out of precision and noise: on a case under `orch-check-bugs/` or `orch-verify/`
+  (whose diff is a slice of the commit), an unmatched finding on `plan.md` whose rule category is `done-when`,
+  `scope` or a sub-task id (`a2`, `d1`, `m6`). Recall's denominator is unchanged.
 - **Tokens / cost** come from the run result (`usage`, `total_cost_usd`).
 - **Errors** are runs whose reply had no valid JSON result (the shared validator, `tools/lib/agent-result.mjs`,
   rejects it). An error run finds nothing, so it lowers recall.
@@ -84,7 +89,8 @@ Exit codes: 0 = thresholds met, 1 = below a threshold, 2 = usage error or a refu
 }
 ```
 
-A finding matches an expected one when `file`, `rule` and `severity` match and the line is within ±3; the reasoning
+A finding matches an expected one when `file` and `rule` match, the severity is equal or one level away (`blocker` ~
+`major`, `major` ~ `minor`; `blocker` and `minor` do not match) and the line is within ±3; the reasoning
 text is never compared, so a reworded finding still matches. `rule` matches when it is equal (case and spacing
 ignored), or when the expected rule is a bare category without `:` that equals the part before the agent's `:`
 (`"logic"` matches `"logic: loop bound is inclusive"`). A list of accepted rules is allowed. Leave `line` out when

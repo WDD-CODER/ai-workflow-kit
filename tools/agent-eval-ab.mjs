@@ -79,7 +79,8 @@ export function adoptRedaction(before, after) {
   return { adopt, gain, d, precisionBefore: before.total.precision, precisionAfter: after.total.precision, line: `${adopt ? 'ADOPT' : 'REJECT'} ${after.agent} — recall ${f2(before.total.recall)} → ${f2(after.total.recall)} (needs +${f2(d)}), precision ${f2(before.total.precision)} → ${f2(after.total.precision)} (must not drop)` }
 }
 
-const rowText = (name, r) => `| ${name} | ${f2(r.total.recall)} | ${f2(r.total.precision)} | ${f2(r.total.noise)} | ${r.total.errors ?? 0} | ${f2(r.total.spread?.recall ?? 0)} / ${f2(r.total.spread?.precision ?? 0)} / ${f2(r.total.spread?.noise ?? 0)} | ${f2(r.total.costUsd ?? 0)} |`
+// Unscored (plan 091): findings the scorer left out of tp and fp; a report from before plan 091 has none and shows n/a.
+const rowText = (name, r) => `| ${name} | ${f2(r.total.recall)} | ${f2(r.total.precision)} | ${f2(r.total.noise)} | ${r.total.unscored ?? 'n/a'} | ${r.total.errors ?? 0} | ${f2(r.total.spread?.recall ?? 0)} / ${f2(r.total.spread?.precision ?? 0)} / ${f2(r.total.spread?.noise ?? 0)} | ${f2(r.total.costUsd ?? 0)} |`
 
 /** The whole comparison as markdown. `arms` is [{ name, reports }] after the before run; the last one is the "after" run. */
 export function compare({ before, arms, adoptRule = null }) {
@@ -90,7 +91,7 @@ export function compare({ before, arms, adoptRule = null }) {
   const roles = Object.keys(before).filter((role) => last.reports[role])
   const verdicts = []
   for (const role of roles) {
-    lines.push(`### ${role}`, '', '| Run | Recall | Precision | Noise | Errors | Spread (recall / precision / noise) | Cost (USD) |', '| --- | --- | --- | --- | --- | --- | --- |', rowText('before', before[role]))
+    lines.push(`### ${role}`, '', '| Run | Recall | Precision | Noise | Unscored | Errors | Spread (recall / precision / noise) | Cost (USD) |', '| --- | --- | --- | --- | --- | --- | --- | --- |', rowText('before', before[role]))
     const here = arms.filter((a) => a.reports[role])
     for (const a of here) lines.push(rowText(a.name, a.reports[role]))
     lines.push('')
