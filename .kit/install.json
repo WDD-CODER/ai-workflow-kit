@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "34f37a77df4d6d3ea27ac2c4c91fb2b1360270fd",
+  "commit": "c142e680dcb43b9d9c6c52c157cd10de22c9541f",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -415,12 +415,12 @@
       "source": "core/docs/agent/kit-lessons/verify.md"
     },
     "docs/agent/model-routing.md": {
-      "sha256": "b75951d333f47e690bdbfe1781678b18547fb7b77ec383d8540c2f7a34aa5d5a",
+      "sha256": "82f74fe80e350b6a68cf2da14dd415308bb8e6bfa28df20e8a18d6fc0dc63630",
       "kind": "managed",
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "db9d272536ac4cb28c1d1883abb38bae344fd22b25ec69876deceb3445194c37",
+      "sha256": "e6e4708190a3ec2a782d31452a1bc72d85eca76a131352fef89c8f7a67174d44",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
