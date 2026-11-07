@@ -1,0 +1,15 @@
+{
+  "$comment": "The kit's size budget, enforced by tools/test/size-budget.test.mjs (npm test and the CI kit-tests job). Raising a limit needs a plan that names it; lowering one toward its target needs no plan.",
+  "commandFiles": { "max": 24, "target": 10, "reason": "core/.claude/commands/*.md after plan 090 deleted /auto-solve (Human 2026-11-07: the real count); 10 needs a plan that names which commands go" },
+  "commandLines": { "max": 120, "reason": "a command is read whole every time it runs; longer rules move to a doc the command names" },
+  "commandLinesExcept": {
+    "ship.md": { "max": 80, "reason": "plan 089: /ship is the gate in code, review and the merge gate in 80 lines" },
+    "take-plan.md": { "max": 100, "reason": "take-plan is in every Worker's instruction load" },
+    "plan.md": { "max": 180, "reason": "the Planner protocol and its Architect + PM review" }
+  },
+  "agentFiles": { "max": 10, "target": 5, "reason": "core/.claude/agents/*.md while the five checker agents stay (review.ship = checkers); back to 5 when review.ship switches to reviewer" },
+  "agentLines": { "max": 120, "reason": "an agent file is a whole system prompt; the shared contract lives in docs/agent/agent-roles.md" },
+  "agentsMdLines": { "max": 70, "reason": "AGENTS.md is read by every session of both agents" },
+  "instructionLoad": { "max": 800, "target": 600, "reason": "node tools/instruction-load.mjs (Human 2026-11-07); back to 600 when job-validation.md is shortened" },
+  "orchestratorKeys": { "max": 15, "target": 12, "reason": "kit.config.json orchestrator keys run-plans.mjs, orch-state.mjs and orch-preflight.mjs read (Human 2026-11-07: the real count); 12 needs a plan that names which keys go" }
+}
