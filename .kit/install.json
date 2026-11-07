@@ -3,7 +3,7 @@
     "version": "2.1.0"
   },
   "source": "local:.",
-  "commit": "02a4589d469fac10d565a1111c4d744b1bd6af83",
+  "commit": "4655f8872f17383cf870c2e118791414d96cf5c3",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -665,7 +665,7 @@
       "source": "core/scripts/lib/brain-doc.mjs"
     },
     "scripts/lib/claude-run.mjs": {
-      "sha256": "5e4bca30e4dc80beb1f9c770901a8326a5a398a37daa5a74a0c80b3579e2d456",
+      "sha256": "1029853c8a93a772479914855990d7ce900647126b5fcc15bc9eba508610709d",
       "kind": "managed",
       "source": "core/scripts/lib/claude-run.mjs"
     },
@@ -870,7 +870,7 @@
       "source": "core/scripts/prune-old-sessions.sh"
     },
     "scripts/run-plans.mjs": {
-      "sha256": "3d182242f174e4b622361658c683e5dd352f63a79a5c4d64ad2a61babb2733bf",
+      "sha256": "406cd78b94a3126c252dc78de6fb1fd9182e67d3314a1a5cf0adf3caaaf40a42",
       "kind": "managed",
       "source": "core/scripts/run-plans.mjs"
     },

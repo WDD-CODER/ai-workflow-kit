@@ -37,7 +37,7 @@ import { gateCommands, runGate, scopeCheck, scopeMarker } from './lib/plan-gate.
 import { review, blocking, problemLine } from './lib/plan-review.mjs'
 import { mergePlan, orchState } from './lib/plan-merge.mjs'
 import { runOrder, unitsOf, afterPark } from './lib/run-order.mjs'
-import { planBranch, planBranchProblem, runNameProblem } from './lib/orch-run.mjs'
+import { planBranch, planBranchProblem, runNameProblem, startTier } from './lib/orch-run.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
@@ -254,7 +254,18 @@ function lintPlan(nnn, path, runBranch) {
   if (mapped.length) lines.push(`npx: ${mapped.join('; ')}`)
   for (const d of dropped) lines.push(`dropped: ${d}`)
   const checks = gateCommands({ prepare: PREPARE, pm: PM, ...COMMANDS, kitRoot: ROOT, manifest: existsSync(join(ROOT, 'scripts', 'kit-manifest-check.mjs')) && existsSync(join(ROOT, 'docs', 'workflow-kit', 'manifest.json')), scope: { base: `origin/${runBranch}`, plan: path }, extra: extra.filter((c) => !missing.some((f) => checkFilesOf(c).includes(f))) })
-  return { nnn, path, title: (/^#\s+(.*)$/m.exec(text)?.[1] ?? '').trim(), branch, lines, problems, notes, dropped, checks, ready: problems.length === 0 }
+  return { nnn, path, title: (/^#\s+(.*)$/m.exec(text)?.[1] ?? '').trim(), branch, lines, problems, notes, dropped, checks, start: startTier(text), ready: problems.length === 0 }
+}
+
+/**
+ * The builder call — the one code path the dry run prints and the real run makes (INV-1): the tier's model, why the
+ * builder runs on that tier, and the options claudeArgs()/runAgent() build the argv from. Only the system-prompt file
+ * (a temp file per call) differs between the two.
+ */
+export function builderCall({ agent, tier, reason, settings = null, models = MODELS }) {
+  const t = tier === 'judgment' ? 'judgment' : 'build'
+  const model = models[t]
+  return { tier: t, model, reason, opts: { agent, model, allow: true, settings } }
 }
 
 // ---- the run ----------------------------------------------------------------------------------------------------
@@ -297,10 +308,13 @@ async function main() {
     if (o.dryRun) {
       say('  gate commands:')
       for (const c of l.checks) say(`    ${c}`)
-      const show = (agent, model, cwd, settings = null) => `claude ${claudeArgs({ agent, model, systemPromptFile: `<temp>/system.md`, allow: true, settings }).join(' ')}  (cwd ${cwd})`
-      const guards = builderSettings(join(ROOT, '.claude', 'orchestrator-runs', RUN), { write: false })
-      say(`  builder: ${show(builderAgent, MODELS.build, `<repo>-orch-${RUN}-${nnn}`, guards ? `.claude/orchestrator-runs/${RUN}/builder-settings.json` : null)}`)
-      say(`  reviewer: ${show(reviewerAgent, REVIEW_MODEL, `<repo>-orch-review-${RUN}-${nnn}`)}`)
+      const show = (argv, cwd) => `claude ${argv.join(' ')}  (cwd ${cwd})`
+      const call = builderCall({ agent: builderAgent, ...l.start, settings: builderSettings(join(ROOT, '.claude', 'orchestrator-runs', RUN), { write: false }) })
+      const argv = claudeArgs({ ...call.opts, systemPromptFile: '<temp>/system.md' })
+      l.builder = { tier: call.tier, model: call.model, reason: call.reason, argv }
+      say(`  tier: ${call.tier} (${call.reason})`)
+      say(`  builder: ${show(argv, `<repo>-orch-${RUN}-${nnn}`)}`)
+      say(`  reviewer: ${show(claudeArgs({ agent: reviewerAgent, model: REVIEW_MODEL, systemPromptFile: '<temp>/system.md', allow: true }), `<repo>-orch-review-${RUN}-${nnn}`)}`)
       say(`  merge: git merge --no-ff origin/${l.branch} into ${RUN_BRANCH}, merge-verify, ${mergeChecksOf(l.checks).join(', ') || 'no check'}, git push origin ${RUN_BRANCH}`)
     }
   }
@@ -311,7 +325,7 @@ async function main() {
   const refusal = !all.length ? null : notReady.length ? `plan(s) not ready: ${notReady.join(', ')}` : preJson.ok !== true ? `preflight: ${(preJson.problems ?? []).join('; ')}` : null
   if (o.dryRun) {
     say(`WOULD START: ${refusal ? `no — ${refusal}` : all.length ? 'yes' : 'no — nothing to build'}`)
-    say(`RUN_PLANS_JSON ${JSON.stringify({ ok: true, dryRun: true, run: RUN, waves: order.waves, skipped: order.skipped, plans: Object.fromEntries(all.map((n) => [n, { ready: lint[n].ready, problems: lint[n].problems, checks: lint[n].checks }])), preflight: { ok: preJson.ok === true, problems: preJson.problems ?? [] }, wouldStart: !refusal && all.length > 0, modelCalls: 0 })}`)
+    say(`RUN_PLANS_JSON ${JSON.stringify({ ok: true, dryRun: true, run: RUN, waves: order.waves, skipped: order.skipped, plans: Object.fromEntries(all.map((n) => [n, { ready: lint[n].ready, problems: lint[n].problems, checks: lint[n].checks, builder: lint[n].builder }])), preflight: { ok: preJson.ok === true, problems: preJson.problems ?? [] }, wouldStart: !refusal && all.length > 0, modelCalls: 0 })}`)
     return 0
   }
   if (refusal) {
@@ -387,7 +401,7 @@ async function main() {
     const info = state('plan-info', { run: RUN, plan: nnn, 'with-worktree': 'yes' })
     if (!info.ok) return { nnn, state: 'parked', reason: `plan-info: ${info.error}` }
     for (const d of l.dropped) note(`check command dropped, not run: ${d}`, nnn)
-    const ctx = { nnn, info, wt: info.wt, tier: info.startTier === 'judgment' ? 'judgment' : 'build', round: 0, escalated: false, findings: [], lastWhy: null, mode: 'first' }
+    const ctx = { nnn, info, wt: info.wt, tier: l.start.tier, tierReason: l.start.reason, round: 0, escalated: false, findings: [], lastWhy: null, mode: 'first' }
     const park = (reason, { teardown = true } = {}) => {
       setPlan(nnn, { state: 'parked', round: ctx.round, tier: ctx.tier, reason: String(reason).slice(0, 380) })
       if (teardown && ctx.wt?.ok) {
@@ -407,16 +421,16 @@ async function main() {
       if (!ctx.wt?.ok) return park(`worktree: ${ctx.wt?.error ?? 'no folder'}`, { teardown: false })
     }
     const wt = ctx.wt.path
-    if (ctx.tier === 'judgment') note(`starts on the judgment tier: Architecture Impact names ${(info.invariants ?? []).join(', ')}`, nnn)
+    if (ctx.tier === 'judgment') note(`starts on the judgment tier: ${ctx.tierReason}`, nnn)
     for (;;) {
       if (stopReason) return park(`stopped: ${stopReason}`, { teardown: false })
       // ---- builder ----
       const stage = ctx.mode === 'first' ? 'builder' : ctx.mode === 'handoff' ? 'judgment builder' : 'builder fix'
       setPlan(nnn, { state: ctx.round ? 'fixing' : 'building', round: ctx.round, tier: ctx.tier })
-      const model = ctx.tier === 'judgment' ? MODELS.judgment : MODELS.build
+      const call = builderCall({ agent: builderAgent, tier: ctx.tier, reason: ctx.tierReason, settings: guardSettings })
       const prompt = builderPrompt({ RUN, RUN_BRANCH, ctx, l, LESSONS })
-      say(`RUN_PLANS: plan ${nnn} ${stage} (${model}, round ${ctx.round})`)
-      const b = await modelCall(nnn, stage, () => runAgent({ agent: builderAgent, model, cwd: wt, prompt, timeoutMs: GATE_TIMEOUT_MIN * 60_000, bin: o.claude, allow: true, settings: guardSettings }))
+      say(`RUN_PLANS: plan ${nnn} ${stage} (${call.model}, tier ${call.tier}: ${call.reason}, round ${ctx.round})`)
+      const b = await modelCall(nnn, stage, () => runAgent({ ...call.opts, cwd: wt, prompt, timeoutMs: GATE_TIMEOUT_MIN * 60_000, bin: o.claude }))
       let result = null
       try {
         result = b.ok ? parseResult(b.text) : null
@@ -513,6 +527,7 @@ async function main() {
         if (!h.ok) return park(`hand-off file: ${h.error}`)
         ctx.handoff = h.path
         ctx.tier = 'judgment'
+        ctx.tierReason = `escalated after round ${ctx.round}`
         ctx.escalated = true
         ctx.mode = 'handoff'
         note(`escalated to a fresh judgment-tier builder (round ${ctx.round}): ${failure.why}`, nnn)
