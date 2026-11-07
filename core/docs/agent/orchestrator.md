@@ -32,23 +32,18 @@ later kit release removes it; its own run is described in "The workflow's run" b
 `run-plans.mjs` reads `runBranchPrefix`, `maxFixRounds`, `minFreeDiskGb` (through the preflight), `onPark`,
 `gateTimeoutMin`, `staleMin`, `mergeChecks`, `ciMirror`, `prepare`, `useSlots` (through `orch-state.mjs worktree`),
 `reviewerMode`, `reviewerModel` and `rateLimitWaitMin`; it runs one plan at a time unless `--concurrency 2` is given.
-`pilotSize`, `fallbackModel`, `maxNotesPerPlan`, `maxAgentCallsPerPlan` and `concurrency` are the workflow's only, and
-the triage keys shape the report's decision list.
+`concurrency` is the workflow's only. The workflow's old keys (`pilotSize`, `fallbackModel`, `maxNotesPerPlan`,
+`maxAgentCallsPerPlan`, `triage`, `triageMinAgreement`, `triageMinGraded`) are removed: the workflow keeps their last
+defaults (pilot 3, fallback `opus`, 12 notes, 60 calls, triage `shadow`) until it is removed, and install and sync
+ignore a project value with a `NOTE orchestrator: <key> removed` line.
 
 | Key | This project | Meaning |
 | --- | --- | --- |
 | `runBranchPrefix` | `{{orchestrator.runBranchPrefix}}` | Prefix of the run branch every plan of a run merges into |
 | `maxFixRounds` | `{{orchestrator.maxFixRounds}}` | How many times problems go back to a builder before the plan is parked |
 | `minFreeDiskGb` | `{{orchestrator.minFreeDiskGb}}` | Free disk the environment check asks for, before the run and before a retry |
-| `pilotSize` | `{{orchestrator.pilotSize}}` | A run with more plans than this builds the first `pilotSize` plans in wave order, stops with the report and the numbered decisions, and starts the rest on the Human's `continue`; 0 = off |
 | `onPark` | `{{orchestrator.onPark}}` | What a parked plan stops: `dependents` = only the later plans that depend on it or share its files (each is `skipped` with the reason), `all` = every later plan, the earlier behaviour |
-| `fallbackModel` | `{{orchestrator.fallbackModel}}` | The model a dead agent (one that returned nothing: a terminal API error, a blocked model) is retried on, once; `inherit` = no retry. Never Haiku: the retry may be a review agent |
 | `staleMin` | `{{orchestrator.staleMin}}` | Minutes without a `status.json` update after which `orch-state.mjs watch` prints `STUCK` |
-| `maxNotesPerPlan` | `{{orchestrator.maxNotesPerPlan}}` | Run notes one plan may write (queued notes count; they ride on the plan's next `set`); the last one says `notes capped` |
-| `maxAgentCallsPerPlan` | `{{orchestrator.maxAgentCallsPerPlan}}` | Agent calls one plan may make before it is parked (`agent-call limit`) |
-| `triage` | `{{orchestrator.triage}}` | How a run sorts the decisions agents took: `off` = no triage call, `shadow` = one `orch-triage` call recommends a verdict per decision and the Human still sees every decision, `filter` = a kind with enough graded agreement is listed on one line only (`docs/agent/decision-review.md` §5) |
-| `triageMinAgreement` | `{{orchestrator.triageMinAgreement}}` | Agreement with the Human a kind needs before `filter` collapses it (0.5–1) |
-| `triageMinGraded` | `{{orchestrator.triageMinGraded}}` | Graded decisions of that kind it needs first (5–500) |
 | `mergeChecks` | `{{orchestrator.mergeChecks}}` | What the merge step runs on the merged tree: `build` = the project build plus the plan's scope check (lint and tests passed in the plan's gate and run once more at the final gate), `full` = the plan's whole check list on every merge |
 | `ciMirror` | `{{orchestrator.ciMirror|json}}` | CI commands (`npm run <script>`, `pnpm run <script>`, `node scripts/…` or `node tools/…`, no write flag) the final gate runs after the project checks and the kit manifest check, so a green run is a green pull request. Install and sync print a `NOTE ci-mirror:` line for each workflow command the final gate does not run; they never write the list |
 | `reviewerMode` | `{{orchestrator.reviewerMode}}` | What a STOP of the single reviewer does in `run-plans.mjs`: `advisory` = recorded in the run notes, the plan still merges; `gate` = one fix round with the findings, then the plan parks. `advisory` until the reviewer's measured precision reaches 0.50 in the kit's reviewer eval; `--reviewer-mode` overrides it for one run |

@@ -93,9 +93,10 @@ const STALE_MIN = {{orchestrator.staleMin|json}}
 // "App errors since the run started" section, with --since=plan-start replaced by the run's start time.
 const LOG_QUERY = {{commands.logQuery|json}}
 // The decision triage (docs/agent/decision-review.md §5): how the report shows the decisions, and when a kind collapses.
-const TRIAGE = {{orchestrator.triage|json}}
-const TRIAGE_MIN_AGREEMENT = {{orchestrator.triageMinAgreement|json}}
-const TRIAGE_MIN_GRADED = {{orchestrator.triageMinGraded|json}}
+// Fixed since the triage keys left the config (scripts/run-plans.mjs runs no triage; the report shows every decision).
+const TRIAGE = "shadow"
+const TRIAGE_MIN_AGREEMENT = 0.9
+const TRIAGE_MIN_GRADED = 20
 // Minutes one `main-try` command may run before it is stopped (orchestrator.gateTimeoutMin, the gate's own limit).
 const GATE_TIMEOUT_MIN = {{orchestrator.gateTimeoutMin|json}}
 // Sensitive paths (the security reviewer runs on them): the same reading as ship-prep — a regex string replaces the

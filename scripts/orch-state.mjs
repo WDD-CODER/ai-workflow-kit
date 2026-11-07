@@ -93,6 +93,7 @@ const STALE_MIN = 10
 // "App errors since the run started" section, with --since=plan-start replaced by the run's start time.
 const LOG_QUERY = ""
 // The decision triage (docs/agent/decision-review.md §5): how the report shows the decisions, and when a kind collapses.
+// Fixed since the triage keys left the config (scripts/run-plans.mjs runs no triage; the report shows every decision).
 const TRIAGE = "shadow"
 const TRIAGE_MIN_AGREEMENT = 0.9
 const TRIAGE_MIN_GRADED = 20

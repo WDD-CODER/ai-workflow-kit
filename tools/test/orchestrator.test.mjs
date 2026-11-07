@@ -535,9 +535,9 @@ test('review.ship: absent, checkers and light pass; the scaffold default is chec
 })
 
 test('orchestrator.* config: defaults pass, bad values name the key', () => {
-  const ok = { 'orchestrator.runBranchPrefix': 'orch/', 'orchestrator.maxFixRounds': 2, 'orchestrator.minFreeDiskGb': 5, 'orchestrator.pilotSize': 3, 'git.mainBranch': 'main' }
-  for (const v of [0, 1, 10]) assert.deepEqual(orchestratorProblems({ ...ok, 'orchestrator.pilotSize': v }), [])
-  for (const v of [-1, 11, 1.5, '3', null]) assert.match(orchestratorProblems({ ...ok, 'orchestrator.pilotSize': v })[0], /^orchestrator\.pilotSize is .* — it must be a whole number from 0 to 10/)
+  const ok = { 'orchestrator.runBranchPrefix': 'orch/', 'orchestrator.maxFixRounds': 2, 'orchestrator.minFreeDiskGb': 5, 'git.mainBranch': 'main' }
+  // Plan 088: pilotSize is retired — any value is ignored (with a NOTE), never refused.
+  for (const v of [0, 11, '3', null]) assert.deepEqual(orchestratorProblems({ ...ok, 'orchestrator.pilotSize': v }), [])
   assert.deepEqual(orchestratorProblems(ok), [])
   assert.deepEqual(orchestratorProblems({ ...ok, 'orchestrator.runBranchPrefix': 'runs/batch/' }), [])
   const bad = (k, v) => orchestratorProblems({ ...ok, [k]: v })
@@ -875,15 +875,17 @@ test('orch-state.mjs watch: reads status.json only, STUCK exits 1, the rest 0', 
   }
 })
 
-test('orchestrator.* config: fallbackModel, staleMin, maxNotesPerPlan and maxAgentCallsPerPlan are validated', () => {
-  for (const v of ['inherit', 'sonnet', 'opus', 'fable', 'claude-opus-5-5']) assert.deepEqual(orchestratorProblems({ 'orchestrator.fallbackModel': v }), [], v)
-  for (const v of ['haiku', 'claude-haiku-5-5', 'gpt', '', 3]) assert.match(orchestratorProblems({ 'orchestrator.fallbackModel': v }).join(), /^orchestrator\.fallbackModel is /, String(v))
-  assert.match(orchestratorProblems({ 'orchestrator.fallbackModel': 'haiku' }).join(), /non-Haiku/)
-  assert.deepEqual(orchestratorProblems({ 'orchestrator.staleMin': 10, 'orchestrator.maxNotesPerPlan': 12, 'orchestrator.maxAgentCallsPerPlan': 60 }), [])
+test('orchestrator.* config: staleMin is validated; the retired keys are ignored with a NOTE and keep their fixed values', async () => {
+  assert.deepEqual(orchestratorProblems({ 'orchestrator.staleMin': 10 }), [])
   for (const v of [0, 241, 1.5, '10']) assert.match(orchestratorProblems({ 'orchestrator.staleMin': v }).join(), /staleMin is .* whole number of minutes from 1 to 240/)
-  for (const v of [0, 101, '12']) assert.match(orchestratorProblems({ 'orchestrator.maxNotesPerPlan': v }).join(), /maxNotesPerPlan is .* from 1 to 100/)
-  for (const v of [9, 501, 2.5]) assert.match(orchestratorProblems({ 'orchestrator.maxAgentCallsPerPlan': v }).join(), /maxAgentCallsPerPlan is .* from 10 to 500/)
-  assert.ok(commandProblems({ 'orchestrator.fallbackModel': 'haiku', 'models.mechanical': 'haiku', 'models.analysis': 'sonnet', 'models.judgment': 'inherit', 'models.build': 'sonnet', 'models.review': 'sonnet' }).some((m) => m.startsWith('orchestrator.fallbackModel is "haiku"')), 'install and sync read it through commandProblems')
+  // Plan 088: fallbackModel, maxNotesPerPlan, maxAgentCallsPerPlan (and the pilot and triage keys) are retired.
+  for (const [k, v] of [['fallbackModel', 'haiku'], ['maxNotesPerPlan', 101], ['maxAgentCallsPerPlan', 5], ['triage', 'loud']]) assert.deepEqual(orchestratorProblems({ [`orchestrator.${k}`]: v }), [], k)
+  assert.ok(!commandProblems({ 'orchestrator.fallbackModel': 'haiku', 'models.mechanical': 'haiku', 'models.analysis': 'sonnet', 'models.judgment': 'opus', 'models.build': 'sonnet', 'models.review': 'sonnet' }).some((m) => /fallbackModel/.test(m)))
+  const { retiredNotes, RETIRED_KEYS } = await import(pathToFileURL(join(kit, 'tools', 'lib', 'kit.mjs')).href)
+  assert.deepEqual(retiredNotes({ orchestrator: { pilotSize: 0, staleMin: 5 } }), ['NOTE orchestrator: pilotSize removed — scripts/run-plans.mjs does not read it and the value is ignored; delete it from the project config'])
+  assert.deepEqual(RETIRED_KEYS, { 'orchestrator.pilotSize': 3, 'orchestrator.fallbackModel': 'opus', 'orchestrator.maxNotesPerPlan': 12, 'orchestrator.maxAgentCallsPerPlan': 60, 'orchestrator.triage': 'shadow', 'orchestrator.triageMinAgreement': 0.9, 'orchestrator.triageMinGraded': 20 })
+  const scaffold = JSON.parse(readFileSync(join(kit, 'kit.config.json'), 'utf8')).orchestrator
+  for (const k of Object.keys(RETIRED_KEYS)) assert.ok(!(k.slice('orchestrator.'.length) in scaffold), `${k} left kit.config.json`)
 })
 
 // ---- plan 032: a light merge step, main-folder checks, decisions only, no pause when there is nothing to ask ------
