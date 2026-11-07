@@ -330,3 +330,6 @@ Every step names its own test location.
   (3 roots); `npm test` exit 0; orchestrator-e2e 90 cases; e2e-check 55 passed, 1 skipped; acceptance-check --e2e 122
   passed; leak-check 0 leaks; `scope-check --tests` SCOPE_TESTS: ok; orchestrator-folders + ui-tier + orchestrator tests
   195/195; `tools/test` 540/540.
+- decision: behaviour: H1 is checked by the first real run of `scripts/run-plans.mjs` (plan 088 replaced the workflow
+  behind `/orchestrate`) — Human 2026-11-07: after plan 091, `node scripts/run-plans.mjs --run first --plans <smallest
+  open kit plan>`; still open.

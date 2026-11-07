@@ -3,6 +3,7 @@
 Status: draft
 Depends-on: 088, 089
 Snapshot: fd212e119ef16c0b26ebfaf6b44f450fee26d8f5
+Revised: Human decision 5, 2026-11-07 — the five checker agents (`orch-check-plan`, `orch-check-bugs`, `orch-check-rules`, `orch-verify`, `orch-security`) and `/review-it` stay until `review.ship` switches to `reviewer` (plan 091); everything else on the list is deleted.
 Source: kit audit 2026-11-06, plan S; goal decision 5 (delete, not freeze).
 
 ## Problem Statement
@@ -11,11 +12,11 @@ After plans 088 and 089 the workflow runtime, five role agents, the runner agent
 ## Goals & Success Criteria
 **Primary:** the files the runner replaced are gone from `core/`, every reference to them is gone, and a test fails when the kit grows past its budget.
 
-- [auto] These files no longer exist under `core/` and under the installed copies (`.claude/`, `scripts/`): `.claude/workflows/orchestrate.js`, `.claude/commands/auto-solve.md`, `.claude/agents/orch-gate.md`, `orch-merge.md`, `orch-report.md`, `orch-triage.md`, `orch-readiness.md`, `orch-check-plan.md`, `orch-check-bugs.md`, `orch-check-rules.md`, `orch-verify.md`, `kit-runner.md`, `kit-prevalidate.md`; `git grep -n` for each name returns nothing outside `CHANGELOG.md`, `plans/**` and `docs/brain/decisions/**`.
+- [auto] These files no longer exist under `core/` and under the installed copies (`.claude/`, `scripts/`): `.claude/workflows/orchestrate.js`, `.claude/commands/auto-solve.md`, `.claude/agents/orch-gate.md`, `orch-merge.md`, `orch-report.md`, `orch-triage.md`, `orch-readiness.md`, `kit-runner.md`, `kit-prevalidate.md`; `git grep -n` for each name returns nothing outside `CHANGELOG.md`, `plans/**` and `docs/brain/decisions/**`. The five checker agents and `/review-it` still exist and `/ship`'s `review.ship = checkers` path still runs them.
 - [auto] `orch-state.mjs` no longer has `note`, `decisions`, `flake`, `trend`, `main-try`, `main-tries`, `prepare` (moved into `plan-gate.mjs` in 088) nor the base64 note/flake queue; `node --test tools/test/orchestrator*.test.mjs` passes on the smaller file.
-- [auto] `decision-log.mjs` keeps `pending`, `grade`, `learn`, `case`, `follow-ups`, `rules` behind `review.ship = learn`; its `triage` support and the calibration file are removed; `tools/test/decision-log.test.mjs` updated.
-- [auto] `docs/agent/orchestrator.md` ≤ 150 lines, `agent-roles.md` ≤ 60 lines (the shared contract for two agents: builder, reviewer; plus `orch-security`, `orch-ui` and `git-agent` while they stay), `model-routing.md` ≤ 60 lines, `workflow-map.md` sections 3–5 list only what exists.
-- [auto] `node --test tools/test/size-budget.test.mjs` passes and enforces: `core/.claude/commands/*.md` ≤ 10 files, each ≤ 120 lines (`ship.md` ≤ 80, `take-plan.md` ≤ 100, `plan.md` ≤ 180); `core/.claude/agents/*.md` ≤ 5 files, each ≤ 120 lines; `AGENTS.md` ≤ 70 lines; `node tools/instruction-load.mjs` ≤ 600; `kit.config.json` `orchestrator` ≤ 12 keys. The limits live in `tools/size-budget.json` with a one-line reason each; raising one needs a plan that names it.
+- [auto] `decision-log.mjs` keeps `pending`, `grade`, `learn`, `case`, `follow-ups`, `rules` behind `review.learn = on` (plan 089's key); its `triage` support and the calibration file are removed; `tools/test/decision-log.test.mjs` updated.
+- [auto] `docs/agent/orchestrator.md` ≤ 150 lines, `agent-roles.md` ≤ 100 lines (the shared contract for the builder, the reviewer, the five checkers while they stay, `orch-ui` and `git-agent` while it stays), `model-routing.md` ≤ 60 lines, `workflow-map.md` sections 3–5 list only what exists.
+- [auto] `node --test tools/test/size-budget.test.mjs` passes and enforces: `core/.claude/commands/*.md` ≤ 10 files, each ≤ 120 lines (`ship.md` ≤ 80, `take-plan.md` ≤ 100, `plan.md` ≤ 180); `core/.claude/agents/*.md` ≤ 10 files while the five checkers stay (reason line: back to 5 when `review.ship` switches to `reviewer`), each ≤ 120 lines; `AGENTS.md` ≤ 70 lines; `node tools/instruction-load.mjs` ≤ 600; `kit.config.json` `orchestrator` ≤ 12 keys. The limits live in `tools/size-budget.json` with a one-line reason each; raising one needs a plan that names it.
 - [auto] `tools/install-check.mjs`, `tools/drift-check.mjs --target .`, `tools/workflow-link-check.mjs`, `tools/acceptance-check.mjs --e2e` and `.kit/install.json` know nothing of the deleted files (no dangling manifest rows, no dead links).
 - [auto] `npm run build`, `npm run lint`, `npm test`, `node tools/orchestrator-e2e.mjs`, `node --test "tools/test/*.test.mjs"` pass; sync then drift-check report no drift.
 - [auto] `CHANGELOG.md` has one entry listing every deleted file and the ADR path.
@@ -81,7 +82,7 @@ the path to the scope block and retry. A deletion not in the list above stops th
 
 ## Architecture Impact
 - INV-1: preserves — the remaining agents keep their tier keys; install and sync keep their refusals.
-- Changes: the role-agent pipeline (finders + verifier) is retired in favour of the measured single reviewer; ADR `docs/brain/decisions/NNNN-one-reviewer-not-five-checkers.md` — Arch-approved: Human 2026-11-06 (this goal).
+- Changes: the workflow runtime and its role agents are deleted now that `run-plans.mjs` runs the loop; the checker pipeline (finders + verifier + security) stays as `/ship`'s default review until the single reviewer measures precision ≥ 0.28 (plan 091); ADR `docs/brain/decisions/NNNN-workflow-runtime-deleted-checkers-kept.md` — Arch-approved: Human 2026-11-06 (this goal), revised 2026-11-07.
 
 ## Step 0 — Reality Check
 1. `git grep -ln` for each file in the deletion list; the hits are the reference list to clean (expect: `AGENTS.md`, `CLAUDE.md`, `commands.md`, `skills.md`, `workflow-map.md`, `model-routing.md`, `agent-roles.md`, `orchestrator.md`, `agent-evals.md`, `README_WORKFLOW.md`, templates, `tools/lib/source.mjs`, the manifests, `tools/test/agent-contracts.test.mjs`, `tools/test/agent-rules-sections.test.mjs`).
@@ -90,7 +91,7 @@ the path to the scope block and retry. A deletion not in the list above stops th
 
 ## Atomic Sub-tasks
 
-- [ ] X1: Delete the workflow, `/auto-solve`, the five checkers, `orch-gate`, `orch-merge`, `orch-report`, `orch-triage`, `orch-readiness`, `kit-runner`, `kit-prevalidate` from `core/`; remove their rows from `tools/lib/source.mjs`, the install manifest and the sync inventory; resync so the installed copies vanish — core/.claude/**, tools/lib/source.mjs, tools/install.mjs, tools/sync.mjs, .kit/install.json
+- [ ] X1: Delete the workflow, `/auto-solve` (the five checkers and `/review-it` stay), `orch-gate`, `orch-merge`, `orch-report`, `orch-triage`, `orch-readiness`, `kit-runner`, `kit-prevalidate` from `core/`; remove their rows from `tools/lib/source.mjs`, the install manifest and the sync inventory; resync so the installed copies vanish — core/.claude/**, tools/lib/source.mjs, tools/install.mjs, tools/sync.mjs, .kit/install.json
 - [ ] X2: Clean every reference (Step 0 list): `AGENTS.md`, `CLAUDE.md`, `commands.md`, `skills.md`, `README_WORKFLOW.md`, templates, `workflow-link-check` targets — AGENTS.md, CLAUDE.md, README_WORKFLOW.md, core/.claude/commands/commands.md, core/.claude/commands/skills.md, templates/**, tools/workflow-link-check.mjs
 - [ ] X3: Shrink `orch-state.mjs` (dead commands and the base64 queues), `decision-log.mjs` (triage, calibration), `orch-run.mjs` (watch-only helpers stay); update their tests — core/scripts/orch-state.mjs, core/scripts/decision-log.mjs, core/scripts/lib/orch-run.mjs, tools/test/**
 - [ ] X4: Rewrite the four docs to their limits: `orchestrator.md` (pieces, the run, settings, state rules, model calls), `agent-roles.md` (shared rules for the agents that remain, the result schema), `model-routing.md` (tiers, the remaining agent table, rules 1–4 and 6), `workflow-map.md` (sections 3–5, flows F2/F3) — core/docs/agent/orchestrator.md, core/docs/agent/agent-roles.md, core/docs/agent/model-routing.md, core/docs/agent/workflow-map.md
