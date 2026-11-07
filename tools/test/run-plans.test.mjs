@@ -13,7 +13,7 @@ import { makeProject, toyPlan, overlaps, FAKE } from './lib/run-plans-fixture.mj
 
 const kit = resolve(fileURLToPath(new URL('../..', import.meta.url)))
 const lib = (f) => import(pathToFileURL(join(kit, 'scripts', 'lib', f)).href)
-const { claudeArgs, runAgent, readAgent, CONTEXT_FLAGS, RATE_LIMIT_RE, parseResult } = await lib('claude-run.mjs')
+const { claudeArgs, runAgent, readAgent, CONTEXT_FLAGS, RATE_LIMIT_RE, parseResult, passedModel } = await lib('claude-run.mjs')
 const { gateCommands, runGate, scopeCheck, scopeMarker } = await lib('plan-gate.mjs')
 const { readReview, review, validateReviewerResult, reviewVerdict } = await lib('plan-review.mjs')
 const { blockedBy, unitsOf, afterPark } = await lib('run-order.mjs')
@@ -35,6 +35,10 @@ test('claude-run: every call carries the four context-saving flags, json output,
   assert.equal(r[r.indexOf('--tools') + 1], 'Read,Grep,Glob,Bash')
   assert.equal(r[r.indexOf('--disallowedTools') + 1], 'Edit,Write,MultiEdit,NotebookEdit')
   assert.ok(!claudeArgs({ agent: reviewer, model: 'inherit', systemPromptFile: 's.md' }).includes('--model'))
+  // calls.csv records the model passed after --model; a call without one ("inherit") keeps the fallback.
+  assert.equal(passedModel(b), 'sonnet')
+  assert.equal(passedModel(claudeArgs({ agent: reviewer, model: 'inherit', systemPromptFile: 's.md' }), 'inherit'), 'inherit')
+  assert.equal(passedModel([], ''), '')
 })
 
 test('claude-run: tools are pre-approved only when asked; the builder gets its list, a read-only agent never a bare Bash', () => {

@@ -32,7 +32,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync, rmS
 import { spawnSync } from 'node:child_process'
 import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { readAgent, claudeArgs, runAgent, parseResult } from './lib/claude-run.mjs'
+import { readAgent, claudeArgs, runAgent, parseResult, passedModel } from './lib/claude-run.mjs'
 import { gateCommands, runGate, scopeCheck, scopeMarker } from './lib/plan-gate.mjs'
 import { review, blocking, problemLine } from './lib/plan-review.mjs'
 import { mergePlan, orchState } from './lib/plan-merge.mjs'
@@ -383,8 +383,10 @@ async function main() {
     for (let attempt = 1; ; attempt++) {
       if (stopReason) throw new RunStop(stopReason)
       const r = await fn()
-      pendingCalls[nnn] = [...(pendingCalls[nnn] ?? []), { stage, model: r.model ?? '', seconds: r.seconds, input: r.tokens?.input ?? 0, output: r.tokens?.output ?? 0, exit: r.exit, ...(r.error ? { error: r.error } : {}) }]
-      csvRow(nnn, stage, r.model ?? '', r.seconds, r.tokens?.input ?? 0, r.tokens?.output ?? 0, r.exit)
+      // The model passed after --model on this call, never one the answer names.
+      const model = passedModel(r.argv, r.model ?? '')
+      pendingCalls[nnn] = [...(pendingCalls[nnn] ?? []), { stage, model, seconds: r.seconds, input: r.tokens?.input ?? 0, output: r.tokens?.output ?? 0, exit: r.exit, ...(r.error ? { error: r.error } : {}) }]
+      csvRow(nnn, stage, model, r.seconds, r.tokens?.input ?? 0, r.tokens?.output ?? 0, r.exit)
       if (!r.rateLimited) return r
       if (attempt >= 2) {
         stopReason = stopReason ?? `rate-limit: ${String(r.error ?? '').slice(0, 200)}`

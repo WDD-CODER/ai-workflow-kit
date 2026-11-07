@@ -85,6 +85,12 @@ export function claudeArgs({ agent, model, systemPromptFile, allow = false, sett
   return args
 }
 
+/** The model a call was given: the value after `--model` in its argv, else `fallback` ("inherit" passes none). */
+export function passedModel(argv, fallback = '') {
+  const i = Array.isArray(argv) ? argv.indexOf('--model') : -1
+  return i >= 0 && argv[i + 1] ? argv[i + 1] : fallback
+}
+
 /**
  * `--setting-sources local` still loads `.claude/settings.local.json` from the call's folder. In a folder the caller does
  * not trust (the reviewer's: the branch under review, written by the builder) that file could pre-approve tools or add
