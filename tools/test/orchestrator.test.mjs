@@ -338,7 +338,7 @@ test('orch-state.mjs watch: reads status.json only, STUCK exits 1, the rest 0', 
   }
 })
 
-test('orchestrator.* config: staleMin is validated; the retired keys are ignored with a NOTE and keep their fixed values', async () => {
+test('orchestrator.* config: staleMin is validated; the retired keys are ignored with a NOTE', async () => {
   assert.deepEqual(orchestratorProblems({ 'orchestrator.staleMin': 10 }), [])
   for (const v of [0, 241, 1.5, '10']) assert.match(orchestratorProblems({ 'orchestrator.staleMin': v }).join(), /staleMin is .* whole number of minutes from 1 to 240/)
   // Plan 088: fallbackModel, maxNotesPerPlan, maxAgentCallsPerPlan (and the pilot and triage keys) are retired.

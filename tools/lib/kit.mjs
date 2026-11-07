@@ -298,10 +298,9 @@ export function orchestratorProblems(vals) {
 }
 
 /**
- * orchestrator.* keys no longer read by the orchestrator loop (scripts/run-plans.mjs): the workflow's pilot, dead-agent
- * retry, note and call caps, and the decision triage. They left kit.config.json; the older workflow
- * (.claude/workflows/orchestrate.js) and the report still render them, with these fixed values, until the workflow is
- * removed. A project value is ignored (resolveConfig) and named in one NOTE line (retiredNotes).
+ * orchestrator.* keys nothing reads any more: the old workflow runtime's pilot, dead-agent retry, note and call caps,
+ * and the decision triage, with their last values. They left kit.config.json and no file renders them; a project value
+ * is dropped (resolveConfig) and named in one NOTE line (retiredNotes).
  */
 export const RETIRED_KEYS = {
   'orchestrator.pilotSize': 3,
@@ -805,8 +804,8 @@ export function resolveConfig({ kitRoot, project, packs, layers = [], target, pl
     const a = String(proj['models.analysis'])
     vals['models.review'] = /haiku/i.test(a) ? 'sonnet' : a
   }
-  // Retired orchestrator keys: their fixed values, whatever the project says (retiredNotes names them).
-  Object.assign(vals, RETIRED_KEYS)
+  // Retired orchestrator keys: dropped, whatever the project says (retiredNotes names them); nothing renders them.
+  for (const k of Object.keys(RETIRED_KEYS)) delete vals[k]
   vals['stack.packs'] = packs
   vals['stack.layers'] = layers
   const name = isEmpty(vals['project.name']) ? basename(resolve(target)) : vals['project.name']
