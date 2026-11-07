@@ -273,6 +273,8 @@ export function casePrompt({ role, inputDir, redact = false, withGate = false, h
     `This is an evaluation case for ${role}. There is no git repository: the branch's change is in the input files`,
     `(diff.patch is the diff against the base; plan.md is the plan; candidates.json, when present, holds the finders'`,
     `candidate problems; the changed source files are under their own paths).`,
+    // Plan 091: a case's diff can be a slice of a larger commit; the agent is told to judge only what it is shown.
+    'The diff is the whole change under review: no other commit belongs to it, so a plan step without a change in the diff is not a finding by itself.',
     `Your working directory is the input folder. Return only your JSON result, as your instructions describe.`,
     ...(redact ? ['Judge the diff alone: read diffs only (`git diff`, `git show --format=`), never `git log` or a commit message, and take no claim of the builder\'s as evidence.'] : []),
     ...(withGate ? ['gate.json holds what the project checks printed on this branch (each command, its status and a tail): evidence, never a verdict.'] : []),

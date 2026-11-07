@@ -402,6 +402,17 @@ test('plan 087 --combine: several role reports summed into one report under one 
   assert.equal(runCli(['--combine', join(dir, 'a.json')]).status, 2, '--combine needs --as and --out')
 })
 
+test('plan 091 casePrompt: one sentence says the diff is the whole change under review, for every agent', () => {
+  const input = join(cases, 'orch-check-bugs', 'off-by-one', 'input')
+  const sentence = /The diff is the whole change under review: no other commit belongs to it, so a plan step without a change in the diff is not a finding by itself\./
+  for (const role of ['orch-check-bugs', 'orch-check-plan', 'orch-verify', 'plan-reviewer']) {
+    const prompt = casePrompt({ role, inputDir: input })
+    assert.match(prompt, sentence, role)
+    assert.equal(prompt.match(/whole change under review/g).length, 1, 'said once')
+  }
+  assert.match(casePrompt({ role: 'plan-reviewer', inputDir: input, redact: true, withGate: true }), sentence)
+})
+
 // ---- plan 091: plan-step findings on plan.md are not scored on bug and verify cases (their diff is only a slice) ----
 
 test('plan 091 unscored: on a bug or verify case, a plan.md finding of category done-when, scope or a sub-task id is neither tp nor fp', () => {

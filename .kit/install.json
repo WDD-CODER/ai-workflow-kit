@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "8929657f2d2a4d8991bfb74bb2d209a1aa11abe8",
+  "commit": "8746e732a817811682d68389642e1d5c455cea21",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -330,7 +330,7 @@
       "source": "core/README_WORKFLOW.md"
     },
     "docs/agent/agent-evals.md": {
-      "sha256": "5b784ada9d2a27261070827532495316bd45377be6b89dbc4ada22c09b4014ae",
+      "sha256": "60eb46cb7588a6d8c8680fb80213a0710e910ee599568e82ba7c8de44b203787",
       "kind": "managed",
       "source": "core/docs/agent/agent-evals.md"
     },
