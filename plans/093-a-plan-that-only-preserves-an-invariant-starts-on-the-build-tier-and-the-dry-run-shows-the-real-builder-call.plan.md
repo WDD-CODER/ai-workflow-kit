@@ -66,7 +66,7 @@ Thinking outside the box is expected; writing outside it requires explicit conse
 
 ## Atomic Sub-tasks
 
-- [ ] T1: Start a plan on the judgment tier only when it changes or deviates from an invariant — startTier() reads the entry's verb; unreadable stays judgment — core/scripts/lib/orch-run.mjs, tools/test/orchestrator.test.mjs
+- [x] T1: Start a plan on the judgment tier only when it changes or deviates from an invariant — startTier() reads the entry's verb; unreadable stays judgment — core/scripts/lib/orch-run.mjs, tools/test/orchestrator.test.mjs
 - [ ] T2: Make the dry run print the builder call the real run makes — one shared function picks tier and model for both; the dry run prints the tier and why — core/scripts/run-plans.mjs, tools/test/run-plans.test.mjs
 - [ ] T3: Record in calls.csv the model that was actually passed to the call — core/scripts/run-plans.mjs, core/scripts/lib/claude-run.mjs, tools/test/run-plans.test.mjs
 - [ ] T4: Record the rule change — new ADR superseding 0016's start-tier rule; INV-1 text; model-routing and orchestrator docs — docs/brain/decisions/0020-only-a-changed-invariant-starts-on-the-judgment-tier.md, docs/brain/invariants.md, core/docs/agent/model-routing.md, core/docs/agent/orchestrator.md
@@ -83,3 +83,4 @@ Thinking outside the box is expected; writing outside it requires explicit conse
 - none (Human 2026-11-07).
 
 ## Execution Notes
+- T1: startTier() now returns judgment only for changes / deviation / an unreadable kind, lists only those invariants, and gives a reason ("INV-1 preserves", "INV-none", "no Architecture Impact"); orchestrator.test.mjs INV-1 case rewritten (73 pass).

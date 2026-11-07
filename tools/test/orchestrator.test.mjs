@@ -25,15 +25,19 @@ test('plan branch: feat/NNN- and the first four slug words', () => {
   assert.equal(lib.planBranch('plans\\design\\012-x.plan.md', '012'), 'feat/012-x')
 })
 
-test('INV-1 start tier: judgment for any named invariant (preserves, changes, deviation, unreadable); build for INV-none or none', () => {
+test('INV-1 start tier: judgment only for an invariant the plan changes or deviates from (or an unreadable entry); preserves, INV-none or no section start on build', () => {
   const plan = (lines) => `# Plan\n\n## Architecture Impact\n${lines}\n\n## Next\n`
-  assert.deepEqual(lib.startTier(plan('- INV-none: preserves — nothing')), { tier: 'build', invariants: [] })
-  // INV-1: a plan that only "preserves" a registered invariant starts on the pinned strong tier too.
-  assert.deepEqual(lib.startTier(plan('- INV-3: preserves — touches it\n- INV-7: preserves — reads it\n- INV-none: preserves')), { tier: 'judgment', invariants: ['INV-3', 'INV-7'] })
-  assert.deepEqual(lib.startTier(plan('- INV-3: changes — ADR docs/brain/decisions/0009-x.md\n- INV-4: preserves')), { tier: 'judgment', invariants: ['INV-3', 'INV-4'] })
-  assert.deepEqual(lib.startTier(plan('- INV-5: deviation until the follow-up — why')), { tier: 'judgment', invariants: ['INV-5'] })
-  assert.deepEqual(lib.startTier(plan('- INV-6: touches it, kind not said')), { tier: 'judgment', invariants: ['INV-6'] })
-  assert.deepEqual(lib.startTier('# Plan with no section'), { tier: 'build', invariants: [] })
+  assert.deepEqual(lib.startTier(plan('- INV-none: preserves — nothing')), { tier: 'build', invariants: [], reason: 'INV-none' })
+  // INV-1 (ADR 0020): a plan that only "preserves" a registered invariant starts on the build tier.
+  assert.deepEqual(lib.startTier(plan('- INV-1: preserves — touches it')), { tier: 'build', invariants: [], reason: 'INV-1 preserves' })
+  assert.deepEqual(lib.startTier(plan('- INV-3: preserves — touches it\n- INV-7: preserves — reads it\n- INV-none: preserves')), { tier: 'build', invariants: [], reason: 'INV-3 preserves, INV-7 preserves' })
+  // Only the invariants that send the plan to the judgment tier are listed.
+  assert.deepEqual(lib.startTier(plan('- INV-3: changes — ADR docs/brain/decisions/0009-x.md\n- INV-4: preserves')), { tier: 'judgment', invariants: ['INV-3'], reason: 'INV-3 changes' })
+  assert.deepEqual(lib.startTier(plan('- INV-5: deviation until the follow-up — why')), { tier: 'judgment', invariants: ['INV-5'], reason: 'INV-5 deviation' })
+  // Fail safe: an entry whose kind cannot be read starts on the judgment tier.
+  assert.deepEqual(lib.startTier(plan('- INV-6: touches it, kind not said')), { tier: 'judgment', invariants: ['INV-6'], reason: 'INV-6 unreadable' })
+  assert.deepEqual(lib.startTier('# Plan with no section'), { tier: 'build', invariants: [], reason: 'no Architecture Impact' })
+  assert.deepEqual(lib.startTier(plan('- none')), { tier: 'build', invariants: [], reason: 'no invariant named' })
 })
 
 test('[human] items are read verbatim, [auto] ones are not', () => {
