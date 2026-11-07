@@ -69,3 +69,86 @@ Verdicts, after vs before:
   blocking gate** — plan 088 runs it in `advisory` mode (findings listed, never park a plan).
 
 REVIEWER: model=opus prompt=redact-gate because precision 0.12 is the highest of the three arms (sonnet redact-gate 0.10, sonnet redact 0.09) and no arm reaches 0.50 — not yet a blocking gate, advisory only
+
+## 2026-11-07 — reviewer + orch-verify (Sonnet, redact-gate), evidence only
+
+New arm **sonnet-verify-redact-gate**: `plan-reviewer` on Sonnet (`--redact --with-gate`), then `orch-verify` on Sonnet
+on the reviewer's problems (written as the case's `candidates.json`, same redaction and gate rules); only the problems
+orch-verify kept (verdict `keep`, confidence ≥ 80, at its severity) are scored. 25 cases × 2 runs, `--role all`,
+`--case-list docs/agent-evals/baseline-2026-10-22.cases.txt`, 0 runner errors, 0 invalid results. Report:
+`docs/agent-evals/runs/plan-reviewer-verify-sonnet-redact-gate/plan-reviewer.json`. The runner (outside the repo)
+calls `claudeRunner()` twice per case and run; when the reviewer reports nothing (14 of 50 runs) orch-verify is not called.
+
+Table (`node tools/agent-eval-ab.mjs --before docs/agent-evals/runs/087-checkers-sonnet-2026-10-22 --after docs/agent-evals/runs/plan-reviewer-redact-gate --arm redact=docs/agent-evals/runs/plan-reviewer-redact --arm opus-redact-gate=docs/agent-evals/runs/plan-reviewer-opus-redact-gate --arm sonnet-verify-redact-gate=docs/agent-evals/runs/plan-reviewer-verify-sonnet-redact-gate`; the file above was not regenerated):
+
+### plan-reviewer
+
+| Run | Recall | Precision | Noise | Errors | Spread (recall / precision / noise) | Cost (USD) |
+| --- | --- | --- | --- | --- | --- | --- |
+| before | 0.28 | 0.28 | 0.44 | 1 | 0.00 / 0.00 / 0.00 | 6.41 |
+| redact | 0.20 | 0.09 | 0.79 | 0 | 0.22 / 0.08 / 0.00 | 5.50 |
+| opus-redact-gate | 0.46 | 0.12 | 0.86 | 0 | 0.13 / 0.04 / 0.03 | 18.29 |
+| sonnet-verify-redact-gate | 0.13 | 0.10 | 0.67 | 0 | 0.00 / 0.01 / 0.02 | 4.99 |
+| after | 0.24 | 0.10 | 0.76 | 0 | 0.04 / 0.02 / 0.09 | 7.36 |
+
+Verdicts, redact vs before:
+
+| Figure | Before | After | s | d | Verdict |
+| --- | --- | --- | --- | --- | --- |
+| recall | 0.28 | 0.20 | 0.22 | 0.43 | no real change |
+| precision | 0.28 | 0.09 | 0.08 | 0.15 | regressed |
+| noise | 0.44 | 0.79 | 0.00 | 0.05 | regressed |
+| errors | 1.00 | 0.00 | 0.00 | 2.00 | no real change |
+| cost | 0.26 | 0.22 | 0.00 | 0.00 | reported |
+
+Verdicts, opus-redact-gate vs before:
+
+| Figure | Before | After | s | d | Verdict |
+| --- | --- | --- | --- | --- | --- |
+| recall | 0.28 | 0.46 | 0.13 | 0.26 | no real change |
+| precision | 0.28 | 0.12 | 0.04 | 0.08 | regressed |
+| noise | 0.44 | 0.86 | 0.03 | 0.06 | regressed |
+| errors | 1.00 | 0.00 | 0.00 | 2.00 | no real change |
+| cost | 0.26 | 0.73 | 0.00 | 0.00 | over +20 % |
+
+Verdicts, sonnet-verify-redact-gate vs before:
+
+| Figure | Before | After | s | d | Verdict |
+| --- | --- | --- | --- | --- | --- |
+| recall | 0.28 | 0.13 | 0.00 | 0.05 | regressed |
+| precision | 0.28 | 0.10 | 0.01 | 0.05 | regressed |
+| noise | 0.44 | 0.67 | 0.02 | 0.05 | regressed |
+| errors | 1.00 | 0.00 | 0.00 | 2.00 | no real change |
+| cost | 0.26 | 0.20 | 0.00 | 0.00 | reported |
+
+Verdicts, after vs before:
+
+| Figure | Before | After | s | d | Verdict |
+| --- | --- | --- | --- | --- | --- |
+| recall | 0.28 | 0.24 | 0.04 | 0.09 | no real change |
+| precision | 0.28 | 0.10 | 0.02 | 0.05 | regressed |
+| noise | 0.44 | 0.76 | 0.09 | 0.17 | regressed |
+| errors | 1.00 | 0.00 | 0.00 | 2.00 | no real change |
+| cost | 0.26 | 0.29 | 0.00 | 0.00 | reported |
+
+
+Before and after verify, inside this arm (same 50 runs, per finding with the scorer's `matchFindings`):
+
+| Stage | Findings | tp / fn / fp | Recall | Precision | Cost (USD) |
+| --- | --- | --- | --- | --- | --- |
+| reviewer alone (raw problems) | 82 | 7 / 39 / 75 | 0.15 | 0.09 | 2.41 |
+| after orch-verify (kept) | 61 | 6 / 40 / 55 | 0.13 | 0.10 | 2.41 + 2.58 = 4.99 |
+
+- orch-verify dropped 21 of 82 findings: 7 refuted, 14 kept below confidence 80. Of those 21, 20 were fp and 1 was a
+  tp (`orch-check-plan/fixed-010-scope-and-done-when` run 1, `.kit/install.json:6` minor scope finding, kept at
+  confidence 20). It changed one kept severity (major → blocker).
+- It removed 27 % of the fp (75 → 55) and precision moved 0.09 → 0.10: still about 9 unlabelled findings per labelled
+  one, far from 0.50. 46 of the 55 surviving fp are on `plan.md` ("ticked sub-task / Done-when item not in the diff");
+  orch-verify confirms them because the case diffs hold only the slice around the labelled bug. Sample:
+  `docs/agent-evals/087-fp-sample.md`.
+- The reviewer stage of this arm found less than the earlier redact-gate arm on the same settings (7 vs 11 tp, 75 vs
+  97 fp): run-to-run variance of the reviewer, not an effect of verify.
+- Cost: $4.99 for 50 runs ($0.20 per case), below the reviewer-only redact-gate arm's $7.36; the verify call costs
+  about as much as the review call.
+
+No new REVIEWER: line — evidence for the Human's decision.
