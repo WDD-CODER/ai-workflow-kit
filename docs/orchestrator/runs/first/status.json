@@ -1,0 +1,93 @@
+{
+  "run": "first",
+  "branch": "orch/first",
+  "base": "main",
+  "startedAt": "2026-11-07T17:11:09.421Z",
+  "mainShaAtStart": "a6a116625d81f9fbb540006485aae87be6d9bd0a",
+  "plans": {
+    "092": {
+      "nnn": "092",
+      "title": "Goal follow-ups: remove the orphaned triage file and record the reviewer's Sonnet default in an ADR",
+      "branch": "feat/092-goal-follow-ups-orphaned",
+      "state": "merged",
+      "round": 0,
+      "tier": "judgment",
+      "models": {},
+      "humanItems": [],
+      "history": [
+        {
+          "at": "2026-11-07T17:11:17.371Z",
+          "state": "building",
+          "round": 0
+        },
+        {
+          "at": "2026-11-07T17:20:37.494Z",
+          "state": "gate",
+          "round": 0
+        },
+        {
+          "at": "2026-11-07T17:24:13.813Z",
+          "state": "checking",
+          "round": 0
+        },
+        {
+          "at": "2026-11-07T17:24:36.413Z",
+          "state": "merging",
+          "round": 0
+        },
+        {
+          "at": "2026-11-07T17:24:44.677Z",
+          "state": "merged",
+          "round": 0
+        }
+      ],
+      "tiers": [
+        "judgment"
+      ],
+      "freeDiskGb": 15,
+      "sha": "e61b70c7db58745972addf4bd1213428544c8cf9",
+      "calls": [
+        {
+          "stage": "builder",
+          "model": "opus",
+          "seconds": 557.3,
+          "tokens": {
+            "input": 727222,
+            "output": 10386
+          },
+          "exit": 0
+        },
+        {
+          "stage": "reviewer",
+          "model": "sonnet",
+          "seconds": 18,
+          "tokens": {
+            "input": 38919,
+            "output": 318
+          },
+          "exit": 0
+        }
+      ],
+      "checkedHead": "3a4558c83774952fa698d3b521fc13e4d7fbe5b3"
+    }
+  },
+  "notes": [
+    {
+      "at": "2026-11-07T17:11:17.163Z",
+      "plan": "092",
+      "text": "starts on the judgment tier: Architecture Impact names INV-1"
+    }
+  ],
+  "attempts": 1,
+  "phase": "finished",
+  "freeDiskGb": 15,
+  "updatedAt": "2026-11-07T17:40:23.032Z",
+  "finishedAt": "2026-11-07T17:40:23.030Z",
+  "finalGate": {
+    "ok": true,
+    "command": null,
+    "at": "2026-11-07T17:40:23.032Z",
+    "attempt": 1,
+    "blamed": []
+  }
+}

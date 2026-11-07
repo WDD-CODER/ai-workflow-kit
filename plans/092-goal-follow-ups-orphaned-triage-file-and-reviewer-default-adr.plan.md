@@ -51,9 +51,9 @@ the `## Read-Write Scope`: return ESCALATE with the file, the change and why; th
 
 ## Atomic Sub-tasks
 
-- [ ] F1: Remove the triage data file nothing reads any more — git rm, plus any index line naming it — docs/brain/triage-calibration.md, docs/brain/index.md
-- [ ] F2: Record that the runner's reviewer defaults to Sonnet, superseding that one point of ADR 0017 — new ADR, index line if the folder has one — docs/brain/decisions/0019-run-plans-reviewer-default-is-sonnet.md, docs/brain/decisions/README.md
-- [ ] T1: Add the changelog line and run the checks — CHANGELOG.md
+- [x] F1: Remove the triage data file nothing reads any more — git rm, plus any index line naming it — docs/brain/triage-calibration.md, docs/brain/index.md
+- [x] F2: Record that the runner's reviewer defaults to Sonnet, superseding that one point of ADR 0017 — new ADR, index line if the folder has one — docs/brain/decisions/0019-run-plans-reviewer-default-is-sonnet.md, docs/brain/decisions/README.md
+- [x] T1: Add the changelog line and run the checks — CHANGELOG.md
 
 ## Technical Considerations
 - Backend / API: none. Auth and validation: none. Security surface: none. Data / migration: none.
@@ -66,3 +66,7 @@ the `## Read-Write Scope`: return ESCALATE with the file, the change and why; th
 - none.
 
 ## Execution Notes
+- Step 0: `git grep -n "triage-calibration"` → only `docs/agent/kit-lessons/triage-calibration.md` and its readers, plus CHANGELOG/plans history; `docs/brain/decisions/` ends at 0018, so 0019 is next; no `decisions/README.md` exists and `docs/brain/index.md` lists neither ADRs nor the triage file, so no index line was needed. `scope-check --drift` → REALITY: clean.
+- F1: `git rm docs/brain/triage-calibration.md`; `git grep -n "docs/brain/triage-calibration" -- ':!CHANGELOG.md' ':!plans/**'` → exit 1, no output.
+- F2: added `docs/brain/decisions/0019-run-plans-reviewer-default-is-sonnet.md` (`Supersedes: 0017 (the reviewer default only)`; the rule cites the `REVIEWER:` line in `docs/agent-evals/087-reviewer-ab.md`). No kit manifest in this repo (`kit-manifest-check` skips), so no manifest entry.
+- T1: CHANGELOG line under [Unreleased] / Removed. `npm run build` → exit 0; `npm run lint` → exit 0 (first run exit 1: leak-check flagged a "Plan 091" history phrase in the ADR; reworded); `npm test` → exit 0 (INSTALL_CHECK ok, WORKFLOW_LINK_CHECK ok, size-budget 6/6); `node tools/drift-check.mjs --target .` → exit 0, KIT_DRIFT: ok; `scope-check --diff=origin/orch/first` → SCOPE: ok.
