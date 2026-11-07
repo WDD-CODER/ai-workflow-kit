@@ -1,6 +1,6 @@
 # Plan 088 — run-plans.mjs: the orchestrator as one script, with a builder and a reviewer as headless calls
 
-Status: draft
+Status: done
 Depends-on: 086, 087
 Snapshot: fd212e119ef16c0b26ebfaf6b44f450fee26d8f5
 Source: kit audit 2026-11-06, plan B. Supersedes plan 085 (its merge pin is M4 here).
