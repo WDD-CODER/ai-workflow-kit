@@ -1,6 +1,6 @@
 {
   "$comment": "The kit's size budget, enforced by tools/test/size-budget.test.mjs (npm test and the CI kit-tests job). Raising a limit needs a plan that names it; lowering one toward its target needs no plan.",
-  "commandFiles": { "max": 24, "target": 10, "reason": "core/.claude/commands/*.md after plan 090 deleted /auto-solve (Human 2026-11-07: the real count); 10 needs a plan that names which commands go" },
+  "commandFiles": { "max": 24, "target": 10, "reason": "core/.claude/commands/*.md after plan 090's deletions (Human 2026-11-07: the real count); 10 needs a plan that names which commands go" },
   "commandLines": { "max": 120, "reason": "a command is read whole every time it runs; longer rules move to a doc the command names" },
   "commandLinesExcept": {
     "ship.md": { "max": 80, "reason": "plan 089: /ship is the gate in code, review and the merge gate in 80 lines" },
