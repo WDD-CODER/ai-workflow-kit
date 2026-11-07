@@ -2,7 +2,7 @@
  * Structural comparison of an agent's findings with a case's expected findings (contract: docs/agent/agent-evals.md).
  *
  *   import { compareCase } from './compare.mjs'
- *   const { tp, fn, fp, keys } = compareCase(expected, result, { role })
+ *   const { tp, fn, fp, unscored, keys } = compareCase(expected, result, { pass, caseRole })
  *
  * A finding matches an expected one when `file` and `rule` match, the severity is the same or one level away (plan 091:
  * blocker ~ major, major ~ minor; never blocker ~ minor) and the line is within ±LINE_TOLERANCE.
@@ -80,6 +80,22 @@ export function matchFindings(expectedList, actualList, tolerance = LINE_TOLERAN
   return { matched, missed, extra }
 }
 
+/**
+ * Plan 091: the case roles whose diff.patch is only the slice of the real commit around the labelled bug. On these
+ * cases a finding on plan.md that a plan step has no change in the diff is true for what the agent is shown, so it is
+ * not scored: category `done-when`, `scope` or a sub-task id (`a2`, `d1`, `m6`).
+ */
+export const SLICE_ROLES = ['orch-check-bugs', 'orch-verify']
+const SUBTASK_ID = /^[a-z]+\d+$/
+
+/** True when an actual finding is a plan-step finding left unscored on a case of `caseRole`. */
+export function isUnscored(actual, caseRole) {
+  if (!SLICE_ROLES.includes(caseRole)) return false
+  if (normFile(actual?.file).toLowerCase() !== 'plan.md') return false
+  const cat = category(actual.rule).replace(/\s+/g, '-')
+  return cat === 'done-when' || cat === 'scope' || SUBTASK_ID.test(cat)
+}
+
 /** The kind of comparison a case's expected.json asks for. */
 export function caseKind(expected) {
   if (Array.isArray(expected?.findings)) return 'findings'
@@ -91,13 +107,17 @@ export function caseKind(expected) {
 /**
  * Compare one run's result with a case's expectation. `result` is the parsed agent result (or null when the run
  * produced no valid result); `pass` is the validator's computed pass for pass/fail cases.
- * Returns { tp, fn, fp, keys } where `keys` is a stable signature set of what the run reported (for noise).
+ * `caseRole` is the role folder the case sits in (plan 091: on a SLICE_ROLES case, an extra plan-step finding on
+ * plan.md is counted as `unscored`, never as fp, and is left out of the noise keys).
+ * Returns { tp, fn, fp, unscored, keys } where `keys` is a stable signature set of what the run reported (for noise).
  */
-export function compareCase(expected, result, { pass = null } = {}) {
+export function compareCase(expected, result, { pass = null, caseRole = null } = {}) {
   const kind = caseKind(expected)
   if (kind === 'findings') {
     const actual = Array.isArray(result?.problems) ? result.problems : []
-    const { matched, missed, extra } = matchFindings(expected.findings, actual)
+    const { matched, missed, extra: unmatched } = matchFindings(expected.findings, actual)
+    // A finding that matches an expected one stays a tp; only the extras are checked for the unscored rule.
+    const extra = unmatched.filter((ai) => !isUnscored(actual[ai], caseRole))
     const keys = [
       ...matched.map(([ei]) => `expected#${ei}`),
       ...extra.map((ai) => {
@@ -105,7 +125,7 @@ export function compareCase(expected, result, { pass = null } = {}) {
         return `extra:${normFile(a.file)}|${norm(a.rule)}|${norm(a.severity)}|${Math.round((a.line ?? 0) / (LINE_TOLERANCE * 2 + 1))}`
       }),
     ]
-    return { tp: matched.length, fn: missed.length, fp: extra.length, keys }
+    return { tp: matched.length, fn: missed.length, fp: extra.length, unscored: unmatched.length - extra.length, keys }
   }
   if (kind === 'verdicts') {
     // A verifier reports a candidate when it keeps it with confidence ≥ KEEP_THRESHOLD; expected "keep" ids should be
@@ -115,10 +135,10 @@ export function compareCase(expected, result, { pass = null } = {}) {
       .filter((v) => v?.verdict === 'keep' && Number(v.confidence) >= KEEP_THRESHOLD)
       .map((v) => String(v.id)))
     const tp = [...want].filter((id) => got.has(id)).length
-    return { tp, fn: want.size - tp, fp: [...got].filter((id) => !want.has(id)).length, keys: [...got].sort().map((id) => `keep:${id}`) }
+    return { tp, fn: want.size - tp, fp: [...got].filter((id) => !want.has(id)).length, unscored: 0, keys: [...got].sort().map((id) => `keep:${id}`) }
   }
   // pass/fail: an expected failure is one thing to find; a reported failure is one finding.
   const wantFail = expected.pass === false
   const gotFail = pass === false
-  return { tp: wantFail && gotFail ? 1 : 0, fn: wantFail && !gotFail ? 1 : 0, fp: !wantFail && gotFail ? 1 : 0, keys: [gotFail ? 'fail' : pass === true ? 'pass' : 'no-result'] }
+  return { tp: wantFail && gotFail ? 1 : 0, fn: wantFail && !gotFail ? 1 : 0, fp: !wantFail && gotFail ? 1 : 0, unscored: 0, keys: [gotFail ? 'fail' : pass === true ? 'pass' : 'no-result'] }
 }

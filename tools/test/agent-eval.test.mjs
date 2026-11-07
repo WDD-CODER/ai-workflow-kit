@@ -152,7 +152,7 @@ test('CLI: the table has a row per case and a total line', () => {
   const r = runCli(['--agent', agent('orch-check-bugs'), '--cases', cases, '--runner', stubFile])
   assert.equal(r.status, 0, r.out)
   for (const c of ['off-by-one', 'regex-backslash', 'clean-change', 'TOTAL']) assert.match(r.out, new RegExp(`^${c}\\s`, 'm'))
-  assert.match(r.out, /case\s+recall\s+precision\s+noise\s+tokens/)
+  assert.match(r.out, /case\s+recall\s+precision\s+noise\s+unscored\s+tokens/)
 })
 
 test('a write-capable agent is refused unless --allow-write is passed', () => {
@@ -400,4 +400,58 @@ test('plan 087 --combine: several role reports summed into one report under one 
   assert.equal(r.status, 0, r.out)
   assert.equal(JSON.parse(readFileSync(out, 'utf8')).total.tp, 2)
   assert.equal(runCli(['--combine', join(dir, 'a.json')]).status, 2, '--combine needs --as and --out')
+})
+
+// ---- plan 091: plan-step findings on plan.md are not scored on bug and verify cases (their diff is only a slice) ----
+
+test('plan 091 unscored: on a bug or verify case, a plan.md finding of category done-when, scope or a sub-task id is neither tp nor fp', () => {
+  const code = { file: 'src/a.mjs', line: 10, rule: 'logic', severity: 'major' }
+  const found = { ...code, rule: 'logic: x' }
+  const steps = [
+    { file: 'plan.md', line: 40, rule: 'done-when: the test item has no change in the diff', severity: 'major' },
+    { file: './plan.md', line: 12, rule: 'Scope: out of scope', severity: 'minor' },
+    { file: 'plan.md', line: 20, rule: 'A2: ticked but not in the diff', severity: 'major' },
+    { file: 'plan.md', line: 21, rule: 'm6', severity: 'blocker' },
+  ]
+  for (const caseRole of ['orch-check-bugs', 'orch-verify']) {
+    const c = compareCase({ findings: [code] }, { problems: [found, ...steps] }, { caseRole })
+    assert.deepEqual([c.tp, c.fn, c.fp, c.unscored], [1, 0, 0, 4], caseRole)
+    assert.ok(c.keys.every((k) => !k.includes('plan.md')), 'unscored findings are left out of the noise keys')
+  }
+  for (const caseRole of ['orch-check-plan', 'orch-check-rules', null]) {
+    const c = compareCase({ findings: [code] }, { problems: [found, ...steps] }, { caseRole })
+    assert.deepEqual([c.tp, c.fn, c.fp, c.unscored], [1, 0, 4, 0], `${caseRole}: scored as before`)
+  }
+  const other = compareCase({ findings: [code] }, { problems: [found, { file: 'plan.md', line: 3, rule: 'evidence: no command', severity: 'major' }, { file: 'src/b.mjs', line: 3, rule: 'done-when: x', severity: 'major' }] }, { caseRole: 'orch-check-bugs' })
+  assert.deepEqual([other.fp, other.unscored], [2, 0], 'another plan.md category, or done-when on a code file, is still scored')
+})
+
+test('plan 091 unscored: evaluate passes the case role, the report and the A/B table carry the unscored figure', async () => {
+  const dir = join(tmp, 'cases-091')
+  for (const role of ['orch-check-bugs', 'orch-check-plan']) {
+    mkdirSync(join(dir, role, 'c1', 'input'), { recursive: true })
+    writeFileSync(join(dir, role, 'c1', 'input', 'diff.patch'), '')
+    writeFileSync(join(dir, role, 'c1', 'expected.json'), JSON.stringify({ findings: [{ file: 'src/a.mjs', line: 5, rule: 'logic', severity: 'major' }] }))
+  }
+  const stub = async ({ role }) => ({ text: JSON.stringify({ role, model: 'stub', effort: 'high', problems: [
+    { id: 'r1', file: 'src/a.mjs', line: 5, rule: 'logic: x', reasoning: 'y', severity: 'blocker' },
+    { id: 'r2', file: 'plan.md', line: 30, rule: 'D1: ticked, no change in the diff', reasoning: 'y', severity: 'major' },
+  ], pass: false, verdict: 'STOP' }), tokens: 1, costUsd: 0 })
+  stub.isolated = true
+  const r = await evaluate({ agentFile: reviewerAgent, casesDir: dir, runs: 2, runner: stub })
+  const byName = Object.fromEntries(r.cases.map((c) => [c.name, c]))
+  assert.deepEqual([byName['orch-check-bugs/c1'].tp, byName['orch-check-bugs/c1'].fp, byName['orch-check-bugs/c1'].unscored], [2, 0, 2])
+  assert.deepEqual([byName['orch-check-plan/c1'].tp, byName['orch-check-plan/c1'].fp, byName['orch-check-plan/c1'].unscored], [2, 2, 0])
+  assert.deepEqual([r.total.tp, r.total.fp, r.total.unscored], [4, 2, 2])
+  assert.ok(r.runTotals.every((t) => t.unscored === 1), 'each run unscored one finding')
+  assert.match(formatTable(r), /unscored/)
+  // A checker on its own folder (plain case names): the scope is the case role.
+  const ownStub = async (a) => stub({ ...a, role: 'orch-check-bugs' })
+  ownStub.isolated = true
+  const own = await evaluate({ agentFile: agent('orch-check-bugs'), casesDir: dir, runs: 1, runner: ownStub })
+  assert.equal(own.total.unscored, 1)
+  const { compare } = await import('../agent-eval-ab.mjs')
+  const { text } = compare({ before: { 'plan-reviewer': r }, arms: [{ name: 'after', reports: { 'plan-reviewer': r } }] })
+  assert.match(text, /\| Run \| Recall \| Precision \| Noise \| Unscored \|/)
+  assert.match(text, /\| before \| 1\.00 \| 0\.67 \| 0\.00 \| 2 \|/)
 })
