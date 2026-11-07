@@ -1,188 +1,49 @@
 ---
-description: Run saved plans unattended into one run branch — readiness questions in one batch, then builder, gate, checkers and merge per plan; the Human merges the run branch.
+description: Run saved plans unattended into one run branch with scripts/run-plans.mjs — prints the line to run, starts it on `start`, reads the result from status.json; the Human merges the run branch.
 ---
 
-# /orchestrate — run saved plans into one run branch (ai-workflow-kit)
+# /orchestrate — run saved plans with run-plans.mjs (ai-workflow-kit)
 
-Opt-in. Usage: `/orchestrate 451-457` (a range), `/orchestrate 451,453,457` (a list), optionally followed by a run
-name (`/orchestrate 451-457 batch-1`; default `run-<first>-<last>`), the word `ask` (`/orchestrate 451 ask`: wait
-for `go` even when readiness has nothing to ask) and the word `remote` (`/orchestrate 451 remote`: when a plan needs the
-main folder's backend, the preflight starts it on the remote database, `commands.devRemote`, instead of the local one;
-for this run only — a run without the word is local). The rules of a run: `docs/agent/orchestrator.md`.
+Usage: `/orchestrate <NNN,NNN,…> [<run name>] [remote]` — `remote`: a plan's main-folder backend runs on the remote
+database for this run (`--db remote` added to every `run-plans.mjs` line below). The loop is a script (`docs/agent/orchestrator.md`): only the builder and the
+reviewer are model calls. This command starts no workflow and no agent; it runs the script and reads its files.
 
-Start from a clean turn: do not paste chat, notes or earlier agent output into any agent prompt. The workflow builds
-every prompt from the plans and the state script.
+## 1. Check the request
 
-## Steps
+- Plan numbers only (1–4 digits, comma-separated); a run name is lower-case letters, digits and dashes (default
+  `run-<first plan>`). Anything else: say what is wrong and stop.
+- Run the dry run and show its output as it is:
 
-1. **Refuse early.**
-   - Expand the range to plan numbers. Each must be an open plan under the plan folders; a missing one → STOP.
-   - Run `node scripts/orch-preflight.mjs --run <run> --plans <NNN,NNN,…>` (add `--db remote` when the request said
-     `remote`). It starts the main folder's frontend when it does not answer, and its backend when a plan has an open
-     `[auto:main]` item; it never asks you to start a server. Any `FAIL` line → print it and STOP (the
-     main folder must be on `main` with no uncommitted tracked file, no run of that name may be live and
-     no live run may hold one of these plans or a plan whose scope overlaps one of them, the disk, packages, git
-     identity and settings must be in place).
+  ```
+  node scripts/run-plans.mjs --dry-run --run <run> --plans <NNN,NNN>
+  ```
 
-2. **Readiness (one batch of questions).** Start the `orchestrate` workflow
-   (`.claude/workflows/orchestrate.js`) with `args`
-   `{ "mode": "readiness", "run": "<run>", "plans": ["451", …], "root": "<absolute main folder path>" }` (add
-   `"db": "remote"` to these `args` and to step 3's when the request said `remote`).
-   It returns the waves, and per plan `state`, `questions`, `envNeeds`, `commands` and `mainCommands` (deny-listed
-   ones removed and named in `denied`), plus the preflight result and `askHuman`.
-   - Print the waves and every plan's state in one table, with a `claims` column per plan (`2 checked, 1 wrong`;
-     `8 checked, 3 not checked` when `claimsOver` is 3), one line per `mapped` entry (`npx eslint . → npm run lint`)
-     and, under `dropped npx checks:`, every `npxDropped` reason — an `npx` check no package.json script runs is shown,
-     never asked about, and never stops the run.
-   - A command readiness dropped because its file does not exist in the project (and the plan does not create it) is
-     in `denied` with the reason and in `missingFiles`: tell the Human, it needs a plan fix, not a builder.
-   - `askHuman` false (every plan `ready`, no question, no environment need, no missing check file, no main-folder command,
-     preflight ok) and the request did not say `ask` → print `nothing to ask — starting the run` and go to step 3 at
-     once. No `go` is waited for: the preflight of step 1 already refused everything a pause would have caught.
-   - Otherwise ask the Human **all** questions and environment needs in **one** numbered list, and wait. When
-     `mainApproval` is not empty, the list ends with a block headed `Runs from the main folder (your live .env,
-     database, server) — go allows it:` with one line per `mainApproval` entry (`<NNN>: <command>`). This block alone —
-     no question, no environment need — still waits for `go`: a main-folder command runs in the live environment, and
-     the run refuses to start without the approval (`stopped: main-approval`).
-   - Write each answer into that plan's `## Execution Notes` as `Orchestrator readiness (<date>): <question> → <answer>`,
-     commit the plan files on `main` (`plan(<run>): readiness answers`) and push.
-   - **A delegated reply** (`decide yourself`, `defaults`, `you choose`, or a bare `go` while a question is open):
-     answer each question with its `Default if unanswered:` and write `→ <default> (delegated)` as the answer in
-     Execution Notes. A widen-scope claim answered `leave them as follow-ups` lists the files in that Execution Notes
-     line (and in the follow-ups file, once the kit defines one). For each `mainApproval` line run
-     `node scripts/orch-state.mjs main-try --run <run> --plan <NNN> --cmd "<command>"` once from the main folder and print
-     its `MAIN_TRY: <command> exit <n>` line — never ask again. A bare `go` with only the main-folder block open is the
-     approval above, unchanged.
-   - A plan whose question has no answer leaves the run; say which.
-   - Wait for the Human's `go`. Anything else → STOP.
+- `WOULD START: no — …`: stop and show the reason (an open Critical Question, a lint problem, the preflight). Fix the
+  plan or the environment first; never edit around a refusal.
 
-3. **Run.** Start the same workflow with `args`
-   `{ "mode": "run", "run": "<run>", "plans": [ … the plans still in the run … ],
-   "root": "<absolute main folder path>", "checks": { "<NNN>": [ … readiness commands … ] },
-   "mainChecks": { "<NNN>": [ … readiness mainCommands … ] }, "mainApproved": true, "ui": false,
-   "asked": { "<NNN>": [ … that plan's readiness questions and envNeeds, as returned … ] } }`
-   (`asked` lists only the plans readiness had something to ask about; a plan left out counts as ready — the run records
-   it, and the lessons for readiness and the Planner are written from it)
-   (after a delegated reply add `"mainDelegated": true`: the run then keeps only the main-folder commands `main-try`
-   saw pass and drops the others with a run note; add `"npxDropped": [ … the plans' npxDropped reasons … ]` when
-   readiness listed any, so the report shows them)
-   (`ui: true` only when the project validates UI cards with `orch-ui`; no start time — `init` reads its own clock;
-   `mainChecks` are the plans' `[auto:main]` commands, run from the main folder after each plan's gate — leave a plan
-   out of it when it has none; `"mainApproved": true` only after the Human's `go` in step 2, and left out when there
-   are no `mainChecks` — the workflow refuses to start a run with `mainChecks` and no approval). Do not answer, resume
-   or message any agent while it runs.
+## 2. Hand the Human the line
 
-   Tell the Human, in one line, how to see whether the run is stuck while it works — in a second terminal:
+Print the command for a PowerShell terminal in the main folder:
 
-   ```powershell
-   node scripts/orch-state.mjs watch --run <run>
-   ```
+```
+node scripts/run-plans.mjs --run <run> --plans <NNN,NNN>
+```
 
-   It prints one line and exits: `RUNNING`, `FINISHED`, `STOPPED: <why>` or `STUCK: plan <NNN> · <state> · no progress
-   for <n> min · last: <note>` (exit code 1; `orchestrator.staleMin` = 10 minutes, or the same
-   reason noted twice in a row). A dead agent is retried once on `orchestrator.fallbackModel`
-   (opus); a plan is parked after `orchestrator.maxAgentCallsPerPlan` agent calls or the same
-   failure twice in a row, and writes at most `orchestrator.maxNotesPerPlan` run notes.
+and the line that follows the run from a second terminal:
 
-   **Pilot** (`orchestrator.pilotSize` = 3; 0 = off): with more plans than that, the first
-   `pilotSize` plans in wave order run, then the run stops (`pilot` in the result lists the plans that wait) and step 4
-   prints the report and the decisions. On the Human's `continue`, start the workflow again with the same `run`, all
-   the plans and `"pilot": false` (no `firstDecision`: the run keeps its decisions in `status.json`, numbers on from the
-   highest earlier id and files a repeat of an earlier decision under it): it skips what is merged and builds the
-   rest, with the graded decisions and any new rule in `docs/brain/agent-rules.md` already in place.
+```
+node scripts/orch-state.mjs watch --run <run>
+```
 
-   **Merge only** (`/orchestrate 065 <run> merge`): a plan of a run that was built and checked but lost its merge (an
-   environment problem at the merge, a stopped run) is merged on its own — no readiness, builder, gate or checker. Run
-   step 1, then start the workflow with `{ "mode": "merge", "run": "<run>", "plans": ["065"], "root": "<absolute main
-   folder path>" }`. Per plan, `orch-state.mjs merge-ready` checks that `status.json` recorded the head that passed the
-   plan's gate and checkers (`checkedHead`) and that the plan branch on origin is still at it; then the merge runs, then
-   the final gate. A plan without a checked head, or whose branch moved after its checks, is refused with the reason
-   and merges nothing — relaunch it in a normal run. Then step 4 as usual.
+Then say: reply `start` to run it from here instead.
 
-4. **Finish.** From the workflow result and `.claude/orchestrator-runs/<run>/status.json` (never from memory), print:
-   - first, when the result's `stuck` is set (the run ended on a limit: `agent-call limit`, `same reason twice`, or
-     `run stopped with an error`), that line as it is — `STUCK: …` — before anything else; when the session's own model
-     was the one that died, say the Human can switch it with `/model`;
-   - merged plans and parked plans with their reason, each skipped plan with its reason (`depends on parked <NNN>` or
-     `shares files with parked <NNN>`), and why the run stopped when it did; a `removes:` decision comes first, with
-     the card the report shows under "What only the Human can do"; `reportCommitted` false →
-     say the report exists only as the local copy and why the run branch did not get it;
-   - the final gate: `finalGate.ok` false → say so first (`final gate failed: <command>` and its output tail) and do
-     **not** hand the run branch over as clean; no pull-request lines until the Human has seen it;
-   - flaky checks: one line `flaky checks: <n> (see the report)`, where `<n>` is the number of entries in every
-     `plans[NNN].flakes[]` plus the run-level `flakes[]` of `status.json` (read from the file, never from memory);
-     print it only when `<n>` is above 0;
-   - the report path on the run branch (`docs/orchestrator/runs/<run>/report.md`) and the local copy
-     `.claude\orchestrator-runs\<run>.md`;
-   - the result's `learning` (lesson lines added, `budget`, `trend`) as two lines — `Context added by learning: …` and
-     the trend line, which is also the last line of the report; nothing was asked of a model for them;
-   - when the report has an `App errors since the run started` section: its command and its lines as the report shows
-     them (the project's own output — a line such as `no entries` means none); never run the log command again;
-   - the **decisions** the workflow returned (`decisions`, each with `verdict`, `forced`, `kind`, `confidence`, `rec`,
-     `why` and `alsoFrom`; `triage` has the mode, the `line` and the id lists). Duplicates are already merged. On a
-     relaunch the list also holds an earlier launch's decisions that have no grade yet — they are graded now, like the
-     new ones. A decision with `forced: db-write` is a builder's database write the plan did not list: it is always to
-     grade, and the plan stays parked until the Human says whether to list the command and relaunch. When
-     `triage.mode` is `shadow` or `filter` and `triage.note` is not set and some decision has a verdict other than
-     `none`, print:
-     1. `Run <run> — <n> merged. Decisions: <ask + askMore> to grade, <accepted> accepted by triage, <followUps> follow-ups (saved on your reply).`
-     2. the `triage.line`;
-     3. each id of `triage.ask` in full, at most 10: `D33 · <plan> · ask · <decision text>` and, indented under it,
-        `recommend: <rec> — why: <why>`; then `<n> more to grade: D… (in the report)` for `triage.askMore`;
-     4. `accepted: D1 D2 … (reply D<n> ✗ to override)` for `triage.accepted` (in `filter` mode an id is left out when it
-        is in `triage.collapsed`; say `collapsed: <n>`), each with its text on one line when the mode is `shadow`;
-        `follow-ups: D7 D8 …` and `noise: D15 …` the same way;
-     5. the reply line `reply: decisions: ok | D<n> ✗ <what I'd choose>` (several on one line, comma-separated).
-     When `triage.mode` is `off`, `triage.note` is set (print it: `triage: no usable result — full list`) or every verdict
-     is `none`, print today's list: numbered `D1…Dn`, every `removes:` line first, then grouped by plan, `behaviour:` first, one line each
-     (`D3 · plan <NNN> · behaviour: …`), then the reply format: `decisions: ok` or `D<n> ✗ <what I'd choose>`. When the
-     result's `decisionsDropped` counts are not all zero, add one line `dropped <n> confirmation line(s) (not
-     decisions)` with the total — they cost no note and need no grade. With no decisions print `decisions: none` and
-     skip the next two bullets;
-   - the Human's next step as PowerShell lines, one command per line:
+## 3. `start`
 
-     ```powershell
-     git fetch origin
-     gh pr create --base main --head orch/<run> --title "Orchestrator run <run>" --body-file .claude\orchestrator-runs\<run>.md
-     ```
+Run the same command with `run_in_background`. Do not poll it; when it ends, go to 4.
 
-   The Human reviews and merges the run branch; the run never merges into `main`.
+## 4. The result
 
-5. **Learning step, after the Human's decisions reply** (no command from the Human). Write the workflow's `decisions`
-   (all fields as returned) to a scratch file `.claude/sessions/decisions-<run>.json`, then work in the run's merge
-   folder (`mergeFolder` in the result), passing `--dir <mergeFolder>` to each script, so the brain files travel with
-   the run branch. In this order:
-   1. `node scripts/decision-log.mjs grade --run <run> --reply "<the reply>" --decisions .claude/sessions/decisions-<run>.json --dir <mergeFolder>`
-      — one grade row per decision (ok ones too) and the follow-up rows; exit 2 means the reply is malformed: say so and
-      ask again, nothing was written;
-   2. `node scripts/decision-log.mjs stats --write --dir <mergeFolder>` — agreement per kind and the short calibration
-      file the triage agent reads;
-   3. `node scripts/decision-log.mjs learn --reply "<the reply>"` — follow `docs/agent/decision-review.md` §3:
-      `LEARNING: nothing to record` skips this item with no model call; otherwise log the `✗` items (`add … --dir
-      <mergeFolder>`), word one rule per `RULE_PROPOSAL` line (the first `✗` of a kind starts a rule at once, marked
-      `(pending — seen once)`; `repeats` promotes it on the second) or an `enforce:` line when a check, a hook or a
-      test could catch the mistake instead, add a `## checkers` rule for each `checker-miss: yes`, scaffold the eval case
-      of each (`node scripts/decision-log.mjs case --from D<n> --run <run> --dir <mergeFolder>`, no model call) and send
-      generic lessons to the kit;
-   4. `node scripts/orch-state.mjs brain-commit --run <run>` — commits `docs/brain` and any new
-      `docs/agent-evals/cases/<checker>/<case>` folder on the run branch (`BRAIN: committed <n> file(s) on <branch>` or `BRAIN: nothing
-      to commit`);
-   5. Write at most 8 lines of what you did by hand for this run after it finished (step, minutes if known, could a
-      script do it: yes/no) to `.claude/sessions/toil-<run>.json` — `[{ "step": "…", "minutes": 5, "script": "yes" }]` —
-      then `node scripts/brain.mjs send --toil --run <run>` (`BRAIN: sent <n>…` or `BRAIN: queued <n> (…)`: the kit
-      brain, `docs/agent/kit-brain.md`; a machine without it queues and loses nothing). None → skip.
-
-   The `grade` command in item 1 also sends its rows to the kit brain (a `BRAIN: …` line); `finish` in step 4 sends the
-   run's facts. Neither can fail the run.
-
-   The wrap-up lists the new rules (pending ones marked), the case paths and, under "Enforce candidates (a plan each,
-   when you want them)", the lines of `node scripts/decision-log.mjs rules --enforce --dir <mergeFolder>`.
-
-   A pilot run then waits for `continue`.
-
-## Never
-
-- Start a run on a dirty main folder or with an unanswered question for a plan still in the run.
-- Approve a main-folder command on a delegated reply without a `main-try` exit 0.
-- Merge, push or check out `main` for the run; use a deny-listed command; state a count you did not read
-  from `status.json` or an anchored `git log` of the run branch.
+Read `.claude/orchestrator-runs/<run>/status.json` and print: merged, parked (each with its reason), skipped (each with
+its reason), `stopReason` when set, the report (`.claude/orchestrator-runs/<run>.md`) and `calls.csv` beside the status
+file. A run stopped with `rate-limit` is relaunched with the same command after the limit resets (merged plans are left
+out). The Human merges `orch/<run>`; never merge it, never touch `main`.
