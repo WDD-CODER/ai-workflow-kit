@@ -207,10 +207,6 @@ export function orchestratorProblems(vals) {
   if (disk !== undefined && !(typeof disk === 'number' && Number.isFinite(disk) && disk >= 0 && disk <= 1000)) {
     out.push(`orchestrator.minFreeDiskGb is ${JSON.stringify(disk)} — it must be a number of GB from 0 to 1000`)
   }
-  const pilot = vals['orchestrator.pilotSize']
-  if (pilot !== undefined && !(Number.isInteger(pilot) && pilot >= 0 && pilot <= 10)) {
-    out.push(`orchestrator.pilotSize is ${JSON.stringify(pilot)} — it must be a whole number from 0 to 10 (0 = no pilot)`)
-  }
   const onPark = vals['orchestrator.onPark']
   if (onPark !== undefined && !['dependents', 'all'].includes(onPark)) {
     out.push(`orchestrator.onPark is ${JSON.stringify(onPark)} — it must be "dependents" (a park skips only its dependents and the plans that share its files) or "all" (a park stops every later plan)`)
@@ -239,12 +235,7 @@ export function orchestratorProblems(vals) {
   if (useSlots !== undefined && typeof useSlots !== 'boolean') {
     out.push(`orchestrator.useSlots is ${JSON.stringify(useSlots)} — it must be true or false`)
   }
-  // The model a dead agent is retried on once: the retry may be a review agent, so Haiku is never allowed here.
-  const fb = vals['orchestrator.fallbackModel']
-  if (fb !== undefined && (typeof fb !== 'string' || !MODEL_VALUE.test(fb) || /haiku/i.test(fb))) {
-    out.push(`orchestrator.fallbackModel is ${JSON.stringify(fb)} — allowed: "sonnet", "opus", "fable", "inherit" (no retry) or a non-Haiku model id starting "claude-"`)
-  }
-  for (const [key, min, max, what] of [['staleMin', 1, 240, 'minutes'], ['maxNotesPerPlan', 1, 100, 'notes'], ['maxAgentCallsPerPlan', 10, 500, 'agent calls']]) {
+  for (const [key, min, max, what] of [['staleMin', 1, 240, 'minutes']]) {
     const v = vals[`orchestrator.${key}`]
     if (v !== undefined && !(Number.isInteger(v) && v >= min && v <= max)) {
       out.push(`orchestrator.${key} is ${JSON.stringify(v)} — it must be a whole number of ${what} from ${min} to ${max}`)
@@ -277,21 +268,43 @@ export function orchestratorProblems(vals) {
       }
     }
   }
-  // The decision triage (docs/agent/decision-review.md §5): off, shadow (recommend, show everything) or filter
-  // (collapse a kind once its graded agreement is high enough).
-  const triage = vals['orchestrator.triage']
-  if (triage !== undefined && !['off', 'shadow', 'filter'].includes(triage)) {
-    out.push(`orchestrator.triage is ${JSON.stringify(triage)} — it must be "off", "shadow" or "filter"`)
+  // The retired keys (RETIRED_KEYS) are never refused: a project value is ignored with a NOTE (retiredNotes).
+  // run-plans.mjs (plan 088): the single reviewer's mode and model, and the wait after a rate or usage limit.
+  const reviewerMode = vals['orchestrator.reviewerMode']
+  if (reviewerMode !== undefined && !['gate', 'advisory'].includes(reviewerMode)) {
+    out.push(`orchestrator.reviewerMode is ${JSON.stringify(reviewerMode)} — it must be "advisory" (a review STOP is recorded, the plan still merges) or "gate" (a STOP gets a fix round, then parks)`)
   }
-  const minAgree = vals['orchestrator.triageMinAgreement']
-  if (minAgree !== undefined && !(typeof minAgree === 'number' && Number.isFinite(minAgree) && minAgree >= 0.5 && minAgree <= 1)) {
-    out.push(`orchestrator.triageMinAgreement is ${JSON.stringify(minAgree)} — it must be a number from 0.5 to 1`)
+  // The reviewer validates: INV-1's review rule holds — never Haiku.
+  const reviewerModel = vals['orchestrator.reviewerModel']
+  if (reviewerModel !== undefined && (typeof reviewerModel !== 'string' || !MODEL_VALUE.test(reviewerModel) || /haiku/i.test(reviewerModel))) {
+    out.push(`orchestrator.reviewerModel is ${JSON.stringify(reviewerModel)} — the reviewer validates, so never Haiku: "sonnet", "opus", "fable", "inherit" or a non-Haiku model id starting "claude-"`)
   }
-  const minGraded = vals['orchestrator.triageMinGraded']
-  if (minGraded !== undefined && !(Number.isInteger(minGraded) && minGraded >= 5 && minGraded <= 500)) {
-    out.push(`orchestrator.triageMinGraded is ${JSON.stringify(minGraded)} — it must be a whole number from 5 to 500`)
+  const wait = vals['orchestrator.rateLimitWaitMin']
+  if (wait !== undefined && !(Number.isInteger(wait) && wait >= 0 && wait <= 600)) {
+    out.push(`orchestrator.rateLimitWaitMin is ${JSON.stringify(wait)} — it must be a whole number of minutes from 0 to 600`)
   }
   return out
+}
+
+/**
+ * orchestrator.* keys no longer read by the orchestrator loop (scripts/run-plans.mjs): the workflow's pilot, dead-agent
+ * retry, note and call caps, and the decision triage. They left kit.config.json; the older workflow
+ * (.claude/workflows/orchestrate.js) and the report still render them, with these fixed values, until the workflow is
+ * removed. A project value is ignored (resolveConfig) and named in one NOTE line (retiredNotes).
+ */
+export const RETIRED_KEYS = {
+  'orchestrator.pilotSize': 3,
+  'orchestrator.fallbackModel': 'opus',
+  'orchestrator.maxNotesPerPlan': 12,
+  'orchestrator.maxAgentCallsPerPlan': 60,
+  'orchestrator.triage': 'shadow',
+  'orchestrator.triageMinAgreement': 0.9,
+  'orchestrator.triageMinGraded': 20,
+}
+/** One `NOTE orchestrator: <key> removed …` line per retired key the project config still sets. */
+export function retiredNotes(project) {
+  const proj = flatten(project ?? {})
+  return Object.keys(RETIRED_KEYS).filter((k) => proj[k] !== undefined).map((k) => `NOTE orchestrator: ${k.slice('orchestrator.'.length)} removed — scripts/run-plans.mjs does not read it and the value is ignored; delete it from the project config`)
 }
 
 /** Why a glob is outside the subset every kit matcher reads alike (`**`, `*`, `?`, trailing `/`), or null. */
@@ -781,6 +794,8 @@ export function resolveConfig({ kitRoot, project, packs, layers = [], target, pl
     const a = String(proj['models.analysis'])
     vals['models.review'] = /haiku/i.test(a) ? 'sonnet' : a
   }
+  // Retired orchestrator keys: their fixed values, whatever the project says (retiredNotes names them).
+  Object.assign(vals, RETIRED_KEYS)
   vals['stack.packs'] = packs
   vals['stack.layers'] = layers
   const name = isEmpty(vals['project.name']) ? basename(resolve(target)) : vals['project.name']

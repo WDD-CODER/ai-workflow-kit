@@ -52,7 +52,7 @@ import { resolveSource } from './lib/source.mjs'
 import {
   KIT_ROOT, readJson, sha256, resolveConfig, planFiles, parseArgs, readOverrides, isHook, markHooksExecutable, commandProblems,
   ownsAgents, ignoredPaths, AGENTS_WORKFLOW, frontendNote, presentAlternative, backendNote, ciMirrorNotes, withUpstream, splitList,
-  projectConfigPath, configLabel, requiredByDest,
+  projectConfigPath, configLabel, requiredByDest, retiredNotes,
 } from './lib/kit.mjs'
 
 let args
@@ -231,6 +231,8 @@ for (const p of unknownOverrides) console.log(`NOTE override ${p} is not a file 
 if (feNote) console.log(feNote)
 if (beNote) console.log(beNote)
 for (const n of ciNotes) console.log(n)
+// The orchestrator keys run-plans.mjs does not read: one NOTE each, the value ignored (kit.mjs RETIRED_KEYS).
+for (const n of retiredNotes(project)) console.log(n)
 if (staleRender && !args.apply) console.log(staleRender)
 // The project's own rules file (a seed: never re-seeded) needs one section per role that reads it, or that role reads no
 // rules. --apply appends each missing header as an empty section at the end; no existing line is touched, and a second

@@ -983,10 +983,18 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     if (!/^## Retired$/m.test(read(od, 'docs/agent/kit-lessons/builder.md'))) fail('kit lessons: builder.md has no Retired section')
     if (!read(od, '.claude/commands/plan.md').includes('docs/agent/kit-lessons/planner.md')) fail('kit lessons: /plan does not read the kit planner lessons')
     if (!wf.includes('[...kitLessons(role), ...projectLessons(role)]')) fail('kit lessons: orchestrate.js does not put the kit lessons before the project lessons')
-    if (!wf.includes('const MAX_FIX_ROUNDS = 2') || !wf.includes('const RUN_PREFIX = "orch/"') || !wf.includes('const PILOT_SIZE = 3')) fail('orchestrator: orchestrate.js does not render maxFixRounds 2 / runBranchPrefix "orch/" / pilotSize 3')
-    if (!wf.includes('const FALLBACK_MODEL = "opus"') || !wf.includes('const MAX_NOTES = 12') || !wf.includes('const MAX_CALLS = 60')) fail('orchestrator: orchestrate.js does not render fallbackModel "opus" / maxNotesPerPlan 12 / maxAgentCallsPerPlan 60')
+    if (!wf.includes('const MAX_FIX_ROUNDS = 2') || !wf.includes('const RUN_PREFIX = "orch/"')) fail('orchestrator: orchestrate.js does not render maxFixRounds 2 / runBranchPrefix "orch/"')
+    // Plan 088: the retired keys left the config; the workflow (until it is removed) renders their fixed last values.
+    if (!wf.includes('const PILOT_SIZE = 3') || !wf.includes('const FALLBACK_MODEL = "opus"') || !wf.includes('const MAX_NOTES = 12') || !wf.includes('const MAX_CALLS = 60')) fail('orchestrator: orchestrate.js does not render the retired keys\' fixed values (pilot 3, fallback "opus", 12 notes, 60 calls)')
     if (!read(od, 'scripts/orch-state.mjs').includes('const STALE_MIN = 10')) fail('orchestrator: orch-state.mjs does not render staleMin 10')
-    // Plan 041: the decision triage keys render into the workflow and orch-state.mjs, and the triage agent is installed.
+    // Plan 088: the loop is scripts/run-plans.mjs and its libraries, rendered with the reviewer and rate-limit settings.
+    for (const f of ['scripts/run-plans.mjs', 'scripts/lib/claude-run.mjs', 'scripts/lib/plan-gate.mjs', 'scripts/lib/plan-review.mjs', 'scripts/lib/plan-merge.mjs', 'scripts/lib/run-order.mjs']) {
+      if (!existsSync(join(od, f))) fail(`orchestrator: install did not copy ${f}`)
+    }
+    const rp = read(od, 'scripts/run-plans.mjs')
+    if (!rp.includes('const REVIEWER_MODE = "advisory"') || !rp.includes('const REVIEWER_MODEL = "opus"') || !rp.includes('Number(30)')) fail('orchestrator: run-plans.mjs does not render reviewerMode "advisory" / reviewerModel "opus" / rateLimitWaitMin 30')
+    if (/\{\{[\w.|]+\}\}/.test(rp)) fail(`orchestrator: run-plans.mjs keeps a placeholder: ${/\{\{[\w.|]+\}\}/.exec(rp)[0]}`)
+    // Plan 041: the decision triage values are in the workflow and orch-state.mjs (fixed since plan 088), and the triage agent is installed.
     const orchState = read(od, 'scripts/orch-state.mjs')
     if (!wf.includes('const TRIAGE = "shadow"')) fail('orchestrator: orchestrate.js does not render triage "shadow"')
     if (!orchState.includes('const TRIAGE = "shadow"') || !orchState.includes('const TRIAGE_MIN_AGREEMENT = 0.9') || !orchState.includes('const TRIAGE_MIN_GRADED = 20')) fail('orchestrator: orch-state.mjs does not render triage "shadow" / triageMinAgreement 0.9 / triageMinGraded 20')
@@ -1015,29 +1023,33 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     if (/\{\{[\w.|]+\}\}/.test(wf)) fail(`orchestrator: orchestrate.js keeps a placeholder: ${/\{\{[\w.|]+\}\}/.exec(wf)[0]}`)
     if (!read(od, 'scripts/orch-state.mjs').includes('const MIN_FREE_GB = 5')) fail('orchestrator: orch-state.mjs does not render minFreeDiskGb 5')
     const doc = read(od, 'docs/agent/orchestrator.md')
-    if (!doc.includes('| `runBranchPrefix` | `orch/` |') || !doc.includes('| `maxFixRounds` | `2` |') || !doc.includes('| `minFreeDiskGb` | `5` |') || !doc.includes('| `pilotSize` | `3` |')) fail('orchestrator: orchestrator.md does not name the default settings')
-    if (!doc.includes('| `fallbackModel` | `opus` |') || !doc.includes('| `staleMin` | `10` |') || !doc.includes('| `maxNotesPerPlan` | `12` |') || !doc.includes('| `maxAgentCallsPerPlan` | `60` |')) fail('orchestrator: orchestrator.md does not name the plan 029 defaults (fallbackModel, staleMin, maxNotesPerPlan, maxAgentCallsPerPlan)')
-    if (!doc.includes('| `triage` | `shadow` |') || !doc.includes('| `triageMinAgreement` | `0.9` |') || !doc.includes('| `triageMinGraded` | `20` |')) fail('orchestrator: orchestrator.md does not name the triage settings')
+    if (!doc.includes('| `runBranchPrefix` | `orch/` |') || !doc.includes('| `maxFixRounds` | `2` |') || !doc.includes('| `minFreeDiskGb` | `5` |') || !doc.includes('| `staleMin` | `10` |')) fail('orchestrator: orchestrator.md does not name the default settings')
+    if (!doc.includes('| `reviewerMode` | `advisory` |') || !doc.includes('| `reviewerModel` | `opus` |') || !doc.includes('| `rateLimitWaitMin` | `30` |')) fail('orchestrator: orchestrator.md does not name the run-plans settings (reviewerMode, reviewerModel, rateLimitWaitMin)')
+    // Plan 088: the retired keys have no settings row; the doc says they are removed.
+    if (/^\| `(pilotSize|fallbackModel|maxNotesPerPlan|maxAgentCallsPerPlan|triage|triageMinAgreement|triageMinGraded)` \|/m.test(doc) || !doc.includes('NOTE orchestrator: <key> removed')) fail('orchestrator: orchestrator.md still lists a retired key as a setting, or does not say they are removed')
     if (!doc.includes('| `mergeChecks` | `build` |') || !doc.includes('## Checks that run from the main folder')) fail('orchestrator: orchestrator.md does not name mergeChecks "build" and the main-folder checks section')
+    // Plan 088: /orchestrate is the thin command — under 60 lines, it runs scripts/run-plans.mjs (dry run first, the line
+    // for the Human, `start` in the background), names the watch line, reads status.json, and starts no workflow.
     const cmd = read(od, '.claude/commands/orchestrate.md')
-    if (!cmd.includes('node scripts/orch-state.mjs watch --run <run>') || cmd.includes('startedAt')) fail('orchestrator: orchestrate.md must name the watch line and pass no startedAt')
-    if (!cmd.includes('`askHuman` false') || !cmd.includes('"mainChecks"') || !cmd.includes('`ask`') || !cmd.includes('decisionsDropped')) fail('orchestrator: orchestrate.md must start the run on askHuman false (the `ask` word keeps the pause), pass mainChecks and print decisionsDropped')
-    // Plan 034: a main-folder check always waits for go.
-    if (!cmd.includes('"mainApproved": true') || !cmd.includes('from the main folder') || !cmd.includes('no main-folder command')) fail('orchestrator: orchestrate.md must list the main-folder commands, wait for go and pass mainApproved')
+    if (cmd.split('\n').length >= 60) fail(`orchestrator: orchestrate.md has ${cmd.split('\n').length} lines — the thin command stays under 60`)
+    if (!cmd.includes('node scripts/run-plans.mjs --run <run> --plans <NNN,NNN>') || !cmd.includes('node scripts/run-plans.mjs --dry-run --run <run> --plans <NNN,NNN>')) fail('orchestrator: orchestrate.md must print the run-plans.mjs line and run its dry run first')
+    if (!cmd.includes('node scripts/orch-state.mjs watch --run <run>') || !cmd.includes('run_in_background') || !cmd.includes('status.json')) fail('orchestrator: orchestrate.md must name the watch line, start on `start` with run_in_background and read the result from status.json')
+    if (/workflows\/orchestrate\.js|Workflow tool|\bargs\.|"mainChecks"|kit-runner/.test(cmd) || /\{\{[\w.|]+\}\}/.test(cmd)) fail('orchestrator: orchestrate.md must start no workflow (no workflow file, Workflow tool, args, runner agent) and keep no placeholder')
     if (!doc.includes('stopped: main-approval')) fail('orchestrator: orchestrator.md does not say the run refuses unapproved main checks (stopped: main-approval)')
     // Plan 043: readiness checks the plan's claims; a delegated answer is backed by main-try; npx checks map to scripts.
     if (!read(od, '.claude/agents/orch-readiness.md').includes('claims')) fail('orchestrator: orch-readiness.md does not name claims')
-    if (!cmd.includes('mainDelegated') || !cmd.includes('main-try')) fail('orchestrator: orchestrate.md must pass mainDelegated and run main-try on a delegated reply')
     if (!doc.includes('## What a plan claims') || !read(od, 'scripts/orch-state.mjs').includes("'main-try'")) fail('orchestrator: orchestrator.md / orch-state.mjs do not carry the claims and main-try rules')
     if (!/^\.claude\/orchestrator-runs\/$/m.test(read(od, '.gitignore'))) fail('orchestrator: the rendered .gitignore does not ignore .claude/orchestrator-runs/')
   }
   rmSync(od, { recursive: true, force: true })
 
   const op = tmp('orch-project')
-  writeFileSync(join(op, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, orchestrator: { runBranchPrefix: 'runs/', maxFixRounds: 3, minFreeDiskGb: 10, pilotSize: 0 } }))
+  writeFileSync(join(op, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, orchestrator: { runBranchPrefix: 'runs/', maxFixRounds: 3, minFreeDiskGb: 10, pilotSize: 0, reviewerMode: 'gate' } }))
   const p = run('install.mjs', ['--target', op])
   if (p.status !== 0) fail(`install with project orchestrator values: exit ${p.status}`)
-  else if (!read(op, '.claude/workflows/orchestrate.js').includes('const PILOT_SIZE = 0')) fail('orchestrator: pilotSize 0 does not render')
+  // Plan 088: a retired key the project still sets is ignored with one NOTE; the workflow keeps its fixed value.
+  else if (!p.stdout.includes('NOTE orchestrator: pilotSize removed') || !read(op, '.claude/workflows/orchestrate.js').includes('const PILOT_SIZE = 3')) fail('orchestrator: a project pilotSize must print "NOTE orchestrator: pilotSize removed" and leave the workflow at 3')
+  else if (!read(op, 'scripts/run-plans.mjs').includes('const REVIEWER_MODE = "gate"')) fail('orchestrator: reviewerMode "gate" does not render into run-plans.mjs')
   else if (!read(op, '.claude/workflows/orchestrate.js').includes('const MAX_FIX_ROUNDS = 3') || !read(op, '.claude/workflows/orchestrate.js').includes('const RUN_PREFIX = "runs/"') || !read(op, 'scripts/orch-state.mjs').includes('const MIN_FREE_GB = 10')) fail('orchestrator: project values do not render')
   rmSync(op, { recursive: true, force: true })
 
@@ -1060,20 +1072,12 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     [{ maxFixRounds: 0 }, 'orchestrator.maxFixRounds is 0 — it must be a whole number from 1 to 5'],
     [{ maxFixRounds: '2' }, 'orchestrator.maxFixRounds is "2" — it must be a whole number from 1 to 5'],
     [{ minFreeDiskGb: -1 }, 'orchestrator.minFreeDiskGb is -1 — it must be a number of GB from 0 to 1000'],
-    [{ pilotSize: 11 }, 'orchestrator.pilotSize is 11 — it must be a whole number from 0 to 10'],
-    [{ pilotSize: 1.5 }, 'orchestrator.pilotSize is 1.5 — it must be a whole number from 0 to 10'],
-    [{ pilotSize: '3' }, 'orchestrator.pilotSize is "3" — it must be a whole number from 0 to 10'],
-    [{ fallbackModel: 'haiku' }, 'orchestrator.fallbackModel is "haiku" — allowed: "sonnet", "opus", "fable", "inherit" (no retry) or a non-Haiku model id starting "claude-"'],
-    [{ fallbackModel: 'claude-haiku-5-5' }, 'orchestrator.fallbackModel is "claude-haiku-5-5"'],
     [{ staleMin: 0 }, 'orchestrator.staleMin is 0 — it must be a whole number of minutes from 1 to 240'],
-    [{ maxNotesPerPlan: 101 }, 'orchestrator.maxNotesPerPlan is 101 — it must be a whole number of notes from 1 to 100'],
     [{ mergeChecks: 'tests' }, 'orchestrator.mergeChecks is "tests" — it must be "build" (the project build plus the plan\'s scope check) or "full" (the plan\'s whole check list)'],
-    [{ triage: 'loud' }, 'orchestrator.triage is "loud" — it must be "off", "shadow" or "filter"'],
-    [{ triageMinAgreement: 0.4 }, 'orchestrator.triageMinAgreement is 0.4 — it must be a number from 0.5 to 1'],
-    [{ triageMinAgreement: '0.9' }, 'orchestrator.triageMinAgreement is "0.9" — it must be a number from 0.5 to 1'],
-    [{ triageMinGraded: 4 }, 'orchestrator.triageMinGraded is 4 — it must be a whole number from 5 to 500'],
-    [{ triageMinGraded: 20.5 }, 'orchestrator.triageMinGraded is 20.5 — it must be a whole number from 5 to 500'],
-    [{ maxAgentCallsPerPlan: 5 }, 'orchestrator.maxAgentCallsPerPlan is 5 — it must be a whole number of agent calls from 10 to 500'],
+    [{ reviewerMode: 'loud' }, 'orchestrator.reviewerMode is "loud" — it must be "advisory"'],
+    [{ reviewerModel: 'haiku' }, 'orchestrator.reviewerModel is "haiku" — the reviewer validates, so never Haiku'],
+    [{ reviewerModel: 'claude-haiku-5-5' }, 'orchestrator.reviewerModel is "claude-haiku-5-5"'],
+    [{ rateLimitWaitMin: 601 }, 'orchestrator.rateLimitWaitMin is 601 — it must be a whole number of minutes from 0 to 600'],
     [{ ciMirror: 'npm run lint' }, 'orchestrator.ciMirror is "npm run lint" — it must be a list of check commands'],
     [{ ciMirror: ['git push'] }, 'orchestrator.ciMirror item "git push" — git push: not an allowed check'],
     [{ ciMirror: ['node tools/x.mjs --apply'] }, 'orchestrator.ciMirror item "node tools/x.mjs --apply" — node tools/x.mjs --apply: --apply writes files'],
@@ -1105,9 +1109,13 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   writeFileSync(join(os, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, orchestrator: { maxFixRounds: 9 } }))
   const s = run('sync.mjs', ['--target', os, '--apply'])
   if (s.status !== 2 || !s.stderr.includes('KIT_SYNC: STOP — orchestrator.maxFixRounds is 9')) fail(`sync with orchestrator.maxFixRounds 9: exit ${s.status}, ${s.stderr.trim().split('\n')[0]}`)
-  writeFileSync(join(os, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, orchestrator: { fallbackModel: 'haiku', staleMin: 0 } }))
+  writeFileSync(join(os, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, orchestrator: { reviewerModel: 'haiku', staleMin: 0 } }))
   const s2 = run('sync.mjs', ['--target', os, '--apply'])
-  if (s2.status !== 2 || !s2.stderr.includes('orchestrator.fallbackModel is "haiku"') || !s2.stderr.includes('orchestrator.staleMin is 0')) fail(`sync with orchestrator.fallbackModel haiku / staleMin 0: exit ${s2.status}, ${s2.stderr.trim().split('\n')[0]}`)
+  if (s2.status !== 2 || !s2.stderr.includes('orchestrator.reviewerModel is "haiku"') || !s2.stderr.includes('orchestrator.staleMin is 0')) fail(`sync with orchestrator.reviewerModel haiku / staleMin 0: exit ${s2.status}, ${s2.stderr.trim().split('\n')[0]}`)
+  // Plan 088: a retired key is no refusal any more — sync applies and prints one NOTE per key.
+  writeFileSync(join(os, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, orchestrator: { fallbackModel: 'haiku', triage: 'loud' } }))
+  const s3 = run('sync.mjs', ['--target', os, '--apply'])
+  if (s3.status !== 0 || !s3.stdout.includes('NOTE orchestrator: fallbackModel removed') || !s3.stdout.includes('NOTE orchestrator: triage removed')) fail(`sync with retired orchestrator keys: exit ${s3.status}, ${(s3.stdout + s3.stderr).trim().split('\n').pop()}`)
   rmSync(os, { recursive: true, force: true })
 
   // Plan 044: orchestrator.ciMirror is rendered into the final gate, and sync suggests (never writes) the CI commands the gate does not run.

@@ -43,14 +43,14 @@ the model's own `pass` flag (`docs/agent/agent-roles.md`).
 | `.claude/skills/github-sync/SKILL.md` (forked) | mechanical | session start |
 | `.claude/skills/techdebt/SKILL.md` (forked) | analysis | `/techdebt`, before a PR |
 | `/docs-refresh` agent call | analysis | `/docs-refresh` |
-| `.claude/agents/orch-builder.md` | build (escalation: judgment) | the orchestrator |
-| `.claude/agents/orch-readiness.md` | judgment | the orchestrator |
-| `.claude/agents/orch-gate.md`, `orch-report.md` | mechanical | the orchestrator |
-| `.claude/agents/orch-check-plan.md`, `orch-check-bugs.md`, `orch-check-rules.md`, `orch-verify.md` | review | the orchestrator, `/review-it`, `/ship` Phase 2 (checker review on a plan branch; the re-check is `orch-verify` only) |
-| `.claude/agents/orch-security.md` | review | the orchestrator, `/review-it` and `/ship` Phase 2 (sensitive paths only) |
-| `.claude/agents/orch-ui.md`, `orch-triage.md` | review | the orchestrator |
-| `.claude/agents/plan-reviewer.md` | review (`models.review`); the kit's agent-eval baseline picked `opus` for it (highest precision, still advisory only) | the kit's agent eval only, until a later plan wires it in to replace the finders and the verifier |
-| `.claude/agents/orch-merge.md` | analysis | the orchestrator |
+| `.claude/agents/orch-builder.md` | build (escalation: judgment) | `scripts/run-plans.mjs` (a headless `claude -p` call per build) and the workflow |
+| `.claude/agents/plan-reviewer.md` | `orchestrator.reviewerModel` (default `opus`: the kit's agent eval measured it best; never Haiku); advisory until its precision reaches 0.50 (`orchestrator.reviewerMode`) | `scripts/run-plans.mjs` (one headless call per review), the kit's agent eval |
+| `.claude/agents/orch-readiness.md` | judgment | the workflow (`run-plans.mjs` lints readiness by script) |
+| `.claude/agents/orch-gate.md`, `orch-report.md` | mechanical | the workflow |
+| `.claude/agents/orch-check-plan.md`, `orch-check-bugs.md`, `orch-check-rules.md`, `orch-verify.md` | review | the workflow, `/review-it`, `/ship` Phase 2 (checker review on a plan branch; the re-check is `orch-verify` only) |
+| `.claude/agents/orch-security.md` | review | the workflow, `/review-it` and `/ship` Phase 2 (sensitive paths only) |
+| `.claude/agents/orch-ui.md`, `orch-triage.md` | review | the workflow |
+| `.claude/agents/orch-merge.md` | analysis | the workflow (`run-plans.mjs` merges by script) |
 
 The role agents (`orch-*`) share one contract — non-interactive, evidence for every claim, a JSON result that names
 its own model and effort: `docs/agent/agent-roles.md`.

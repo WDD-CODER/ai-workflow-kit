@@ -13,15 +13,16 @@
 import { readFileSync, readdirSync, existsSync, statSync, writeFileSync, mkdtempSync, rmSync, cpSync, mkdirSync } from 'node:fs'
 import { join, resolve, dirname, relative } from 'node:path'
 import { tmpdir } from 'node:os'
-import { spawn } from 'node:child_process'
 import { parseAgentResult, validateAgentResult, ROLES } from '../agent-result.mjs'
 import { validateReviewerResult } from './reviewer.mjs'
 import { compareCase, caseKind } from './compare.mjs'
 import { scoreCase, scoreTotal } from './score.mjs'
 import { redactPlan } from '../../../core/scripts/lib/redact.mjs'
+// The headless runner lives in the kit's scripts (plan 088): the eval and run-plans.mjs call Claude Code the same way.
+// WRITE_TOOLS: an agent that has one is refused unless allowWrite is set.
+import { WRITE_TOOLS, claudeArgs, usageTokens, spawnClaude, systemPromptOf } from '../../../core/scripts/lib/claude-run.mjs'
 
-/** Tools that let an agent change files; an agent that has one is refused unless allowWrite is set. */
-export const WRITE_TOOLS = ['Edit', 'Write', 'MultiEdit', 'NotebookEdit']
+export { WRITE_TOOLS, claudeArgs, usageTokens }
 
 /** The four checker roles that have their own case folder; any other agent is scored on every case (`--role all`). */
 export const CHECKER_ROLES = ['orch-check-bugs', 'orch-check-plan', 'orch-check-rules', 'orch-verify']
@@ -274,22 +275,6 @@ export function casePrompt({ role, inputDir, redact = false, withGate = false, h
   ].join('\n')
 }
 
-/** Arguments for `claude -p` (exported for tests; no model is called here). */
-export function claudeArgs({ agent, model, systemPromptFile }) {
-  const args = ['-p', '--output-format', 'json', '--system-prompt-file', systemPromptFile]
-  // "inherit" is a kit model tier (the main session's model), not a model name: no --model, Claude Code's default.
-  if (model && model !== 'inherit') args.push('--model', model)
-  if (agent.tools?.length) args.push('--tools', agent.tools.join(','))
-  if (!agent.tools?.some((t) => WRITE_TOOLS.includes(t))) args.push('--disallowedTools', WRITE_TOOLS.join(','))
-  return args
-}
-
-/** Sum every numeric *_tokens field of a Claude Code usage object. */
-export function usageTokens(usage) {
-  if (!usage || typeof usage !== 'object') return 0
-  return Object.entries(usage).filter(([k, v]) => /_tokens$/.test(k) && Number.isFinite(v)).reduce((s, [, v]) => s + v, 0)
-}
-
 /**
  * Runner that calls Claude Code: the agent body (plus the shared agent-roles contract when it sits next to the
  * agent's repo) as the system prompt, the case input as the prompt, cwd = a scratch copy of the case input folder in
@@ -311,28 +296,14 @@ export function claudeRunner({ bin = process.env.AGENT_EVAL_CLAUDE ?? 'claude', 
       else mkdirSync(inputDir)
       const planCopy = join(inputDir, 'plan.md')
       if (redact && existsSync(planCopy)) writeFileSync(planCopy, redactPlan(readFileSync(planCopy, 'utf8')))
-      const roles = join(dirname(agent.file), '..', '..', 'docs', 'agent', 'agent-roles.md')
-      const system = existsSync(roles) ? `${agent.body}\n\n---\n# docs/agent/agent-roles.md\n\n${readFileSync(roles, 'utf8')}` : agent.body
       const systemPromptFile = join(tmp, 'system.md')
-      writeFileSync(systemPromptFile, system)
+      writeFileSync(systemPromptFile, systemPromptOf(agent))
       const args = claudeArgs({ agent, model, systemPromptFile })
-      const win = process.platform === 'win32'
-      const out = await new Promise((resolveRun, reject) => {
-        const child = spawn(bin, win ? args.map((a) => `"${a}"`) : args, { cwd: inputDir, shell: win, windowsHide: true })
-        let stdout = ''
-        let stderr = ''
-        const timer = setTimeout(() => { child.kill(); reject(new Error(`claude timed out after ${timeoutMs} ms`)) }, timeoutMs)
-        child.stdout.on('data', (d) => { stdout += d })
-        child.stderr.on('data', (d) => { stderr += d })
-        child.on('error', (e) => { clearTimeout(timer); reject(e) })
-        child.on('close', (code) => {
-          clearTimeout(timer)
-          if (code !== 0) reject(new Error(`claude exited ${code}: ${stderr.trim().split(/\r?\n/).slice(-2).join(' | ')}`))
-          else resolveRun(stdout)
-        })
-        child.stdin.end(casePrompt({ role, inputDir, redact, withGate, hide }))
-      })
-      const json = JSON.parse(out)
+      const r = await spawnClaude({ bin, args, cwd: inputDir, input: casePrompt({ role, inputDir, redact, withGate, hide }), timeoutMs })
+      if (r.error) throw new Error(r.error)
+      if (r.timedOut) throw new Error(`claude timed out after ${timeoutMs} ms`)
+      if (r.code !== 0) throw new Error(`claude exited ${r.code}: ${r.stderr.trim().split(/\r?\n/).slice(-2).join(' | ')}`)
+      const json = JSON.parse(r.stdout)
       return { text: String(json.result ?? ''), tokens: usageTokens(json.usage), costUsd: Number(json.total_cost_usd) || 0 }
     } finally {
       // On Windows the folder can still be held a moment after the child exits (EPERM): retry, and never let a failed

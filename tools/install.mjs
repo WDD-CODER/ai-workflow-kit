@@ -45,7 +45,7 @@ import { resolveSource } from './lib/source.mjs'
 import {
   KIT_ROOT, REQUIRED, isEmpty, readJson, sha256, resolveConfig, planFiles, parseArgs, unflatten, NOT_SET, readOverrides, isHook,
   markHooksExecutable, commandProblems, ownsAgents, ignoredPaths, AGENTS_WORKFLOW, frontendNote, presentAlternative, backendNote, ciMirrorNotes,
-  detectStack, splitList, withUpstream, projectConfigPath, configLabel, requiredByDest,
+  detectStack, splitList, withUpstream, projectConfigPath, configLabel, requiredByDest, RETIRED_KEYS, retiredNotes,
 } from './lib/kit.mjs'
 
 let args
@@ -259,7 +259,8 @@ if (!args['dry-run']) {
   mkdirSync(join(target, '.kit'), { recursive: true })
   writeFileSync(join(target, '.kit', 'install.json'), installJson, 'utf8')
   if (!existsSync(ownCfgFile)) {
-    const effective = { $comment: 'Effective config written by kit-install; edit freely, kit-sync reads it.', ...unflatten(vals) }
+    // The retired orchestrator keys are fixed values, not settings: never written into a project's config.
+    const effective = { $comment: 'Effective config written by kit-install; edit freely, kit-sync reads it.', ...unflatten(Object.fromEntries(Object.entries(vals).filter(([k]) => !(k in RETIRED_KEYS)))) }
     for (const k of Object.keys(effective.kit ?? {})) delete effective.kit[k]
     delete effective.kit
     writeFileSync(ownCfgFile, JSON.stringify(effective, null, 2) + '\n', 'utf8')
@@ -330,6 +331,7 @@ if (feNote) log(feNote)
 const beNote = backendNote(vals, target)
 if (beNote) log(beNote)
 for (const n of ciMirrorNotes(vals, target)) log(n)
+for (const n of retiredNotes(projectCfg)) log(n)
 if (agentsWorkflow) {
   const claude = join(target, 'CLAUDE.md')
   const imports = existsSync(claude) && readFileSync(claude, 'utf8').includes(`@${AGENTS_WORKFLOW}`)
