@@ -58,11 +58,11 @@ the path to the scope block and retry.
 3. Confirm whether `.kit/install.json` still holds a sha256 record for an overridden path (for the "unchanged" test).
 
 ## Atomic Sub-tasks
-- [ ] R1: Give the kit one explicit list of files it deleted, so "retired" never means "just not planned now" — retired-files.json seeded from plan 090, loader in kit.mjs — tools/retired-files.json, tools/lib/kit.mjs
-- [ ] R2: Make sync drop the override entry and move or delete the file of a retired path, and count it in the summary — dry-run row, safe config text edit, Q1 handling — tools/sync.mjs
-- [ ] R3: Prove the three cases with tests: retired and unchanged, retired and changed by the project, never shipped — tools/test/sync-retired-override.test.mjs
-- [ ] R4: Reword plan 090's human session check so it can pass under the approved size budget — plans/1-100/090-subtraction-delete-what-the-runner-replaced-and-a-size-budget-test.plan.md
-- [ ] R5: Run every check and add the changelog entry — CHANGELOG.md
+- [x] R1: Give the kit one explicit list of files it deleted, so "retired" never means "just not planned now" — retired-files.json seeded from plan 090, loader in kit.mjs — tools/retired-files.json, tools/lib/kit.mjs
+- [x] R2: Make sync drop the override entry and move or delete the file of a retired path, and count it in the summary — dry-run row, safe config text edit, Q1 handling — tools/sync.mjs
+- [x] R3: Prove the three cases with tests: retired and unchanged, retired and changed by the project, never shipped — tools/test/sync-retired-override.test.mjs
+- [x] R4: Reword plan 090's human session check so it can pass under the approved size budget — plans/1-100/090-subtraction-delete-what-the-runner-replaced-and-a-size-budget-test.plan.md
+- [x] R5: Run every check and add the changelog entry — CHANGELOG.md
 
 ## Technical Considerations
 - "Unchanged" = override file text hash (CRLF-normalised, as `sameText` in sync.mjs) equals the `.kit/install.json` record for that path, else `lastSha256` from the retired list. No hash to compare → treated as changed (the safe side).
