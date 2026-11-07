@@ -1,6 +1,6 @@
 # Plan 091 — Eval scorer matches what a reviewer sees, and the runner's reviewer goes back to Sonnet
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: b3abe93
 Source: Human decision 2026-11-07 on the 087 evidence (`docs/agent-evals/087-fp-sample.md`, `087-reviewer-ab.md` § 2026-11-07).
