@@ -4,7 +4,8 @@
  *   import { compareCase } from './compare.mjs'
  *   const { tp, fn, fp, keys } = compareCase(expected, result, { role })
  *
- * A finding matches an expected one when `file`, `rule` and `severity` match and the line is within ±LINE_TOLERANCE.
+ * A finding matches an expected one when `file` and `rule` match, the severity is the same or one level away (plan 091:
+ * blocker ~ major, major ~ minor; never blocker ~ minor) and the line is within ±LINE_TOLERANCE.
  * The reasoning text is never compared, so a reworded finding still matches. `rule` matches when the normalized
  * strings are equal, or when the expected rule is a bare category (no ':') equal to the category before the actual
  * rule's ':' ("logic" matches "logic: off-by-one in the loop bound"). An expected `rule` may be a list of accepted
@@ -22,6 +23,19 @@ const category = (rule) => {
   return at < 0 ? r : r.slice(0, at).trim()
 }
 
+/** Severity order (plan 091): adjacent levels match; an unknown severity matches only itself. */
+export const SEVERITY_RANK = { blocker: 3, major: 2, minor: 1 }
+
+/** True when the two severities are equal or one level apart. */
+export function severityMatches(expectedSeverity, actualSeverity) {
+  const e = norm(expectedSeverity)
+  const a = norm(actualSeverity)
+  if (e === a) return true
+  const re = SEVERITY_RANK[e]
+  const ra = SEVERITY_RANK[a]
+  return re !== undefined && ra !== undefined && Math.abs(re - ra) === 1
+}
+
 /** True when the actual rule satisfies the expected rule (a string or a list of accepted strings). */
 export function ruleMatches(expectedRule, actualRule) {
   const accepted = Array.isArray(expectedRule) ? expectedRule : [expectedRule]
@@ -34,10 +48,10 @@ export function ruleMatches(expectedRule, actualRule) {
   })
 }
 
-/** True when one actual finding matches one expected finding (file, rule, severity; line within the tolerance). */
+/** True when one actual finding matches one expected finding (file, rule, severity within one level; line within the tolerance). */
 export function findingMatches(expected, actual, tolerance = LINE_TOLERANCE) {
   if (normFile(expected.file) !== normFile(actual.file)) return false
-  if (norm(expected.severity) !== norm(actual.severity)) return false
+  if (!severityMatches(expected.severity, actual.severity)) return false
   if (!ruleMatches(expected.rule, actual.rule)) return false
   if (expected.line === undefined || expected.line === null) return true
   return Number.isInteger(actual.line) && Math.abs(actual.line - expected.line) <= tolerance

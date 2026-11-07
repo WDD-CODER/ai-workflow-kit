@@ -77,7 +77,7 @@ the path to the scope block and retry. In this run: `tools/test/**` and `tools/l
 
 ## Atomic Sub-tasks
 
-- [ ] E1: Count a finding one severity level away from the label as a match — severity order blocker > major > minor, adjacent levels match — tools/lib/agent-eval/compare.mjs, tools/test/agent-eval.test.mjs
+- [x] E1: Count a finding one severity level away from the label as a match — severity order blocker > major > minor, adjacent levels match — tools/lib/agent-eval/compare.mjs, tools/test/agent-eval.test.mjs
 - [ ] E2: Stop scoring plan-step findings on plan.md in bug and verify cases, where the case diff is only a slice — category done-when, scope or a sub-task id; new `unscored` figure in the report and the A/B table — tools/lib/agent-eval/compare.mjs, tools/lib/agent-eval/run.mjs, tools/agent-eval-ab.mjs, tools/test/agent-eval.test.mjs
 - [ ] E3: Tell every evaluated agent that the diff is the whole change under review — one sentence in casePrompt — tools/lib/agent-eval/run.mjs, tools/test/agent-eval.test.mjs, core/docs/agent/agent-evals.md
 - [ ] E4: Run the reviewer back on Sonnet in run-plans until the fixed eval says otherwise — orchestrator.reviewerModel default sonnet; docs and asserts follow — kit.config.json, .kit/config.json, core/docs/agent/orchestrator.md, core/docs/agent/model-routing.md, tools/install-check.mjs, tools/test/run-plans.test.mjs
@@ -101,4 +101,6 @@ the path to the scope block and retry. In this run: `tools/test/**` and `tools/l
 ## Execution Notes
 - decision: behaviour: rule (b) also covers a sub-task-id category (`A2:`, `D1:`), because the fp sample shows most "ticked sub-task not in the diff" findings carry the sub-task id as their category, not `done-when`; reverse by dropping the id pattern in E2.
 - validated: plan 087 [human] reviewer report — Human 2026-11-07: ok, with this plan as the decision (fix the eval first; runner reviewer Sonnet redact-gate advisory; no orch-verify chaining).
+- step0: 1 ok — the case's role is known in `evaluate` (`c.name` is `<role>/<case>` under `--role all`, else the scope is the role) but `scoreRun`/`compareCase` do not receive it today; E2 passes it in. 2 ok — `casePrompt` is shared by every agent. 3 ok — `tools/install-check.mjs:995,1027`, `tools/test/run-plans.test.mjs:191,286,386` (dry-run `--model opus`), `core/docs/agent/orchestrator.md:50`, `core/docs/agent/model-routing.md:47`; also `kit.config.json` `$comment` ("default opus") and `.kit/config.json` has no `reviewerModel` key (E4 adds it); `docs/brain/decisions/0017-*.md:32` says opus — an ADR, outside scope, not edited in place.
 - validated: plan 088 [human] dry-run part — Human 2026-11-07: ok (`node scripts/run-plans.mjs --dry-run --run goal-check --plans 089` from main: WOULD START: yes, no model call). The real-run part is plan 058 H1, after this plan.
+- E1: `severityMatches` + `SEVERITY_RANK` in `compare.mjs`; `findingMatches` uses it; new test (adjacent = tp, blocker↔minor = fp + fn, an unknown severity matches only itself); `node --test tools/test/agent-eval.test.mjs` 28/28 pass.

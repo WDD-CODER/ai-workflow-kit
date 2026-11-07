@@ -47,12 +47,28 @@ test('a reworded finding still matches: file, rule and severity match, line with
   const reworded = { file: './src/paginate.mjs', line: 6, rule: 'Logic: loop bound is inclusive', severity: 'major', reasoning: 'Entirely different words.' }
   assert.equal(findingMatches(expected, reworded), true)
   assert.equal(findingMatches(expected, { ...reworded, line: 8 }), false, 'line 4 lines away does not match')
-  assert.equal(findingMatches(expected, { ...reworded, severity: 'minor' }), false, 'severity must match')
+  assert.equal(findingMatches(expected, { ...reworded, severity: 'blocker' }), true, 'plan 091: one severity level away matches')
   assert.equal(findingMatches(expected, { ...reworded, file: 'src/other.mjs' }), false, 'file must match')
   assert.equal(findingMatches(expected, { ...reworded, rule: 'runtime: null input' }), false, 'rule category must match')
   assert.equal(ruleMatches('logic: exact detail', 'logic: other detail'), false, 'a full expected rule needs the same rule')
   assert.equal(ruleMatches(['evidence', 'A1'], 'A1: test file missing'), true, 'any listed rule is accepted')
   assert.equal(findingMatches({ file: 'plan.md', rule: 'evidence', severity: 'major' }, { file: 'plan.md', line: 99, rule: 'evidence: no command', severity: 'major' }), true, 'no expected line = any line')
+})
+
+test('plan 091 severity: a finding one level from the label is a tp (blocker~major, major~minor); two levels apart is not', () => {
+  const exp = (severity) => ({ file: 'src/a.mjs', line: 10, rule: 'logic', severity })
+  const act = (severity) => ({ file: 'src/a.mjs', line: 11, rule: 'logic: x', severity })
+  for (const [e, a] of [['major', 'blocker'], ['blocker', 'major'], ['major', 'minor'], ['minor', 'major']]) {
+    assert.equal(findingMatches(exp(e), act(a)), true, `${e} ~ ${a}`)
+    const c = compareCase({ findings: [exp(e)] }, { problems: [act(a)] })
+    assert.deepEqual([c.tp, c.fn, c.fp], [1, 0, 0], `${e} vs ${a} is one tp, no fp and no fn`)
+  }
+  for (const [e, a] of [['blocker', 'minor'], ['minor', 'blocker']]) {
+    assert.equal(findingMatches(exp(e), act(a)), false, `${e} vs ${a}: two levels apart`)
+    const c = compareCase({ findings: [exp(e)] }, { problems: [act(a)] })
+    assert.deepEqual([c.tp, c.fn, c.fp], [0, 1, 1])
+  }
+  assert.equal(findingMatches(exp('major'), act('weird')), false, 'an unknown severity matches only itself')
 })
 
 test('matching is one-to-one: two expected findings are not both satisfied by one actual finding', () => {
