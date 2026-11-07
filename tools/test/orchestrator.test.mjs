@@ -812,7 +812,7 @@ test('run log: the 20 newest rows stay, older ones roll into one "Earlier (N run
   assert.equal(lib.parseRunLog(text).rows.length, 20)
 })
 
-test('trend: ✗ per plan, fix rounds per plan and parked per run over the last runs; fewer than two rows is "first logged run"', () => {
+test('trendOf: ✗ per plan, fix rounds per plan and parked per run over the last runs; fewer than two rows is "first logged run"', () => {
   const rows = [
     row('a', '2026-10-01', '1,2,3,4,5', { parked: '2', fixRounds: '4', perPlan: '0.6' }),
     row('b', '2026-10-02', '1,2,3,4', { parked: '1', fixRounds: '2', perPlan: '0.25' }),
@@ -822,17 +822,9 @@ test('trend: ✗ per plan, fix rounds per plan and parked per run over the last 
   assert.equal(lib.trendOf(rows, { last: 2 }).line, 'Trend (last 2 runs): ✗ per plan 0.25 → - · fix rounds per plan 0.5 → 0.2 · parked 1 → 0')
   assert.equal(lib.trendOf(rows.slice(0, 1)).line, 'Trend: first logged run')
   assert.equal(lib.trendOf([]).line, 'Trend: first logged run')
-  const t = learnDir()
-  try {
-    assert.match(t.orch('trend').stdout, /Trend: first logged run/)
-    t.write('docs/brain/run-log.md', lib.updateRunLog(lib.updateRunLog('', rows[0], []), rows[1], []))
-    const out = t.orch('trend')
-    assert.equal(out.status, 0, out.stderr)
-    // logging b filled a's ✗ columns from the (empty) decision log: 0; b, the newest, keeps what it was given
-    assert.match(out.stdout, /^RUN a: ✗ per plan 0 · fix rounds per plan 0\.8 · parked 2$/m)
-    assert.match(out.stdout, /Trend \(last 2 runs\): ✗ per plan 0 → 0\.25 · fix rounds per plan 0\.8 → 0\.5 · parked 2 → 1/)
-    assert.equal(t.orch('trend', '--last=1').status, 1)
-  } finally { t.clean() }
+  // logging b fills a's ✗ columns from the (empty) decision log: 0; b, the newest, keeps what it was given
+  const logged = lib.parseRunLog(lib.updateRunLog(lib.updateRunLog('', rows[0], []), rows[1], [])).rows
+  assert.match(lib.trendOf(logged).line, /Trend \(last 2 runs\): ✗ per plan 0 → 0\.25 · fix rounds per plan 0\.8 → 0\.5 · parked 2 → 1/)
 })
 
 test('the report ends with the character budget and then the trend line', () => {
@@ -937,44 +929,6 @@ test('plan 065: silence rule: no category-only line, and a status with category-
   })
   assert.deepEqual(lib.lessonFacts(bare), [])
   assert.ok(!lib.lessonFacts(plan65({ asked: ['what happens on cancel?'], ready: false })).some((f) => f.role === 'planner' || f.role === 'readiness'), 'asked entries give no planner or readiness line')
-})
-
-test('plan 065: orch-state set stores the facts from git and the registered rules inside the one call; text outside them is dropped', () => {
-  const t = learnDir({ run: 'c', plans: { '007': { nnn: '007', state: 'checking', round: 1, models: {}, branch: 'feat/007-x' } } })
-  try {
-    const git = (...a) => spawnSync('git', a, { cwd: t.dir, encoding: 'utf8' })
-    git('init', '-q', '-b', 'main')
-    git('config', 'user.email', 'a@b.c')
-    git('config', 'user.name', 'a')
-    writeFileSync(join(t.dir, 'seed.txt'), 'x')
-    git('add', 'seed.txt')
-    git('commit', '-q', '-m', 'seed')
-    const prefix = /const PREFIX = '([^']*)'/.exec(readFileSync(join(t.dir, 'scripts', 'orch-state.mjs'), 'utf8'))?.[1] ?? 'orch/'
-    git('branch', `${prefix}c`)
-    git('switch', '-q', '-c', 'feat/007-x')
-    mkdirSync(join(t.dir, 'src'), { recursive: true })
-    writeFileSync(join(t.dir, 'src', 'a.test.ts'), 'x')
-    git('add', 'src')
-    git('commit', '-q', '-m', 'work')
-    mkdirSync(join(t.dir, 'docs', 'brain'), { recursive: true })
-    writeFileSync(join(t.dir, 'docs', 'brain', 'invariants.md'), '## INV-1 — x\n')
-    const b64 = (v) => Buffer.from(JSON.stringify(v)).toString('base64')
-    const items = [
-      { round: 1, stage: 'gate', cmd: 'npm run test', tail: 'FAIL src/a.test.ts\nother src/nope.ts' },
-      { round: 2, stage: 'checker', findings: [{ id: 'check-bugs-1', rule: 'AGENTS.md INV-1 hard rule', file: 'src/a.test.ts' }, { id: 'check-bugs-2', rule: 'INV-9', file: 'src/zzz.ts' }, { id: 'bad id!', rule: 'x', file: 'src/a.test.ts' }] },
-    ]
-    const r = t.orch('set', '--plan=007', `--causes-b64=${b64(items)}`)
-    assert.equal(r.status, 0, r.stdout + r.stderr)
-    const p = t.status().plans['007']
-    assert.deepEqual(p.diffFiles, ['src/a.test.ts'])
-    assert.deepEqual(p.causeFacts, [
-      { round: 1, kind: 'gate', cmd: 'npm run test', file: 'src/a.test.ts' },
-      { round: 2, kind: 'checker', findings: [{ id: 'check-bugs-1', inv: 'INV-1', file: 'src/a.test.ts' }, { id: 'check-bugs-2' }] },
-    ])
-    // the final gate: the failing output names a diff file of the blamed plan
-    const f = t.orch('lessons', '--final-gate=failed', '--final-gate-command=npm run test', '--final-gate-plans=007', `--final-gate-tail-b64=${Buffer.from('not ok src/a.test.ts:3').toString('base64')}`)
-    assert.equal(t.status().finalGate.file, 'src/a.test.ts', f.stdout + f.stderr)
-  } finally { t.clean() }
 })
 
 test('the role files tell their agent to read LESSONS first', () => {
@@ -1150,34 +1104,11 @@ const withRunDir = (name, status, fn) => {
   }
 }
 
-test('orch-state set / stop / finish --notes-b64: notes land in status.json in order; a bad list writes nothing; a stopped run keeps its queued notes', () => {
-  withRunDir('n1', { plans: { 101: { nnn: '101', state: 'building', round: 0, models: {} } } }, ({ sh, read, file }) => {
-    const texts = Array.from({ length: 10 }, (_, i) => `note ${i} — with "quotes", a || bar and ünïcode`)
-    let r = sh('set', '--plan=101', `--notes-b64=${b64(texts.map((text) => ({ text })))}`)
-    assert.equal(r.status, 0, r.stdout + r.stderr)
-    assert.deepEqual(read().notes.map((n) => n.text), texts)
-    assert.ok(read().notes.every((n) => n.plan === '101'))
-    const before = readFileSync(file, 'utf8')
-    for (const bad of ['not base64 !!', b64({ not: 'a list' }), b64([null])]) {
-      r = sh('set', '--plan=101', `--notes-b64=${bad}`)
-      assert.equal(r.status, 1, `bad payload ${bad}`)
-      assert.equal(readFileSync(file, 'utf8'), before, 'nothing written')
-    }
-    r = sh('stop', '--reason=because', `--notes-b64=${b64([{ plan: '101', text: 'late plan note' }, { text: 'run level note' }])}`)
-    assert.equal(r.status, 0, r.stdout + r.stderr)
-    const s = read()
-    assert.equal(s.phase, 'stopped')
-    assert.deepEqual(s.notes.slice(-2).map((n) => [n.plan ?? null, n.text]), [['101', 'late plan note'], [null, 'run level note']])
-    const w = sh('watch')
-    assert.match(w.stdout, /STOPPED: because/)
-  })
-})
-
 test('orch-state set refreshes status.json updatedAt, so watch does not print STUCK while notes are flushed', () => {
   const old = new Date(Date.now() - 3 * 3600 * 1000).toISOString()
   withRunDir('n2', { updatedAt: old, plans: { 101: { nnn: '101', state: 'building', round: 0, models: {}, history: [{ at: old, state: 'building', round: 0 }] } } }, ({ sh, read }) => {
     assert.equal(sh('watch', '--stale-min=10').status, 1, 'STUCK before')
-    assert.equal(sh('set', '--plan=101', `--notes-b64=${b64([{ text: 'a note' }])}`).status, 0)
+    assert.equal(sh('set', '--plan=101', '--note=a note').status, 0)
     assert.ok(Date.parse(read().updatedAt) > Date.now() - 60000)
     assert.equal(sh('watch', '--stale-min=10').status, 0, 'RUNNING after the set that carried the note')
   })
@@ -1205,35 +1136,6 @@ test('orch-state decisions --b64: the same rows as N single `decision` calls; a 
       assert.equal(rb.status, 1, `bad payload ${bad}`)
       assert.equal(readFileSync(file, 'utf8'), before, 'nothing written, even for the good items before the bad one')
     }
-  })
-})
-
-test('orch-state set --flakes-b64: flakes ride on set, the same command and round is one entry, a bad one writes nothing', () => {
-  const items = [{ command: 'npm run test', round: 1, via: 'rerun', where: 'gate', sha: 'abc' }, { command: 'npm run test', round: 1, via: 'rerun', where: 'gate' }]
-  withRunDir('f1', { plans: { 101: { nnn: '101', state: 'building', round: 0, models: {} } } }, ({ sh, read }) => {
-    assert.equal(sh('set', '--plan=101', `--flakes-b64=${b64(items)}`).status, 0)
-    assert.equal(read().plans['101'].flakes.length, 1, 'the same command and round is one entry')
-    // A bad flake in a batch is skipped with a warning; the set still writes its state and the good flakes.
-    const mixed = [{ command: 'a\nb', via: 'rerun', where: 'gate', round: 2 }, { command: 'x'.repeat(301), via: 'rerun', where: 'gate', round: 2 }, { command: 'npm run lint', via: 'rerun', where: 'gate', round: 2 }]
-    const r = sh('set', '--plan=101', '--state=gate', `--flakes-b64=${b64(mixed)}`)
-    assert.equal(r.status, 0, r.stdout + r.stderr)
-    assert.match(r.stdout, /WARN — flake skipped/)
-    assert.equal(read().plans['101'].state, 'gate')
-    assert.deepEqual(read().plans['101'].flakes.map((f) => f.command), ['npm run test', 'npm run lint'])
-    assert.equal(sh('stop', '--reason=x', `--flakes-b64=${b64([{ command: 'x'.repeat(301), via: 'rerun', where: 'gate', round: 2, plan: '101' }])}`).status, 0, 'stop with a bad flake still stops')
-    assert.equal(read().phase, 'stopped')
-  })
-})
-
-test('notes carry ids: the same --notes-b64 sent twice (a runner rerun, a re-sent queue) records each note once', () => {
-  withRunDir('n3', { plans: { 101: { nnn: '101', state: 'building', round: 0, models: {} } } }, ({ sh, read }) => {
-    const payload = b64([{ id: '1:101-1', text: 'first' }, { id: '1:101-2', text: 'second' }])
-    assert.equal(sh('set', '--plan=101', `--notes-b64=${payload}`).status, 0)
-    assert.equal(sh('set', '--plan=101', `--notes-b64=${payload}`).status, 0)
-    const more = b64([{ id: '1:101-2', text: 'second' }, { id: '1:101-3', text: 'third' }, { id: '1:run-1', text: 'run level' }])
-    assert.equal(sh('stop', '--reason=x', `--notes-b64=${more}`).status, 0)
-    assert.equal(sh('stop', '--reason=x', `--notes-b64=${more}`).status, 0)
-    assert.deepEqual(read().notes.map((n) => n.text), ['first', 'second', 'third', 'run level'])
   })
 })
 

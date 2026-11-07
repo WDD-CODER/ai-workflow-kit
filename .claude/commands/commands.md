@@ -58,4 +58,4 @@ Show all registered slash commands with short descriptions and file locations.
 
 - Skills are separate — use `/skills` for `.claude/skills/*/SKILL.md`.
 - When adding/removing a command file, update this table in the same change.
-- Retired (do not invoke; files removed in cutover): `/plan-implementation`, `/execute-it`, `/validate-agent-refs`, `/nightly-audit`, `/audit-report`, `/reflect`, `/reflect-list`, `/reflect-add-tests`, and (plan 090) the legacy plan executor.
+- Retired (do not invoke; files removed in cutover): `/plan-implementation`, `/execute-it`, `/validate-agent-refs`, `/nightly-audit`, `/audit-report`, `/reflect`, `/reflect-list`, `/reflect-add-tests`, and the legacy plan executor.

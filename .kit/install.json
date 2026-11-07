@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "0f85092a9868b448dc6a6e2f5a518eabf04e375f",
+  "commit": "8273cfe8ede3e7a6cd62af1c5efebe0c3501724b",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -70,7 +70,7 @@
       "source": "core/.claude/commands/cleanup.md"
     },
     ".claude/commands/commands.md": {
-      "sha256": "1c947b2d76f4361051ed64b06c09d548292fc10b993251c266eacbd6bd179154",
+      "sha256": "6f9f1d1f093a34b94ce2e07ef4fcce792c2624bb703f491859b7cc398a0f893d",
       "kind": "managed",
       "source": "core/.claude/commands/commands.md"
     },
@@ -630,7 +630,7 @@
       "source": "core/scripts/branch-guard.sh"
     },
     "scripts/decision-log.mjs": {
-      "sha256": "e13bdfa2772952db33b0ef3b246a668866a63fc54d40e194f75cbc32eedce9e4",
+      "sha256": "48c29d06efc30f7cdd9431e40dab9bafd8bf7a3856607c88c5a9ebf2de34db77",
       "kind": "managed",
       "source": "core/scripts/decision-log.mjs"
     },
@@ -660,7 +660,7 @@
       "source": "core/scripts/kit-manifest-check.mjs"
     },
     "scripts/lib/brain-doc.mjs": {
-      "sha256": "5ff29cca9e7856bcec026a69ec93d4a7728118cbcef770b0b58dea2ff4a57314",
+      "sha256": "ab7fd60b123fb303da5fa41e0dcd51366805902da749940e4cf24777f787a7a5",
       "kind": "managed",
       "source": "core/scripts/lib/brain-doc.mjs"
     },
@@ -700,7 +700,7 @@
       "source": "core/scripts/lib/orch-folders.mjs"
     },
     "scripts/lib/orch-run.mjs": {
-      "sha256": "4ec179b60b8416c443de848327815b6ce3538d2055c4a8530e82f826dae4121d",
+      "sha256": "84cda99476bb74cdd9afc6a639a5132634a377a82b655e049d078c0d7e78114d",
       "kind": "managed",
       "source": "core/scripts/lib/orch-run.mjs"
     },
@@ -755,7 +755,7 @@
       "source": "core/scripts/lib/redact.mjs"
     },
     "scripts/lib/run-order.mjs": {
-      "sha256": "5af10214d3fec2b94191b55a55270092f5b54f3720c1d1895f9a533b478d5c24",
+      "sha256": "995e06f29f04c13d190f4530d7de51a84b814f04498a85b463c1c0fa3be78018",
       "kind": "managed",
       "source": "core/scripts/lib/run-order.mjs"
     },
@@ -795,7 +795,7 @@
       "source": "core/scripts/orch-preflight.mjs"
     },
     "scripts/orch-state.mjs": {
-      "sha256": "2e45a3eb6df58d0c85d1af94dfa3116b47d61246fdf2d2ffc9dadcfbba1eb324",
+      "sha256": "a5381af8413fc527e09de41406550eb8ca56324d7d89b7d0ef935357f68134f5",
       "kind": "managed",
       "source": "core/scripts/orch-state.mjs"
     },

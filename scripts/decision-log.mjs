@@ -20,9 +20,8 @@
  *       the seen: items (and a behaviour: item the triage called follow-up) also go to docs/brain/follow-ups.md.
  *       The list is the orchestrator's decisions with their triage fields, or /ship's `pending` list (no triage: `none`);
  *       --mark tags each graded line of the plan `[graded D<n> ok|✗ date]`, never twice. A malformed reply exits 2.
- *   node scripts/decision-log.mjs stats   [--kind K] [--last N] [--write] [--dir <folder>]
- *       agreement between the triage agent and the Human per kind; --write keeps docs/brain/triage-calibration.md
- *       (at most 40 lines / 3,000 characters)
+ *   node scripts/decision-log.mjs stats   [--kind K] [--last N] [--dir <folder>]
+ *       agreement between the recorded triage verdicts and the Human per kind (printed only)
  *   node scripts/decision-log.mjs follow-ups --open [--files a,b] [--dir <folder>]
  *       the follow-up rows no plan has taken yet (a `follow-up: <run> <id>` line under plans/), for those files
  *   node scripts/decision-log.mjs repeats [--min 2] [--dir <folder>]
@@ -59,11 +58,8 @@ export const LESSON_LINES = 40
 export const LESSON_CHARS = 3 * 1000
 const LESSONS_DIR = 'docs/brain/agent-lessons'
 const CHECKERS = ['orch-check-plan', 'orch-check-bugs', 'orch-check-rules']
-const CAL_LINES = 40
-const CAL_CHARS = 3 * 1000
 const GRADES = 'docs/brain/decision-grades.jsonl'
 const FOLLOWUPS = 'docs/brain/follow-ups.md'
-const CALIBRATION = 'docs/brain/triage-calibration.md'
 const LOG = 'docs/brain/decision-log.md'
 const RULES = 'docs/brain/agent-rules.md'
 const USAGE = 'usage: decision-log.mjs add --reply "decisions: ok | D<n> ✗ <what I\'d choose>[, D<m> ✗ …]" --decisions <list.json|->  (also: learn, repeats, rules --check|--add)'
@@ -584,7 +580,7 @@ function main(argv) {
   }
 
   // Agreement per kind from the grade rows: an ask agrees with ✗, every other verdict with ok (rows the triage left
-  // `none` are not counted). --write keeps docs/brain/triage-calibration.md, which the triage agent reads, short.
+  // `none` are not counted). Printed only: no triage agent reads a calibration file any more.
   const statsCmd = () => {
     const last = flags.last === undefined ? 50 : Number(flags.last)
     if (!(Number.isInteger(last) && last >= 1)) usage('--last takes a whole number')
@@ -594,31 +590,6 @@ function main(argv) {
     const kinds = Object.entries(stats.kinds).filter(([k]) => typeof flags.kind !== 'string' || k === flags.kind).sort((a, b) => b[1].graded - a[1].graded || (a[0] < b[0] ? -1 : 1))
     for (const [k, v] of kinds) process.stdout.write(`STATS ${k} graded=${v.graded} agreement=${pct(v.agreement)}\n`)
     process.stdout.write(`STATS all last=${last} agreement=${pct(stats.all.agreement)}\n`)
-    if (flags.write !== true) return
-    const disagreements = rows.filter((r) => ['accept', 'ask', 'follow-up', 'noise'].includes(r.triageVerdict) && (r.triageVerdict === 'ask') !== (r.humanVerdict === '✗'))
-      .map((r) => `- ${r.date} ${r.kind || '-'}: triage ${r.triageVerdict}, Human ${r.humanVerdict}${r.humanChoice ? ` (${String(r.humanChoice).slice(0, 40)})` : ''} — ${String(r.text).replace(/\s+/g, ' ').slice(0, 100)}`)
-    let examples = disagreements.slice(-20)
-    const render = () => [
-      '# Triage calibration', '',
-      'Written by `node scripts/decision-log.mjs stats --write` from `decision-grades.jsonl`. The triage agent reads it; never edit it by hand.', '',
-      `Agreement over the last ${stats.all.graded} graded: ${pct(stats.all.agreement)}`, '',
-      '| Kind | Graded | Agreement |', '| --- | --- | --- |',
-      ...Object.entries(stats.kinds).sort((a, b) => b[1].graded - a[1].graded || (a[0] < b[0] ? -1 : 1)).slice(0, 12).map(([k, v]) => `| ${k} | ${v.graded} | ${pct(v.agreement)} |`),
-      ...(examples.length ? ['', 'Where the Human disagreed (newest last):', ...examples] : []),
-    ].join('\n')
-    let body = render()
-    const fits = (t) => t.split('\n').length <= CAL_LINES && t.length + 1 <= CAL_CHARS
-    while (!fits(body) && examples.length) {
-      examples = examples.slice(1)
-      body = render()
-    }
-    if (!fits(body)) {
-      process.stderr.write(`DECISION_LOG: ${CALIBRATION} would be over ${CAL_LINES} lines / ${CAL_CHARS} characters even with no examples\n`)
-      process.exit(1)
-    }
-    mkdirSync(dirname(join(dir, CALIBRATION)), { recursive: true })
-    writeFileSync(join(dir, CALIBRATION), `${body}\n`)
-    process.stdout.write(`DECISION_LOG: wrote ${CALIBRATION} (${body.split('\n').length} lines / ${body.length + 1} characters)\n`)
   }
 
   // Open follow-ups: rows no plan has taken yet (a `follow-up: <run> <id>` line in any file under plans/), for the files given.

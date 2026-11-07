@@ -304,7 +304,7 @@ export function lessonDoc(lesson, { root, host } = {}) {
 // ---------------------------------------------------------------------------------------------------- tokens (B11)
 
 /**
- * How many roles a run's agents had in each `workflowPhase` of the workflow runtime (deleted in plan 090; its
+ * How many roles a run's agents had in each `workflowPhase` of the workflow runtime (since deleted; its
  * transcripts can still be read). Tokens are summed twice: per `workflowPhase` (`byPhase`, always) and per role
  * (`byRole`). The role is the meta file's `agentType` (`orch-builder`, …: set by the runtime, not free text); an agent
  * whose `agentType` is missing or the generic `workflow-subagent` falls back to its phase, keyed `phase:<Phase>`. `Build`
