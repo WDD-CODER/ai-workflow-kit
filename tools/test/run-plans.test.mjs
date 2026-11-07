@@ -13,7 +13,7 @@ import { makeProject, toyPlan, overlaps, FAKE } from './lib/run-plans-fixture.mj
 
 const kit = resolve(fileURLToPath(new URL('../..', import.meta.url)))
 const lib = (f) => import(pathToFileURL(join(kit, 'scripts', 'lib', f)).href)
-const { claudeArgs, runAgent, readAgent, CONTEXT_FLAGS, RATE_LIMIT_RE, parseResult } = await lib('claude-run.mjs')
+const { claudeArgs, runAgent, readAgent, CONTEXT_FLAGS, RATE_LIMIT_RE, parseResult, passedModel } = await lib('claude-run.mjs')
 const { gateCommands, runGate, scopeCheck, scopeMarker } = await lib('plan-gate.mjs')
 const { readReview, review, validateReviewerResult, reviewVerdict } = await lib('plan-review.mjs')
 const { blockedBy, unitsOf, afterPark } = await lib('run-order.mjs')
@@ -35,6 +35,10 @@ test('claude-run: every call carries the four context-saving flags, json output,
   assert.equal(r[r.indexOf('--tools') + 1], 'Read,Grep,Glob,Bash')
   assert.equal(r[r.indexOf('--disallowedTools') + 1], 'Edit,Write,MultiEdit,NotebookEdit')
   assert.ok(!claudeArgs({ agent: reviewer, model: 'inherit', systemPromptFile: 's.md' }).includes('--model'))
+  // calls.csv records the model passed after --model; a call without one ("inherit") keeps the fallback.
+  assert.equal(passedModel(b), 'sonnet')
+  assert.equal(passedModel(claudeArgs({ agent: reviewer, model: 'inherit', systemPromptFile: 's.md' }), 'inherit'), 'inherit')
+  assert.equal(passedModel([], ''), '')
 })
 
 test('claude-run: tools are pre-approved only when asked; the builder gets its list, a read-only agent never a bare Bash', () => {
@@ -205,9 +209,17 @@ before(() => {
     463: toyPlan(463), 464: toyPlan(464, { deps: '463' }),
     465: toyPlan(465), 466: toyPlan(466),
     470: toyPlan(470), 471: toyPlan(471, { deps: '470' }), 472: toyPlan(472, { deps: '471' }),
+    480: withImpact(toyPlan(480), '- INV-1: preserves — the toy leaves it as it is'),
+    481: withImpact(toyPlan(481), '- INV-1: changes — ADR docs/brain/decisions/0099-toy.md. Arch-approved: Human 2026-11-07', 'docs/brain/decisions/0099-toy.md'),
   })
 })
 after(() => p?.cleanup())
+
+/** A toy plan with its own Architecture Impact line (and one more scope line, e.g. the ADR a `changes` names). */
+function withImpact(plan, line, scope = null) {
+  const p = plan.replace('## Architecture Impact\n- none', `## Architecture Impact\n${line}`)
+  return scope ? p.replace('```scope\n', `\`\`\`scope\n${scope}\n`) : p
+}
 
 const stagesOf = (st, nnn) => (st.plans[nnn].calls ?? []).map((c) => c.stage)
 let main
@@ -386,6 +398,33 @@ test('--dry-run prints the waves, the readiness lint, the preflight and the comm
   for (const re of [/^WAVE 1: 463$/m, /^WAVE 2: 464$/m, /^ {2}deps: DEPENDS_ON: ok/m, /^ {2}arch: /m, /^ {2}tags: DONE_WHEN_TAGS: ok/m, /^ {2}check files: ok/m, /^PREFLIGHT OK +main folder/m, /^ {4}npm run build$/m, /^ {2}builder: claude -p .*--setting-sources local/m, /^ {2}reviewer: claude -p .*--model sonnet/m, /^WOULD START: yes$/m]) assert.match(r.out, re)
   assert.equal(existsSync(join(p.proj, '.claude', 'orchestrator-runs', 'dry')), false, 'a dry run creates nothing')
   assert.equal(p.git(p.proj, 'ls-remote', 'origin', 'orch/dry').out, '')
+})
+
+test('the dry run prints the builder call the real run makes: same argv (but the system-prompt file), the start tier and why; calls.csv keeps the model passed', () => {
+  const dry = p.runPlans(['--dry-run', '--run', 'tiers', '--plans', '480,481'])
+  assert.equal(dry.status, 0, dry.out)
+  assert.equal(dry.calls.length, 0)
+  assert.match(dry.out, /^ {2}tier: build \(INV-1 preserves\)$/m)
+  assert.match(dry.out, /^ {2}tier: judgment \(INV-1 changes\)$/m)
+  const planned = dry.json.plans
+  assert.deepEqual([planned['480'].builder.tier, planned['480'].builder.model], ['build', 'sonnet'])
+  assert.deepEqual([planned['481'].builder.tier, planned['481'].builder.model], ['judgment', 'opus'])
+  const run = p.runPlans(['--run', 'tiers', '--plans', '480,481'], { scenario: { 480: { builder: [{ gate: 'pass', reportModel: 'claude-other-model' }] } } })
+  assert.equal(run.status, 0, run.out)
+  const noPrompt = (argv) => argv.map((a, i) => (argv[i - 1] === '--system-prompt-file' ? '<system prompt>' : a))
+  for (const [nnn, model] of [['480', 'sonnet'], ['481', 'opus']]) {
+    const call = run.calls.find((c) => c.plan === nnn && c.role === 'builder')
+    assert.ok(call, `plan ${nnn}: a builder call`)
+    assert.deepEqual(noPrompt(call.argv), noPrompt(planned[nnn].builder.argv), `plan ${nnn}: the dry run's argv is the real one`)
+    assert.equal(call.argv[call.argv.indexOf('--model') + 1], model)
+  }
+  const st = p.status('tiers')
+  assert.ok(st.notes.some((n) => n.plan === '481' && /starts on the judgment tier: INV-1 changes/.test(n.text)), JSON.stringify(st.notes))
+  assert.ok(!st.notes.some((n) => n.plan === '480' && /judgment tier/.test(n.text)))
+  // calls.csv: the model passed after --model, not the one the answer names (the fake's reportModel).
+  const rows = readFileSync(join(p.proj, '.claude', 'orchestrator-runs', 'tiers', 'calls.csv'), 'utf8').trim().split('\n').slice(1).map((l) => l.split(','))
+  assert.deepEqual(rows.filter((r) => r[1] === 'builder').map((r) => [r[0], r[2]]), [['480', 'sonnet'], ['481', 'opus']])
+  assert.equal(st.plans['480'].calls.find((c) => c.stage === 'builder').model, 'sonnet')
 })
 
 test('--dry-run --plans 086,087 in the kit itself calls no model', () => {

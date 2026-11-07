@@ -56,13 +56,14 @@ now are ignored by install and sync with a `NOTE orchestrator: <key> removed` li
    `orch-state.mjs check-files` (a check whose file neither exists nor is created by the plan is dropped with the
    reason). Then `orch-preflight.mjs`. A plan that is not ready, or a failed preflight, refuses the whole run before
    anything is created (exit 1). `--dry-run` stops here and prints the waves, the lint, the preflight, the gate
-   commands and the exact `claude -p` lines.
+   commands and the exact `claude -p` lines — the builder's from the same `builderCall()` the run uses, with its
+   start tier and why (`tier: build (INV-1 preserves)`).
 2. **Start.** `orch-state.mjs init` (run branch, merge folder, `status.json`). A heartbeat (`touch`) keeps
    `status.json` fresh while a builder works, so `watch` prints `RUNNING`.
 3. **Per plan, wave by wave** (plans that share files run one after the other):
    - `plan-info --with-worktree`: the plan's own folder on `feat/<NNN>-<slug>`.
-   - **model — builder** (`orch-builder.md` on `models.build`, or `models.judgment` when the plan names an invariant —
-     INV-1). Its `decisions` and `notDone` are recorded; its `pass` is never read. The script checks the folder is
+   - **model — builder** (`orch-builder.md` on `models.build`, or `models.judgment` when the plan's Architecture
+     Impact `changes` or `deviation`s an invariant — INV-1; `preserves` stays on `models.build`). Its `decisions` and `notDone` are recorded; its `pass` is never read. The script checks the folder is
      committed and ahead of the run branch, and pushes it.
    - **gate**: `plan-gate.mjs` runs `prepare`, build, lint and test, the kit manifest check, the scope check (the
      script's own copy, on the scope as the run branch holds it) and the plan's `[auto]` commands. An environment
@@ -82,13 +83,13 @@ now are ignored by install and sync with a `NOTE orchestrator: <key> removed` li
 4. **Final gate** on the run branch (`prepare`, the project checks, the manifest check, `ciMirror`).
 5. **Report.** The builders' `behaviour:` / `seen:` / `removes:` decisions go in one `decisions` call; `finish`
    writes the report. Exit 0 = every plan merged, 2 = some parked or skipped. `calls.csv` in the run's folder has one
-   row per model call and gate command.
+   row per model call and gate command; its `model` is the value passed after `--model` on that call.
 
 ## Model calls
 
 | Stage | Agent | Model | Folder | When |
 | --- | --- | --- | --- | --- |
-| `builder` | `orch-builder.md` | `models.build` (`models.judgment` when the plan names an invariant) | the plan's own folder | once per plan |
+| `builder` | `orch-builder.md` | `models.build` (`models.judgment` when the plan changes or deviates from an invariant) | the plan's own folder | once per plan |
 | `builder fix` | `orch-builder.md` | the same tier | the plan's own folder | after the first failure, with the findings |
 | `judgment builder` | `orch-builder.md` | `models.judgment` | the plan's folder, reset to the base | after a second failure with a new reason |
 | `reviewer` | `plan-reviewer.md` | `orchestrator.reviewerModel` | a read-only review folder at the checked head | after each passing gate |

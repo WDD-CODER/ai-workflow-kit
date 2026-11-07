@@ -27,8 +27,9 @@ const git = (...a) => {
   if (r.status !== 0) throw new Error(`git ${a.join(' ')}: ${r.stderr}`)
   return String(r.stdout).trim()
 }
-const answer = (obj, usage = { input_tokens: 100, output_tokens: 20, cache_read_input_tokens: 5 }) => {
-  console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: `Done.\n\n\`\`\`json\n${JSON.stringify(obj, null, 2)}\n\`\`\``, usage, total_cost_usd: 0.01 }))
+// reportModel (a step field): the answer names another model than the one passed after --model.
+const answer = (obj, usage = { input_tokens: 100, output_tokens: 20, cache_read_input_tokens: 5 }, reportModel = null) => {
+  console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: `Done.\n\n\`\`\`json\n${JSON.stringify(obj, null, 2)}\n\`\`\``, usage, total_cost_usd: 0.01, ...(reportModel ? { model: reportModel } : {}) }))
 }
 
 async function main() {
@@ -60,7 +61,7 @@ async function main() {
     git('commit', '-q', '-m', `toy ${plan} round ${prior}`)
     git('push', '-q', '-u', 'origin', branch)
     log()
-    answer({ role: 'orch-builder', model, effort: 'medium', status: 'built', branch, headSha: git('rev-parse', 'HEAD'), summary: 'toy', evidence: ['toy'], done: ['T1'], notDone: [], checksRun: [], decisions: step.decisions ?? [] })
+    answer({ role: 'orch-builder', model, effort: 'medium', status: 'built', branch, headSha: git('rev-parse', 'HEAD'), summary: 'toy', evidence: ['toy'], done: ['T1'], notDone: [], checksRun: [], decisions: step.decisions ?? [] }, undefined, step.reportModel)
     return
   }
   if (role === 'reviewer') {

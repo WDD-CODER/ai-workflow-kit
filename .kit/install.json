@@ -3,7 +3,7 @@
     "version": "2.1.0"
   },
   "source": "local:.",
-  "commit": "7986435a0a746be88890ab2e13e92a86f08713e1",
+  "commit": "a463571654ebf9faa2c788a43df46ddc51d918fd",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -370,12 +370,12 @@
       "source": "core/docs/agent/kit-lessons/verify.md"
     },
     "docs/agent/model-routing.md": {
-      "sha256": "7d6b1d999be1088cea3d54b0a2c280c13c34221d757df0e228b044ebc35929a0",
+      "sha256": "fc650e39a4e170ef73afccb4046d4063fd6d5e58c077a09ba7bd290e0c4dff13",
       "kind": "managed",
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "796536a9e88ee27574d3f43e02941e6d3b2bfebc5e3ce978201220e84ad689d6",
+      "sha256": "6e48ed7f374c9c6cf18fb2af9a223a3b31e14d75cc288a93782fca67b60fc9fd",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -665,7 +665,7 @@
       "source": "core/scripts/lib/brain-doc.mjs"
     },
     "scripts/lib/claude-run.mjs": {
-      "sha256": "5e4bca30e4dc80beb1f9c770901a8326a5a398a37daa5a74a0c80b3579e2d456",
+      "sha256": "1029853c8a93a772479914855990d7ce900647126b5fcc15bc9eba508610709d",
       "kind": "managed",
       "source": "core/scripts/lib/claude-run.mjs"
     },
@@ -700,7 +700,7 @@
       "source": "core/scripts/lib/orch-folders.mjs"
     },
     "scripts/lib/orch-run.mjs": {
-      "sha256": "84cda99476bb74cdd9afc6a639a5132634a377a82b655e049d078c0d7e78114d",
+      "sha256": "3d88e48994cb13c17ae9f3c9cade54c102c5e7db0dc5a98b55f81dcd66c8ee67",
       "kind": "managed",
       "source": "core/scripts/lib/orch-run.mjs"
     },
@@ -870,7 +870,7 @@
       "source": "core/scripts/prune-old-sessions.sh"
     },
     "scripts/run-plans.mjs": {
-      "sha256": "3d182242f174e4b622361658c683e5dd352f63a79a5c4d64ad2a61babb2733bf",
+      "sha256": "ff871dc09c79c532e48ccd5575d9ae254ead964546ee1ed13c3332279de8306a",
       "kind": "managed",
       "source": "core/scripts/run-plans.mjs"
     },

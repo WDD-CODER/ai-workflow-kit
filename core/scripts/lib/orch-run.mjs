@@ -62,14 +62,19 @@ export function uiCardProblem({ card, page, shots } = {}) {
 }
 
 /**
- * The tier a plan's first builder starts on (INV-1): judgment when Architecture Impact names any invariant other than
- * INV-none — preserves, changes, deviation or unreadable — else build. The judgment tier is a pinned strong model
- * (models.judgment, never inherit), so the plans that touch a registered invariant are built on it.
+ * The tier a plan's first builder starts on (INV-1): judgment when Architecture Impact `changes` or `deviation`s an
+ * invariant, or names one with an unreadable kind (fail safe); `preserves`, INV-none or no section start on build.
+ * Returns { tier, invariants (only those that send the plan to judgment), reason } — reason is what the dry run and
+ * the run's note print, e.g. "INV-1 changes", "INV-1 preserves", "INV-none".
  */
 export function startTier(planText) {
-  const { entries } = parseArchImpact(String(planText))
-  const named = entries.filter((e) => e.id !== 'INV-none').map((e) => e.id)
-  return { tier: named.length ? 'judgment' : 'build', invariants: named }
+  const { present, entries } = parseArchImpact(String(planText))
+  const named = entries.filter((e) => e.id !== 'INV-none')
+  const judged = named.filter((e) => e.kind !== 'preserves')
+  const label = (e) => `${e.id} ${e.kind ?? 'unreadable'}`
+  if (judged.length) return { tier: 'judgment', invariants: judged.map((e) => e.id), reason: judged.map(label).join(', ') }
+  const reason = named.length ? named.map(label).join(', ') : entries.length ? 'INV-none' : present ? 'no invariant named' : 'no Architecture Impact'
+  return { tier: 'build', invariants: [], reason }
 }
 
 /**
