@@ -24,8 +24,8 @@
  * (readShipGateReceipt); the agent file is read from `<base>` (shipReview). The verdict is enforced (mode gate). Prints one
  * `REVIEW: PASS|STOP — …` line and one line per problem; exit 0 PASS, 1 STOP, 2 when the review could not run.
  */
-import { existsSync, readFileSync, readdirSync, writeFileSync, mkdtempSync, rmSync, renameSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { existsSync, readFileSync, readdirSync, writeFileSync, mkdtempSync, mkdirSync, rmSync, renameSync } from 'node:fs'
+import { join, resolve, dirname } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createHash, randomBytes } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
@@ -270,6 +270,12 @@ export async function shipReview({ root = process.cwd(), branch, base, plan = nu
     log(`REVIEW: refused — ${base} has no .claude/agents/plan-reviewer.md (the reviewer's prompt is read from the base, never the branch)`)
     return 2
   }
+  // The shared role contract the system prompt carries (claude-run.mjs systemPromptOf) comes from the base as well.
+  const rolesText = gitOut(root, 'show', `${base}:docs/agent/agent-roles.md`)
+  if (rolesText.status !== 0 || !rolesText.out.trim()) {
+    log(`REVIEW: refused — ${base} has no docs/agent/agent-roles.md (the reviewer's contract is read from the base, never the branch)`)
+    return 2
+  }
   const diff = shipDiff(root, base, branch, planPath)
   const tampered = diff.files.filter((f) => REVIEW_TAMPER_RE.test(f))
   if (tampered.length) {
@@ -279,8 +285,12 @@ export async function shipReview({ root = process.cwd(), branch, base, plan = nu
   const tmp = mkdtempSync(join(tmpdir(), 'ship-review-'))
   const folder = join(tmp, 'tree')
   try {
-    const agentFile = join(tmp, 'plan-reviewer.md')
+    // Laid out as systemPromptOf expects: <tmp>/.claude/agents/<agent> + <tmp>/docs/agent/agent-roles.md, both from base.
+    const agentFile = join(tmp, '.claude', 'agents', 'plan-reviewer.md')
+    mkdirSync(dirname(agentFile), { recursive: true })
+    mkdirSync(join(tmp, 'docs', 'agent'), { recursive: true })
     writeFileSync(agentFile, `${agentText.out}\n`)
+    writeFileSync(join(tmp, 'docs', 'agent', 'agent-roles.md'), `${rolesText.out}\n`)
     const agent = readAgent(agentFile)
     const useModel = typeof model === 'string' ? model : agent.model
     if (/haiku/i.test(String(useModel ?? ''))) {

@@ -158,14 +158,24 @@ export function brainProblems(vals) {
 }
 
 /**
- * review.ship (docs/agent/ship-regular.md Phase 2): what a REGULAR /ship on a plan branch reviews with — "checkers"
- * (the /review-it checker pipeline, the default) or "light" (/review). Unset takes the kit.config.json default.
+ * review.ship (.claude/commands/ship.md Phase 2): what a REGULAR /ship on a plan branch reviews with — "checkers"
+ * (the /review-it checker pipeline, the default), "reviewer" (the single reviewer, scripts/lib/plan-review.mjs) or
+ * "light" (/review). review.learn: "off" (the default) or "on" — whether /ship grades decisions, runs the learning step
+ * and proposes brain entries. Unset takes the kit.config.json default.
  */
+export const REVIEW_SHIP_VALUES = ['checkers', 'reviewer', 'light']
+export const REVIEW_LEARN_VALUES = ['off', 'on']
 export function reviewProblems(vals) {
+  const out = []
   const v = vals['review.ship']
-  return v !== undefined && !['checkers', 'light'].includes(v)
-    ? [`review.ship is ${JSON.stringify(v)} — it must be "checkers" (a REGULAR /ship on a plan branch runs the checker pipeline) or "light" (it runs /review)`]
-    : []
+  if (v !== undefined && !REVIEW_SHIP_VALUES.includes(v)) {
+    out.push(`review.ship is ${JSON.stringify(v)} — it must be "checkers" (a REGULAR /ship on a plan branch runs the checker pipeline), "reviewer" (it runs the single reviewer) or "light" (it runs /review)`)
+  }
+  const l = vals['review.learn']
+  if (l !== undefined && !REVIEW_LEARN_VALUES.includes(l)) {
+    out.push(`review.learn is ${JSON.stringify(l)} — it must be "off" (no decision grading, learning step or brain capture at /ship) or "on"`)
+  }
+  return out
 }
 
 /**

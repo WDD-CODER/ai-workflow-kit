@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "9da7c8a4a4f19dbe3cf95cda997a90f15e214d05",
+  "commit": "1120a287749fed31faa84b021c1d696f50369f44",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -345,7 +345,7 @@
       "source": "core/docs/agent/brain-capture.md"
     },
     "docs/agent/decision-review.md": {
-      "sha256": "99d4439853f2a222bc1f978688bc09d66a60e9dc5247574ebaaa4adde6366b0e",
+      "sha256": "aef2d1ba1bd7fa7a5a76002cf0feef6538cb1e5cd1dd04437f1176e541439e69",
       "kind": "managed",
       "source": "core/docs/agent/decision-review.md"
     },
@@ -790,7 +790,7 @@
       "source": "core/scripts/lib/plan-paths.mjs"
     },
     "scripts/lib/plan-review.mjs": {
-      "sha256": "a15b70f7132882a68be0f2fcc30a006ec2c423ab193b9c6552804f38c6b10f76",
+      "sha256": "b0da7db8cb6de9767e216a046fe04615562a53ab226a08ec870f19595a31a44d",
       "kind": "managed",
       "source": "core/scripts/lib/plan-review.mjs"
     },

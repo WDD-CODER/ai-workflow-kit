@@ -61,7 +61,7 @@ A `failed:` card reply (`job-validation.md`) is graded the same way; the learnin
 
 ## 3. The learning step — automatic, only when something was graded wrong
 
-Runs after **Y** in `/ship` (On approval, step 2) and after the decisions reply in `/orchestrate` (step 5). The Human
+Runs after **Y** in `/ship` (On approval, between steps 1 and 2; only when `review.learn` is `on`) and after the decisions reply in `/orchestrate` (step 5). The Human
 runs no command.
 
 0. **Grade first, every reply.** Before the gate below, every grade reply — `decisions: ok` included — is stored by
@@ -107,11 +107,20 @@ runs no command.
 
 ## 5. Triage, grades and follow-ups (orchestrator and `/ship`)
 
-- **In `/ship`.** A Worker plan's decisions are the `- decision:` lines of its `## Execution Notes`.
-  `decision-log.mjs pending --plan <file> --out <list>` lists the ones with no `[graded D<n> ok|✗ YYYY-MM-DD]` tag,
-  numbered on from the highest graded `D<n>`, so an id never repeats within the plan across sessions and checkpoints.
-  After the reply, `grade --run ship-<NNN> --decisions <list> --mark <file>` stores every item (`ok` ones too) and tags
-  the graded lines. `/ship` has no triage, so the rows carry `triageVerdict: none`: they never count toward the triage
+- **In `/ship`** (only when `review.learn` is `on` — this project: `off`; `off` shows no decisions, grades
+  nothing, runs no learning step and proposes no brain entry). A Worker plan's decisions are the `- decision:` lines of
+  its `## Execution Notes`. Under the Phase 4 tree: `node scripts/decision-log.mjs pending --plan <the plan file> --out
+  <scratch>/decisions.json` (`<scratch>` = a temporary folder outside the repo) lists the ones with no
+  `[graded D<n> ok|✗ YYYY-MM-DD]` tag as `D<n> · …` lines, `removes:` first, then `behaviour:`, then `seen:`, numbered on
+  from the highest graded `D<n>`, so an id never repeats within the plan across sessions and checkpoints. Print them as
+  they are and end with the reply format of §2; the grade may ride on the `Y` reply (`Y, D2 ✗ no dialog`).
+  `DECISIONS: none to grade` → print nothing. On Y, for every grade reply — `decisions: ok` included — run
+  `node scripts/decision-log.mjs grade --run ship-<NNN> --reply "<the Human's grade reply>" --decisions <scratch>/decisions.json --mark <the plan file>`
+  (`<NNN>` = the plan number; the run name stays the same across sessions and checkpoints): it stores every item (`ok`
+  ones too) in `decision-grades.jsonl`, adds the `seen:` items to `docs/brain/follow-ups.md` and tags the graded lines.
+  Then the learning step (§3): `node scripts/decision-log.mjs learn --reply "<the Human's replies this session>"`. The
+  plan file, the `docs/brain` files and any new `docs/agent-evals/cases/<checker>/<case>` folder join the ship's one
+  commit; the wrap-up lists new rules, case paths and the enforce candidates. `/ship` has no triage, so the rows carry `triageVerdict: none`: they never count toward the triage
   agreement (`stats`, the kit's `triage-prior`), but their `seen:` items become follow-ups like the orchestrator's. The
   grades, the follow-ups and the tagged plan file are committed with the ship.
 
