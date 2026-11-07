@@ -907,8 +907,6 @@ test('a plan branch made by worktree or by a slot claim has no upstream; a reuse
 test('the builder is told to push with -u to its own remote branch', () => {
   const builderDoc = readFileSync(join(root, '.claude', 'agents', 'orch-builder.md'), 'utf8')
   assert.match(builderDoc, /git push -u origin <branch>/)
-  const wf = readFileSync(join(root, '.claude', 'workflows', 'orchestrate.js'), 'utf8')
-  assert.match(wf, /git push -u origin \$\{ctx\.info\.branch\}/)
 })
 
 test('rerun of a parked plan under a new run: a conflict in the plan file only is resolved (run text, builder ticks and notes kept); any other conflict still parks', () => {

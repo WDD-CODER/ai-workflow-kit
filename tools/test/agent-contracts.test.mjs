@@ -130,53 +130,11 @@ test('validator: verifier keeps only >= 80 confidence, and a refutation must be 
   assert.equal(v([{ id: 'a', verdict: 'refuted', confidence: 90, severity: 'major', refutation: 'src/a.mjs:4 guards null' }], true).ok, true)
 })
 
-test('validator: readiness claims are optional; a claim needs claim and found, question and default are strings', () => {
-  const entry = (claims) => ({ plan: 'plans/001-x.plan.md', state: 'ready', questions: [], envNeeds: [], commands: [], ...(claims === undefined ? {} : { claims }) })
-  const r = (claims) => validateAgentResult({ role: 'orch-readiness', model: 'm', effort: 'high', plans: [entry(claims)] })
-  assert.equal(r(undefined).ok, true, 'claims may be left out')
-  assert.equal(r([]).ok, true)
-  assert.equal(r([{ claim: 'the editor has 3 handlers', found: '1 (src/a.ts:8)', question: 'fix the plan?', default: 'build for what the code has' }]).ok, true)
-  assert.equal(r([{ claim: 'x has 2 y', found: '2 (a.ts:1)', question: '', default: '' }]).ok, true, 'a held claim has empty question and default')
-  const noFound = r([{ claim: 'the editor has 3 handlers', question: 'fix the plan?' }])
-  assert.equal(noFound.ok, false)
-  assert.match(noFound.errors.join('\n'), /claims\[0\]\.found is required/)
-  assert.match(r([{ found: 'x' }]).errors.join('\n'), /claims\[0\]\.claim is required/)
-  assert.match(r([{ claim: 'a', found: 'b', question: 3 }]).errors.join('\n'), /question must be a string/)
-  assert.match(r('nope').errors.join('\n'), /claims must be a list/)
-})
-
-test('the merge agent and the orchestrator merge prompt give the same steps: --no-ff --no-commit, checks, then the commit', () => {
-  const agentText = read('orch-merge.md')
-  const workflow = readFileSync(join(project, '.claude', 'workflows', 'orchestrate.js'), 'utf8')
-  const prompt = (/Steps: git fetch origin;[^\n]*/.exec(workflow) ?? [''])[0]
-  for (const [name, text] of [['orch-merge.md', agentText], ['orchestrate.js merge prompt', prompt]]) {
-    assert.match(text, /git merge --ff-only origin\//, `${name}: fast-forward the run branch first`)
-    assert.match(text, /git merge --no-ff --no-commit origin\//, `${name}: the merge is staged, not committed`)
-    assert.match(text, /CHECKS/, `${name}: runs the checks before the commit`)
-    assert.match(text, /git merge --abort/, `${name}: a conflict or a failing check aborts`)
-    assert.match(text, /git commit -m/, `${name}: commits with the subject after the checks`)
-  }
-  assert.doesNotMatch(agentText, /git merge --no-ff origin\/<plan branch> -m/, 'no direct merge commit in the agent file')
-})
-
-test('orch-gate keeps the trace of an env-fail rerun that passed (flake record)', () => {
-  const text = read('orch-gate.md')
-  assert.match(text, /`pass` with `tail` set to `rerun after env-fail: /, 'a passing rerun is reported pass with the rerun tail')
-  assert.match(text, /never retry a `fail`/, 'a fail is never rerun')
-  const r = validateAgentResult({ role: 'orch-gate', model: 'm', effort: 'low', results: [{ command: 'x', status: 'pass', tail: 'rerun after env-fail: EBUSY lock' }], pass: true })
-  assert.equal(r.ok, true, 'the validator accepts a pass that carries the rerun tail')
-})
-
-test('validator: gate, builder, merge and the reply parser', () => {
-  const gate = (results, pass) => validateAgentResult({ role: 'orch-gate', model: 'm', effort: 'low', results, pass })
-  assert.equal(gate([{ command: 'x', status: 'fail' }], false).ok, false, 'a failed command needs its tail')
-  assert.equal(gate([{ command: 'x', status: 'env-fail' }], true).ok, false, 'env-fail is not a pass')
-  assert.equal(gate([{ command: 'x', status: 'pass' }], true).ok, true)
+test('validator: builder and the reply parser', () => {
   const b = { role: 'orch-builder', model: 'm', effort: 'medium', branch: 'feat/x', summary: 's', evidence: [] }
   assert.equal(validateAgentResult({ ...b, status: 'built' }).ok, false, 'built needs evidence')
   assert.equal(validateAgentResult({ ...b, status: 'blocked' }).ok, false, 'blocked needs a blocker')
   assert.equal(validateAgentResult({ ...b, status: 'ESCALATE', blocker: 'needs a schema change' }).ok, true)
-  assert.equal(validateAgentResult({ role: 'orch-merge', model: 'm', effort: 'low', merged: true }).ok, false)
   assert.equal(validateAgentResult({ role: 'nobody', model: 'm', effort: 'low' }).ok, false)
   assert.deepEqual(parseAgentResult('notes\n```json\n{"a":1}\n```\nmore\n```json\n{"b":2}\n```'), { b: 2 })
 })

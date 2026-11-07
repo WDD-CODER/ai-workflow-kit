@@ -20,10 +20,9 @@ const shipRaw = read('.claude/commands/ship.md')
 const ship = flat(shipRaw)
 const reviewIt = flat(read('.claude/commands/review-it.md'))
 
-test('ship.md: at most 80 lines, no runner agent, no ship-regular.md', () => {
+test('ship.md: at most 80 lines, no ship-regular.md', () => {
   assert.ok(shipSrc.trimEnd().split('\n').length <= 80, `core ship.md has ${shipSrc.trimEnd().split('\n').length} lines`)
   for (const text of [shipSrc, shipRaw]) {
-    assert.ok(!/kit-runner/.test(text), 'ship.md names no kit-runner')
     assert.ok(!/ship-regular\.md/.test(text), 'ship.md names no docs/agent/ship-regular.md')
   }
   assert.match(ship, /`node scripts\/ship-prep\.mjs --gate --lane <lane>` runs/)
@@ -130,16 +129,12 @@ test('standards-git.md holds the Commit-vs-PR judgment and "After opening a PR" 
   assert.match(flat(git), /Brain capture is part of this gate when `review\.learn` is `on`\*\* \(this project: `off`;/)
 })
 
-test('workflow-map F3, model-routing and review-it: the ship gate and the review-it checks run by code, not through kit-runner', () => {
+test('workflow-map F3, model-routing and review-it: the ship gate and the review-it checks run by code', () => {
   const wm = read('docs/agent/workflow-map.md')
   const f3 = wm.split('### F3 — Ship pipeline')[1].split('### F4')[0]
   assert.match(f3, /Phase 1 {2}ship-prep\.mjs --gate/)
   assert.match(f3, /checkers \(\/review-it, default\) \| reviewer \(plan-review\.mjs\) \| light \(\/review\)/)
-  assert.ok(!/\/ship` Phase 1/.test(wm.split('\n').find((l) => l.startsWith('| `kit-runner`')) ?? ''), 'workflow-map: kit-runner row has no /ship')
-  const mr = read('docs/agent/model-routing.md').split('\n').find((l) => l.startsWith('| `.claude/agents/kit-runner.md`'))
-  assert.ok(!/^\| `\.claude\/agents\/kit-runner\.md` \| mechanical \| `\/ship` Phase 1/.test(mr), 'model-routing: no /ship row for kit-runner')
   assert.match(read('docs/agent/model-routing.md'), /`\/ship` Phase 2 \(checker review on a plan branch; the re-check is `orch-verify` only\)/, "the checkers' /ship Phase 2 note stays")
-  assert.ok(!/kit-runner/.test(reviewIt), 'review-it.md names no kit-runner')
   assert.match(reviewIt, /run `node scripts\/ship-prep\.mjs --gate --lane REGULAR`/)
 })
 

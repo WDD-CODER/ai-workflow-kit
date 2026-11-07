@@ -6,8 +6,8 @@
  *   // o = { ok, waves, waveLocks, edges (unmet only), plans: { NNN: { path, title } }, skipped, error? }
  *
  * Waves and edges come from `scripts/plan-order.mjs --json` (with `--branch <run branch> --merged-from git` once the run
- * branch exists, so a relaunch leaves the merged plans out). `blockedBy()` is the rule the workflow used (moved here
- * from .claude/workflows/orchestrate.js): a parked plan skips the later plans that depend on it, or share its files, and
+ * branch exists, so a relaunch leaves the merged plans out). `blockedBy()` is the rule the old workflow runtime used (moved
+ * here before plan 090 deleted it): a parked plan skips the later plans that depend on it, or share its files, and
  * the plans that depend on those. `afterPark()` applies orchestrator.onPark ("dependents" or "all").
  */
 import { spawnSync } from 'node:child_process'

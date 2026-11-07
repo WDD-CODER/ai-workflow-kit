@@ -19,7 +19,7 @@
  *   git identity user.name and user.email are set
  *   remote       origin/<main branch> is known (a fetch has run)
  *   main folder  on the main branch with no uncommitted tracked file (a run never writes it; plans are committed first)
- *   settings     the workflow, the /orchestrate command, the role agents and the state script are installed
+ *   settings     the /orchestrate command, run-plans.mjs, the builder and reviewer agents and the state script are installed
  *   run          --run <name>: no run of that name is live (status.json phase running, updated in the last 2 hours);
  *                with --plans, no live run holds one of these plans or a plan whose scope overlaps one of them
  *   plan guards  each --plans plan's prescribed code (fenced blocks and inline code) run through the project's commit
@@ -297,9 +297,8 @@ function mainFolder() {
 }
 
 function settings() {
-  const need = ['.claude/workflows/orchestrate.js', '.claude/commands/orchestrate.md', 'scripts/orch-state.mjs', 'scripts/plan-order.mjs',
-    ...['readiness', 'builder', 'gate', 'check-plan', 'check-bugs', 'check-rules', 'verify', 'security', 'merge'].map((r) => `.claude/agents/orch-${r}.md`),
-    '.claude/agents/kit-runner.md']
+  const need = ['.claude/commands/orchestrate.md', 'scripts/run-plans.mjs', 'scripts/orch-state.mjs', 'scripts/plan-order.mjs',
+    '.claude/agents/orch-builder.md', '.claude/agents/plan-reviewer.md']
   const missing = need.filter((f) => !existsSync(join(root, f)))
   if (missing.length) return bad('settings', `not installed: ${missing.join(', ')} — run the kit sync`)
   ok('settings')

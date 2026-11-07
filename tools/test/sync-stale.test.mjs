@@ -1,5 +1,5 @@
-// The rendered workflow bakes orchestrator.prepare and orchestrator.ciMirror in at install/sync time: when the config
-// changes them later, sync's dry run and drift-check say the workflow file is stale.
+// The rendered run script bakes orchestrator.prepare and orchestrator.ciMirror in at install/sync time: when the config
+// changes them later, sync's dry run and drift-check say scripts/run-plans.mjs is stale.
 //   node --test tools/test/sync-stale.test.mjs
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url'
 const kit = resolve(fileURLToPath(new URL('../..', import.meta.url)))
 const CFG = { project: { name: 'core-only' }, stack: { packs: [] }, commands: { build: 'build', lint: 'lint', test: 'test' }, hooks: { shellPath: 'bash' } }
 const node = (script, args, cwd) => spawnSync(process.execPath, [script, ...args], { encoding: 'utf8', cwd })
-const LINE = 'STALE_RENDER: .claude/workflows/orchestrate.js — run sync --apply'
+const LINE = 'STALE_RENDER: scripts/run-plans.mjs — run sync --apply'
 
 test('a changed orchestrator.prepare or ciMirror makes sync (dry run) and drift-check print STALE_RENDER; matching config prints nothing', () => {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'sync-stale-')))

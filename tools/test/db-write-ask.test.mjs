@@ -4,7 +4,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { join, resolve } from 'path'
 import { spawnSync } from 'child_process'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, realpathSync } from 'fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
 import { fileURLToPath, pathToFileURL } from 'url'
 
@@ -139,58 +139,3 @@ test('the plan is read from the run branch: prose does not list a command, and t
   }
 })
 
-// The workflow: a builder that returns the guard's ESCALATE line stops its plan with an ask; the stub harness of
-// tools/test/orchestrator-env-retry.test.mjs (copied: that file is not this plan's).
-const wfSource = readFileSync(join(root, '.claude', 'workflows', 'orchestrate.js'), 'utf8')
-async function runFlow(args, builderResult) {
-  const plansIn = args.plans.map(String)
-  const words = (cmd) => [...cmd.matchAll(/"([^"]*)"|(\S+)/g)].map((m) => m[1] ?? m[2])
-  const task = (prompt) => Object.fromEntries(String(prompt).split('\n').map((l) => /^([A-Z_]+): (.*)$/.exec(l)).filter(Boolean).map((m) => [m[1], m[2]]))
-  const calls = []
-  const state = (w) => {
-    const cmd = w[2]
-    const f = Object.fromEntries(w.slice(3).map((x) => /^--([\w-]+)=(.*)$/.exec(x)).filter(Boolean).map((m) => [m[1], m[2]]))
-    if (cmd === 'init') return { ok: true, mergeFolder: '/merge', startedAt: '2026-01-01T00:00:00.000Z' }
-    if (cmd === 'order') return { ok: true, waves: [plansIn], waveLocks: [], skipped: [], plans: Object.fromEntries(plansIn.map((p) => [p, { path: `plans/${p}-x.plan.md` }])) }
-    if (cmd === 'plan-info') return { ok: true, path: `plans/${f.plan}-x.plan.md`, branch: `feat/${f.plan}-x`, startTier: 'build', invariants: [], npmScripts: [], uiItems: [] }
-    if (cmd === 'worktree') return { ok: true, path: `/wt/${f.plan}` }
-    if (cmd === 'finish') return { ok: true, merged: [], parked: [], report: 'r', local: 'l', reportCommitted: true }
-    if (cmd === 'diff') return { ok: true, files: [], sensitive: false }
-    return { ok: true }
-  }
-  async function agent(prompt, opts = {}) {
-    const t = task(prompt)
-    const type = opts.agentType ?? (/orch-builder\.md/.test(prompt) ? 'orch-builder' : undefined)
-    calls.push({ type, task: t })
-    if (type === 'kit-runner') {
-      const w = words(t.COMMAND)
-      return { exitCode: 0, output: `ORCH_JSON ${JSON.stringify(w[1] === 'scripts/orch-state.mjs' ? state(w) : { ok: true })}` }
-    }
-    const base = { role: type, model: 'stub', effort: 'low' }
-    if (type === 'orch-builder') return { ...base, branch: t.BRANCH, ...builderResult }
-    if (type === 'orch-gate') return { ...base, results: JSON.parse(t.COMMANDS).map((c) => ({ command: c, status: 'pass' })) }
-    if (['orch-check-plan', 'orch-check-bugs', 'orch-check-rules', 'orch-security'].includes(type)) return { ...base, problems: [] }
-    if (type === 'orch-verify') return { ...base, verdicts: [] }
-    if (type === 'orch-merge') return { ...base, merged: true, sha: 'def5678' }
-    if (type === 'orch-triage') return { ...base, items: t.DECISIONS ? JSON.parse(t.DECISIONS).map((d) => ({ id: d.id, verdict: 'accept', confidence: 95 })) : [] }
-    throw new Error(`stub: no agent for ${type} (${opts.label})`)
-  }
-  const parallel = (thunks) => Promise.all(thunks.map((th) => Promise.resolve().then(th)))
-  const AsyncFunction = (async () => {}).constructor
-  const src = wfSource.replace(/^export const meta\s*=/m, 'const meta =')
-  const fn = new AsyncFunction('agent', 'parallel', 'pipeline', 'phase', 'log', 'args', 'budget', 'workflow', 'require', 'process', src)
-  const result = await fn(agent, parallel, undefined, () => {}, () => {}, { mode: 'run', run: 'r1', root: '/main', pilot: false, ...args }, {}, undefined, undefined, undefined)
-  return { result, calls }
-}
-
-test('a builder stopped by the db-write ask parks its plan with an ask, not a fix round; the triage cannot accept it', async () => {
-  const line = 'ESCALATE: db-write npm run seed — a seed command plan 101 does not list. Do not run it: stop and return status ESCALATE with this line as the blocker; the run asks the Human.'
-  const r = await runFlow({ plans: ['101'] }, { status: 'ESCALATE', blocker: line, summary: 's', evidence: [], notDone: ['T2'], planChange: { needed: false, why: '-' } })
-  const o = r.result.outcomes[0]
-  assert.equal(o.state, 'parked')
-  assert.match(o.reason, /^ask: ESCALATE: db-write npm run seed — /)
-  assert.equal(r.calls.filter((c) => c.type === 'orch-builder').length, 1, 'no fix round, no escalation builder')
-  const d = r.result.decisions.find((x) => /db-write npm run seed/.test(x.text))
-  assert.ok(d, JSON.stringify(r.result.decisions))
-  assert.equal(d.verdict, 'ask', 'the stub triage said accept; the ask stands')
-})
