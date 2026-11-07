@@ -9,6 +9,8 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-07
+
 ### Fixed
 - **`kit-sync -Apply -Prune` removes a project override of a file the kit retired.** Until now such an override only printed `NOTE override <path> is not a file this kit ships`, so a deleted command stayed in the project (an installed project kept `.claude/commands/auto-solve.md`). The files the kit deleted are listed in `tools/retired-files.json` (seeded with the nine files deleted with the workflow runtime). A dry run prints `pruned-override <path> — override of a file the kit retired (on --apply --prune)`; with `--apply --prune` the entry leaves the config's `overrides` (other entries and the formatting stay), and the file is deleted when unchanged since the kit shipped it, or moved to `.kit/pruned/<path>` when the project changed it. An override of a path the kit never shipped stays a NOTE and is never touched. No project action.
 
