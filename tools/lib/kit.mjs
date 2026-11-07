@@ -99,13 +99,14 @@ export function commandProblems(vals) {
   return out
 }
 
-// The shapes a CI-mirror command may take (orchestrator.ciMirror). The workflow script repeats these rules in its
-// checkProblem (placeholders, so it cannot import this file); a test asserts both refuse the same samples.
+// The shapes a CI-mirror command may take (orchestrator.ciMirror). scripts/run-plans.mjs repeats these rules in its
+// checkProblem (placeholders, so it cannot import this file); a test asserts both hold the same NOT_A_CHECK names.
 const CI_DENY = /\brm\s+-[a-z]*[rf]|reset\s+--hard|push\s+(?:[^\n]*\s)?(?:--force|-f\b|--force-with-lease)|git\s+clean|branch\s+-D|stash\s+clear|filter-branch/
 const CI_SAFE_ARG = /^[A-Za-z0-9_./=:,@+-]+$/
 const CI_NOT_A_CHECK = new Set([
   'kit-feedback', 'orch-state', 'decision-log', 'take-plan', 'slot-serve', 'slot-stop', 'todo-query',
   'todo-archive', 'plan-close', 'free-merged-slots', 'orphan-sweep', 'local-excludes', 'brain-capture-comment', 'sync', 'install', 'kit-sync',
+  'run-plans', 'plan-park',
 ])
 /** Why a command may not be a CI-mirror check (shape, deny list, state-changing kit script, write flag), or null. */
 export function ciCommandProblem(cmd) {

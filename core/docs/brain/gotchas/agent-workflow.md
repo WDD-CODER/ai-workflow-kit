@@ -311,7 +311,7 @@ only the Bash tool's command text triggers it.
 
 ## Every orchestrator run note is an agent call
 
-**What hurt:** After the park above, the run wrote about 30 closing notes in 4.5 minutes — each `note` is `orch-state.mjs note`, run by a `kit-runner` agent, so a note loop is a long agent loop. The run looked alive (status.json kept updating) while nothing happened, and the Human's session was stuck on a model whose every reply was blocked.
+**What hurt:** After the park above, the run wrote about 30 closing notes in 4.5 minutes — each `note` is `orch-state.mjs note`, run by the runner agent (deleted in plan 090), so a note loop is a long agent loop. The run looked alive (status.json kept updating) while nothing happened, and the Human's session was stuck on a model whose every reply was blocked.
 
 **Why the obvious fix is wrong:** Writing fewer notes by hand in one place does not stop the next loop; a time-based watchdog cannot live in the workflow script (it has no clock: `Date.now()` throws there).
 
@@ -351,11 +351,11 @@ only the Bash tool's command text triggers it.
 
 ## A state call can fail on the copy, not the command
 
-**What hurt:** A run parked a plan at its first step, `worktree: unreadable ORCH_JSON from: node scripts/orch-state.mjs worktree …`. The command had exited 0 and printed a well-formed line; the `kit-runner` agent's copy of that line is what the workflow reads (it has no file access), and the copy did not parse. The error named neither the line nor the parser's message, so the cause could only be dug out of the workflow journal by hand — and stayed unconfirmed. The same runner had also run `git checkout main && git pull` in the main folder on its own before the command.
+**What hurt:** A run parked a plan at its first step, `worktree: unreadable ORCH_JSON from: node scripts/orch-state.mjs worktree …`. The command had exited 0 and printed a well-formed line; the runner agent's (deleted in plan 090) copy of that line is what the workflow reads (it has no file access), and the copy did not parse. The error named neither the line nor the parser's message, so the cause could only be dug out of the workflow journal by hand — and stayed unconfirmed. The same runner had also run `git checkout main && git pull` in the main folder on its own before the command.
 
 **Why the obvious fix is wrong:** Raising the runner's effort for every state call pays on every call for an event seen once; a file hand-off between `orch-state.mjs` and the workflow is out of reach (the workflow script cannot read files).
 
-**What to do instead:** The workflow retries a state command once when its copy does not parse (effort `medium`, not for `note` and `finish`), writes a run note `runner retry: … — first attempt: <error>`, and a second failure parks the plan with the parser's message, the first non-ASCII character and the raw line JSON-escaped (`docs/agent/orchestrator.md`, "A bad copy of a state line"). `kit-runner.md` says in so many words: run only the commands in the list, copy an asked-for line character for character.
+**What to do instead:** The workflow retries a state command once when its copy does not parse (effort `medium`, not for `note` and `finish`), writes a run note `runner retry: … — first attempt: <error>`, and a second failure parks the plan with the parser's message, the first non-ASCII character and the raw line JSON-escaped (`docs/agent/orchestrator.md`, "A bad copy of a state line"). The runner agent's file (deleted in plan 090) said in so many words: run only the commands in the list, copy an asked-for line character for character.
 
 ---
 
@@ -365,7 +365,7 @@ only the Bash tool's command text triggers it.
 
 **Why the obvious fix is wrong:** Letting every later plan run after a park is not safe either: a plan that depends on the parked one, or edits the same files, builds on what the park left behind. The workflow cannot tell which is which by wave order alone.
 
-**What to do instead:** `orchestrator.onPark` is `dependents` (default): `orch-state.mjs order` hands the workflow the unmet edges, and `blockedBy()` in `orchestrate.js` skips only the later plans reachable over `Depends-on:` edges (`depends on parked <NNN>`) or a scope-overlap edge (`shares files with parked <NNN>`); the rest still run. `all` is the old behaviour. A `stopRun` and a failed final gate still stop everything.
+**What to do instead:** `orchestrator.onPark` is `dependents` (default): `orch-state.mjs order` hands the workflow the unmet edges, and `blockedBy()` (then in the workflow runtime, now in `scripts/lib/run-order.mjs`) skips only the later plans reachable over `Depends-on:` edges (`depends on parked <NNN>`) or a scope-overlap edge (`shares files with parked <NNN>`); the rest still run. `all` is the old behaviour. A `stopRun` and a failed final gate still stop everything.
 ## A green run, a red pull request
 
 **What hurt:** On 2026-10-29 an orchestrator run finished green and its pull request failed on the CI `rules` job (`KIT_MANIFEST: FAIL — 3 unclassified`); another plan hit the same failure the day before. About ten minutes each. The final gate ran only the project build, lint and test commands, and nothing said which other CI commands it skipped.
@@ -386,6 +386,6 @@ only the Bash tool's command text triggers it.
 
 **What hurt:** A plan parked in one run was relaunched under a new run name. The new run branch was cut from a newer `main`, which held the readiness answers committed to the plan's Execution Notes, while the old `feat/NNN` branch was reused with the builder's ticks and notes in the same file. Merging the run branch into it conflicted on the plan file, and `worktree` parked the plan again (`merging origin/<run> into <branch> conflicts`) before any builder could look. The same branches were also created with git's default upstream, the run branch, so a bare `git push` from a builder errored or went to the wrong ref.
 
-**Why the obvious fix is wrong:** Recreating the plan branch drops the builder's earlier commits and the resume path. Letting the builder or the merge agent resolve conflicts is no good either: the merge runs before any builder starts, and `orch-merge` must never resolve.
+**Why the obvious fix is wrong:** Recreating the plan branch drops the builder's earlier commits and the resume path. Letting the builder or the merge agent resolve conflicts is no good either: the merge runs before any builder starts, and the merge step (an agent until plan 090) must never resolve.
 
 **What to do instead:** `orch-state.mjs worktree` resolves a conflict in the plan's own file only, with `mergePlanFile` (`scripts/lib/orch-run.mjs`). The run branch's text is the base, every sub-task the builder ticked is ticked again, and its Execution Notes lines the run text lacks are appended. Any other conflicted path still aborts and parks, naming the paths. Plan branches are made with `--no-track`; a reused branch whose upstream is not its own remote branch (this run's or an earlier run's branch) loses it; builders push with `git push -u origin <branch>`.

@@ -382,6 +382,21 @@ test('the report: app errors since the run started — the log query with plan-s
   assert.ok(!lib.formatReport({ status, merged: [], mainShaNow: 'a', finishedAt: 'T1', runBranch: 'orch/r1', mainBranch: 'main' }).includes('App errors'), 'unset → no section')
 })
 
+// ciCommandProblem (tools/lib/kit.mjs) copies run-plans.mjs checkProblem's list by design: this fails the day a name is
+// added to one list and not the other. A project with only the installed scripts has no tools/ folder: a visible skip.
+test('the CI-mirror check (tools/lib/kit.mjs) holds the same NOT_A_CHECK names as run-plans.mjs', (t) => {
+  const kitFile = join(root, 'tools', 'lib', 'kit.mjs')
+  if (!existsSync(kitFile)) return t.skip('tools/lib/kit.mjs not present in an installed project')
+  const names = (src, constName) => {
+    const m = new RegExp(`const ${constName} = new Set\\(\\[([\\s\\S]*?)\\]\\)`).exec(src)
+    assert.ok(m, `${constName} not found`)
+    return [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]).sort()
+  }
+  const inRun = names(readFileSync(join(root, 'scripts', 'run-plans.mjs'), 'utf8'), 'NOT_A_CHECK')
+  assert.ok(inRun.length > 10)
+  assert.deepEqual(names(readFileSync(kitFile, 'utf8'), 'CI_NOT_A_CHECK'), inRun)
+})
+
 test('config: orchestrator.ciMirror must be a list of allowed check commands', () => {
   assert.deepEqual(orchestratorProblems({}), [])
   assert.deepEqual(orchestratorProblems({ 'orchestrator.ciMirror': [] }), [])

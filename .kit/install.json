@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "21c39bfecd91db893ebfebaf9938a60923d3870d",
+  "commit": "0f85092a9868b448dc6a6e2f5a518eabf04e375f",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -70,7 +70,7 @@
       "source": "core/.claude/commands/cleanup.md"
     },
     ".claude/commands/commands.md": {
-      "sha256": "d8d6d22ddf0fd96e49bc50a6f4f83fc29d67f6e590ebe4c104989e8d5fa2472a",
+      "sha256": "1c947b2d76f4361051ed64b06c09d548292fc10b993251c266eacbd6bd179154",
       "kind": "managed",
       "source": "core/.claude/commands/commands.md"
     },
@@ -120,7 +120,7 @@
       "source": "core/.claude/commands/orchestrate.md"
     },
     ".claude/commands/plan.md": {
-      "sha256": "e2b5e11ee1cb266dbe56d3faa7cd1dbc5d1140baada32f6a12d1d161d224be66",
+      "sha256": "39f72e5df492c526dcb4e64f00cc9235ed9112dab307bd1fe63f757b90246b76",
       "kind": "managed",
       "source": "core/.claude/commands/plan.md"
     },
