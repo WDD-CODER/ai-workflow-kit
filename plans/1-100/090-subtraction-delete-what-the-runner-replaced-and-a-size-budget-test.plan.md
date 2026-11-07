@@ -1,6 +1,6 @@
 # Plan 090 — Subtraction: delete what the runner replaced, and a size budget the tests enforce
 
-Status: draft
+Status: done
 Depends-on: 088, 089
 Snapshot: fd212e119ef16c0b26ebfaf6b44f450fee26d8f5
 Revised: Human decision 5, 2026-11-07 — the five checker agents (`orch-check-plan`, `orch-check-bugs`, `orch-check-rules`, `orch-verify`, `orch-security`) and `/review-it` stay until `review.ship` switches to `reviewer` (plan 091); everything else on the list is deleted.
