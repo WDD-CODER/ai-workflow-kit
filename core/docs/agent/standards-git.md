@@ -53,13 +53,28 @@
   body to a file, then `gh api -X PATCH repos/<owner>/<repo>/pulls/<n> -F body=@<file>` (`-f title=<title>` for the
   title). The same call works for an issue: `repos/<owner>/<repo>/issues/<n>`.
 
+### Commit-vs-PR judgment (before any `gh pr create`)
+
+A ship is either **feature-complete** (push + propose a PR) or a **checkpoint** (push only, no PR) — never "open a PR if applicable":
+
+* **Override first.** The ship request says "open a PR" / "create a PR" → feature-complete; "just commit" / "checkpoint" / "no PR" → checkpoint. Then skip the checks below.
+* **A brief this session** (named in the conversation or `.claude/todo.md`): compare the diff with its **Done when** list.
+  All met → feature-complete: run `node scripts/brain-review-check.mjs --scope=full` (advisory: findings never block,
+  they are reported), then `gh pr create`. Not all met → checkpoint: push only, no PR, no `--scope=full` check; the
+  wrap-up says `Milestone commit — brief not yet complete, no PR proposed`, and the Merge Gate shows its CHECKPOINT block.
+* **No brief** (ad-hoc work): ask once — `Is this feature-complete (open a PR) or a checkpoint (push only)?` — and follow the answer.
+* **Hard rule:** never open a PR without the brief's Done-when fully met or an explicit instruction (override or answer).
+
+**After opening a PR:** run `gh pr checks --watch` once. A failing check → offer the fix loop now
+(`docs/agent/pr-check-fix-loop.md`) or leaving it; never start it without asking. Then the Post-push Merge Gate below.
+
 ---
 
 ## Post-push Merge Gate (mandatory)
 
 Applies after **any** successful `git push` of a `feature/` / `fix/` / `chore/` branch (agent-run or Human-asked). Never treat “pushed” or “PR URL returned” as session-complete for mergeable work.
 
-**Brain capture is part of this gate** (auto-evoke — not `/ship`-only). After every successful push / PR create, always include a **Brain capture** block per `docs/agent/brain-capture.md`: run the extraction procedure and usefulness gate; omit only when nothing durable happened (`none durable` — the common case for chores). When proposing: the banner line carries **path + one-line title** only, and each entry's **full draft body** (required shape: Pattern = Problem/Solution/When to use; Gotcha = What hurt/Why the obvious fix is wrong/What to do instead; Decision = Context/Decision/Consequences) is printed in a fenced markdown block **directly below the banner**. A title-only proposal is invalid. Two entries (pattern + paired gotcha) are allowed — one banner line + one fenced draft each. **Auto-writes on the gate reply** (`merge` / `later` / `open-pr-only`) by default — the Human sees the full draft before replying; say `no brain` / `skip brain` alongside the reply to opt out for this ship, or `brain edit …` to revise first.
+**Brain capture is part of this gate when `review.learn` is `on`** (this project: `{{review.learn}}`; `off` → the banner reads `BRAIN CAPTURE — off` and nothing is mined, proposed or written). After every successful push / PR create, always include a **Brain capture** block per `docs/agent/brain-capture.md`: run the extraction procedure and usefulness gate; omit only when nothing durable happened (`none durable` — the common case for chores). When proposing: the banner line carries **path + one-line title** only, and each entry's **full draft body** (required shape: Pattern = Problem/Solution/When to use; Gotcha = What hurt/Why the obvious fix is wrong/What to do instead; Decision = Context/Decision/Consequences) is printed in a fenced markdown block **directly below the banner**. A title-only proposal is invalid. Two entries (pattern + paired gotcha) are allowed — one banner line + one fenced draft each. **Auto-writes on the gate reply** (`merge` / `later` / `open-pr-only`) by default — the Human sees the full draft before replying; say `no brain` / `skip brain` alongside the reply to opt out for this ship, or `brain edit …` to revise first.
 
 ### Feature-complete / chore cleanup / explicit PR work
 

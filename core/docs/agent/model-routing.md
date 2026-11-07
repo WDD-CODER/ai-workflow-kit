@@ -37,14 +37,14 @@ the model's own `pass` flag (`docs/agent/agent-roles.md`).
 
 | Agent / skill | Tier | Used by |
 | --- | --- | --- |
-| `.claude/agents/kit-runner.md` | mechanical | `/ship` Phase 1, `auto-solve` Phase 4, `/review-it` step 2 |
+| `.claude/agents/kit-runner.md` | mechanical | `auto-solve` Phase 4, the workflow (`/ship` Phase 1 and `/review-it` run their checks by code: `scripts/ship-prep.mjs --gate`) |
 | `.claude/agents/kit-prevalidate.md` | analysis | `auto-solve` Phase 2 |
 | `.claude/agents/git-agent.md` | mechanical (`omitClaudeMd`) | commit message prep |
 | `.claude/skills/github-sync/SKILL.md` (forked) | mechanical | session start |
 | `.claude/skills/techdebt/SKILL.md` (forked) | analysis | `/techdebt`, before a PR |
 | `/docs-refresh` agent call | analysis | `/docs-refresh` |
 | `.claude/agents/orch-builder.md` | build (escalation: judgment) | `scripts/run-plans.mjs` (a headless `claude -p` call per build) and the workflow |
-| `.claude/agents/plan-reviewer.md` | `orchestrator.reviewerModel` (default `sonnet`: Human 2026-11-07, until the fixed reviewer eval says otherwise; never Haiku); advisory until its precision reaches 0.50 (`orchestrator.reviewerMode`) | `scripts/run-plans.mjs` (one headless call per review), the kit's agent eval |
+| `.claude/agents/plan-reviewer.md` | `orchestrator.reviewerModel` (default `sonnet`: Human 2026-11-07, until the fixed reviewer eval says otherwise; never Haiku); advisory until its precision reaches 0.50 (`orchestrator.reviewerMode`) | `scripts/run-plans.mjs` (one headless call per review), `/ship` Phase 2 with `review.ship` = `reviewer` (`scripts/lib/plan-review.mjs`, the agent's own `model:` line, gate mode), the kit's agent eval |
 | `.claude/agents/orch-readiness.md` | judgment | the workflow (`run-plans.mjs` lints readiness by script) |
 | `.claude/agents/orch-gate.md`, `orch-report.md` | mechanical | the workflow |
 | `.claude/agents/orch-check-plan.md`, `orch-check-bugs.md`, `orch-check-rules.md`, `orch-verify.md` | review | the workflow, `/review-it`, `/ship` Phase 2 (checker review on a plan branch; the re-check is `orch-verify` only) |
@@ -96,4 +96,5 @@ outside the orchestrator (`take-plan`, `auto-solve` Phase 3), and every verdict.
    `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` overrides every agent file's `model:`. SessionStart prints a
    `MODEL_ROUTING:` line when either is set.
 7. **Commands whose output is the result.** A check that prints warnings and exits 0 (`scope-check --arch`, a log
-   query, `plan-ledger-check`) is handed to `kit-runner` marked `[capture]`, so its output comes back even on exit 0.
+   query) is handed to `kit-runner` marked `[capture]`, so its output comes back even on exit 0; `ship-prep.mjs
+   --gate` prints `plan-ledger-check`'s output itself.

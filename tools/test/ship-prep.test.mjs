@@ -32,3 +32,42 @@ test('small doc-only and code changes keep their faster lanes; a sensitive path 
   assert.equal(both.laneReason, 'touches server/auth.ts')
   assert.equal(prep.laneFor({ mode: 'regular', files: ['CHANGELOG.md'], totalLines: 1 }).laneReason, 'forced via --mode regular')
 })
+
+// /ship Phase 1 (`ship-prep.mjs --gate`): the build gate in code — no runner agent. One line per command, exit 1 on the
+// first failure; FAST / ULTRA-TRIVIAL run no tests, REGULAR runs the test script too.
+test('gate commands: FAST runs build, lint, ledger and override check; REGULAR adds the test script', () => {
+  const fast = prep.shipGateCommands({ lane: 'FAST', pm: 'npm', build: 'build', lint: 'lint', test: 'test' })
+  assert.deepEqual(fast, ['npm run build', 'npm run lint', 'node scripts/plan-ledger-check.mjs', 'node scripts/override-check.mjs'])
+  assert.deepEqual(prep.shipGateCommands({ lane: 'ULTRA-TRIVIAL', pm: 'npm', build: 'build', lint: 'lint', test: 'test' }), fast)
+  const regular = prep.shipGateCommands({ lane: 'REGULAR', pm: 'npm', build: 'build', lint: 'lint', test: 'test' })
+  assert.deepEqual(regular, ['npm run build', 'npm run lint', 'npm run test', 'node scripts/plan-ledger-check.mjs', 'node scripts/override-check.mjs'])
+  // testCi wins over test, an unset script is left out, pnpm is honoured
+  assert.deepEqual(prep.shipGateCommands({ lane: 'REGULAR', pm: 'pnpm', build: 'build', lint: '', test: 'test', testCi: 'test:ci' }),
+    ['pnpm run build', 'pnpm run test:ci', 'node scripts/plan-ledger-check.mjs', 'node scripts/override-check.mjs'])
+})
+
+test('gate run: one line per command with its exit, stops at the first failure with its tail, exit 1', () => {
+  const lines = []
+  const exits = { 'npm run build': 0, 'npm run lint': 2, 'node scripts/plan-ledger-check.mjs': 0 }
+  const ran = []
+  const run = (cmd) => { ran.push(cmd); return { exit: exits[cmd] ?? 0, out: cmd === 'npm run lint' ? 'a\nLEAK_CHECK: FAIL — 1 leak\n' : 'ok\n' } }
+  const r = prep.runShipGate({ commands: ['npm run build', 'npm run lint', 'node scripts/plan-ledger-check.mjs'], run, log: (l) => lines.push(l) })
+  assert.equal(r.exit, 1)
+  assert.deepEqual(ran, ['npm run build', 'npm run lint'], 'nothing runs after the first failure')
+  assert.equal(lines.filter((l) => /^GATE: .+ → exit \d+$/.test(l)).length, 2)
+  assert.ok(lines.includes('GATE: npm run build → exit 0'))
+  assert.ok(lines.includes('GATE: npm run lint → exit 2'))
+  assert.ok(lines.some((l) => l.includes('LEAK_CHECK: FAIL — 1 leak')), 'the failing tail is printed')
+  assert.ok(lines.includes('GATE: FAIL — npm run lint'))
+  assert.deepEqual(r.results.map((x) => x.status), ['pass', 'fail'])
+})
+
+test('gate run: all pass → exit 0 and a PASS line; the ledger output is printed even on exit 0 (its warnings are advisory)', () => {
+  const lines = []
+  const run = (cmd) => ({ exit: 0, out: cmd.includes('plan-ledger') ? 'PLAN_LEDGER: warn — duplicate 042\n' : 'fine\n' })
+  const r = prep.runShipGate({ commands: ['npm run build', 'node scripts/plan-ledger-check.mjs'], run, log: (l) => lines.push(l) })
+  assert.equal(r.exit, 0)
+  assert.ok(lines.some((l) => l.includes('PLAN_LEDGER: warn — duplicate 042')))
+  assert.ok(lines.includes('GATE: PASS — 2 command(s)'))
+  assert.ok(!lines.some((l) => l.includes('fine')), 'a passing command prints only its GATE line')
+})

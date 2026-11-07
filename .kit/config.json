@@ -47,7 +47,8 @@
     ]
   },
   "review": {
-    "ship": "checkers"
+    "ship": "checkers",
+    "learn": "off"
   },
   "security": {
     "sensitivePaths": [

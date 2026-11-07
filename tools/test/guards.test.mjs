@@ -750,15 +750,20 @@ test('write guard: a project with no scripts/pre-commit-*.mjs exporting scanGuar
   assert.equal(r.decision, 'allow', r.out)
 })
 
-test('write guard: finishes in under 300 ms on the test fixture', () => {
+test('write guard: its own work takes under 300 ms on the test fixture (node start-up excluded)', () => {
   const dir = guardFolder('write-guard-speed', { withGuard: true })
   const input = { file_path: join(dir, 'src', 'login.ts'), content: `${PII_LINE}\n` }
   writeHook(dir, input) // warm the file cache once
-  // wall time, node start-up included (about 135 ms of it on Windows); the fastest of 5 runs, so a busy machine's spike
-  // (the test files run in parallel) is not measured as the guard
-  const best = Array.from({ length: 5 }, () => writeHook(dir, input)).reduce((a, b) => (b.ms < a.ms ? b : a))
+  // The guard's own work = the fastest of 5 hook runs minus the fastest of 5 bare `node -e ""` starts, measured side by
+  // side, so a machine slowed by parallel test files slows both and is not counted as the guard. The 2000 ms ceiling on
+  // the whole run still catches a guard that hangs.
+  const bareNode = () => { const t = Date.now(); spawnSync(process.execPath, ['-e', ''], { windowsHide: true }); return Date.now() - t }
+  const runs = Array.from({ length: 5 }, () => ({ hook: writeHook(dir, input), node: bareNode() }))
+  const best = runs.map((r) => r.hook).reduce((a, b) => (b.ms < a.ms ? b : a))
+  const startup = Math.min(...runs.map((r) => r.node))
   assert.equal(best.decision, 'deny', best.out)
-  assert.ok(best.ms < 300, `the write guard took ${best.ms} ms`)
+  assert.ok(best.ms < 2000, `the write guard took ${best.ms} ms in all`)
+  assert.ok(best.ms - startup < 300, `the write guard's own work took ${best.ms - startup} ms (${best.ms} ms run, ${startup} ms node start-up)`)
 })
 
 test('settings.json runs the write guard as the fourth Edit|Write|MultiEdit hook', () => {
