@@ -12,11 +12,11 @@ After plans 088 and 089 the workflow runtime, five role agents, the runner agent
 ## Goals & Success Criteria
 **Primary:** the files the runner replaced are gone from `core/`, every reference to them is gone, and a test fails when the kit grows past its budget.
 
-- [auto] These files no longer exist under `core/` and under the installed copies (`.claude/`, `scripts/`): `.claude/workflows/orchestrate.js`, `.claude/commands/auto-solve.md`, `.claude/agents/orch-gate.md`, `orch-merge.md`, `orch-report.md`, `orch-triage.md`, `orch-readiness.md`, `kit-runner.md`, `kit-prevalidate.md`; `git grep -n` for each name returns nothing outside `CHANGELOG.md`, `plans/**` and `docs/brain/decisions/**`. The five checker agents and `/review-it` still exist and `/ship`'s `review.ship = checkers` path still runs them.
-- [auto] `orch-state.mjs` no longer has `note`, `decisions`, `flake`, `trend`, `main-try`, `main-tries`, `prepare` (moved into `plan-gate.mjs` in 088) nor the base64 note/flake queue; `node --test tools/test/orchestrator*.test.mjs` passes on the smaller file.
+- [auto] These files no longer exist under `core/` and under the installed copies (`.claude/`, `scripts/`): `.claude/workflows/orchestrate.js`, `.claude/commands/auto-solve.md`, `.claude/agents/orch-gate.md`, `orch-merge.md`, `orch-report.md`, `orch-triage.md`, `orch-readiness.md`, `kit-runner.md`, `kit-prevalidate.md`; `git grep -n` for each name returns nothing outside `CHANGELOG.md`, `plans/**` and `docs/brain/decisions/**` (also exempt, Human 2026-11-07: `docs/agent-evals/cases/**`, `docs/orchestrator/runs/**`, the `<repo>-orch-merge-<run>` folder name). The five checker agents and `/review-it` still exist and `/ship`'s `review.ship = checkers` path still runs them.
+- [auto] `orch-state.mjs` no longer has `trend`, `main-try`, `main-tries` nor the `--notes-b64` / `--flakes-b64` / `--causes-b64` queues (`note`, `flake`, `decisions`, `prepare` stay: `run-plans.mjs` and `lib/plan-gate.mjs` call them — Human 2026-11-07); `node --test tools/test/orchestrator*.test.mjs` passes on the smaller file.
 - [auto] `decision-log.mjs` keeps `pending`, `grade`, `learn`, `case`, `follow-ups`, `rules` behind `review.learn = on` (plan 089's key); its `triage` support and the calibration file are removed; `tools/test/decision-log.test.mjs` updated.
 - [auto] `docs/agent/orchestrator.md` ≤ 150 lines, `agent-roles.md` ≤ 100 lines (the shared contract for the builder, the reviewer, the five checkers while they stay, `orch-ui` and `git-agent` while it stays), `model-routing.md` ≤ 60 lines, `workflow-map.md` sections 3–5 list only what exists.
-- [auto] `node --test tools/test/size-budget.test.mjs` passes and enforces: `core/.claude/commands/*.md` ≤ 10 files, each ≤ 120 lines (`ship.md` ≤ 80, `take-plan.md` ≤ 100, `plan.md` ≤ 180); `core/.claude/agents/*.md` ≤ 10 files while the five checkers stay (reason line: back to 5 when `review.ship` switches to `reviewer`), each ≤ 120 lines; `AGENTS.md` ≤ 70 lines; `node tools/instruction-load.mjs` ≤ 800 (Human 2026-11-07; back to 600 when `job-validation.md` is shortened); `kit.config.json` `orchestrator` ≤ 12 keys. The limits live in `tools/size-budget.json` with a one-line reason each; raising one needs a plan that names it.
+- [auto] `node --test tools/test/size-budget.test.mjs` passes and enforces: `core/.claude/commands/*.md` ≤ 24 files (target 10, Human 2026-11-07), each ≤ 120 lines (`ship.md` ≤ 80, `take-plan.md` ≤ 100, `plan.md` ≤ 180); `core/.claude/agents/*.md` ≤ 10 files while the five checkers stay (reason line: back to 5 when `review.ship` switches to `reviewer`), each ≤ 120 lines; `AGENTS.md` ≤ 70 lines; `node tools/instruction-load.mjs` ≤ 800 (Human 2026-11-07; back to 600 when `job-validation.md` is shortened); `kit.config.json` `orchestrator` ≤ 15 keys (target 12, Human 2026-11-07). The limits live in `tools/size-budget.json` with a one-line reason each; raising one needs a plan that names it.
 - [auto] `tools/install-check.mjs`, `tools/drift-check.mjs --target .`, `tools/workflow-link-check.mjs`, `tools/acceptance-check.mjs --e2e` and `.kit/install.json` know nothing of the deleted files (no dangling manifest rows, no dead links).
 - [auto] `npm run build`, `npm run lint`, `npm test`, `node tools/orchestrator-e2e.mjs`, `node --test "tools/test/*.test.mjs"` pass; sync then drift-check report no drift.
 - [auto] `CHANGELOG.md` has one entry listing every deleted file and the ADR path.
@@ -68,7 +68,22 @@ docs/brain/decisions/**
 package.json
 .github/workflows/**
 CHANGELOG.md
+core/scripts/orch-preflight.mjs
+scripts/orch-preflight.mjs
+tools/lib/agent-result.mjs
+core/scripts/lib/brain-doc.mjs
+scripts/lib/brain-doc.mjs
+core/scripts/lib/run-order.mjs
+scripts/lib/run-order.mjs
+tools/fixtures/orchestrator/**
+docs/brain/invariants.md
+docs/brain/agent-lessons/planner.md
+docs/brain/run-log.md
+core/docs/brain/gotchas/agent-workflow.md
+docs/brain/gotchas/agent-workflow.md
 ```
+
+Approved 2026-11-07 (Human, `090: all recommended`): the paths from `core/scripts/orch-preflight.mjs` down.
 
 ## Read Scope
 
@@ -117,3 +132,4 @@ the path to the scope block and retry. A deletion not in the list above stops th
 - Step 0 item 2: ok — `orch-security`/`orch-ui` stay; `git-agent` has users (`fix.md`, `refactor.md`, `security.md`, `ship.md`, `standards-git.md`, `layers/cursor/**`) → kept. Agents after X1: 10.
 - Step 0 item 3: ok — case files stay.
 - Step 0 extra conflicts: X3 — no `plan-gate.mjs` took `note`/`flake`/`decisions`/`prepare`: `run-plans.mjs` calls `note` (354), `flake` (452), `decisions` (619) and `lib/plan-gate.mjs:80` emits `orch-state.mjs prepare`; only `trend`, `main-try`, `main-tries` and the `--notes-b64`/`--flakes-b64`/`--causes-b64` queues are dead. X5 — 24 command files remain after `/auto-solve` (limit 10 needs 14 more deletions not in the list). X6 — all 15 `orchestrator` keys are read by `run-plans.mjs`/`orch-state.mjs`/`orch-preflight.mjs`/libs (limit 12).
+- decision: Human 2026-11-07 (`090: all recommended`): (1) `approved: core/scripts/orch-preflight.mjs` — `settings()` checks the kept files; full X1. (2) the out-of-scope reference files are approved (added to the scope block); history entries are marked "(deleted in plan 090)", not erased. (3) the grep item exempts `docs/agent-evals/cases/**`, `docs/orchestrator/runs/**` and the `-orch-merge-` folder name. (4) X3 removes only `trend`, `main-try`, `main-tries` and the three `-b64` queues. (5) budget at the real counts (24 commands, 15 keys), targets 10 / 12 recorded. (6) the tests that drive `orchestrate.js` through the fake-agent harness are deleted; orch-state / preflight / merge-verify tests are kept.
