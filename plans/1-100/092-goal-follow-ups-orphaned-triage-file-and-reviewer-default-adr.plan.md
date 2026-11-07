@@ -1,6 +1,6 @@
 # Plan 092 — Goal follow-ups: remove the orphaned triage file and record the reviewer's Sonnet default in an ADR
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: 129c54cfc992f2abb150bd4ffccde22a7560e306
 Source: follow-ups of the 2026-11-06 goal run (plans 090 and 091 reports). First real run of `scripts/run-plans.mjs` (plan 058 H1, Human 2026-11-07).
