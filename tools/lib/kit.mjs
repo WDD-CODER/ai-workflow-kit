@@ -591,6 +591,74 @@ export function unflatten(flat) {
   return out
 }
 
+const normOverridePath = (p) => String(p).trim().replace(/\\/g, '/').replace(/^\.\//, '')
+
+/**
+ * Plan 094: the files the kit deleted from what it ships (tools/retired-files.json). A project override of one of them
+ * is dead weight and is removed by `sync --apply --prune`. Returns Map(path -> { path, plan, lastSha256? }); empty when
+ * the file is missing (an older kit source).
+ */
+export function readRetired(kitRoot) {
+  const file = join(kitRoot, 'tools', 'retired-files.json')
+  if (!existsSync(file)) return new Map()
+  const list = readJson(file).retired ?? []
+  return new Map(list.filter((r) => r && typeof r.path === 'string').map((r) => [normOverridePath(r.path), r]))
+}
+
+/**
+ * Remove every `overrides` entry for `path` from a config's raw text, leaving all other bytes (indentation, key order,
+ * line endings) alone. Returns the new text, or null when the text cannot be edited safely: the result must parse and
+ * equal the old config minus exactly those entries.
+ */
+export function removeOverrideEntry(text, path) {
+  const key = normOverridePath(path)
+  const open = /"overrides"\s*:\s*\[/.exec(text)
+  if (!open) return null
+  const openIdx = open.index + open[0].length - 1
+  const spans = []
+  let end = -1
+  for (let i = openIdx + 1; i < text.length; i++) {
+    const ch = text[i]
+    if (ch === ']') { end = i; break }
+    if (ch === ',' || /\s/.test(ch)) continue
+    if (ch !== '{') return null
+    const start = i
+    let depth = 0
+    let inStr = false
+    for (; i < text.length; i++) {
+      const c = text[i]
+      if (inStr) { if (c === '\\') i++; else if (c === '"') inStr = false; continue }
+      if (c === '"') inStr = true
+      else if (c === '{') depth++
+      else if (c === '}' && --depth === 0) break
+    }
+    spans.push([start, i + 1])
+  }
+  if (end < 0) return null
+  const pathOf = ([s, e]) => {
+    try { return normOverridePath(JSON.parse(text.slice(s, e)).path) } catch { return null }
+  }
+  const k = spans.findIndex((sp) => pathOf(sp) === key)
+  if (k < 0) return null
+  let next
+  if (spans.length === 1) next = `${text.slice(0, openIdx)}[]${text.slice(end + 1)}`
+  else if (k < spans.length - 1) next = text.slice(0, spans[k][0]) + text.slice(spans[k + 1][0])
+  else next = text.slice(0, spans[k - 1][1]) + text.slice(spans[k][1])
+  // A path listed twice: remove the next one the same way.
+  if (spans.filter((sp) => pathOf(sp) === key).length > 1) {
+    next = removeOverrideEntry(next, path)
+    if (next === null) return null
+  }
+  try {
+    const strip = (t) => t.replace(/^﻿/, '')
+    const before = JSON.parse(strip(text))
+    const expected = { ...before, overrides: before.overrides.filter((o) => normOverridePath(o.path) !== key) }
+    return JSON.stringify(JSON.parse(strip(next))) === JSON.stringify(expected) ? next : null
+  } catch {
+    return null
+  }
+}
+
 /**
  * Project overrides: kit.config.json `overrides` = [{ "path": "<installed path>", "reason": "<why>" }].
  * An overridden path belongs to the project for good: install skips it, sync reports it `override` and never writes it.
