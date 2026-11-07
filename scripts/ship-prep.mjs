@@ -422,6 +422,15 @@ if (!isMain) {
   const lane = given ?? (mode === 'regular' ? 'REGULAR' : classify({ write: false }).lane)
   console.log(`GATE: lane ${lane}`)
   const gate = runShipGate({ commands: shipGateCommands({ lane }) })
+  // The receipt for the single reviewer (review.ship = reviewer): what the checks printed, in the OS temp folder.
+  const { shipGateReceiptPath } = await import('./lib/plan-review.mjs')
+  const receiptPath = shipGateReceiptPath(repoRoot)
+  try {
+    writeFileSync(receiptPath, JSON.stringify({ lane, at: new Date().toISOString(), results: gate.results }, null, 2))
+    console.log(`GATE_RECEIPT: ${receiptPath}`)
+  } catch (e) {
+    console.log(`GATE_RECEIPT: not written (${e.message})`)
+  }
   process.exitCode = gate.exit
 } else if (checkBaseline) {
   const report = checkBaselineReport()

@@ -5,7 +5,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { join, resolve } from 'node:path'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, copyFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { applyConditionals } from '../lib/kit.mjs'
 
@@ -70,6 +72,65 @@ test('review.ship=light renders its note in ship-regular.md; checkers leaves it 
   const src = read('core/docs/agent/ship-regular.md')
   assert.match(applyConditionals(src, { 'review.ship': 'light' }), /This project sets `review\.ship` to `light`/)
   assert.ok(!/This project sets `review\.ship`/.test(applyConditionals(src, { 'review.ship': 'checkers' })))
+})
+
+// review.ship = reviewer: plan-review.mjs as a command outside a run (no run folder) — a scratch repository, a fake
+// claude that records its prompt, no model call.
+function reviewerScratch(verdict) {
+  const dir = mkdtempSync(join(tmpdir(), 'ship-review-cli-'))
+  const g = (...a) => spawnSync('git', a, { cwd: dir, encoding: 'utf8' })
+  g('init', '-q', '-b', 'main')
+  g('config', 'user.email', 't@example.com'); g('config', 'user.name', 't'); g('config', 'commit.gpgsign', 'false')
+  mkdirSync(join(dir, 'plans'), { recursive: true })
+  mkdirSync(join(dir, '.claude', 'agents'), { recursive: true })
+  mkdirSync(join(dir, 'src'), { recursive: true })
+  writeFileSync(join(dir, 'plans', '123-demo.plan.md'), '# Plan 123 — demo\n\n## Goals & Success Criteria\n- [auto] src/a.js exports one\n\n## Execution Notes\n- builder: all good BUILDER-CLAIM\n')
+  copyFileSync(join(kit, '.claude', 'agents', 'plan-reviewer.md'), join(dir, '.claude', 'agents', 'plan-reviewer.md'))
+  writeFileSync(join(dir, 'src', 'a.js'), 'export const one = 0\n')
+  g('add', '-A'); g('commit', '-q', '-m', 'base')
+  g('switch', '-q', '-c', 'feat/123-demo')
+  writeFileSync(join(dir, 'src', 'a.js'), 'export const one = 1 // COMMITTED-CHANGE\n')
+  g('commit', '-q', '-am', 'work')
+  writeFileSync(join(dir, 'src', 'a.js'), 'export const one = 1 // UNCOMMITTED-CHANGE\n')
+  writeFileSync(join(dir, 'src', 'new.js'), 'export const two = 2 // UNTRACKED-FILE\n')
+  const result = { role: 'plan-reviewer', model: 'sonnet', effort: 'low', verdict, problems: verdict === 'STOP' ? [{ id: 'p1', file: 'src/a.js', line: 1, rule: 'done-when', reasoning: 'one is not exported as asked', severity: 'major' }] : [] }
+  const fake = join(dir, '..', `${dir.split(/[\\/]/).pop()}-fake-claude.mjs`)
+  writeFileSync(fake, `import { readFileSync, writeFileSync } from 'node:fs'\nwriteFileSync(${JSON.stringify(join(dir, '..', `${dir.split(/[\\/]/).pop()}-prompt.txt`))}, readFileSync(0, 'utf8') + '\\nARGV ' + process.argv.slice(2).join(' '))\nconsole.log(JSON.stringify({ result: ${JSON.stringify(JSON.stringify(result))}, usage: {} }))\n`)
+  const receipt = join(dir, '..', `${dir.split(/[\\/]/).pop()}-receipt.json`)
+  writeFileSync(receipt, JSON.stringify({ lane: 'REGULAR', results: [{ command: 'npm run build', status: 'pass', exit: 0, tail: 'GATE-RECEIPT-TAIL' }] }))
+  const run = () => spawnSync(process.execPath, [join(kit, 'scripts', 'lib', 'plan-review.mjs'), '--branch', 'feat/123-demo', '--base', 'main', '--receipt', receipt],
+    { cwd: dir, encoding: 'utf8', env: { ...process.env, RUN_PLANS_CLAUDE: fake } })
+  const prompt = () => readFileSync(join(dir, '..', `${dir.split(/[\\/]/).pop()}-prompt.txt`), 'utf8')
+  const clean = () => { for (const p of [dir, fake, receipt, join(dir, '..', `${dir.split(/[\\/]/).pop()}-prompt.txt`)]) rmSync(p, { recursive: true, force: true }) }
+  return { run, prompt, clean }
+}
+
+test('plan-review.mjs --branch --base outside a run: redacted plan, working tree + untracked diff, the gate receipt, STOP → exit 1', () => {
+  const s = reviewerScratch('STOP')
+  try {
+    const r = s.run()
+    assert.equal(r.status, 1, r.stdout + r.stderr)
+    assert.match(r.stdout, /^REVIEW: STOP — 1 problem\(s\), 1 blocking \(plan-reviewer on /m)
+    assert.match(r.stdout, /major src\/a\.js:1 done-when/)
+    const p = s.prompt()
+    assert.match(p, /UNCOMMITTED-CHANGE/, 'the working tree is reviewed, not only the commits')
+    assert.match(p, /UNTRACKED-FILE/, 'untracked files are part of the diff')
+    assert.match(p, /GATE-RECEIPT-TAIL/, 'the gate receipt reaches the reviewer')
+    assert.ok(!p.includes('BUILDER-CLAIM'), "the plan's Execution Notes never reach the reviewer")
+    assert.match(p, /--disallowedTools/, 'no write tool')
+  } finally { s.clean() }
+})
+
+test('plan-review.mjs outside a run: PASS → exit 0; a branch with no plan → exit 2', () => {
+  const s = reviewerScratch('PASS')
+  try {
+    const r = s.run()
+    assert.equal(r.status, 0, r.stdout + r.stderr)
+    assert.match(r.stdout, /^REVIEW: PASS — 0 problem\(s\), 0 blocking/m)
+    const none = spawnSync(process.execPath, [join(kit, 'scripts', 'lib', 'plan-review.mjs'), '--branch', 'chore/x', '--base', 'main'], { cwd: kit, encoding: 'utf8' })
+    assert.equal(none.status, 2)
+    assert.match(none.stdout, /REVIEW: refused — no plan file for chore\/x/)
+  } finally { s.clean() }
 })
 
 test('ADR 0015 supersedes 0007, and 0007 changed only its status', () => {

@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "c375d93cd5a946b042c2097221015f9534123d77",
+  "commit": "1c8b69e8bdfeb5eb9c64bf722bbf5f6d456be5de",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -790,7 +790,7 @@
       "source": "core/scripts/lib/plan-paths.mjs"
     },
     "scripts/lib/plan-review.mjs": {
-      "sha256": "6be289a7031473f2ddd8034dfd86b9aa9ad2d3bf24ce74d23ae235d2e8614365",
+      "sha256": "7cfca262930168ff000859a7e77bd2a0e9cc2bfbedfcf5777d1800bb3b782c77",
       "kind": "managed",
       "source": "core/scripts/lib/plan-review.mjs"
     },
@@ -975,7 +975,7 @@
       "source": "core/scripts/session-startup.sh"
     },
     "scripts/ship-prep.mjs": {
-      "sha256": "290ff30ed86ac84dc545117d2fb5084feb2ed874b4b5f217e854d1eaeee19378",
+      "sha256": "2f3aa8baade6b1cd60e09da0497b44dad49549e7503f1ad6e320ef377b721a38",
       "kind": "managed",
       "source": "core/scripts/ship-prep.mjs"
     },
