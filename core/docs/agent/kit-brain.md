@@ -72,14 +72,13 @@ most 120 characters. A path is `<p>` whether it is absolute or relative (two sla
 `message.usage` and `message.id` (a message id counts once). A workflow folder belongs to the run when its newest agent file
 was written between `startedAt` and a minute after `finishedAt`. The totals are kept twice:
 
-- `byPhase`: per `workflowPhase` (`Start`, `Readiness`, `Build`, `Report` in an orchestrator run).
-- `byRole`: per role. The role is the meta file's `agentType` (`orch-builder`, `orch-gate`, the finders, `orch-verify`,
-  `orch-merge`, `kit-runner`, …); an agent with no `agentType`, or the generic `workflow-subagent`, falls back to
+- `byPhase`: per `workflowPhase` (`Start`, `Readiness`, `Build`, `Report` in a run of the old workflow runtime, whose
+  transcripts can still be read; `run-plans.mjs` records its calls in `calls.csv` instead).
+- `byRole`: per role. The role is the meta file's `agentType` (`orch-builder`, the finders, `orch-verify`, …); an agent with no `agentType`, or the generic `workflow-subagent`, falls back to
   `phase:<Phase>`. The free-text `description` is never read.
 
-**Phases that mix roles.** Every orchestrator phase holds more than one role (`Start`, `Readiness` and `Report` share their
-phase with the `kit-runner` that runs the commands; `Build` holds the builder, gate, three finders, verifier, security, `[ui]`
-and merge agents). A phase total with `mixedRoles: true` is the sum of those roles and is never split by a guess; read
+**Phases that mix roles.** Every phase of that runtime held more than one role (`Build` held the builder, the gate, the
+three finders, the verifier, security, `[ui]` and the merge agents). A phase total with `mixedRoles: true` is the sum of those roles and is never split by a guess; read
 `byRole` for the split. The transcript format is not an official contract: any shape the reader does not know gives
 `tokens: null` and a `tokensNote`, and never fails `finish`.
 

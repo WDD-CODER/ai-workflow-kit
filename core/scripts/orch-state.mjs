@@ -584,7 +584,7 @@ const rulesIn = (base) => {
   const t = readIf(join(base, 'docs', 'brain', 'agent-rules.md')) ?? ''
   return { checkers: ruleLines(t, 'checkers'), readiness: ruleLines(t, 'readiness'), ui: ruleLines(t, 'ui') }
 }
-/** The last three run-log rows as one line each, with their parked reasons: what `orch-readiness` reads as RECENT_RUNS. */
+/** The last three run-log rows as one line each, with their parked reasons (`context` RECENT_RUNS). */
 const recentRunsOf = (rows) => rows.slice(-3).map((r) => `${r.date} ${r.run}: ${String(r.plans).split(',').filter(Boolean).length} plans, ${r.merged} merged, ${r.parked} parked (${r.reasons}), fix rounds ${r.fixRounds}, escalations ${r.escalations}, gate fails ${r.gateFails}, final gate ${r.finalGate}`)
 
 /**
@@ -1184,7 +1184,7 @@ const commands = {
     }
     p.models ??= {}
     if (args.role) p.models[String(args.role)] = { model: String(args.model ?? 'unknown'), ...(args.effort ? { effort: String(args.effort) } : {}) }
-    // --roles orch-builder=sonnet/medium,orch-gate=haiku/low: the model each agent of this step echoed.
+    // --roles orch-builder=sonnet/medium,plan-reviewer=sonnet/medium: the model each agent of this step echoed.
     if (args.roles && args.roles !== true) {
       for (const item of String(args.roles).split(',').filter(Boolean)) {
         const m = /^([\w-]+)=([^/]+)(?:\/(.*))?$/.exec(item)
