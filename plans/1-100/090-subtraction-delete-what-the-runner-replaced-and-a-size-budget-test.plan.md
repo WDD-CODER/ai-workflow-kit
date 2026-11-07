@@ -20,7 +20,7 @@ After plans 088 and 089 the workflow runtime, five role agents, the runner agent
 - [auto] `tools/install-check.mjs`, `tools/drift-check.mjs --target .`, `tools/workflow-link-check.mjs`, `tools/acceptance-check.mjs --e2e` and `.kit/install.json` know nothing of the deleted files (no dangling manifest rows, no dead links).
 - [auto] `npm run build`, `npm run lint`, `npm test`, `node tools/orchestrator-e2e.mjs`, `node --test "tools/test/*.test.mjs"` pass; sync then drift-check report no drift.
 - [auto] `CHANGELOG.md` has one entry listing every deleted file and the ADR path.
-- [human] Open one Claude Code session in the kit and one in FoodVibe after `kit-sync.ps1`: `/commands` lists ten commands or fewer, nothing in the list is dead, and `/orchestrate --dry-run` of one plan prints its waves.
+- [human] Open one Claude Code session in the kit and one in FoodVibe after `kit-sync.ps1`: `/commands` lists nothing dead and `/orchestrate` is there, and `/orchestrate --dry-run` of one plan prints its waves.
 
 ## Execution Mode
 - Parallel: no.

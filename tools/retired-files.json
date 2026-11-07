@@ -1,0 +1,14 @@
+{
+  "$comment": "Files the kit deleted from what it ships. sync --apply --prune removes a project's override of one of these paths (plan 094). Add a row, with the plan that deletes the file, whenever a shipped file is deleted. lastSha256 (optional) = sha256 of the last shipped copy with LF line endings; the project's own install record is checked first.",
+  "retired": [
+    { "path": ".claude/workflows/orchestrate.js", "plan": "090", "lastSha256": "9326a76b95cf5d91940053c2034b5c3615e78c9ac2ed415572c38d4ccdde59f7" },
+    { "path": ".claude/commands/auto-solve.md", "plan": "090", "lastSha256": "88900c3ed22ef3a2ae670e942b5303959017dfb82d6de61d341da4b5c4f1e49e" },
+    { "path": ".claude/agents/orch-gate.md", "plan": "090", "lastSha256": "4915329cd57c7714d768b84b0f7dadf8ee03bc172253f977f8e4765622bb9caa" },
+    { "path": ".claude/agents/orch-merge.md", "plan": "090", "lastSha256": "ef6527bd28210cc5ee744567513ac3e2600ac997b868a65814dd3eaf439fae84" },
+    { "path": ".claude/agents/orch-report.md", "plan": "090", "lastSha256": "72ddf9445f7701feb288922cfd3b5a5cdb587fff04815581dca6156d8ffb4238" },
+    { "path": ".claude/agents/orch-triage.md", "plan": "090", "lastSha256": "c739305028594786c5d678186e3c3ea6fdea3a85d7b640ca18307da0dae3a939" },
+    { "path": ".claude/agents/orch-readiness.md", "plan": "090", "lastSha256": "d215fc7f67e43d4d17be709d606c2988ca9c7002b38de30e9f7174b02f03d8c5" },
+    { "path": ".claude/agents/kit-runner.md", "plan": "090", "lastSha256": "9b4a4d579b259601eb5a5171d71d37a4c4a99e433fbd7470ff2cea661402b7a5" },
+    { "path": ".claude/agents/kit-prevalidate.md", "plan": "090", "lastSha256": "0283fa06fcab996f93cabb6bcae4707635b996f216b4a47a1c56548d19c53e6b" }
+  ]
+}

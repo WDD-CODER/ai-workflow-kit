@@ -40,6 +40,10 @@
  * rename: its record is dropped, the file left alone). Line endings are ignored when comparing (a CRLF checkout of an
  * unchanged file still counts as unchanged). Without --prune nothing on disk is deleted; a dry-run prints what --prune
  * would do.
+ *   pruned-override   an override of a file the kit retired (tools/retired-files.json; plan 094). --apply --prune removes
+ *                     its entry from the config's `overrides` (the other entries and the formatting stay) and deletes the
+ *                     file, or moves it to .kit/pruned/<path> when the project changed it. An override of a path the kit
+ *                     never shipped (a typo, a project-only file) stays a NOTE and is never touched.
  * --apply that writes scripts/package.json also runs npm install inside scripts/ when the project has
  * scripts/package-lock.json (the lockfile is the project's; this keeps it in step with the kit's package.json).
  * Exit 0 always for a completed report; 1 on a usage or config error; 2 when a commands.* value is a full
@@ -52,7 +56,7 @@ import { resolveSource } from './lib/source.mjs'
 import {
   KIT_ROOT, readJson, sha256, resolveConfig, planFiles, parseArgs, readOverrides, isHook, markHooksExecutable, commandProblems,
   ownsAgents, ignoredPaths, AGENTS_WORKFLOW, frontendNote, presentAlternative, backendNote, ciMirrorNotes, withUpstream, splitList,
-  projectConfigPath, configLabel, requiredByDest, retiredNotes,
+  projectConfigPath, configLabel, requiredByDest, retiredNotes, readRetired, removeOverrideEntry,
 } from './lib/kit.mjs'
 
 let args
@@ -115,6 +119,23 @@ try {
 } catch (e) {
   console.error(`KIT_SYNC: FAIL — ${e.message}`)
   process.exit(1)
+}
+// Overrides of files the kit retired. The config edit is worked out here, before anything is written: if the text cannot
+// be edited safely, nothing is written at all (no partial update).
+const retiredList = readRetired(kitRoot)
+const shippedNow = new Set(plan.files.map((f) => f.dest))
+const retiredOverrides = [...explicitOverrides.keys()].filter((p) => retiredList.has(p) && !shippedNow.has(p))
+let editedConfig = null
+if (args.apply && args.prune && retiredOverrides.length > 0) {
+  editedConfig = readFileSync(cfgFile, 'utf8')
+  for (const p of retiredOverrides) {
+    editedConfig = editedConfig === null ? null : removeOverrideEntry(editedConfig, p)
+  }
+  if (editedConfig === null) {
+    console.error(`KIT_SYNC: STOP — cannot remove the retired override(s) ${retiredOverrides.join(', ')} from ${cfgName} without changing anything else.`)
+    console.error(`Remove the entry by hand, then re-run. Nothing was written.`)
+    process.exit(2)
+  }
 }
 const ignored = ignoredPaths(target, plan.files.filter((f) => !existsSync(join(target, f.dest))).map((f) => f.dest))
 
@@ -219,10 +240,38 @@ for (const dest of Object.keys(inst.files)) {
   if (unchanged) rmSync(file)
   delete record[dest]
 }
+// A retired override: its entry leaves the config; its file is deleted when unchanged since the kit last shipped it
+// (the project's install record, else the retired list's lastSha256), or moved to .kit/pruned/<path> when not.
+for (const p of retiredOverrides) {
+  const file = resolve(target, p)
+  const rel = relative(target, file)
+  if (isAbsolute(p) || isAbsolute(rel) || rel === '..' || rel.startsWith(`..${sep}`)) {
+    rows.push({ dest: p, state: 'pruned-override', note: 'lies outside the project: left alone' })
+    continue
+  }
+  const rec = inst.files[p]
+  const known = [rec && rec.kind !== 'seed' ? rec.sha256 : null, retiredList.get(p).lastSha256].filter(Boolean)
+  const text = existsSync(file) ? readFileSync(file, 'utf8') : null
+  const unchanged = text !== null && known.some((h) => sameText(text, h))
+  const what = text === null ? 'file already gone' : unchanged ? 'file deleted (unchanged since the kit shipped it)' : `file moved to .kit/pruned/${p} (the project changed it)`
+  if (!args.apply) { rows.push({ dest: p, state: 'pruned-override', note: 'override of a file the kit retired (on --apply --prune)' }); continue }
+  if (!args.prune) { rows.push({ dest: p, state: 'pruned-override', note: 'override of a file the kit retired (needs --prune)' }); continue }
+  rows.push({ dest: p, state: 'pruned-override', note: `override of a file the kit retired: entry removed from ${cfgName}, ${what}` })
+  if (text !== null) {
+    if (!unchanged) {
+      const kept = join(target, '.kit', 'pruned', p)
+      mkdirSync(dirname(kept), { recursive: true })
+      writeFileSync(kept, text, 'utf8')
+    }
+    rmSync(file)
+  }
+  delete record[p]
+}
+if (editedConfig !== null) writeFileSync(cfgFile, editedConfig, 'utf8')
 // An AGENTS.md override is what sends the kit's rules to AGENTS.workflow.md: a known path.
-const unknownOverrides = [...explicitOverrides.keys()].filter((p) => !planned.has(p) && !(p === 'AGENTS.md' && planned.has(AGENTS_WORKFLOW)))
+const unknownOverrides = [...explicitOverrides.keys()].filter((p) => !planned.has(p) && !retiredOverrides.includes(p) && !(p === 'AGENTS.md' && planned.has(AGENTS_WORKFLOW)))
 
-const order = ['new', 'kit-update', 'conflict', 'local-only', 'deleted-locally', 'removed-from-kit', 'pruned', 'released', 'override', 'ignored']
+const order = ['new', 'kit-update', 'conflict', 'local-only', 'deleted-locally', 'removed-from-kit', 'pruned', 'released', 'pruned-override', 'override', 'ignored']
 const count = (s) => rows.filter((r) => r.state === s).length
 for (const s of order) for (const r of rows.filter((x) => x.state === s)) console.log(`${s.padEnd(16)} ${r.dest}${r.note ? ` — ${r.note}` : ''}`)
 for (const n of skippedSeeds) console.log(n)
@@ -295,5 +344,6 @@ console.log(
     (count('ignored') ? `, ${count('ignored')} ignored` : '') +
     (count('pruned') ? `, ${count('pruned')} pruned` : '') +
     (count('released') ? `, ${count('released')} released` : '') +
+    (count('pruned-override') ? `, ${count('pruned-override')} pruned-override` : '') +
     (args.apply ? '' : ' (nothing written; re-run with --apply to write new + kit-update)'),
 )
