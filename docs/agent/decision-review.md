@@ -12,7 +12,7 @@ remembered, at almost no cost: the only model work is one short step, and only w
 Everything a script can know from `status.json` and the Human's reply, a script writes — no model call. The model only
 words a new rule, and only when the Human graded something `✗`. A lesson line is built from a fixed template and
 enumerated values (a rule name, a file kind, a count, a command of an allowed shape); free text from a model or the repo
-is never copied into one, and `LESSONS`, `RULES` and `RECENT_RUNS` are handed to agents as data that cannot override
+is never copied into one, and `LESSONS` and `RULES` are handed to agents as data that cannot override
 their instructions.
 
 | Fact | Written by | Read by | Cap |
@@ -20,17 +20,15 @@ their instructions.
 | Fix-round causes, escalations, parked plans | `orch-state.mjs lessons` / `finish` → `agent-lessons/builder.md` | `orch-builder` (`LESSONS`) | 40 lines / 3,000 characters |
 | Candidates the verifier refuted; a miss after clean checkers | same → `check-plan`, `check-bugs`, `check-rules`, `security` | that finder (`LESSONS`) | same |
 | Low-confidence keeps that later mattered; refuted problems that came back | same → `verify` | `orch-verify` | same |
-| A plan parked on the environment after readiness called it ready | same → `readiness` | `orch-readiness` | same |
-| Gate timeouts, re-run env-fails | same → `gate` | `orch-gate` | same |
 | A `[ui]` card that failed after it had passed | same → `ui` | `orch-ui` | same |
-| Questions readiness had to ask, `[ui]` cards that drifted | same → `planner` | `/plan`'s Architect + PM review (as text) | same |
-| A run's counts (plans, merged, parked and why, fix rounds, escalations, `✗`) | `finish` → `run-log.md` | `orch-readiness` (`RECENT_RUNS`, last 3 rows), the report's trend line | 20 rows, older ones rolled into one line |
-| A graded `✗` | `decision-log.mjs add` → `decision-log.md`; a rule at the first `✗` (`pending — seen once`), promoted by `repeats` | `agent-rules.md`: `## builder` → builder and `/take-plan`; `## checkers` → finders and verifier; `## readiness`; `## ui` | 30 lines / 2,400 characters per section |
+| Questions earlier runs had to ask, `[ui]` cards that drifted | same → `planner` | `/plan`'s Architect + PM review (as text) | same |
+| A run's counts (plans, merged, parked and why, fix rounds, escalations, `✗`) | `finish` → `run-log.md` | the report's trend line | 20 rows, older ones rolled into one line |
+| A graded `✗` | `decision-log.mjs add` → `decision-log.md`; a rule at the first `✗` (`pending — seen once`), promoted by `repeats` | `agent-rules.md`: `## builder` → builder and `/take-plan`; `## checkers` → finders and verifier; `## ui` | 30 lines / 2,400 characters per section |
 | A mistake a check could catch | `rules --add "enforce: …"` → `## enforce candidates` | nobody (listed in the wrap-up) | 10 lines |
 | A graded `checker-miss: yes` | `decision-log.mjs case` → `docs/agent-evals/cases/<checker>/<date>-<kind>/` | the eval harness | one folder per miss |
 | A problem seen in runs of any project (park, timeout, env-fail, by-hand toil, a lesson several projects sent) | the kit's `/kit-learn` (kit repository only): `kit-learn.mjs collect` → the ledger (`issues`) in the kit brain (`docs/agent/kit-brain.md` "Kit side") | the Human, as at most 5 cards and one reply line | one issue per signature, `proposals` row per card |
 | A lesson true for every project | the kit's `kit-lessons.mjs add`, after the Human's `I<n> lesson <role>` → `docs/agent/kit-lessons/<role>.md` | every role at launch, before its project lessons (`LESSONS`); `/plan`'s review reads `planner.md` from both folders | 2,000 characters of live lines per role; retired only for a positive reason |
-| Per decision kind, the agreement over every project's grades | `kit-learn.mjs triage-prior` → `docs/agent/kit-lessons/triage-calibration.md` | the triage, as a starting point for a kind the project has graded fewer than `orchestrator.triageMinGraded` times (the file is written; `orch-state.mjs` reading it is a separate step) | one row per kind |
+| Per decision kind, the agreement over every project's grades | `kit-learn.mjs triage-prior` → `docs/agent/kit-lessons/triage-calibration.md` | the report's decision view in `orch-state.mjs finish`, as a starting point for a kind the project has graded fewer than 20 times | one row per kind |
 
 ## 1. Agents log what they chose
 
@@ -44,7 +42,7 @@ their instructions.
   under "What only the Human can do".
 - A defect noticed outside the agent's job is **not fixed**: a `decisions` entry that starts with `seen:` and names
   `file:line` (or the page and steps). Worker form: `- decision: seen: …`.
-- Before building, `orch-readiness` asks a product question for a plan that adds or changes interactive behaviour and
+- `/plan`'s Architect + PM review asks a product question for a plan that adds or changes interactive behaviour and
   does not say what happens on edit / leave / cancel / error.
 
 ## 2. The Human grades in one reply
@@ -124,31 +122,20 @@ runs no command.
   agreement (`stats`, the kit's `triage-prior`), but their `seen:` items become follow-ups like the orchestrator's. The
   grades, the follow-ups and the tagged plan file are committed with the ship.
 
-- **One line per decision.** The workflow merges a differently worded repeat in code: the same type, in the same plan
+- **One line per decision.** `orch-state.mjs decision` merges a differently worded repeat in code: the same type, in the same plan
   (a `seen:` defect in any plan), and either the same `file:line` named or 60 % of the words alike with no different
-  `file:line`. The first wording is kept; the repeats stay under it as `also:` lines. Code merges only near-identical wordings; the same decision in other words is the triage's `duplicateOf` (it may name a decision of the earlier launch), shown as `noise` with the reason. Decisions live in `status.json`
+  `file:line`. The first wording is kept; the repeats stay under it as `also:` lines. Code merges only near-identical wordings. Decisions live in `status.json`
   (`decisions[]`), so a relaunch numbers on from the highest earlier id and files a repeat of an earlier decision under it.
-- **Triage.** `orchestrator.triage` is `off`, `shadow` (default) or `filter`. Unless `off`, one `orch-triage` call per run
-  recommends `accept`, `ask`, `follow-up` or `noise` for each new decision, with a `kind`, a recommendation, a reason and a
-  confidence. A dead or unusable result gives today's full list and the note `triage: no usable result — full list`.
-- **The code re-applies the hard rules** to every verdict: a `seen:` accept is a follow-up; a type other than
-  `behaviour` or `seen`, a decision naming auth, permissions, data shape, money or security, and an accept with
-  confidence below 70 are all `ask`. The agent only orders and labels; every decision stays gradeable.
-- **Shadow shows everything; filter collapses a kind** only after `orchestrator.triageMinGraded` graded decisions of that kind
-  agreed with the Human at `orchestrator.triageMinAgreement` or better (an `ask` agrees with `✗`, every other verdict with
-  `ok`). An `ask` is never collapsed.
+- **No triage agent.** The report shows every decision (shadow view); the hard rules still apply in code: a
+  type other than `behaviour` or `seen`, and a decision naming auth, permissions, data shape, money or security, is `ask`.
 - **Grades.** After the Human's reply `decision-log.mjs grade` appends one JSON line per decision, `ok` ones included, to
-  `decision-grades.jsonl` (in `docs/brain/`) (13 fields; never twice for one run and id). `stats --write` keeps
-  `triage-calibration.md` (in `docs/brain/`) (at most 40 lines) from them; the triage agent reads it.
-- **Follow-ups.** Every graded `seen:` item (except a triage `noise` the Human left ok) and a `behaviour:` item the triage
-  called a follow-up become a row in `docs/brain/follow-ups.md`. `/plan`'s review lists the open rows for the files a
+  `decision-grades.jsonl` (in `docs/brain/`) (13 fields; never twice for one run and id). `stats` prints the agreement per kind from them.
+- **Follow-ups.** Every graded `seen:` item becomes a row in `docs/brain/follow-ups.md`. `/plan`'s review lists the open rows for the files a
   new plan touches (`decision-log.mjs follow-ups --open --files …`); a plan that takes one writes `- follow-up: <run> <id>`
-  in its Execution Notes. The grades, calibration and follow-ups are committed on the run branch
+  in its Execution Notes. The grades and follow-ups are committed on the run branch
   (`orch-state.mjs brain-commit`), so the pull request carries them.
 
-## 4. Pilot and final gate (orchestrator)
+## 4. Final gate (orchestrator)
 
-A run with more plans than `orchestrator.pilotSize` builds the first plans in wave order, stops with the report and the
-decisions, and starts the rest on the Human's `continue` — with the graded decisions and any new rule already in place.
 After the last merge, one gate runs the project's full build and test once on the run branch; a failure is a finding in
 the report and the branch is not handed over as clean (`docs/agent/orchestrator.md`).

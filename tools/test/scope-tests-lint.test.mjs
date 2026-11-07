@@ -79,7 +79,7 @@ const git = (cwd, ...a) => {
   return r.stdout
 }
 const script = (name, ...a) => spawnSync(process.execPath, [join('scripts', name), ...a], { cwd: dir, encoding: 'utf8' })
-// The orchestrator's own call (orchestrate.js: state(['diff', '--run', RUN, '--plan', nnn])), read from its ORCH_JSON line.
+// The orchestrator's own call (run-plans.mjs: state('diff', { run, plan })), read from its ORCH_JSON line.
 const orchDiff = (nnn) => {
   const r = script('orch-state.mjs', 'diff', '--run', 'r', '--plan', nnn)
   const line = r.stdout.split('\n').find((l) => l.startsWith('ORCH_JSON '))

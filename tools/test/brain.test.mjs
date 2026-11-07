@@ -394,7 +394,7 @@ test('brain.* config: a connection string is refused whatever the key, projectId
   assert.match(brainProblems({ 'brain.enabled': 'yes' })[0], /brain\.enabled is "yes" — it must be true or false/)
 })
 
-// ---- B11: tokens from the workflow transcripts ---------------------------------------------------------------------------
+// ---- B11: tokens from the workflow transcripts (runtime deleted in plan 090; old transcripts) ---------------------------------------------------------------------------
 
 /** A transcript home with one workflow folder: agents with a workflowPhase, assistant lines with usage (one message twice). */
 function transcripts(root, { phase = 'Build', meta = true, when = new Date('2026-10-29T10:20:00Z') } = {}) {
@@ -411,7 +411,7 @@ function transcripts(root, { phase = 'Build', meta = true, when = new Date('2026
   }
   agent('agent-a1', phase, 'orch-builder', [line('m1', 10, 5, 100, 50), line('m1', 10, 5, 100, 50), line('m2', 1, 2, 3, 4)])
   agent('agent-a2', 'Readiness', 'workflow-subagent', [line('m3', 7, 7, 7, 7)])
-  agent('agent-a3', phase, 'orch-gate', [line('m4', 2, 2, 2, 2)])
+  agent('agent-a3', phase, 'orch-verify', [line('m4', 2, 2, 2, 2)])
   agent('agent-a4', phase, undefined, [line('m5', 3, 3, 3, 3)])
   return home
 }
@@ -422,17 +422,17 @@ test('tokens: summed per workflowPhase (a message id counts once), mixed phases 
   try {
     const t = lib.tokensForRun({ root, startedAt: '2026-10-29T10:00:00.000Z', finishedAt: '2026-10-29T10:35:00.000Z', home })
     assert.equal(t.note, null)
-    assert.deepEqual(t.tokens.byPhase.Build, { input: 16, output: 12, cacheRead: 108, cacheCreation: 59, agents: 3, roles: ['orch-builder', 'orch-gate'], fallback: 1, mixedRoles: true })
+    assert.deepEqual(t.tokens.byPhase.Build, { input: 16, output: 12, cacheRead: 108, cacheCreation: 59, agents: 3, roles: ['orch-builder', 'orch-verify'], fallback: 1, mixedRoles: true })
     assert.equal(t.tokens.byPhase.Readiness.input, 7)
     assert.equal(t.tokens.byPhase.Readiness.mixedRoles, true, 'a generic agent in a phase the kit lists with several roles: mixed, and not given a guessed role')
     // The role is the meta file's agentType; "workflow-subagent" or no agentType falls back to the phase, never to description.
-    assert.deepEqual(Object.keys(t.tokens.byRole).sort(), ['orch-builder', 'orch-gate', 'phase:Build', 'phase:Readiness'])
+    assert.deepEqual(Object.keys(t.tokens.byRole).sort(), ['orch-builder', 'orch-verify', 'phase:Build', 'phase:Readiness'])
     assert.deepEqual(t.tokens.byRole['orch-builder'], { input: 11, output: 7, cacheRead: 103, cacheCreation: 54, agents: 1, phases: ['Build'] })
     assert.deepEqual(t.tokens.byRole['phase:Build'], { input: 3, output: 3, cacheRead: 3, cacheCreation: 3, agents: 1, phases: ['Build'] })
     assert.deepEqual(t.tokens.total, { input: 23, output: 19, cacheRead: 115, cacheCreation: 66, agents: 4 })
     const odd = transcripts(root, { phase: 'Something New' })
     const u = lib.tokensForRun({ root, startedAt: '2026-10-29T10:00:00.000Z', finishedAt: '2026-10-29T10:35:00.000Z', home: odd })
-    assert.deepEqual(u.tokens.byPhase['Something New'].roles, ['orch-builder', 'orch-gate'], 'a phase the kit does not know still splits by agentType')
+    assert.deepEqual(u.tokens.byPhase['Something New'].roles, ['orch-builder', 'orch-verify'], 'a phase the kit does not know still splits by agentType')
     gone(odd)
   } finally { gone(home) }
 })

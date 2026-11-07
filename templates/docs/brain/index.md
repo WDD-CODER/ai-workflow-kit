@@ -13,7 +13,7 @@ Distilled project knowledge: history and reasoning, not current state. **Current
 5. `gotchas.md` — index into `gotchas/` (what hurt before, and what to do instead), split by domain
 6. `glossary.md` — domain vocabulary
 7. `agent-rules.md` — short rules per role (builder, checkers, readiness, ui), learned from decisions graded wrong (the log behind them: `decision-log.md`)
-8. `agent-lessons/` — one short file per orchestrator role and the Planner (`<role>.md`, at most 40 lines / 3,000 characters each), facts from earlier runs written by `node scripts/orch-state.mjs lessons`; `run-log.md` — one row per run, which `orch-readiness` and the run report's trend line read
+8. `agent-lessons/` — one short file per orchestrator role and the Planner (`<role>.md`, at most 40 lines / 3,000 characters each), facts from earlier runs written by `node scripts/orch-state.mjs lessons`; `run-log.md` — one row per run
 9. `follow-ups.md` — defects agents saw outside their job; every graded orchestrator decision is a line in `decision-grades.jsonl` (written by `decision-log.mjs grade`, never read by builders)
 
 Run evidence also leaves the project, to the kit's private store, with no model call (`node scripts/brain.mjs`): what goes where and how to set it up is in `docs/agent/kit-brain.md`.

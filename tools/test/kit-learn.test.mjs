@@ -344,7 +344,7 @@ test('a card shown and left for 14 days is recorded expired by the next collect'
 
 test('protected paths: the graders are human-only; a proposal naming one is marked protected', () => {
   for (const p of ['tools/agent-eval.mjs', 'tools/lib/agent-eval/x.mjs', 'tools/test/brain.test.mjs', 'core/scripts/lib/brain-doc.mjs', 'tools/lib/kit-learn/ledger.mjs', 'tools/leak-check.mjs', 'core/scripts/pre-commit-secret-scan.mjs']) assert.ok(isProtectedPath(p), p)
-  for (const p of ['core/.claude/workflows/orchestrate.js', 'tools/kit-learn.mjs', 'core/scripts/brain.mjs']) assert.ok(!isProtectedPath(p), p)
+  for (const p of ['core/scripts/run-plans.mjs', 'tools/kit-learn.mjs', 'core/scripts/brain.mjs']) assert.ok(!isProtectedPath(p), p)
   assert.deepEqual(protectedPaths(['tools\\leak-check.mjs', 'core/scripts/brain.mjs']), ['tools/leak-check.mjs'])
   const r = applyDecisions({ items: [{ id: 'I1', action: 'plan', arg: '' }], issues: [issue('I1')], cards: { I1: { text: 'x', paths: ['tools/leak-check.mjs'] } }, now: NOW, readPlan: () => null })
   assert.equal(r.proposals[0].protected, true)

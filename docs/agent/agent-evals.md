@@ -105,7 +105,7 @@ any line in the file is right. `"findings": []` marks a correct change: every re
 A candidate counts as reported when the verifier keeps it with confidence ≥ 80, the same threshold the checker
 pipeline uses.
 
-**Pass/fail** (whole-result roles such as the UI validator or the gate): `{ "pass": false }`. The computed `pass` of the
+**Pass/fail** (whole-result roles such as the UI validator): `{ "pass": false }`. The computed `pass` of the
 agent's result is compared; an expected failure is one item to find.
 
 ## Building a project's case set

@@ -118,10 +118,10 @@ try {
 }
 const ignored = ignoredPaths(target, plan.files.filter((f) => !existsSync(join(target, f.dest))).map((f) => f.dest))
 
-// The workflow file bakes orchestrator.prepare and orchestrator.ciMirror in at render time: a config change does nothing
+// The run script bakes orchestrator.prepare and orchestrator.ciMirror in at render time: a config change does nothing
 // until the next sync --apply. Read before anything is written, so the dry run (and an override copy) says so.
 // The same check lives in tools/drift-check.mjs.
-const STALE_FILE = '.claude/workflows/orchestrate.js'
+const STALE_FILE = 'scripts/run-plans.mjs'
 const staleRender = (() => {
   const f = plan.files.find((x) => x.dest === STALE_FILE)
   const p = join(target, STALE_FILE)

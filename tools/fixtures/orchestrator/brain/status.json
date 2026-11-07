@@ -15,7 +15,7 @@
       "reason": "same reason twice: gate (main folder): node scripts/log-query.mjs --since=plan-start --level=error (fix rounds used: 2 of 2)",
       "models": {
         "orch-builder": { "model": "claude-sonnet-5-5", "effort": "medium" },
-        "orch-gate": { "model": "claude-haiku-5-5", "effort": "low" }
+        "orch-verify": { "model": "claude-sonnet-5-5", "effort": "medium" }
       },
       "humanItems": ["Open the list and see the names in order"],
       "history": [

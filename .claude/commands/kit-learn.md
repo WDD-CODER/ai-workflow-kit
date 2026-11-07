@@ -29,7 +29,7 @@ Run it in a kit session on a `feat/`/`chore/` branch or on `main` for reading; t
    ```text
    I1 · regressed · gate (main folder): <check> needs a slot stamp     runs 3 · projects 1 · lost ~95 min
      seen:      run-499-502 (500 parked after 3 rounds), …   last kit v1.14.0 (has fix 040 @ 3f2a…)
-     cause:     core/.claude/workflows/orchestrate.js mainCheckProblem — checks the command's shape, not where it can run
+     cause:     core/scripts/run-plans.mjs checkProblem — checks the command's shape, not where it can run
      missed by: readiness (no slot-state rule) · tests (orchestrator.test.mjs l.551 expects a fix round)
      options:   a) drop at launch (040 did)  b) rewrite --since  c) run in a slot
      recommend: amend 040's A1 regex to also match <new form>   guard: fixture <name> in tools/test/orchestrator.test.mjs

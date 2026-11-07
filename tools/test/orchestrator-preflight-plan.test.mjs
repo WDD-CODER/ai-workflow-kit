@@ -10,7 +10,6 @@ import { fileURLToPath } from 'url'
 
 const kit = resolve(fileURLToPath(new URL('../..', import.meta.url)))
 const root = process.env.ORCH_ROOT ? resolve(process.env.ORCH_ROOT) : kit
-const wfSource = readFileSync(join(root, '.claude', 'workflows', 'orchestrate.js'), 'utf8')
 
 const sh = (cwd, ...a) => {
   const r = spawnSync('git', a, { cwd, encoding: 'utf8' })
@@ -181,72 +180,4 @@ test('leftovers: an unmerged feat/NNN branch, a park branch and an occupied slot
 })
 
 // ---- the workflow parks a preflight-named plan before any builder; the others go on ----------------------------------
-async function runFlow(args, hooks = {}) {
-  const calls = []
-  const commands = []
-  const plansIn = args.plans.map(String)
-  const words = (cmd) => [...cmd.matchAll(/"([^"]*)"|(\S+)/g)].map((m) => m[1] ?? m[2])
-  const task = (prompt) => Object.fromEntries(String(prompt).split('\n').map((l) => /^([A-Z_]+): (.*)$/.exec(l)).filter(Boolean).map((m) => [m[1], m[2]]))
-  const out = (o) => ({ exitCode: 0, output: `ORCH_JSON ${JSON.stringify(o)}` })
-  const state = (w) => {
-    const cmd = w[2]
-    const f = Object.fromEntries(w.slice(3).map((x) => /^--([\w-]+)=(.*)$/.exec(x)).filter(Boolean).map((m) => [m[1], m[2]]))
-    if (cmd === 'init') return { ok: true, mergeFolder: '/merge', startedAt: '2026-01-01T00:00:00.000Z' }
-    if (cmd === 'order') {
-      const named = String(f.plans ?? '').split(',').filter(Boolean)
-      return { ok: true, waves: [hooks.orderAdds ? [...hooks.orderAdds, ...named] : named], waveLocks: [], edges: hooks.edges ?? [], skipped: [], plans: Object.fromEntries(plansIn.map((p) => [p, { path: `plans/${p}-x.plan.md` }])) }
-    }
-    if (cmd === 'plan-info') {
-      const info = { ok: true, path: `plans/${f.plan}-x.plan.md`, branch: `feat/${f.plan}-x`, startTier: 'build', invariants: [], npmScripts: [], uiItems: [] }
-      return f['with-worktree'] ? { ...info, wt: { ok: true, path: `/wt/${f.plan}` } } : info
-    }
-    if (cmd === 'finish') return { ok: true, merged: [], parked: [], report: 'r', local: 'l', reportCommitted: true }
-    if (cmd === 'diff') return { ok: true, files: [], sensitive: false }
-    return { ok: true }
-  }
-  async function agent(prompt, opts = {}) {
-    const t = task(prompt)
-    const type = opts.agentType ?? (/orch-builder\.md/.test(prompt) ? 'orch-builder' : undefined)
-    calls.push({ type, label: opts.label, task: t })
-    if (type === 'kit-runner') {
-      const w = words(t.COMMAND)
-      commands.push(t.COMMAND)
-      if (w[1] === 'scripts/orch-preflight.mjs' && !t.COMMAND.includes('--env-only')) return out({ ok: true, problems: [], ...(hooks.preflight ?? {}) })
-      return out(w[1] === 'scripts/orch-state.mjs' ? state(w) : { ok: true })
-    }
-    const base = { role: type, model: 'stub', effort: 'low' }
-    if (type === 'orch-builder') return { ...base, status: 'built', branch: t.BRANCH, headSha: 'abc1234', summary: 's', evidence: ['e'], done: ['T1'], notDone: [], checksRun: [] }
-    if (type === 'orch-gate') return { ...base, results: JSON.parse(t.COMMANDS).map((c) => ({ command: c, status: 'pass' })) }
-    if (['orch-check-plan', 'orch-check-bugs', 'orch-check-rules', 'orch-security'].includes(type)) return { ...base, role: type, problems: [] }
-    if (type === 'orch-verify') return { ...base, verdicts: [] }
-    if (type === 'orch-merge') return { ...base, merged: true, sha: 'def5678' }
-    if (type === 'orch-triage') return { ...base, items: [] }
-    throw new Error(`stub: no agent for ${type} (${opts.label})`)
-  }
-  const parallel = (thunks) => Promise.all(thunks.map((th) => Promise.resolve().then(th)))
-  const AsyncFunction = (async () => {}).constructor
-  const fn = new AsyncFunction('agent', 'parallel', 'pipeline', 'phase', 'log', 'args', 'budget', 'workflow', 'require', 'process', wfSource.replace(/^export const meta\s*=/m, 'const meta ='))
-  const result = await fn(agent, parallel, undefined, () => {}, () => {}, { mode: 'run', run: 'r1', root: '/main', pilot: false, ...args }, {}, undefined, undefined, undefined)
-  return { result, calls, commands }
-}
-const builtPlans = (r) => r.calls.filter((c) => c.type === 'orch-builder').map((c) => /\/wt\/(\d+)|feat\/(\d+)/.exec(JSON.stringify(c.task))?.slice(1).find(Boolean))
 
-test('workflow: a plan in the preflight parkPlans is parked with the reason before any builder; the others build and merge', async () => {
-  const why = 'guard pre-commit-security-grep.mjs line 30: log call references likely-PII name — plan line 12: console.log(user.token)'
-  const r = await runFlow({ plans: ['101', '102'] }, { preflight: { parkPlans: { 101: why }, warnings: ['ui login: no recipe for role admin (plan 102 card 1)'] } })
-  const o = Object.fromEntries(r.result.outcomes.map((x) => [x.nnn, x]))
-  assert.equal(o['101'].state, 'parked')
-  assert.equal(o['101'].reason, `preflight: ${why}`)
-  assert.equal(o['102'].state, 'merged')
-  assert.deepEqual(builtPlans(r), ['102'], 'no builder for the parked plan')
-  assert.ok(r.commands.some((c) => /orch-state\.mjs set/.test(c) && /--plan=?101/.test(c) && /parked/.test(c)), 'the park is recorded')
-  assert.ok(!r.commands.some((c) => /orch-state\.mjs order/.test(c) && /101/.test(c)), 'the parked plan is not ordered')
-})
-
-test('workflow: a plan that depends on a preflight-parked plan is skipped, and plan-order cannot bring the parked one back', async () => {
-  const r = await runFlow({ plans: ['101', '102'] }, { preflight: { parkPlans: { 101: 'guard x line 1: y' } }, orderAdds: ['101'], edges: [{ from: '101', to: '102' }] })
-  const o = Object.fromEntries(r.result.outcomes.map((x) => [x.nnn, x]))
-  assert.equal(o['101'].state, 'parked')
-  assert.equal(o['102'].state, 'skipped')
-  assert.deepEqual(builtPlans(r), [])
-})

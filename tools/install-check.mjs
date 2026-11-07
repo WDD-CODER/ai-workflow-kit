@@ -951,7 +951,7 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   rmSync(mb, { recursive: true, force: true })
 }
 
-// orchestrator.* (docs/agent/orchestrator.md): the installer ships the workflow folder, the /orchestrate command and
+// orchestrator.* (docs/agent/orchestrator.md): the installer ships run-plans.mjs, the /orchestrate command and
 // the run rules; the three keys render with their defaults; a project value renders; a bad value is refused naming
 // the key (install exit 2, nothing written; sync STOP).
 {
@@ -960,7 +960,7 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   const r = run('install.mjs', ['--target', od])
   if (r.status !== 0) fail(`install for the orchestrator files: exit ${r.status}, ${(r.stdout + r.stderr).trim().split('\n').pop()}`)
   else {
-    for (const f of ['.claude/workflows/orchestrate.js', '.claude/commands/orchestrate.md', 'docs/agent/orchestrator.md', 'scripts/orch-state.mjs', 'scripts/orch-preflight.mjs', 'scripts/lib/orch-run.mjs',
+    for (const f of ['.claude/commands/orchestrate.md', 'docs/agent/orchestrator.md', 'scripts/orch-state.mjs', 'scripts/orch-preflight.mjs', 'scripts/lib/orch-run.mjs',
       'scripts/brain.mjs', 'scripts/lib/brain-doc.mjs', 'docs/agent/kit-brain.md',
       'scripts/decision-log.mjs', 'scripts/kit-feedback.mjs', '.claude/commands/kit-feedback.md', 'docs/agent/decision-review.md', 'docs/brain/decision-log.md', 'docs/brain/agent-rules.md',
       // The workflow scout: command, page builder, pull request step, page template and the seed sources list.
@@ -972,7 +972,6 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
       if (!existsSync(join(od, f))) fail(`lessons: install did not copy the seed ${f}`)
     }
     if (!/^## checkers$/m.test(read(od, 'docs/brain/agent-rules.md'))) fail('lessons: the agent-rules.md seed has no per-role sections')
-    const wf = read(od, '.claude/workflows/orchestrate.js')
     // Plan 046: the kit's own lessons are installed (managed) with the other docs; the kit-only /kit-learn is not.
     for (const f of [...['readiness', 'builder', 'check-plan', 'check-bugs', 'check-rules', 'security', 'verify', 'ui', 'gate', 'planner'].map((r) => `docs/agent/kit-lessons/${r}.md`), 'docs/agent/kit-lessons/triage-calibration.md']) {
       if (!existsSync(join(od, f))) fail(`kit lessons: install did not copy ${f}`)
@@ -982,10 +981,6 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     }
     if (!/^## Retired$/m.test(read(od, 'docs/agent/kit-lessons/builder.md'))) fail('kit lessons: builder.md has no Retired section')
     if (!read(od, '.claude/commands/plan.md').includes('docs/agent/kit-lessons/planner.md')) fail('kit lessons: /plan does not read the kit planner lessons')
-    if (!wf.includes('[...kitLessons(role), ...projectLessons(role)]')) fail('kit lessons: orchestrate.js does not put the kit lessons before the project lessons')
-    if (!wf.includes('const MAX_FIX_ROUNDS = 2') || !wf.includes('const RUN_PREFIX = "orch/"')) fail('orchestrator: orchestrate.js does not render maxFixRounds 2 / runBranchPrefix "orch/"')
-    // Plan 088: the retired keys left the config; the workflow (until it is removed) renders their fixed last values.
-    if (!wf.includes('const PILOT_SIZE = 3') || !wf.includes('const FALLBACK_MODEL = "opus"') || !wf.includes('const MAX_NOTES = 12') || !wf.includes('const MAX_CALLS = 60')) fail('orchestrator: orchestrate.js does not render the retired keys\' fixed values (pilot 3, fallback "opus", 12 notes, 60 calls)')
     if (!read(od, 'scripts/orch-state.mjs').includes('const STALE_MIN = 10')) fail('orchestrator: orch-state.mjs does not render staleMin 10')
     // Plan 088: the loop is scripts/run-plans.mjs and its libraries, rendered with the reviewer and rate-limit settings.
     for (const f of ['scripts/run-plans.mjs', 'scripts/lib/claude-run.mjs', 'scripts/lib/plan-gate.mjs', 'scripts/lib/plan-review.mjs', 'scripts/lib/plan-merge.mjs', 'scripts/lib/run-order.mjs']) {
@@ -993,25 +988,12 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     }
     const rp = read(od, 'scripts/run-plans.mjs')
     if (!rp.includes('const REVIEWER_MODE = "advisory"') || !rp.includes('const REVIEWER_MODEL = "sonnet"') || !rp.includes('Number(30)')) fail('orchestrator: run-plans.mjs does not render reviewerMode "advisory" / reviewerModel "sonnet" / rateLimitWaitMin 30')
+    if (!rp.includes('const PREPARE = []') || !rp.includes('const CI_MIRROR = []')) fail('orchestrator: run-plans.mjs does not render prepare [] / ciMirror []')
     if (/\{\{[\w.|]+\}\}/.test(rp)) fail(`orchestrator: run-plans.mjs keeps a placeholder: ${/\{\{[\w.|]+\}\}/.exec(rp)[0]}`)
-    // Plan 041: the decision triage values are in the workflow and orch-state.mjs (fixed since plan 088), and the triage agent is installed.
-    const orchState = read(od, 'scripts/orch-state.mjs')
-    if (!wf.includes('const TRIAGE = "shadow"')) fail('orchestrator: orchestrate.js does not render triage "shadow"')
-    if (!orchState.includes('const TRIAGE = "shadow"') || !orchState.includes('const TRIAGE_MIN_AGREEMENT = 0.9') || !orchState.includes('const TRIAGE_MIN_GRADED = 20')) fail('orchestrator: orch-state.mjs does not render triage "shadow" / triageMinAgreement 0.9 / triageMinGraded 20')
-    if (!/^model: sonnet$/m.test(read(od, '.claude/agents/orch-triage.md'))) fail('orchestrator: orch-triage.md does not render model: sonnet')
-    // Plan 032: the light merge step, main-folder checks, decisions only, no pause when there is nothing to ask.
     const doc0 = (d) => read(d, 'docs/agent/orchestrator.md')
-    if (!wf.includes('const MERGE_CHECKS_MODE = "build"')) fail('orchestrator: orchestrate.js does not render mergeChecks "build"')
-    if (!wf.includes('const ON_PARK = "dependents"') || !doc0(od).includes('| `onPark` | `dependents` |')) fail('orchestrator: orchestrate.js / orchestrator.md do not render onPark "dependents"')
-    for (const [f, bad, why] of [['.claude/agents/orch-gate.md', /say in `decisions`/, 'still asks for a decisions confirmation'], ['.claude/agents/orch-ui.md', /of `decisions`/, 'still asks for a decisions confirmation']]) {
-      if (bad.test(read(od, f))) fail(`decisions: ${f} ${why}`)
-    }
-    if (!doc0(od).includes('## A check whose file does not exist') || !read(od, 'scripts/orch-state.mjs').includes("'check-files'")) fail('orchestrator: orchestrator.md / orch-state.mjs do not carry the missing check file rule (check-files)')
-    if (!read(od, '.claude/agents/orch-readiness.md').includes('mainCommands')) fail('orchestrator: orch-readiness.md does not name mainCommands ([auto:main] items)')
-    // Plan 033: a bad copy of a state line is retried once; the runner runs only its list.
-    if (!read(od, '.claude/agents/kit-runner.md').includes('Run only the commands in the list')) fail('orchestrator: kit-runner.md does not say "Run only the commands in the list"')
-    if (!doc0(od).includes('retried once')) fail('orchestrator: orchestrator.md does not say a bad copy of a state line is retried once')
-    if (!wf.includes('[capture]') || !wf.includes('after 2 attempts')) fail('orchestrator: orchestrate.js does not mark the state command [capture] / say "after 2 attempts"')
+    if (!doc0(od).includes('| `onPark` | `dependents` |')) fail('orchestrator: orchestrator.md does not render onPark "dependents"')
+    if (/of `decisions`/.test(read(od, '.claude/agents/orch-ui.md'))) fail('decisions: .claude/agents/orch-ui.md still asks for a decisions confirmation')
+    if (!read(od, 'scripts/orch-state.mjs').includes("'check-files'")) fail('orchestrator: orch-state.mjs does not carry the missing check file rule (check-files)')
     // The learning loop's files: the rules seed fits its own cap, and the rendered files name the rule they teach.
     const rc = spawnSync(process.execPath, [join(od, 'scripts', 'decision-log.mjs'), 'rules', '--check', '--dir', od], { encoding: 'utf8' })
     if (rc.status !== 0) fail(`decision-log: the rules seed does not pass its own cap: ${(rc.stdout + rc.stderr).trim().split('\n').pop()}`)
@@ -1020,25 +1002,20 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
       if (!t.includes('behaviour:')) fail(`decision review: ${f} does not state the no-invented-behaviour rule (behaviour:)`)
       if (!t.includes('docs/brain/agent-rules.md') || !/never[^.]*decision-log\.md/.test(t)) fail(`decision review: ${f} must read agent-rules.md and never decision-log.md`)
     }
-    if (/\{\{[\w.|]+\}\}/.test(wf)) fail(`orchestrator: orchestrate.js keeps a placeholder: ${/\{\{[\w.|]+\}\}/.exec(wf)[0]}`)
     if (!read(od, 'scripts/orch-state.mjs').includes('const MIN_FREE_GB = 5')) fail('orchestrator: orch-state.mjs does not render minFreeDiskGb 5')
     const doc = read(od, 'docs/agent/orchestrator.md')
     if (!doc.includes('| `runBranchPrefix` | `orch/` |') || !doc.includes('| `maxFixRounds` | `2` |') || !doc.includes('| `minFreeDiskGb` | `5` |') || !doc.includes('| `staleMin` | `10` |')) fail('orchestrator: orchestrator.md does not name the default settings')
     if (!doc.includes('| `reviewerMode` | `advisory` |') || !doc.includes('| `reviewerModel` | `sonnet` |') || !doc.includes('| `rateLimitWaitMin` | `30` |')) fail('orchestrator: orchestrator.md does not name the run-plans settings (reviewerMode, reviewerModel, rateLimitWaitMin)')
     // Plan 088: the retired keys have no settings row; the doc says they are removed.
     if (/^\| `(pilotSize|fallbackModel|maxNotesPerPlan|maxAgentCallsPerPlan|triage|triageMinAgreement|triageMinGraded)` \|/m.test(doc) || !doc.includes('NOTE orchestrator: <key> removed')) fail('orchestrator: orchestrator.md still lists a retired key as a setting, or does not say they are removed')
-    if (!doc.includes('| `mergeChecks` | `build` |') || !doc.includes('## Checks that run from the main folder')) fail('orchestrator: orchestrator.md does not name mergeChecks "build" and the main-folder checks section')
+    if (!doc.includes('| `mergeChecks` | `build` |')) fail('orchestrator: orchestrator.md does not name mergeChecks "build"')
     // Plan 088: /orchestrate is the thin command — under 60 lines, it runs scripts/run-plans.mjs (dry run first, the line
     // for the Human, `start` in the background), names the watch line, reads status.json, and starts no workflow.
     const cmd = read(od, '.claude/commands/orchestrate.md')
     if (cmd.split('\n').length >= 60) fail(`orchestrator: orchestrate.md has ${cmd.split('\n').length} lines — the thin command stays under 60`)
     if (!cmd.includes('node scripts/run-plans.mjs --run <run> --plans <NNN,NNN>') || !cmd.includes('node scripts/run-plans.mjs --dry-run --run <run> --plans <NNN,NNN>')) fail('orchestrator: orchestrate.md must print the run-plans.mjs line and run its dry run first')
     if (!cmd.includes('node scripts/orch-state.mjs watch --run <run>') || !cmd.includes('run_in_background') || !cmd.includes('status.json')) fail('orchestrator: orchestrate.md must name the watch line, start on `start` with run_in_background and read the result from status.json')
-    if (/workflows\/orchestrate\.js|Workflow tool|\bargs\.|"mainChecks"|kit-runner/.test(cmd) || /\{\{[\w.|]+\}\}/.test(cmd)) fail('orchestrator: orchestrate.md must start no workflow (no workflow file, Workflow tool, args, runner agent) and keep no placeholder')
-    if (!doc.includes('stopped: main-approval')) fail('orchestrator: orchestrator.md does not say the run refuses unapproved main checks (stopped: main-approval)')
-    // Plan 043: readiness checks the plan's claims; a delegated answer is backed by main-try; npx checks map to scripts.
-    if (!read(od, '.claude/agents/orch-readiness.md').includes('claims')) fail('orchestrator: orch-readiness.md does not name claims')
-    if (!doc.includes('## What a plan claims') || !read(od, 'scripts/orch-state.mjs').includes("'main-try'")) fail('orchestrator: orchestrator.md / orch-state.mjs do not carry the claims and main-try rules')
+    if (/workflows\/orchestrate\.js|Workflow tool|\bargs\.|"mainChecks"/.test(cmd) || /\{\{[\w.|]+\}\}/.test(cmd)) fail('orchestrator: orchestrate.md must start no workflow (no workflow file, Workflow tool, args, runner agent) and keep no placeholder')
     if (!/^\.claude\/orchestrator-runs\/$/m.test(read(od, '.gitignore'))) fail('orchestrator: the rendered .gitignore does not ignore .claude/orchestrator-runs/')
   }
   rmSync(od, { recursive: true, force: true })
@@ -1047,10 +1024,10 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   writeFileSync(join(op, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, orchestrator: { runBranchPrefix: 'runs/', maxFixRounds: 3, minFreeDiskGb: 10, pilotSize: 0, reviewerMode: 'gate' } }))
   const p = run('install.mjs', ['--target', op])
   if (p.status !== 0) fail(`install with project orchestrator values: exit ${p.status}`)
-  // Plan 088: a retired key the project still sets is ignored with one NOTE; the workflow keeps its fixed value.
-  else if (!p.stdout.includes('NOTE orchestrator: pilotSize removed') || !read(op, '.claude/workflows/orchestrate.js').includes('const PILOT_SIZE = 3')) fail('orchestrator: a project pilotSize must print "NOTE orchestrator: pilotSize removed" and leave the workflow at 3')
+  // Plan 088: a retired key the project still sets is ignored with one NOTE.
+  else if (!p.stdout.includes('NOTE orchestrator: pilotSize removed')) fail('orchestrator: a project pilotSize must print "NOTE orchestrator: pilotSize removed"')
   else if (!read(op, 'scripts/run-plans.mjs').includes('const REVIEWER_MODE = "gate"')) fail('orchestrator: reviewerMode "gate" does not render into run-plans.mjs')
-  else if (!read(op, '.claude/workflows/orchestrate.js').includes('const MAX_FIX_ROUNDS = 3') || !read(op, '.claude/workflows/orchestrate.js').includes('const RUN_PREFIX = "runs/"') || !read(op, 'scripts/orch-state.mjs').includes('const MIN_FREE_GB = 10')) fail('orchestrator: project values do not render')
+  else if (!read(op, 'scripts/orch-state.mjs').includes('const MIN_FREE_GB = 10')) fail('orchestrator: project values do not render')
   rmSync(op, { recursive: true, force: true })
 
   // A pnpm project audits with pnpm (npm audit fails without a package-lock.json); the kit-managed scripts/ audit stays npm.
@@ -1123,7 +1100,7 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   writeFileSync(join(cm, 'kit.config.json'), JSON.stringify(CORE_CFG))
   const cmInstall = run('install.mjs', ['--target', cm])
   if (cmInstall.status !== 0) fail(`install for ciMirror: exit ${cmInstall.status}, ${(cmInstall.stdout + cmInstall.stderr).trim().split('\n').pop()}`)
-  else if (!read(cm, '.claude/workflows/orchestrate.js').includes('const CI_MIRROR = []')) fail('orchestrator: orchestrate.js does not render ciMirror [] as const CI_MIRROR = []')
+  else if (!read(cm, 'scripts/run-plans.mjs').includes('const CI_MIRROR = []')) fail('orchestrator: run-plans.mjs does not render ciMirror [] as const CI_MIRROR = []')
   else if (!read(cm, 'docs/agent/orchestrator.md').includes('| `ciMirror` | `[]` |')) fail('orchestrator: orchestrator.md does not name the ciMirror default')
   else {
     mkdirSync(join(cm, '.github', 'workflows'), { recursive: true })
@@ -1136,7 +1113,7 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     writeFileSync(join(cm, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, orchestrator: { ciMirror: ['node tools/extra-check.mjs'] } }))
     const covered = run('sync.mjs', ['--target', cm, '--apply'])
     if (covered.status !== 0 || covered.stdout.includes('runs "node tools/extra-check.mjs"') || !covered.stdout.includes('runs "node scripts/other-check.mjs --strict"')) fail(`sync with ciMirror set: exit ${covered.status}, a covered command is still hinted or the other is not`)
-    else if (!read(cm, '.claude/workflows/orchestrate.js').includes('const CI_MIRROR = ["node tools/extra-check.mjs"]')) fail('orchestrator: orchestrate.js does not render the project ciMirror')
+    else if (!read(cm, 'scripts/run-plans.mjs').includes('const CI_MIRROR = ["node tools/extra-check.mjs"]')) fail('orchestrator: run-plans.mjs does not render the project ciMirror')
   }
   rmSync(cm, { recursive: true, force: true })
 }
@@ -1155,11 +1132,10 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   }
   // The role agents (docs/agent/agent-roles.md) and their default tiers.
   const ORCH_DEFAULTS = {
-    '.claude/agents/orch-builder.md': 'sonnet', '.claude/agents/orch-readiness.md': 'opus',
-    '.claude/agents/orch-gate.md': 'haiku', '.claude/agents/orch-report.md': 'haiku',
+    '.claude/agents/orch-builder.md': 'sonnet', '.claude/agents/plan-reviewer.md': 'sonnet',
     '.claude/agents/orch-check-plan.md': 'sonnet', '.claude/agents/orch-check-bugs.md': 'sonnet', '.claude/agents/orch-check-rules.md': 'sonnet',
-    '.claude/agents/orch-verify.md': 'sonnet', '.claude/agents/orch-security.md': 'sonnet', '.claude/agents/orch-ui.md': 'sonnet', '.claude/agents/orch-triage.md': 'sonnet',
-    '.claude/agents/orch-merge.md': 'sonnet', '.claude/agents/skill-judge.md': 'sonnet',
+    '.claude/agents/orch-verify.md': 'sonnet', '.claude/agents/orch-security.md': 'sonnet', '.claude/agents/orch-ui.md': 'sonnet',
+    '.claude/agents/skill-judge.md': 'sonnet',
   }
   // Every agent file pins model: and effort: and has no empty tools:; the builder cannot start agents or message
   // anyone; no role agent names a deny-listed command.
@@ -1181,7 +1157,7 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   if (d.status !== 0) fail(`install with default models: exit ${d.status}, ${(d.stdout + d.stderr).trim().split('\n').pop()}`)
   else {
     expect(md, 'default models', {
-      '.claude/agents/kit-runner.md': 'haiku', '.claude/agents/git-agent.md': 'haiku', '.claude/agents/kit-prevalidate.md': 'sonnet',
+      '.claude/agents/git-agent.md': 'haiku',
       '.claude/skills/github-sync/SKILL.md': 'haiku', '.claude/skills/techdebt/SKILL.md': 'sonnet',
       ...ORCH_DEFAULTS,
     })
@@ -1207,8 +1183,8 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   const mi = tmp('models-inherit')
   writeFileSync(join(mi, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { mechanical: 'inherit', analysis: 'inherit', build: 'inherit', review: 'inherit' } }))
   const i = run('install.mjs', ['--target', mi])
-  const notWant = i.status === 0 ? modelLines(mi).filter(([f, v]) => (f === '.claude/agents/orch-readiness.md' ? v !== 'opus' : v !== 'inherit')) : []
-  if (i.status !== 0 || !modelLines(mi).length || notWant.length) fail(`the other tiers inherit must render model: inherit and judgment opus: exit ${i.status}, others ${JSON.stringify(notWant)}`)
+  const notWant = i.status === 0 ? modelLines(mi).filter(([, v]) => v !== 'inherit') : []
+  if (i.status !== 0 || !modelLines(mi).length || notWant.length) fail(`the other tiers inherit must render model: inherit: exit ${i.status}, others ${JSON.stringify(notWant)}`)
   rmSync(mi, { recursive: true, force: true })
   for (const bad of ['inherit', 'haiku', 'claude-haiku-4-5']) {
     const mj = tmp('models-judgment-bad')
@@ -1222,7 +1198,7 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   writeFileSync(join(mp, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { mechanical: 'claude-haiku-5-5' } }))
   const p = run('install.mjs', ['--target', mp])
   if (p.status !== 0) fail(`install with models.mechanical claude-haiku-5-5: exit ${p.status}`)
-  else expect(mp, 'project model id', { '.claude/agents/kit-runner.md': 'claude-haiku-5-5', '.claude/agents/kit-prevalidate.md': 'sonnet' })
+  else expect(mp, 'project model id', { '.claude/agents/git-agent.md': 'claude-haiku-5-5', '.claude/skills/techdebt/SKILL.md': 'sonnet' })
   rmSync(mp, { recursive: true, force: true })
 
   // models.build: one key sets the builder's model; every other role agent keeps its tier.
@@ -1264,8 +1240,8 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   else {
     expect(ma, 'models.analysis haiku keeps validators on review', {
       '.claude/agents/orch-check-plan.md': 'sonnet', '.claude/agents/orch-check-bugs.md': 'sonnet', '.claude/agents/orch-check-rules.md': 'sonnet',
-      '.claude/agents/orch-verify.md': 'sonnet', '.claude/agents/orch-security.md': 'sonnet', '.claude/agents/orch-ui.md': 'sonnet', '.claude/agents/orch-triage.md': 'sonnet', '.claude/agents/skill-judge.md': 'sonnet',
-      '.claude/agents/orch-merge.md': 'haiku', '.claude/agents/kit-prevalidate.md': 'haiku',
+      '.claude/agents/orch-verify.md': 'sonnet', '.claude/agents/orch-security.md': 'sonnet', '.claude/agents/orch-ui.md': 'sonnet', '.claude/agents/skill-judge.md': 'sonnet',
+      '.claude/skills/techdebt/SKILL.md': 'haiku',
     })
     if (!/^omitClaudeMd: true$/m.test(read(ma, '.claude/agents/git-agent.md'))) fail('git-agent.md does not set omitClaudeMd: true')
   }
@@ -1278,14 +1254,14 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   if (o.status !== 0) fail(`install with models.analysis opus: exit ${o.status}`)
   else expect(mo, 'models.analysis opus keeps validators on opus', {
     '.claude/agents/orch-check-plan.md': 'opus', '.claude/agents/orch-check-bugs.md': 'opus', '.claude/agents/orch-check-rules.md': 'opus',
-    '.claude/agents/orch-verify.md': 'opus', '.claude/agents/orch-security.md': 'opus', '.claude/agents/orch-ui.md': 'opus', '.claude/agents/orch-triage.md': 'opus', '.claude/agents/skill-judge.md': 'opus',
+    '.claude/agents/orch-verify.md': 'opus', '.claude/agents/orch-security.md': 'opus', '.claude/agents/orch-ui.md': 'opus', '.claude/agents/skill-judge.md': 'opus',
   })
   rmSync(mo, { recursive: true, force: true })
   const mos = tmp('models-analysis-opus-review-sonnet')
   writeFileSync(join(mos, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, models: { analysis: 'opus', review: 'sonnet' } }))
   const os = run('install.mjs', ['--target', mos])
   if (os.status !== 0) fail(`install with models.analysis opus + review sonnet: exit ${os.status}`)
-  else expect(mos, 'an explicit models.review wins over models.analysis', { '.claude/agents/orch-verify.md': 'sonnet', '.claude/agents/kit-prevalidate.md': 'opus' })
+  else expect(mos, 'an explicit models.review wins over models.analysis', { '.claude/agents/orch-verify.md': 'sonnet', '.claude/skills/techdebt/SKILL.md': 'opus' })
   rmSync(mos, { recursive: true, force: true })
 }
 

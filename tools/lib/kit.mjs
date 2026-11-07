@@ -99,13 +99,14 @@ export function commandProblems(vals) {
   return out
 }
 
-// The shapes a CI-mirror command may take (orchestrator.ciMirror). The workflow script repeats these rules in its
-// checkProblem (placeholders, so it cannot import this file); a test asserts both refuse the same samples.
+// The shapes a CI-mirror command may take (orchestrator.ciMirror). scripts/run-plans.mjs repeats these rules in its
+// checkProblem (placeholders, so it cannot import this file); a test asserts both hold the same NOT_A_CHECK names.
 const CI_DENY = /\brm\s+-[a-z]*[rf]|reset\s+--hard|push\s+(?:[^\n]*\s)?(?:--force|-f\b|--force-with-lease)|git\s+clean|branch\s+-D|stash\s+clear|filter-branch/
 const CI_SAFE_ARG = /^[A-Za-z0-9_./=:,@+-]+$/
 const CI_NOT_A_CHECK = new Set([
   'kit-feedback', 'orch-state', 'decision-log', 'take-plan', 'slot-serve', 'slot-stop', 'todo-query',
   'todo-archive', 'plan-close', 'free-merged-slots', 'orphan-sweep', 'local-excludes', 'brain-capture-comment', 'sync', 'install', 'kit-sync',
+  'run-plans', 'plan-park',
 ])
 /** Why a command may not be a CI-mirror check (shape, deny list, state-changing kit script, write flag), or null. */
 export function ciCommandProblem(cmd) {
@@ -297,10 +298,9 @@ export function orchestratorProblems(vals) {
 }
 
 /**
- * orchestrator.* keys no longer read by the orchestrator loop (scripts/run-plans.mjs): the workflow's pilot, dead-agent
- * retry, note and call caps, and the decision triage. They left kit.config.json; the older workflow
- * (.claude/workflows/orchestrate.js) and the report still render them, with these fixed values, until the workflow is
- * removed. A project value is ignored (resolveConfig) and named in one NOTE line (retiredNotes).
+ * orchestrator.* keys nothing reads any more: the old workflow runtime's pilot, dead-agent retry, note and call caps,
+ * and the decision triage, with their last values. They left kit.config.json and no file renders them; a project value
+ * is dropped (resolveConfig) and named in one NOTE line (retiredNotes).
  */
 export const RETIRED_KEYS = {
   'orchestrator.pilotSize': 3,
@@ -804,8 +804,8 @@ export function resolveConfig({ kitRoot, project, packs, layers = [], target, pl
     const a = String(proj['models.analysis'])
     vals['models.review'] = /haiku/i.test(a) ? 'sonnet' : a
   }
-  // Retired orchestrator keys: their fixed values, whatever the project says (retiredNotes names them).
-  Object.assign(vals, RETIRED_KEYS)
+  // Retired orchestrator keys: dropped, whatever the project says (retiredNotes names them); nothing renders them.
+  for (const k of Object.keys(RETIRED_KEYS)) delete vals[k]
   vals['stack.packs'] = packs
   vals['stack.layers'] = layers
   const name = isEmpty(vals['project.name']) ? basename(resolve(target)) : vals['project.name']

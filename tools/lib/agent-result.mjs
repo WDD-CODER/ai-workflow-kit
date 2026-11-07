@@ -14,8 +14,7 @@ export const FAILING = new Set(['blocker', 'major'])
 /** Kept verifier verdicts below this confidence are not reported (and never fail a result). */
 export const KEEP_THRESHOLD = 80
 export const ROLES = [
-  'orch-readiness', 'orch-builder', 'orch-gate', 'orch-check-plan', 'orch-check-bugs', 'orch-check-rules',
-  'orch-verify', 'orch-security', 'orch-ui', 'orch-merge', 'orch-report', 'orch-triage',
+  'orch-builder', 'orch-check-plan', 'orch-check-bugs', 'orch-check-rules', 'orch-verify', 'orch-security', 'orch-ui',
 ]
 const FINDERS = new Set(['orch-check-plan', 'orch-check-bugs', 'orch-check-rules', 'orch-security'])
 
@@ -80,17 +79,6 @@ export function validateAgentResult(result) {
       })
       pass = !result.verdicts.some((v) => v?.verdict === 'keep' && v.confidence >= KEEP_THRESHOLD && FAILING.has(v.severity))
     }
-  } else if (role === 'orch-gate') {
-    if (!isArr(result.results) || result.results.length === 0) errors.push('results must be a non-empty list')
-    else {
-      result.results.forEach((r, i) => {
-        const at = `results[${i}]`
-        if (!isStr(r?.command)) errors.push(`${at}.command is required`)
-        if (!['pass', 'fail', 'env-fail'].includes(r?.status)) errors.push(`${at}.status must be pass, fail or env-fail`)
-        if (r?.status === 'fail' && !isStr(r.tail)) errors.push(`${at}: a failed command needs its output tail`)
-      })
-      pass = !result.results.some((r) => r?.status !== 'pass')
-    }
   } else if (role === 'orch-ui') {
     if (!isArr(result.cards)) errors.push('cards must be a list')
     else {
@@ -107,38 +95,6 @@ export function validateAgentResult(result) {
     if (!isArr(result.evidence) || !result.evidence.every(isStr)) errors.push('evidence must be a list of strings')
     else if (result.status === 'built' && result.evidence.length === 0) errors.push('a built result needs evidence')
     if (result.status && result.status !== 'built' && !isStr(result.blocker)) errors.push(`a ${result.status} result needs a blocker`)
-  } else if (role === 'orch-merge') {
-    if (typeof result.merged !== 'boolean') errors.push('merged must be true or false')
-    else if (result.merged && !isStr(result.sha)) errors.push('a merged result needs the merge sha')
-    else if (!result.merged && !isStr(result.reason)) errors.push('a result that did not merge needs a reason')
-  } else if (role === 'orch-readiness') {
-    if (!isArr(result.plans)) errors.push('plans must be a list')
-    else result.plans.forEach((p, i) => {
-      if (!isStr(p?.plan)) errors.push(`plans[${i}].plan is required`)
-      if (!['ready', 'questions', 'blocked'].includes(p?.state)) errors.push(`plans[${i}].state must be ready, questions or blocked`)
-      for (const k of ['questions', 'envNeeds', 'commands']) if (!isArr(p?.[k])) errors.push(`plans[${i}].${k} must be a list`)
-      // claims (what the plan says about the code, checked against it): optional; a claim needs the claim and what was found.
-      if (p?.claims !== undefined) {
-        if (!isArr(p.claims)) errors.push(`plans[${i}].claims must be a list`)
-        else p.claims.forEach((c, j) => {
-          const at = `plans[${i}].claims[${j}]`
-          if (!isStr(c?.claim)) errors.push(`${at}.claim is required`)
-          if (!isStr(c?.found)) errors.push(`${at}.found is required`)
-          for (const k of ['question', 'default']) if (c?.[k] !== undefined && typeof c[k] !== 'string') errors.push(`${at}.${k} must be a string`)
-        })
-      }
-    })
-  } else if (role === 'orch-triage') {
-    if (!isArr(result.items)) errors.push('items must be a list')
-    else result.items.forEach((it, i) => {
-      const at = `items[${i}]`
-      if (!isStr(it?.id)) errors.push(`${at}.id is required`)
-      if (!['accept', 'ask', 'follow-up', 'noise'].includes(it?.verdict)) errors.push(`${at}.verdict must be accept, ask, follow-up or noise`)
-      if (it?.confidence !== undefined && !(Number.isFinite(it.confidence) && it.confidence >= 0 && it.confidence <= 100)) errors.push(`${at}.confidence must be 0-100`)
-      for (const [k, max] of [['recommendation', 160], ['why', 120]]) if (it?.[k] !== undefined && (typeof it[k] !== 'string' || it[k].length > max)) errors.push(`${at}.${k} must be a string of at most ${max} characters`)
-    })
-  } else if (role === 'orch-report') {
-    if (!isStr(result.report)) errors.push('report is required')
   }
 
   if (pass !== null && 'pass' in result && result.pass !== pass) {

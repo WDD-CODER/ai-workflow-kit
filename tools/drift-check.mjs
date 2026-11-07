@@ -114,10 +114,10 @@ const shipped = new Set(plan.files.map((f) => f.dest))
 if (shipped.has(AGENTS_WORKFLOW)) shipped.add('AGENTS.md') // its override is what sends the rules to AGENTS.workflow.md
 for (const s of ['drift', 'missing', 'ignored']) for (const r of rows.filter((x) => x.state === s)) console.log(`${s.padEnd(9)} ${r.dest}`)
 for (const r of stepRows) console.log(`override-missing-step ${r.dest}: "${r.name}"`)
-// The workflow file bakes orchestrator.prepare and orchestrator.ciMirror in at render time; a config change since the last
+// The run script bakes orchestrator.prepare and orchestrator.ciMirror in at render time; a config change since the last
 // sync leaves them stale (an override copy too). The same check lives in tools/sync.mjs (its dry run).
 {
-  const STALE_FILE = '.claude/workflows/orchestrate.js'
+  const STALE_FILE = 'scripts/run-plans.mjs'
   const f = plan.files.find((x) => x.dest === STALE_FILE)
   const p = join(target, STALE_FILE)
   const baked = (t) => ['PREPARE', 'CI_MIRROR'].map((k) => new RegExp(`^const ${k} = .*$`, 'm').exec(t)?.[0] ?? '').join('\n')

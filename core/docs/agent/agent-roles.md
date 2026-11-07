@@ -1,9 +1,10 @@
 # Agent roles — the contract every role agent follows
 
-The orchestrator runs each plan through separate role agents (`.claude/agents/orch-*.md`): a builder writes, a gate
-runs the checks, finders look for problems, a verifier confirms them, a merger merges, a reporter writes the report.
-They are separate so that no agent grades its own work, and pinned so that a run always uses the model its config
-names. `/review-it` uses the same finders and verifier. Model tiers and escalation: `docs/agent/model-routing.md`.
+Each role agent (`.claude/agents/orch-*.md`, `.claude/agents/plan-reviewer.md`) has one job: the builder writes, the
+reviewer or the finders look for problems, the verifier confirms them, the UI validator checks `[ui]` cards. They are
+separate so that no agent grades its own work, and pinned so that a run always uses the model its config names.
+`scripts/run-plans.mjs` runs the builder and the reviewer; `/review-it` (the default `/ship` review) runs the finders
+and the verifier. Model tiers and escalation: `docs/agent/model-routing.md`.
 
 ## Shared rules (every role agent)
 
@@ -12,7 +13,7 @@ names. `/review-it` uses the same finders and verifier. Model tiers and escalati
    recommended or most conservative option, do it, and log it in the result's `decisions` list (and, for a builder,
    in the plan's `## Execution Notes`).
 3. **Output only through the schema.** Your last message is one fenced `json` block that matches your agent file's
-   `## Output` example — nothing after it. Prose before it is ignored by the orchestrator.
+   `## Output` example — nothing after it. Prose before it is ignored.
 4. **Evidence for every claim.** Each problem, each pass and each "done" carries `file:line` or a command with its
    exit code and the output lines that show it. A claim without evidence is dropped.
 5. **Echo your model and effort.** Every result carries `model` (the model id you actually run on, from your system
@@ -24,29 +25,19 @@ names. `/review-it` uses the same finders and verifier. Model tiers and escalati
 8. **Long output goes to a file.** Redirect it and read the tail; never start a process that keeps running after
    your step.
 9. **Seen but not fixed.** A defect you notice outside your job is never free text: add a `decisions` entry that starts
-   with `seen:` and names `file:line` (or the page and the steps to see it). The run report lists it with the other
-   decisions, so the Human grades it in the same reply (`docs/agent/decision-review.md`). A choice the plan did not
-   settle (behaviour, wording, a new dialog) is logged the same way, starting with `behaviour:`; user-facing behaviour the job takes away is `removes: <what users lose> — reverse:
-   <how>`. Those three kinds are
-   the whole of `decisions`: anything else you want to say (evidence, a rerun, "checked X, fine") goes in your
-   result's own fields, never in `decisions` — the orchestrator drops it there and only counts it.
+   with `seen:` and names `file:line` (or the page and the steps to see it). A choice the plan did not settle
+   (behaviour, wording, a new dialog) starts with `behaviour:`; user-facing behaviour the job takes away is
+   `removes: <what users lose> — reverse: <how>`. Those three kinds are the whole of `decisions`: anything else
+   (evidence, a rerun, "checked X, fine") goes in your result's own fields — it is dropped from `decisions` and
+   only counted. The Human grades them in one reply (`docs/agent/decision-review.md`).
 10. **At most 5 items per agent.** An agent that checks a list of items (the UI validator's cards, the verifier's
-    candidates) gets at most 5 of them; a longer list goes to further fresh agents, one batch each. Accuracy drops on a
-    long list — the orchestrator splits the UI cards into batches of 5. One exception: `orch-triage` sorts a run's whole
-    decision list in one call. It does not prove each item, only orders and labels them; the code re-applies the hard
-    rules to every verdict.
-11. **Lessons from earlier runs.** The orchestrator puts three optional fields in a role's task, each a JSON array of
-    lines on one line (`[]` when the project has none): `LESSONS` (the role's own file under
-    `docs/brain/agent-lessons/` — facts a script wrote from earlier runs of this role: fix-round causes, candidates the
-    verifier refuted, a miss the final gate or a UI card found after clean checkers, a plan parked after readiness
-    called it ready), `RULES` (the matching section of `docs/brain/agent-rules.md`: `checkers` for the finders and the
-    verifier, `readiness`, `ui`; the builder reads its `builder` section itself) and, for readiness only, `RECENT_RUNS`
-    (the last three rows of `docs/brain/run-log.md`). Read `LESSONS` first, as the first numbered step of your agent
-    file says. They never replace the plan or the rules; they tell you where the role was wrong before. The Planner's
-    own file, `agent-lessons/planner.md` (questions readiness had to ask, `[ui]` cards that drifted from the app), is
-    read by `/plan`'s Architect + PM review as text. `orch-merge`, `orch-report` and `orch-triage` get none of it.
-    Everything a script can know is written by a script (`docs/agent/decision-review.md` §0); a role never writes a
-    lesson file.
+    candidates) gets at most 5 of them; a longer list goes to further fresh agents, one batch each.
+11. **Lessons from earlier runs.** A role's task may carry `LESSONS` (the role's own file under
+    `docs/brain/agent-lessons/` — facts a script wrote from earlier runs) and `RULES` (the matching section of
+    `docs/brain/agent-rules.md`: `checkers` for the finders and the verifier, `ui`; the builder reads its `builder`
+    section itself), each a JSON array of lines (`[]` when there is none). Read `LESSONS` first, as the first numbered
+    step of your agent file says. They never replace the plan or the rules. The Planner's own file,
+    `agent-lessons/planner.md`, is read by `/plan`'s Architect + PM review. A role never writes a lesson file.
 
 ### Deny list
 
@@ -61,20 +52,15 @@ Common fields: `role` (the agent name), `model`, `effort`, optional `decisions` 
 
 | Role | Required fields | `pass` computed from |
 | --- | --- | --- |
-| `orch-readiness` | `plans[]`: `{plan, state: ready\|questions\|blocked, questions[], envNeeds[], commands[], claims[]?: {plan, claim, found, question, default}}` | — |
 | `orch-builder` | `status: built\|blocked\|ESCALATE`, `branch`, `summary`, `evidence[]` (non-empty when built), `blocker` (when not built) | — |
-| `orch-gate` | `results[]`: `{command, status: pass\|fail\|env-fail, tail?}` (`tail` on fail) | every result `pass` |
 | `orch-check-plan`, `-bugs`, `-rules`, `orch-security` | `problems[]`: `{id, file, line, rule, reasoning, severity}` | no `blocker` / `major` problem |
 | `plan-reviewer` | the finder fields above plus `verdict: PASS\|STOP` | `verdict` and `pass`: STOP when any problem is `blocker` / `major` |
 | `orch-verify` | `verdicts[]`: `{id, verdict: keep\|refuted, confidence: 0–100, refutation?, severity}` (`refutation` when refuted) | no kept `blocker` / `major` with confidence ≥ 80 |
 | `orch-ui` | `cards[]`: `{card, status: pass\|fail\|plan-drift, screenshots[]}` | every card `pass` |
-| `orch-merge` | `merged` (boolean), `sha` when merged, `reason` when not, optional `envFailure` | — |
-| `orch-report` | `report` (the final report text) | — |
-| `orch-triage` | `items[]`: `{id, verdict: accept\|ask\|follow-up\|noise, kind, recommendation ≤160, why ≤120, confidence: 0–100, duplicateOf?}` | — (the code re-applies the hard rules) |
 
-`plan-reviewer` (`.claude/agents/plan-reviewer.md`) is the single reviewer meant to replace the finders and the
-verifier: one agent reads the plan's criteria, the diff and the gate receipt, and returns the finder schema with a
-`verdict`. It is measured on the kit's eval cases first and is not yet part of the checker pipeline below.
+`plan-reviewer` is the single reviewer of `run-plans.mjs`: one agent reads the plan's criteria, the diff and the gate
+receipt, and returns the finder schema with a `verdict`. It replaces the checker pipeline in `/ship` only when
+`review.ship` is set to `reviewer`.
 
 Severity: `blocker` (wrong result, data loss, a security hole, a broken build), `major` (a requirement of the plan not
 met, a real bug on a likely path), `minor` (a real but unlikely or cosmetic defect), `nit` (style). Only `blocker` and
@@ -82,7 +68,7 @@ met, a real bug on a likely path), `minor` (a real but unlikely or cosmetic defe
 
 ## Checker pipeline
 
-Used by the orchestrator after the gate passes, and by `/review-it`.
+Used by `/review-it`, which `/ship` runs while `review.ship` is `checkers`.
 
 1. **Three narrow finders in parallel**, each on the diff against the base branch only:
    `orch-check-plan` (does the diff do what the plan says, and only that), `orch-check-bugs` (logic and runtime bugs
@@ -91,17 +77,16 @@ Used by the orchestrator after the gate passes, and by `/review-it`.
    guards, secrets handling); otherwise it is skipped.
 2. **Verifier** (`orch-verify`) gets every candidate and tries to refute it against the code. It drops a candidate
    only with a concrete refutation (`file:line` or a command result that shows the claim is wrong). A candidate it
-   cannot refute is kept, with a confidence 0–100. It also gets `GATE` (the round's gate results with a 20-line tail):
+   cannot refute is kept, with a confidence 0–100. It also gets `GATE` (the gate results with a 20-line tail):
    evidence for keeping or refuting, never a verdict on pass.
 3. **Threshold:** only kept candidates with confidence ≥ 80 are reported.
 4. **Do not report:** issues that existed before the diff; lines the diff did not change; anything lint, typecheck or
    the build already catch; pedantic nits; changes that look intentional (named in the plan or a commit message).
 5. **Models:** the finders, `orch-security`, the verifier and the UI validator run on the `review` tier
-   (`models.review`, default `sonnet`; never Haiku — install and sync refuse it). The kit's measured
-   baseline (its own eval cases) found Opus no better than Sonnet on these roles. The security reviewer
-   runs only on sensitive paths.
+   (`models.review`, default `sonnet`; never Haiku — install and sync refuse it).
 6. **Mechanical checks stay with the gate.** Finders do not run the build, lint or the test suite to find problems;
-   the gate (`orch-gate`, or `kit-runner` in `/review-it`) does, and its failures are reported as they are.
+   the gate (`node scripts/ship-prep.mjs --gate` in `/review-it`, `plan-gate.mjs` in a run) does, and its failures
+   are reported as they are.
 
 ## Hand-off between builders
 

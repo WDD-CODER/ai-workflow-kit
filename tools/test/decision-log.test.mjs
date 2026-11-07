@@ -199,7 +199,7 @@ test('grade: follow-up rows — every seen: item except an ok noise, and a behav
   } finally { rmSync(s.dir, { recursive: true, force: true }) }
 })
 
-test('stats: agreement per kind (an ask agrees with ✗, the rest with ok; none left out) and the calibration file within its caps', () => {
+test('stats: agreement per kind (an ask agrees with ✗, the rest with ok; none left out), printed only', () => {
   const s = gradeSetup()
   try {
     const rows = []
@@ -220,22 +220,14 @@ test('stats: agreement per kind (an ask agrees with ✗, the rest with ok; none 
     assert.match(r.stdout, /^STATS all last=50 agreement=\d+%$/m)
     assert.equal(run(['stats', '--dir', s.dir, '--kind', 'a']).stdout.match(/^STATS /gm).length, 2, 'one kind plus the total')
     assert.match(run(['stats', '--dir', s.dir, '--last', '10']).stdout, /^STATS all last=10 agreement=0%$/m)
-    const w = run(['stats', '--dir', s.dir, '--write'])
-    assert.equal(w.status, 0, w.stderr)
-    const cal = readFileSync(join(s.dir, 'docs', 'brain', 'triage-calibration.md'), 'utf8')
-    assert.ok(cal.split('\n').length <= 40 && cal.length <= 3000, `${cal.split('\n').length} lines / ${cal.length} characters`)
-    assert.match(cal, /\| a \| 10 \| 90% \|/)
-    assert.match(cal, /Where the Human disagreed/)
-    assert.ok(!/x{101}/.test(cal), 'an example text is cut to 100 characters')
+    assert.ok(!existsSync(join(s.dir, 'docs', 'brain', 'triage-calibration.md')), 'stats writes no calibration file')
   } finally { rmSync(s.dir, { recursive: true, force: true }) }
 })
 
-test('stats: no grade rows gives n/a, and --write still writes a short file', () => {
+test('stats: no grade rows gives n/a', () => {
   const s = gradeSetup()
   try {
     assert.match(run(['stats', '--dir', s.dir]).stdout, /^STATS all last=50 agreement=n\/a$/m)
-    assert.equal(run(['stats', '--dir', s.dir, '--write']).status, 0)
-    assert.ok(existsSync(join(s.dir, 'docs', 'brain', 'triage-calibration.md')))
   } finally { rmSync(s.dir, { recursive: true, force: true }) }
 })
 
@@ -470,7 +462,7 @@ test('case: a checker miss becomes an eval case in the harness shape with no mod
     assert.match(run(['case', '--from', 'D3', '--run', 'r1', '--dir', s.dir]).stdout, /case exists/, 'a second call writes nothing')
     // refusals: an unknown decision, a bad checker, a missing decision id
     assert.equal(run(['case', '--from', 'D9', '--run', 'r1', '--dir', s.dir]).status, 1)
-    assert.equal(run(['case', '--from', 'D3', '--run', 'r1', '--checker', 'orch-gate', '--dir', s.dir]).status, 2)
+    assert.equal(run(['case', '--from', 'D3', '--run', 'r1', '--checker', 'orch-builder', '--dir', s.dir]).status, 2)
     assert.equal(run(['case', '--run', 'r1', '--dir', s.dir]).status, 2)
   } finally { rmSync(s.dir, { recursive: true, force: true }) }
 })

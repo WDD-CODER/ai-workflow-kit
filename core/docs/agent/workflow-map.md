@@ -51,7 +51,7 @@ Cursor rule files ship with the optional `layer:cursor`; the stack pack adds sta
 | `/brief` | see §6 flow F2; syncs parent plan via save-plan Phase 4 | `git diff/log`, `.claude/todo.md` (retroactive mode) | `.claude/sessions/{session-id}/brief.md` |
 | `/review-it` | Reviewer protocol; runs `scripts/ship-prep.mjs --gate` (the project checks), the `orch-check-*` finders and `orch-verify` (`docs/agent/agent-roles.md`), each with its checker `LESSONS` and `RULES` from the main folder's `orch-state.mjs context`; also `/ship` Phase 2 on a plan branch | the branch diff against `origin/{{git.mainBranch}}`, its plan in `plans/` | verdict in chat only (never `[x]`, never commits) |
 | `/ship` | Phase 0 classifies FAST/ULTRA-TRIVIAL/REGULAR first (`/ship fast`\|`regular` overrides); Phase 1 is `ship-prep.mjs --gate` (build, lint, tests on REGULAR, ledger, override check — in code); REGULAR on a plan branch reviews by `review.ship`: `checkers` (the default) runs the `/review-it` checker pipeline, `reviewer` runs `scripts/lib/plan-review.mjs`, `light` runs `/review` (`fast` keeps `/review` unless the diff is sensitive); only with `review.learn` `on`, grades the shown decisions (`decision-log.mjs pending` / `grade --run ship-<NNN> --mark`) and proposes brain entries; runs `scripts/session-manifest-ship.py` (multi-worktree), `scripts/brain-review-check.mjs --scope=full` (feature-complete path) | brief Done-when | commit; marks `.claude/todo.md` + plan `[x]`; `docs/brain/**` (`review.learn` `on` only: auto-writes on `Y`, unless `no brain`; skipped by default on FAST/ULTRA-TRIVIAL) |
-| `/orchestrate` | opt-in: the `orchestrate` workflow (`.claude/workflows/orchestrate.js`), which runs `kit-runner` with `orch-state.mjs` / `orch-preflight.mjs` and the `orch-*` role agents (`docs/agent/orchestrator.md`); a pilot of `orchestrator.pilotSize` plans first, one final gate on the run branch, the decisions numbered `D1…Dn`; step 5 runs the learning step (`docs/agent/decision-review.md`) | the named plans, `plan-order.mjs --json`, the run branch's merge subjects, `docs/brain/agent-rules.md` (builders) | readiness answers in each plan's Execution Notes (on {{git.mainBranch}}); merges into `{{orchestrator.runBranchPrefix}}<run>` only; `.claude/orchestrator-runs/<run>/status.json`; the run report |
+| `/orchestrate` | opt-in: `scripts/run-plans.mjs` (dry run first, then the line for the Human, `start` in the background), which runs `orch-state.mjs` / `orch-preflight.mjs`, `orch-builder` and `plan-reviewer` (`docs/agent/orchestrator.md`); one final gate on the run branch, the decisions numbered `D1…Dn` | the named plans, `plan-order.mjs --json`, the run branch's merge subjects, `docs/brain/agent-rules.md` (builders) | merges into `{{orchestrator.runBranchPrefix}}<run>` only; `.claude/orchestrator-runs/<run>/status.json`; the run report |
 | `/kit-feedback` | `scripts/kit-feedback.mjs` (`--dry-run` first) | `.kit/install.json` `source`, the project's `kit.config.json` | a pull request on the kit repository with one file under `feedback/inbox/`; nothing else |
 | `/scout` | `scripts/scout/render.mjs`, `scripts/scout/pr.mjs` (`--dry-run` first); a weekly cloud scheduled run after the Human's go | `docs/scout/sources.json`, the cursors in `docs/scout/`, the project's setup files (never `.env*`); public Claude Code and community sources | `docs/scout/<date>.html` + cursors on `chore/scout-<date>`, one pull request; applies nothing |
 | `/done` | job-validation Path B close-out | `.claude/todo.md`, parent plan | marks `[x]` on Human confirm (or Tier 1 evidence for all-`[auto]`) |
@@ -67,7 +67,6 @@ Cursor rule files ship with the optional `layer:cursor`; the stack pack adds sta
 | `/cleanup` | session & worktree pruning (`scripts/prune-merged-worktrees.sh`, `scripts/prune-old-sessions.sh`) |
 | `/sweep-stale-todos` | prune stale `.claude/todo.md` entries |
 | `/docs-refresh` | on-demand documentation refresh |
-| `/auto-solve` | autonomous solve loop (browse-based verification) |
 | `/skills`, `/commands` | listings |
 
 <!-- KIT:if kit.cursor -->
@@ -103,17 +102,14 @@ writing stay on the main session's model.
 
 | Agent | Tier | Called by | Returns |
 | --- | --- | --- | --- |
-| `kit-runner` | mechanical | `auto-solve` Phase 4, the orchestrator workflow | `RUN <cmd> → exit <n>` lines, verbatim error lines, full output of `[capture]` commands |
-| `kit-prevalidate` | analysis | `auto-solve` Phase 2 | DONE / TODO / BLOCKED table; the main session re-checks every DONE |
 | `git-agent` | mechanical | commit prep on request | proposed commit + commands for the Human |
-| `orch-builder` | build (escalation: judgment) | the orchestrator | `{status, branch, summary, evidence[]}` JSON |
-| `orch-readiness` | judgment | the orchestrator | per plan: ready / questions / env needs / commands |
-| `orch-gate`, `orch-report` | mechanical | the orchestrator | per-command pass / fail / env-fail; the final report |
-| `orch-check-plan`, `orch-check-bugs`, `orch-check-rules`, `orch-verify` | analysis | the orchestrator, `/review-it` | candidate problems with file:line; keep / refuted verdicts with confidence |
-| `orch-security`, `orch-ui`, `orch-merge` | analysis | the orchestrator | security problems (sensitive paths only); UI card results; merged sha or reason |
-| `orch-triage` | review | the orchestrator (once per run) | a verdict, kind and recommendation per decision the agents took (`docs/agent/decision-review.md` §5) |
+| `orch-builder` | build (escalation: judgment) | `scripts/run-plans.mjs` | `{status, branch, summary, evidence[]}` JSON |
+| `plan-reviewer` | `orchestrator.reviewerModel` | `scripts/run-plans.mjs`, `/ship` with `review.ship` = `reviewer` | problems with file:line and `verdict: PASS\|STOP` |
+| `orch-check-plan`, `orch-check-bugs`, `orch-check-rules`, `orch-verify` | review | `/review-it` (the default `/ship` review) | candidate problems with file:line; keep / refuted verdicts with confidence |
+| `orch-security`, `orch-ui` | review | `/review-it` (sensitive paths only); `[ui]` cards no script can check | security problems; UI card results |
+| `skill-judge` | review | the nightly skill improver | a blind grade against assertions |
 
-Every `orch-*` agent follows `docs/agent/agent-roles.md`: non-interactive, evidence for every claim, a JSON result naming its model and effort.
+Every role agent follows `docs/agent/agent-roles.md`: non-interactive, evidence for every claim, a JSON result naming its model and effort.
 
 ---
 
@@ -211,8 +207,8 @@ Claude Code backs this up in `.claude/settings.json`: `permissions.deny` refuses
 | `scope-check.mjs` | `scope-guard.sh` (`--file`), `ship-prep.mjs` (`--diff`, `--arch --diff` warn), the Planner protocol (`--overlap`, `--deps`), save-plan Shape lint (`--arch --plan` block, `--deps`), `/review-it` step 2 (`--arch --diff`), `take-plan.mjs` + `take-plan.md` (`--drift`) |
 | `lib/invariants.mjs` | `scope-check.mjs --arch` and `take-plan.mjs` (pre-claim architecture gate, judged against the main branch): parses `docs/brain/invariants.md` and a plan's `## Architecture Impact` |
 | `plan-order.mjs` | the Planner protocol (`/plan` step 3) and the orchestrator (`--json`): run order of a set of plans — waves, lanes, lock groups from scope overlap (hotspots left out), the reason of every edge; `--branch <b> --merged-from git` counts a plan merged only on the exact subject `Merge <src> into <b> (plan NNN)` |
-| `orch-state.mjs` | the orchestrator workflow, through `kit-runner` — run branch, merge folder, builder folders, `status.json`, hand-off files, the run report; merged plans read only from the anchored merge subjects |
-| `orch-preflight.mjs` | `/orchestrate` step 1, the orchestrator workflow (start, and `--env-only` before a retry after an environment failure); starts a missing main-folder frontend, and the backend for a plan with an open `[auto:main]` item (`--db remote` when the request said `remote`), through `slot-serve.mjs --main` |
+| `orch-state.mjs` | `scripts/run-plans.mjs` — run branch, merge folder, builder folders, `status.json`, hand-off files, the run report; merged plans read only from the anchored merge subjects |
+| `orch-preflight.mjs` | `scripts/run-plans.mjs` (start, and `--env-only` before a retry after an environment failure); starts a missing main-folder frontend, and the backend for a plan with an open `[auto:main]` item (`--db remote` when the request said `remote`), through `slot-serve.mjs --main` |
 | `lib/orch-run.mjs` | `orch-state.mjs`, `orch-preflight.mjs` — run names, plan branches, the start tier, `[human]` items, the report text |
 | `decision-log.mjs` | the learning step of `/ship` (On approval, step 2) and `/orchestrate` (step 5), `docs/agent/decision-review.md` — `pending` (`/ship`: a plan's ungraded `- decision:` lines as a grade list), `grade` (every graded item, `ok` too, -> `decision-grades.jsonl` and `follow-ups.md`; `--mark` tags the plan lines), `learn` (the gate: no `✗` / `failed:` = no model call), `add` (graded reply -> `docs/brain/decision-log.md`), `repeats` (promotes a rule marked `(pending — seen once)`), `rules --check` / `--add [--section] [--pending --kind]` / `--enforce` (`docs/brain/agent-rules.md`, one section per role, 30 lines / 2,400 characters each; `enforce:` lines in `## enforce candidates`), `lessons --check` / `--add` (`docs/brain/agent-lessons/<role>.md`, 40 lines / 3,000 characters), `case --from D<n>` (an eval-case scaffold for a checker miss, no model call) |
 | `orch-state.mjs lessons` / `context` / `trend` | `finish` and `/orchestrate`  — `lessons` writes lesson lines from `status.json` (no model call), `context` reads `LESSONS` / `RULES` / `RECENT_RUNS` for the role tasks, `trend` prints the run-log trend (`docs/agent/decision-review.md` §0) |
@@ -242,10 +238,10 @@ Claude Code backs this up in `.claude/settings.json`: `permissions.deny` refuses
 | `.claude/sessions/{session-id}/brief.md` | `/brief` | `/ship` Done-when check |
 | `sessions/YYYY-MM-DD.md` | Contractor after each milestone | brain capture (Decisions) |
 | `docs/brain/**` | `/ship` brain capture (auto-write on gate reply, opt out with `no brain`) | session start on unfamiliar work; architectural choices |
-| `docs/brain/decision-log.md`, `docs/brain/agent-rules.md` | the learning step (`scripts/decision-log.mjs`), after a graded `✗` / `failed:` reply | builders read `agent-rules.md` `## builder` (`orch-builder`, `/take-plan`); the other sections go to the checkers, readiness and the browser agent as `RULES`; the log is for the Human and the repeat check |
-| `docs/brain/agent-lessons/<role>.md` (10 roles), `docs/brain/run-log.md` | `orch-state.mjs lessons` / `finish` from the run's `status.json` (scripts only, no model call); `decision-log.mjs lessons --add` | each orchestrator role as `LESSONS`; `/plan`'s review reads `planner.md`; `orch-readiness` gets the last 3 run-log rows as `RECENT_RUNS`; the report's trend line |
+| `docs/brain/decision-log.md`, `docs/brain/agent-rules.md` | the learning step (`scripts/decision-log.mjs`), after a graded `✗` / `failed:` reply | builders read `agent-rules.md` `## builder` (`orch-builder`, `/take-plan`); the other sections go to the checkers and the browser agent as `RULES`; the log is for the Human and the repeat check |
+| `docs/brain/agent-lessons/<role>.md` (10 roles), `docs/brain/run-log.md` | `orch-state.mjs lessons` / `finish` from the run's `status.json` (scripts only, no model call); `decision-log.mjs lessons --add` | each orchestrator role as `LESSONS`; `/plan`'s review reads `planner.md`; the report's trend line |
 | `docs/agent/kit-lessons/<role>.md` (10 roles, kit-owned, managed) and `triage-calibration.md` | the kit's `tools/kit-lessons.mjs` and `tools/kit-learn.mjs triage-prior` (kit repository only; `kit-sync` brings the files to a project) | each orchestrator role as `LESSONS`, before the project's own lines; `/plan`'s review reads `planner.md` from both folders (`docs/agent/kit-brain.md` "Kit side") |
-| `decision-grades.jsonl` (in `docs/brain/`, created on the first grade), `docs/brain/follow-ups.md` | `decision-log.mjs grade`: the orchestrator after the decisions reply, and `/ship` after a grade reply (run `ship-<NNN>`, `--mark` tags the graded `- decision:` lines of the plan) | `decision-log.mjs stats` (triage calibration; `triageVerdict: none` rows not counted), `/plan`'s follow-ups check (`follow-ups --open`), `/ship`'s `pending` (via the plan's tags), the kit brain |
+| `decision-grades.jsonl` (in `docs/brain/`, created on the first grade), `docs/brain/follow-ups.md` | `decision-log.mjs grade`: the orchestrator after the decisions reply, and `/ship` after a grade reply (run `ship-<NNN>`, `--mark` tags the graded `- decision:` lines of the plan) | `decision-log.mjs stats` (agreement per kind, printed; `triageVerdict: none` rows not counted), `/plan`'s follow-ups check (`follow-ups --open`), `/ship`'s `pending` (via the plan's tags), the kit brain |
 | `docs/agent-evals/cases/<checker>/<date>-<kind>/` | `decision-log.mjs case` (a graded `checker-miss: yes`), committed on the run branch by `brain-commit` | the agent-eval harness (`tools/agent-eval.mjs`) |
 | `.claude/.plan-write-ack` | save-plan (save-as-new after Human confirm) | consumed once by `plan-write-guard.sh` |
 | `.claude/orchestrator-runs/<run>/status.json`, `<run>.md` | `orch-state.mjs` only (after every step of a run; the report copy at the end) | `/orchestrate` step 4, a relaunch of the run |
@@ -354,7 +350,7 @@ Durable learning in session (decision/gotcha/pattern)
 /ship        --invokes-->  /review-it (REGULAR plan branch, review.ship=checkers), plan-review.mjs (review.ship=reviewer) or /review; --runs--> ship-prep.mjs --gate, session-manifest-ship.py, brain-review-check.mjs, decision-log.mjs pending/grade
 /ship        --writes-->   .claude/todo.md, plans/*.plan.md ([x]), docs/brain/**
 /review-it   --reads-->    git diff, plans/*; --runs--> ship-prep.mjs --gate; --invokes--> orch-check-*, orch-verify
-/orchestrate --runs-->     orchestrate.js workflow; --invokes--> kit-runner (orch-state.mjs, orch-preflight.mjs), orch-*; --merges--> {{orchestrator.runBranchPrefix}}<run> only
+/orchestrate --runs-->     run-plans.mjs (orch-state.mjs, orch-preflight.mjs); --invokes--> orch-builder, plan-reviewer; --merges--> {{orchestrator.runBranchPrefix}}<run> only
 /brief       --writes-->   .claude/sessions/{id}/brief.md; --reads--> plans/* (parent)
 save-plan    --runs-->     plan-name-similarity.mjs; --writes--> plans/*, .claude/todo.md, .plan-write-ack
 plan-write-guard.sh --gates--> Write/Edit on plans/*.plan.md; --runs--> plan-name-similarity.mjs

@@ -304,22 +304,17 @@ export function lessonDoc(lesson, { root, host } = {}) {
 // ---------------------------------------------------------------------------------------------------- tokens (B11)
 
 /**
- * Which roles an orchestrator run's agents have in each `workflowPhase`, by what orchestrate.js passes to `agent()`.
- * Tokens are summed twice: per `workflowPhase` (`byPhase`, always) and per role (`byRole`). The role is the meta file's
- * `agentType` (`orch-builder`, `orch-gate`, …: set by the workflow's `agentType` option, not free text); an agent whose
- * `agentType` is missing or the generic `workflow-subagent` falls back to its phase, keyed `phase:<Phase>`. `Build` is the
- * phase that matters: the builder, the gate, the three finders, the verifier, the security checker, the `[ui]` checker
- * and the merge agent all run in it, so the `Build` total alone is the whole plan's cost — use `byRole` to split it.
- * `mixedRoles: true` on a phase means its total holds more than one role: more than one distinct `agentType` was seen
- * in it, or some of its agents fell back to the phase and this table lists more than one role for it. Tokens of a
- * fallback agent are never assigned to a guessed role. (`description` is free text and is never read.)
+ * How many roles a run's agents had in each `workflowPhase` of the workflow runtime (since deleted; its
+ * transcripts can still be read). Tokens are summed twice: per `workflowPhase` (`byPhase`, always) and per role
+ * (`byRole`). The role is the meta file's `agentType` (`orch-builder`, …: set by the runtime, not free text); an agent
+ * whose `agentType` is missing or the generic `workflow-subagent` falls back to its phase, keyed `phase:<Phase>`. `Build`
+ * is the phase that matters: the builder, the checkers and the `[ui]` checker all ran in it, so the `Build` total alone
+ * is the whole plan's cost — use `byRole` to split it. `mixedRoles: true` on a phase means its total holds more than one
+ * role: more than one distinct `agentType` was seen in it, or some of its agents fell back to the phase and this table
+ * counts more than one role for it. Tokens of a fallback agent are never assigned to a guessed role. (`description` is
+ * free text and is never read.)
  */
-export const PHASE_ROLES = {
-  Start: ['kit-runner'],
-  Readiness: ['orch-readiness', 'kit-runner'],
-  Build: ['orch-builder', 'orch-gate', 'orch-check-plan', 'orch-check-bugs', 'orch-check-rules', 'orch-verify', 'orch-security', 'orch-ui', 'orch-merge', 'kit-runner'],
-  Report: ['orch-triage', 'kit-runner'],
-}
+export const PHASE_ROLE_COUNT = { Start: 1, Readiness: 2, Build: 10, Report: 2 }
 
 const zero = () => ({ input: 0, output: 0, cacheRead: 0, cacheCreation: 0, agents: 0 })
 
@@ -327,7 +322,7 @@ const zero = () => ({ input: 0, output: 0, cacheRead: 0, cacheCreation: 0, agent
 export const transcriptDir = (root, home = homedir()) => join(home, '.claude', 'projects', resolve(root).replace(/[^A-Za-z0-9]/g, '-'))
 
 /**
- * Tokens of one run, summed per `workflowPhase` and per role (see PHASE_ROLES), from the transcripts Claude Code keeps of a Workflow's agents
+ * Tokens of one run, summed per `workflowPhase` and per role (see PHASE_ROLE_COUNT), from the transcripts Claude Code keeps of a Workflow's agents
  * (`<transcriptDir>/<session>/subagents/workflows/wf_<id>/agent-*.jsonl` + `.meta.json`). A workflow folder belongs to
  * the run when its agent files were last written between the run's `startedAt` and a minute after `finishedAt`.
  * Assistant lines carry `message.usage` and `message.id`; a message id counts once. The format is not an official
@@ -398,7 +393,7 @@ export function tokensForRun({ root, startedAt, finishedAt, home = homedir() }) 
     if (!used) return { tokens: null, note: 'tokens: no workflow transcripts for this run' }
     for (const [phase, b] of Object.entries(byPhase)) {
       b.roles.sort()
-      b.mixedRoles = b.roles.length > 1 || (b.fallback > 0 && (PHASE_ROLES[phase]?.length ?? 0) > 1)
+      b.mixedRoles = b.roles.length > 1 || (b.fallback > 0 && (PHASE_ROLE_COUNT[phase] ?? 0) > 1)
     }
     return { tokens: { byPhase, byRole, total, source: 'workflow transcripts' }, note: null }
   } catch (e) {

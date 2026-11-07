@@ -32,7 +32,6 @@ Show all registered slash commands with short descriptions and file locations.
 
 | Command | What it does | File | Category | Scope |
 | --- | --- | --- | --- | --- |
-| `/auto-solve` | Autonomous plan executor (legacy; prefer milestone-by-milestone Contractor) | `.claude/commands/auto-solve.md` | UTIL | SHARED |
 | `/brief` | Capture or generate a session brief | `.claude/commands/brief.md` | FLOW | SHARED |
 | `/cleanup` | Session & worktree pruning | `.claude/commands/cleanup.md` | UTIL | SHARED |
 | `/commands` | List all registered slash commands, categories, and paths | `.claude/commands/commands.md` | UTIL | SHARED |
@@ -41,7 +40,7 @@ Show all registered slash commands with short descriptions and file locations.
 | `/feat` | New-feature path — rules, `/plan`, Contractor + `/review-it` | `.claude/commands/feat.md` | FLOW | SHARED |
 | `/fix` | Bug fix path — matching rules + quality pass | `.claude/commands/fix.md` | FLOW | SHARED |
 | `/fix-pr-checks` | Bounded PR CI/security fix loop (2 rounds max) | `.claude/commands/fix-pr-checks.md` | FLOW | SHARED |
-| `/orchestrate` | Opt-in: run saved plans unattended into one run branch (readiness questions in one batch; the Human merges) | `.claude/commands/orchestrate.md` | FLOW | CC |
+| `/orchestrate` | Opt-in: run saved plans unattended into one run branch with `scripts/run-plans.mjs` (the Human merges) | `.claude/commands/orchestrate.md` | FLOW | CC |
 | `/plan` | Planning / Plan Contract path | `.claude/commands/plan.md` | FLOW | SHARED |
 | `/workflow-report` | Workflow report (not the feature) before `/clear` — feeds the next kit round | `.claude/commands/workflow-report.md` | UTIL | SHARED |
 | `/refactor` | Refactor path — {{stack.name}}/domain rules, styling skill, techdebt | `.claude/commands/refactor.md` | FLOW | SHARED |
@@ -59,4 +58,4 @@ Show all registered slash commands with short descriptions and file locations.
 
 - Skills are separate — use `/skills` for `.claude/skills/*/SKILL.md`.
 - When adding/removing a command file, update this table in the same change.
-- Retired (do not invoke; files removed in cutover): `/plan-implementation`, `/execute-it`, `/validate-agent-refs`, `/nightly-audit`, `/audit-report`, `/reflect`, `/reflect-list`, `/reflect-add-tests`.
+- Retired (do not invoke; files removed in cutover): `/plan-implementation`, `/execute-it`, `/validate-agent-refs`, `/nightly-audit`, `/audit-report`, `/reflect`, `/reflect-list`, `/reflect-add-tests`, and the legacy plan executor.
