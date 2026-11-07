@@ -62,6 +62,7 @@ tools/test/ship-prep.test.mjs
 tools/test/lib/**
 CHANGELOG.md
 tools/test/orchestrator.test.mjs
+tools/test/instruction-load.test.mjs
 ```
 
 ## Read Scope
@@ -88,7 +89,7 @@ Read `ship.md` Phase 4 "On approval" steps 1–7 and list which steps the 80-lin
 - [x] S3: Rewrite `ship.md` to ≤ 80 lines: Phase 0 lane; Phase 1 `ship-prep --gate` (hard stop); Phase 2 by `review.ship` — `/review-it` checkers (default) / reviewer / light (REGULAR), skip (FAST); Phase 3 manifest + rebase (unchanged rules, shorter text); Phase 4 tree + `Y` / `merge` + the three validation blocks; "On approval" as 5 rules; wrap-up block — core/.claude/commands/ship.md
 - [x] S4: Put the learning step behind its own switch and add the single reviewer as a second review choice — `review.learn` off (default) | on gates grade, learn, brain capture; `review.ship` keeps `checkers` (default) and `light`, and gains `reviewer`; `tools/lib/kit.mjs` validates both keys; no migration (an existing `checkers` stays `checkers`) — kit.config.json, .kit/config.json, tools/lib/kit.mjs, core/.claude/commands/ship.md
 - [ ] S5: Delete `ship-regular.md`; move the Commit-vs-PR judgment and "After opening a PR" into `standards-git.md` (≤ 20 lines); update workflow-map F3, model-routing's table (kit-runner's `/ship` row removed; the checkers' `/ship Phase 2` note stays), `review-it.md` keeps the checker pipeline but runs its commands through `ship-prep.mjs --gate` instead of `kit-runner` — core/docs/agent/ship-regular.md, core/docs/agent/standards-git.md, core/docs/agent/workflow-map.md, core/docs/agent/model-routing.md, core/.claude/commands/review-it.md
-- [ ] S6: `tools/instruction-load.mjs`: sums the five files, prints the number, exits 1 above 600 — tools/instruction-load.mjs
+- [x] S6: `tools/instruction-load.mjs`: sums the five files, prints the number, exits 1 above 600 — tools/instruction-load.mjs
 - [ ] T1: Resync, run every check, changelog, the two `[human]` ships — CHANGELOG.md
 
 ## Technical Considerations
@@ -148,3 +149,4 @@ Read `ship.md` Phase 4 "On approval" steps 1–7 and list which steps the 80-lin
 - S5 built except the deletion (left unticked): `standards-git.md` gained "### Commit-vs-PR judgment (before any `gh pr create`)" (16 lines: override, brief Done-when + `brain-review-check --scope=full`, ad-hoc ask, the hard rule, After opening a PR) and its brain-capture paragraph now runs only with `review.learn` on; workflow-map (`/review-it` and `/ship` rows, kit-runner row, F3, the link lines) and model-routing (kit-runner row without `/ship`, plan-reviewer row names `/ship` Phase 2 `reviewer`, rule 7) updated; `review-it.md` step 2 runs `ship-prep.mjs --gate --lane REGULAR` and its other checks inline, no kit-runner. `tools/test/orchestrator.test.mjs` (pre-approved, appended to the scope) reads the slot-stop rule from standards-git.md instead of ship-regular.md. Tests red first (2 fails), then ship-review 18/18, the orchestrator card test pass.
 - Blocked: deleting `core/docs/agent/ship-regular.md` — `tools/install-check.mjs:185` (outside the scope, not pre-approved) lists `docs/agent/ship-regular.md` among the files that must contain `branch-autodelete-check.mjs`. Needed: `approved: tools/install-check.mjs`, then drop `'docs/agent/ship-regular.md', ` from that list and `git rm core/docs/agent/ship-regular.md` (sync then removes the installed copy). Nothing links to it any more (ship.md, workflow-map, kit.mjs no longer name it); its text is left as it was until then.
 - follow-up: `core/docs/agent/agent-roles.md:104` (outside the scope) still says "`kit-runner` in `/review-it`".
+- S6: `tools/instruction-load.mjs [--root] [--max] [--json]` sums AGENTS.md + take-plan.md + ship.md + job-validation.md + standards-git.md as installed, one line per file, `INSTRUCTION_LOAD: <sum> lines (max 600) — ok|over`, exit 0 / 1 above / 2 missing; `tools/test/instruction-load.test.mjs` (pre-approved, appended to the scope; written with the tool) 3/3. On this repo: 57 + 94 + 76 + 421 + 150 = 798 → `over`, exit 1 (was 960). The `[auto]` < 600 item stays open: job-validation.md alone is 421 and is Out of Scope (Step 0 conflict 5) — needs the Human: shorten job-validation.md in its own plan, or set the budget for this plan (e.g. `--max 800`).
