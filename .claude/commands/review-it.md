@@ -22,12 +22,12 @@ result schema are in `docs/agent/agent-roles.md`.
    (finders get that folder and `<ref>` as the branch), and `git worktree remove ../<this folder's name>-review-<NNN>`
    after the verdict. Never switch this folder's branch for a review.
 
-2. **Commands (one `kit-runner` call):** hand the `kit-runner` agent (`.claude/agents/kit-runner.md`) the commands of
-   the checks below — the architecture check and the log query (when set), both marked `[capture]` because they exit 0
-   while printing what the review needs, and the plan's own check commands (its `[auto]` Done-when commands; none
-   named → `npm run lint`) — and use its `RUN` / `OUTPUT` / `FAILED` blocks as their evidence. The
-   judgment on the output stays here. `ESCALATE`, or no `OUTPUT` block for a `[capture]` command → run that command
-   inline. Without sub-agents, run the commands inline.
+2. **Commands (by code, no runner agent):** run `node scripts/ship-prep.mjs --gate --lane REGULAR` (build, lint, tests,
+   ledger and override check, one `GATE: <cmd> → exit <n>` line each; at `/ship` Phase 1 already ran it — reuse its
+   output), then inline the checks below: the architecture check and the log query (when set) — both exit 0 while
+   printing what the review needs, so read their whole output — and the plan's own check commands (its `[auto]`
+   Done-when commands; none named → the gate's lint line). Their output and exit codes are the evidence; the judgment
+   on it stays here.
    - **Architecture**: `node scripts/scope-check.mjs --arch --diff=origin/main` — copy every
      `ARCH: warn …` line into Findings (an invariant from `docs/brain/invariants.md` touched with no
      `## Architecture Impact` entry, or a "Human decision" note naming no INV-n / ADR). Any warn → ESCALATE TO

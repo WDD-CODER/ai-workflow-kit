@@ -115,6 +115,34 @@ test('decision-review.md holds the /ship grade and learning commands (moved from
   assert.match(dr, /`decisions: ok` included/)
 })
 
+test('standards-git.md holds the Commit-vs-PR judgment and "After opening a PR" under one heading of at most 20 lines', () => {
+  const git = read('docs/agent/standards-git.md')
+  const section = git.split(/^### Commit-vs-PR judgment \(before any `gh pr create`\)$/m)[1]?.split(/^---$|^##+ /m)[0]
+  assert.ok(section, 'the heading is there')
+  assert.ok(section.trim().split('\n').length <= 20, `${section.trim().split('\n').length} lines`)
+  const s = flat(section)
+  assert.match(s, /\*\*Override first\.\*\*/)
+  assert.match(s, /node scripts\/brain-review-check\.mjs --scope=full/)
+  assert.match(s, /Milestone commit — brief not yet complete, no PR proposed/)
+  assert.match(s, /`Is this feature-complete \(open a PR\) or a checkpoint \(push only\)\?`/)
+  assert.match(s, /\*\*Hard rule:\*\* never open a PR without the brief's Done-when fully met or an explicit instruction/)
+  assert.match(s, /\*\*After opening a PR:\*\* run `gh pr checks --watch` once/)
+  assert.match(flat(git), /Brain capture is part of this gate when `review\.learn` is `on`\*\* \(this project: `off`;/)
+})
+
+test('workflow-map F3, model-routing and review-it: the ship gate and the review-it checks run by code, not through kit-runner', () => {
+  const wm = read('docs/agent/workflow-map.md')
+  const f3 = wm.split('### F3 — Ship pipeline')[1].split('### F4')[0]
+  assert.match(f3, /Phase 1 {2}ship-prep\.mjs --gate/)
+  assert.match(f3, /checkers \(\/review-it, default\) \| reviewer \(plan-review\.mjs\) \| light \(\/review\)/)
+  assert.ok(!/\/ship` Phase 1/.test(wm.split('\n').find((l) => l.startsWith('| `kit-runner`')) ?? ''), 'workflow-map: kit-runner row has no /ship')
+  const mr = read('docs/agent/model-routing.md').split('\n').find((l) => l.startsWith('| `.claude/agents/kit-runner.md`'))
+  assert.ok(!/^\| `\.claude\/agents\/kit-runner\.md` \| mechanical \| `\/ship` Phase 1/.test(mr), 'model-routing: no /ship row for kit-runner')
+  assert.match(read('docs/agent/model-routing.md'), /`\/ship` Phase 2 \(checker review on a plan branch; the re-check is `orch-verify` only\)/, "the checkers' /ship Phase 2 note stays")
+  assert.ok(!/kit-runner/.test(reviewIt), 'review-it.md names no kit-runner')
+  assert.match(reviewIt, /run `node scripts\/ship-prep\.mjs --gate --lane REGULAR`/)
+})
+
 test('review-it.md: the checkers get their own LESSONS (kit first) and RULES ## checkers from the main folder', () => {
   assert.match(reviewIt, /git rev-parse --path-format=absolute --git-common-dir/)
   assert.match(reviewIt, /node "<main folder>\/scripts\/orch-state\.mjs" context` \(no `--run`\)/)

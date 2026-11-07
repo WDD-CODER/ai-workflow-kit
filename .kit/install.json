@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "1120a287749fed31faa84b021c1d696f50369f44",
+  "commit": "e2741ee85ec0f485818ee59c8df56ce91de46230",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -170,7 +170,7 @@
       "source": "core/.claude/commands/refactor.md"
     },
     ".claude/commands/review-it.md": {
-      "sha256": "56f6547feece0dbf542d2365ddbf5317898d1ee985b7b023017d435d91b4808c",
+      "sha256": "e5512394fd840eaacac7aa4f6d4bc16cde6f7535fc112d31b78425c442bbd674",
       "kind": "managed",
       "source": "core/.claude/commands/review-it.md"
     },
@@ -415,7 +415,7 @@
       "source": "core/docs/agent/kit-lessons/verify.md"
     },
     "docs/agent/model-routing.md": {
-      "sha256": "82f74fe80e350b6a68cf2da14dd415308bb8e6bfa28df20e8a18d6fc0dc63630",
+      "sha256": "afc4602ec115a26d9fc59fc377c80d78473cc359d5e8be62d1c376d6dc5f8581",
       "kind": "managed",
       "source": "core/docs/agent/model-routing.md"
     },
@@ -440,7 +440,7 @@
       "source": "core/docs/agent/ship-regular.md"
     },
     "docs/agent/standards-git.md": {
-      "sha256": "c3f418286c6cbe96dac8bb6f0f0fada26c4e912da7db21f800a7af73afbec727",
+      "sha256": "6c2be366a2f40e99e51750de43ed08979898fc2302865f1a8e9250fb219e9cda",
       "kind": "managed",
       "source": "core/docs/agent/standards-git.md"
     },
@@ -450,7 +450,7 @@
       "source": "core/docs/agent/standards-security.md"
     },
     "docs/agent/workflow-map.md": {
-      "sha256": "335594e36ec08620da0ddffa49f88127f5ee0d225de7300627eabe0d538eaf6e",
+      "sha256": "88085951336032015b912e13d0a787bba0b0be21f391b96e4823e009b9214dc2",
       "kind": "managed",
       "source": "core/docs/agent/workflow-map.md"
     },

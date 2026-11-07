@@ -49,8 +49,8 @@ Cursor rule files ship with the optional `layer:cursor`; the stack pack adds sta
 | `/fix` | bug-fix path (analog of `/feat` for fixes) | — | product code |
 | `/refactor` | refactor path | — | product code |
 | `/brief` | see §6 flow F2; syncs parent plan via save-plan Phase 4 | `git diff/log`, `.claude/todo.md` (retroactive mode) | `.claude/sessions/{session-id}/brief.md` |
-| `/review-it` | Reviewer protocol; runs `kit-runner`, the `orch-check-*` finders and `orch-verify` (`docs/agent/agent-roles.md`), each with its checker `LESSONS` and `RULES` from the main folder's `orch-state.mjs context`; also `/ship` Phase 2 on a plan branch | the branch diff against `origin/main`, its plan in `plans/` | verdict in chat only (never `[x]`, never commits) |
-| `/ship` | Phase 0 classifies FAST/ULTRA-TRIVIAL/REGULAR first (`/ship fast`\|`regular` overrides); REGULAR on a plan branch runs the `/review-it` checker pipeline (`review.ship` = `checkers`, the default; `fast` keeps `/review` unless the diff is sensitive), else `/review`; grades the shown decisions (`decision-log.mjs pending` / `grade --run ship-<NNN> --mark`); runs `scripts/session-manifest-ship.py` (multi-worktree), `scripts/brain-review-check.mjs --scope=full` (feature-complete path) | brief Done-when | commit; marks `.claude/todo.md` + plan `[x]`; `docs/brain/**` (auto-writes on `Y`, unless `no brain`; skipped by default on FAST/ULTRA-TRIVIAL) |
+| `/review-it` | Reviewer protocol; runs `scripts/ship-prep.mjs --gate` (the project checks), the `orch-check-*` finders and `orch-verify` (`docs/agent/agent-roles.md`), each with its checker `LESSONS` and `RULES` from the main folder's `orch-state.mjs context`; also `/ship` Phase 2 on a plan branch | the branch diff against `origin/main`, its plan in `plans/` | verdict in chat only (never `[x]`, never commits) |
+| `/ship` | Phase 0 classifies FAST/ULTRA-TRIVIAL/REGULAR first (`/ship fast`\|`regular` overrides); Phase 1 is `ship-prep.mjs --gate` (build, lint, tests on REGULAR, ledger, override check — in code); REGULAR on a plan branch reviews by `review.ship`: `checkers` (the default) runs the `/review-it` checker pipeline, `reviewer` runs `scripts/lib/plan-review.mjs`, `light` runs `/review` (`fast` keeps `/review` unless the diff is sensitive); only with `review.learn` `on`, grades the shown decisions (`decision-log.mjs pending` / `grade --run ship-<NNN> --mark`) and proposes brain entries; runs `scripts/session-manifest-ship.py` (multi-worktree), `scripts/brain-review-check.mjs --scope=full` (feature-complete path) | brief Done-when | commit; marks `.claude/todo.md` + plan `[x]`; `docs/brain/**` (`review.learn` `on` only: auto-writes on `Y`, unless `no brain`; skipped by default on FAST/ULTRA-TRIVIAL) |
 | `/orchestrate` | opt-in: the `orchestrate` workflow (`.claude/workflows/orchestrate.js`), which runs `kit-runner` with `orch-state.mjs` / `orch-preflight.mjs` and the `orch-*` role agents (`docs/agent/orchestrator.md`); a pilot of `orchestrator.pilotSize` plans first, one final gate on the run branch, the decisions numbered `D1…Dn`; step 5 runs the learning step (`docs/agent/decision-review.md`) | the named plans, `plan-order.mjs --json`, the run branch's merge subjects, `docs/brain/agent-rules.md` (builders) | readiness answers in each plan's Execution Notes (on main); merges into `orch/<run>` only; `.claude/orchestrator-runs/<run>/status.json`; the run report |
 | `/kit-feedback` | `scripts/kit-feedback.mjs` (`--dry-run` first) | `.kit/install.json` `source`, the project's `kit.config.json` | a pull request on the kit repository with one file under `feedback/inbox/`; nothing else |
 | `/scout` | `scripts/scout/render.mjs`, `scripts/scout/pr.mjs` (`--dry-run` first); a weekly cloud scheduled run after the Human's go | `docs/scout/sources.json`, the cursors in `docs/scout/`, the project's setup files (never `.env*`); public Claude Code and community sources | `docs/scout/<date>.html` + cursors on `chore/scout-<date>`, one pull request; applies nothing |
@@ -96,7 +96,7 @@ writing stay on the main session's model.
 
 | Agent | Tier | Called by | Returns |
 | --- | --- | --- | --- |
-| `kit-runner` | mechanical | `/ship` Phase 1, `auto-solve` Phase 4, `/review-it` step 2 | `RUN <cmd> → exit <n>` lines, verbatim error lines, full output of `[capture]` commands |
+| `kit-runner` | mechanical | `auto-solve` Phase 4, the orchestrator workflow | `RUN <cmd> → exit <n>` lines, verbatim error lines, full output of `[capture]` commands |
 | `kit-prevalidate` | analysis | `auto-solve` Phase 2 | DONE / TODO / BLOCKED table; the main session re-checks every DONE |
 | `git-agent` | mechanical | commit prep on request | proposed commit + commands for the Human |
 | `orch-builder` | build (escalation: judgment) | the orchestrator | `{status, branch, summary, evidence[]}` JSON |
@@ -282,19 +282,19 @@ Human describes feature
 
 ```
 Phase 0  lane classification — FAST / ULTRA-TRIVIAL / REGULAR by diff size + sensitive-path check; /ship fast|regular overrides
-Phase 1  npm run build            — unconditional hard stop on fail, all lanes
-Phase 2  /review             — REGULAR: one fix-and-recheck cycle max (or --skip-review "reason"); FAST/ULTRA-TRIVIAL: eslint --fix + single diff read instead, brain-mining skipped too
+Phase 1  ship-prep.mjs --gate — build, lint, tests (REGULAR), ledger, override check by code; hard stop on fail, all lanes
+Phase 2  review by review.ship — REGULAR plan branch: checkers (/review-it, default) | reviewer (plan-review.mjs) | light (/review);
+                                one fix-and-recheck cycle max (or --skip-review "reason"); FAST/ULTRA-TRIVIAL: eslint --fix + one diff read
 Phase 3  manifest check      — >1 worktree: session-manifest-ship.py; ≤1 worktree: branch/HEAD-drift check (baseline captured at ship start)
 Phase 4  approval gate       — REGULAR: visual tree, Human Y = job validation, separate Phase 4.5 wait
                                 FAST: same tree, single Y also answers Phase 4.5 (merge/later/open-pr-only)
                                 ULTRA-TRIVIAL: no wait — auto-commit+push, tree printed as receipt after
-         on Y (hard order): mark todos/plan [x] → write approved brain drafts
+         on Y (hard order): mark todos/plan [x] → (review.learn on: brain drafts, grade, learn)
                             → git add listed paths → one commit → rename branch → push if asked
-         commit-vs-PR judgment: brief Done-when met → PR; else checkpoint (no PR); ad-hoc → ask
+         commit-vs-PR judgment (standards-git.md): brief Done-when met → PR; else checkpoint (no PR); ad-hoc → ask
 Phase 4.5 Merge Gate         — mandatory after any successful push (standards-git.md); folded into Phase 4's single Y for FAST lane
          replies: merge | later | open-pr-only (brain draft auto-writes; add "no brain" to opt out, "brain edit …" to revise)
-Phase 5  open items — into the plan's Execution Notes or the PR body (no file)
-Phase 6  (todo sync already done in Phase 4)
+         open items — into the plan's Execution Notes or the PR body, in the same commit (no file)
 ```
 
 ### F4 — Job validation without ship (Path B)
@@ -340,9 +340,9 @@ Durable learning in session (decision/gotcha/pattern)
 
 ```
 /feat        --invokes-->  /plan, /review-it
-/ship        --invokes-->  /review-it (REGULAR plan branch, review.ship=checkers) or /review; --runs--> session-manifest-ship.py, brain-review-check.mjs, decision-log.mjs pending/grade
+/ship        --invokes-->  /review-it (REGULAR plan branch, review.ship=checkers), plan-review.mjs (review.ship=reviewer) or /review; --runs--> ship-prep.mjs --gate, session-manifest-ship.py, brain-review-check.mjs, decision-log.mjs pending/grade
 /ship        --writes-->   .claude/todo.md, plans/*.plan.md ([x]), docs/brain/**
-/review-it   --reads-->    git diff, plans/*; --invokes--> kit-runner, orch-check-*, orch-verify
+/review-it   --reads-->    git diff, plans/*; --runs--> ship-prep.mjs --gate; --invokes--> orch-check-*, orch-verify
 /orchestrate --runs-->     orchestrate.js workflow; --invokes--> kit-runner (orch-state.mjs, orch-preflight.mjs), orch-*; --merges--> orch/<run> only
 /brief       --writes-->   .claude/sessions/{id}/brief.md; --reads--> plans/* (parent)
 save-plan    --runs-->     plan-name-similarity.mjs; --writes--> plans/*, .claude/todo.md, .plan-write-ack
