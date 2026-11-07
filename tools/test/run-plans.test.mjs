@@ -188,7 +188,7 @@ test('plan-gate: the command list is prepare, project checks, manifest, scope, t
 test('config: reviewerMode, reviewerModel (never Haiku) and rateLimitWaitMin are bounded; the scaffold defaults pass', async () => {
   const { orchestratorProblems } = await import(pathToFileURL(join(kit, 'tools', 'lib', 'kit.mjs')).href)
   const scaffold = JSON.parse(readFileSync(join(kit, 'kit.config.json'), 'utf8')).orchestrator
-  assert.deepEqual([scaffold.reviewerMode, scaffold.reviewerModel, scaffold.rateLimitWaitMin], ['advisory', 'opus', 30])
+  assert.deepEqual([scaffold.reviewerMode, scaffold.reviewerModel, scaffold.rateLimitWaitMin], ['advisory', 'sonnet', 30])
   assert.deepEqual(orchestratorProblems({ 'orchestrator.reviewerMode': 'gate', 'orchestrator.reviewerModel': 'sonnet', 'orchestrator.rateLimitWaitMin': 0 }), [])
   assert.match(orchestratorProblems({ 'orchestrator.reviewerMode': 'loud' }).join(), /reviewerMode is "loud"/)
   for (const m of ['haiku', 'claude-haiku-5-5', 'gpt']) assert.match(orchestratorProblems({ 'orchestrator.reviewerModel': m }).join(), /reviewerModel/)
@@ -283,7 +283,7 @@ test('the argv of every call: the flags, the tier\'s model, the builder in its o
   assert.equal(b.argv[b.argv.indexOf('--model') + 1], 'sonnet')
   assert.equal(b.argv[b.argv.indexOf('--tools') + 1], 'Read,Edit,Write,Bash,Grep,Glob')
   assert.equal(basename(b.cwd), 'rp-app-orch-main-451')
-  assert.equal(r.argv[r.argv.indexOf('--model') + 1], 'opus', 'the reviewer runs on orchestrator.reviewerModel (default opus), whatever models.review is')
+  assert.equal(r.argv[r.argv.indexOf('--model') + 1], 'sonnet', 'the reviewer runs on orchestrator.reviewerModel (default sonnet), whatever models.review is')
   assert.ok(!/Edit|Write/.test(r.argv[r.argv.indexOf('--tools') + 1]))
   assert.equal(r.argv[r.argv.indexOf('--disallowedTools') + 1], 'Edit,Write,MultiEdit,NotebookEdit')
   assert.equal(b.argv[b.argv.indexOf('--allowedTools') + 1], 'Read,Edit,Write,Grep,Glob,Bash', 'only the builder, with its guard hooks loaded, keeps a bare Bash')
@@ -383,7 +383,7 @@ test('--dry-run prints the waves, the readiness lint, the preflight and the comm
   const r = p.runPlans(['--dry-run', '--run', 'dry', '--plans', '463,464'])
   assert.equal(r.status, 0, r.out)
   assert.equal(r.calls.length, 0)
-  for (const re of [/^WAVE 1: 463$/m, /^WAVE 2: 464$/m, /^ {2}deps: DEPENDS_ON: ok/m, /^ {2}arch: /m, /^ {2}tags: DONE_WHEN_TAGS: ok/m, /^ {2}check files: ok/m, /^PREFLIGHT OK +main folder/m, /^ {4}npm run build$/m, /^ {2}builder: claude -p .*--setting-sources local/m, /^ {2}reviewer: claude -p .*--model opus/m, /^WOULD START: yes$/m]) assert.match(r.out, re)
+  for (const re of [/^WAVE 1: 463$/m, /^WAVE 2: 464$/m, /^ {2}deps: DEPENDS_ON: ok/m, /^ {2}arch: /m, /^ {2}tags: DONE_WHEN_TAGS: ok/m, /^ {2}check files: ok/m, /^PREFLIGHT OK +main folder/m, /^ {4}npm run build$/m, /^ {2}builder: claude -p .*--setting-sources local/m, /^ {2}reviewer: claude -p .*--model sonnet/m, /^WOULD START: yes$/m]) assert.match(r.out, re)
   assert.equal(existsSync(join(p.proj, '.claude', 'orchestrator-runs', 'dry')), false, 'a dry run creates nothing')
   assert.equal(p.git(p.proj, 'ls-remote', 'origin', 'orch/dry').out, '')
 })

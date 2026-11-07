@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "8746e732a817811682d68389642e1d5c455cea21",
+  "commit": "34f37a77df4d6d3ea27ac2c4c91fb2b1360270fd",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -415,12 +415,12 @@
       "source": "core/docs/agent/kit-lessons/verify.md"
     },
     "docs/agent/model-routing.md": {
-      "sha256": "a188a6d9e5a8c2f78b27ca62977e6549445fcdb0dcbbf7d7f1554c24dc2a28c2",
+      "sha256": "b75951d333f47e690bdbfe1781678b18547fb7b77ec383d8540c2f7a34aa5d5a",
       "kind": "managed",
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "f0036eddf676d93e168338b665c8f51935a84ecd80a793791a49ad2200392bf0",
+      "sha256": "db9d272536ac4cb28c1d1883abb38bae344fd22b25ec69876deceb3445194c37",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -920,7 +920,7 @@
       "source": "core/scripts/prune-old-sessions.sh"
     },
     "scripts/run-plans.mjs": {
-      "sha256": "5216501c938ddd8675fc9d7e69244b9fb34c7a33cbc8664fa5876be19efb0a89",
+      "sha256": "3d182242f174e4b622361658c683e5dd352f63a79a5c4d64ad2a61babb2733bf",
       "kind": "managed",
       "source": "core/scripts/run-plans.mjs"
     },
