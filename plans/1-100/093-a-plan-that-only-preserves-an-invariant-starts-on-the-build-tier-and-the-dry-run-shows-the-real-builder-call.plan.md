@@ -1,6 +1,6 @@
 # Plan 093 — A plan that only preserves an invariant starts on the build tier, and the dry run shows the real builder call
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: 129c54cfc992f2abb150bd4ffccde22a7560e306
 Source: first real run of `scripts/run-plans.mjs` (run `first`, plan 092, 2026-11-07): the dry run printed `--model sonnet`, the real builder call used `--model opus`. Human 2026-11-07: `approve arch change INV-1`, form: only "changes" or "deviation" start on the judgment tier.
