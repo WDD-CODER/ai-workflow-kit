@@ -105,7 +105,8 @@
     "review": "sonnet"
   },
   "review": {
-    "ship": "checkers"
+    "ship": "checkers",
+    "learn": "off"
   },
   "orchestrator": {
     "runBranchPrefix": "orch/",

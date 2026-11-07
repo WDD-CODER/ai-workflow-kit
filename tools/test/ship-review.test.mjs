@@ -1,6 +1,7 @@
-// /ship learns from every Worker plan (plan 057): the rendered instructions grade every shown decision, run the checker
-// pipeline on a REGULAR plan branch (light review for /ship fast unless the diff is sensitive), pass the checkers their
-// lessons and rules, and write one review fact line. Reads the kit's own rendered copies and renders the sources.
+// /ship (the eighty-line command): the gate in code, the review picked by review.ship (checkers by default, the single
+// reviewer, or light), the commit tree with one Review: line and one validation block, merge only on the word merge,
+// learning only with review.learn on. Reads the kit's own rendered copies, renders the sources, and drives
+// plan-review.mjs outside a run in scratch repositories.
 //   node --test tools/test/ship-review.test.mjs
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -14,47 +15,80 @@ import { applyConditionals } from '../lib/kit.mjs'
 const kit = resolve(fileURLToPath(new URL('../..', import.meta.url)))
 const read = (p) => readFileSync(join(kit, p), 'utf8').replace(/\r\n/g, '\n')
 const flat = (s) => s.replace(/\s+/g, ' ')
-const ship = flat(read('.claude/commands/ship.md'))
-const regular = flat(read('docs/agent/ship-regular.md'))
+const shipSrc = read('core/.claude/commands/ship.md')
+const shipRaw = read('.claude/commands/ship.md')
+const ship = flat(shipRaw)
 const reviewIt = flat(read('.claude/commands/review-it.md'))
 
-test('ship.md: decisions come from decision-log.mjs pending, and every grade reply is graded under ship-<NNN> before the learning step', () => {
-  assert.match(ship, /node scripts\/decision-log\.mjs pending --plan <the plan file> --out <scratch>\/decisions\.json/)
-  assert.match(ship, /\[graded D<n> ok\|✗ YYYY-MM-DD\]/)
-  const gradeAt = ship.indexOf('node scripts/decision-log.mjs grade --run ship-<NNN>')
-  const learnAt = ship.indexOf('node scripts/decision-log.mjs learn --reply')
-  assert.ok(gradeAt > 0, 'the grade step is there')
-  assert.ok(gradeAt < learnAt, 'grade runs before the learn/add gate')
-  assert.match(ship, /--decisions <scratch>\/decisions\.json --mark <the plan file>/)
-  assert.match(ship, /`decisions: ok` included/)
-  assert.ok(!/not graded them in this session/.test(ship), 'no more "graded in this session" rule')
+test('ship.md: at most 80 lines, no runner agent, no ship-regular.md', () => {
+  assert.ok(shipSrc.trimEnd().split('\n').length <= 80, `core ship.md has ${shipSrc.trimEnd().split('\n').length} lines`)
+  for (const text of [shipSrc, shipRaw]) {
+    assert.ok(!/kit-runner/.test(text), 'ship.md names no kit-runner')
+    assert.ok(!/ship-regular\.md/.test(text), 'ship.md names no docs/agent/ship-regular.md')
+  }
+  assert.match(ship, /`node scripts\/ship-prep\.mjs --gate --lane <lane>` runs/)
+  assert.match(ship, /node scripts\/override-check\.mjs/)
+  assert.match(ship, /Exit 1 → stop, do not commit/)
 })
 
-test('ship.md and ship-regular.md: /ship fast on a REGULAR plan branch runs the light review, unless the diff is sensitive', () => {
-  assert.ok(!/Doesn't change lane classification or review depth/.test(ship), 'the old Flags note is gone')
-  assert.match(ship, /Doesn't change lane classification\. On a REGULAR plan branch it picks the light review \(`\/review`\) instead of the checker pipeline, unless the diff touches a sensitive path — then the checkers still run \(ADR 0015/)
-  assert.match(ship, /`--skip-review` is unchanged/)
-  assert.match(regular, /Checkers \(below\) when: plan branch AND `review\.ship` is `checkers` AND \(`fast` not passed OR sensitive\)/)
-  assert.match(regular, /`fast` on a REGULAR plan branch therefore keeps the light review, unless the diff is sensitive \(ADR 0015\)/)
-  assert.match(regular, /Sensitive\*\* = `sensitiveMatches` in `node scripts\/ship-prep\.mjs --json` is not empty/)
-  assert.match(regular, /Plain `\/ship` and `\/ship regular` keep the checkers/)
+test('ship.md Phase 2: review.ship picks — checkers runs /review-it (the default here), reviewer runs plan-review.mjs, light runs /review', () => {
+  assert.match(ship, /`review\.ship` picks \(this project: `checkers`\)/, 'this repo keeps the checker pipeline')
+  assert.match(ship, /`checkers` — read `\.claude\/commands\/review-it\.md` and run its steps 1–6 inline/)
+  assert.match(ship, /`reviewer` — `node scripts\/lib\/plan-review\.mjs --branch <current> --base origin\/main`/)
+  assert.match(ship, /`light` — read `\.claude\/commands\/review\.md` and run it inline, never through the Skill tool/)
+  assert.match(ship, /`fast` takes `light` unless `sensitiveMatches` in `node scripts\/ship-prep\.mjs --json` is not empty \(ADR 0015\)/)
+  assert.match(ship, /re-check \*\*exactly once\*\* \(checkers: `orch-verify` on the fixed findings plus the checks, no second set of finders\); still failing → stop, do not commit/)
+  assert.match(ship, /Review: SKIPPED \(fast-lane: \{n\} files\/\{m\} lines, no sensitive paths\)/)
+  assert.match(ship, /`--skip-review "reason"` skips Phase 2 \(reason required; `Review: SKIPPED \(\{reason\}\)` \+ `\[review-skipped: \{reason\}\]`/)
+  assert.match(ship, /- review: <mode> kept <n> dropped <m> rechecked <k> minutes <t> models <role=model,…>/)
+  assert.match(ship, /no token counts/)
 })
 
-test('ship-regular.md: the checker review runs /review-it inline with one fix-and-recheck by orch-verify only', () => {
-  assert.match(regular, /Plan branch\*\* = the current branch is `feat\/NNN-<slug>` or `fix\/NNN-<slug>` and `plans\/NNN-\*\.plan\.md` exists/)
-  assert.match(regular, /Read `\.claude\/commands\/review-it\.md` and run its steps 1–6 inline/)
-  assert.match(regular, /re-check \*\*exactly once\*\*: hand `orch-verify` only the findings you fixed, with the new diff/)
-  assert.match(regular, /No second set of finders/)
-  assert.match(regular, /Review: checkers <Decision> — kept <n>, dropped <m>/)
-  assert.match(regular, /Review: light \(fast\) PASS/)
-  assert.ok(!/One sub-agent only/.test(ship), 'ship.md no longer says kit-runner is its only sub-agent')
-  assert.match(ship, /also starts the `\/review-it` finders and `orch-verify`/)
+test('ship.md Phase 4: the tree keeps Branch, Rename, Proposed commit, one Review: line, Files to stage and one validation block', () => {
+  const tree = shipRaw.split('~~~text\n')[1].split('~~~')[0]
+  const order = ['Branch:', 'Rename:', 'Proposed commit:', '  Review: ', 'Files to stage:', '{VALIDATED BY HUMAN | HOW TO VALIDATE | VERIFIED BY AGENT}', 'Approve? (Y / merge / edit list / abort)']
+  let at = -1
+  for (const key of order) {
+    const i = tree.indexOf(key)
+    assert.ok(i > at, `${key} is in the tree, in order`)
+    at = i
+  }
+  assert.ok(!/Review \(checkers\):/.test(shipRaw), 'the six-lens block is gone')
+  assert.match(ship, /Review: checkers <Decision> — kept <n>, dropped <m>/)
+  assert.match(ship, /Exactly one validation block, never none \(`docs\/agent\/job-validation\.md` → "When that moment is"\)/)
+  assert.match(ship, /\*\*VALIDATED BY HUMAN\*\* — the Human answered the cards in this session .*Never repeat answered cards\./)
+  assert.match(ship, /\*\*HOW TO VALIDATE\*\* — `\[human\]` items and no answered cards: servers first .*\*\*Y\*\* alone does not validate them: wait for `done` \/ `verified` \/ `approved` \(`done Y` answers both\)/)
+  assert.match(ship, /\*\*VERIFIED BY AGENT\*\* — every Done-when item `\[auto\]` or `\[ui\]`/)
+  assert.match(ship, /⚠ \[ui→human\]/)
+  assert.match(ship, /A mix shows VALIDATED BY HUMAN with the unanswered cards beneath it/)
 })
 
-test('ship-regular.md: one review fact line per ship, with light (fast) as its own mode and no tokens', () => {
-  assert.match(regular, /- review: <checkers\|light\|light \(fast\)> kept <n> dropped <m> rechecked <k> minutes <t> models <role=model,…>/)
-  assert.match(regular, /`light \(fast\)` = `fast` chose the light review/)
-  assert.match(regular, /No token counts/)
+test('ship.md: merge needs the literal word merge — /ship fast merge pre-approves, Y alone leaves the PR open', () => {
+  assert.match(ship, /the word `merge` anywhere in the request \(`\/ship fast merge`\) pre-approves commit \+ push \+ PR \+ merge/)
+  assert.match(ship, /`merge` in the request \(tag `\[pre-approved: merge\]`, go on through the merge\)/)
+  assert.match(ship, /\*\*Merge only on the literal word `merge`\*\* in this `\/ship` request or the reply to its gate: `Y`, `--yes`, "ship fast y" and a `merge` from an earlier turn never count \(`Merge: deferred`\)/)
+  assert.match(ship, /# Y = commit \+ push \(\+ PR\); only "merge" merges/)
+})
+
+test('ship.md On approval keeps the hard rules: one git add of listed paths, one commit with the ticks, never main / force / amend', () => {
+  assert.match(ship, /Never commit to `main`, never force-push, never amend after a push/)
+  assert.match(ship, /`git add -- <listed paths>` in \*\*one\*\* call, ticks included; stop on a non-zero exit and never relist a path `git rm` staged/)
+  assert.match(ship, /never a second commit or push for checkboxes/)
+  assert.match(ship, /it validates `\[human\]` items only together with a validation word/)
+  assert.match(ship, /`scope: out` → STOP; list the files; `approved: <path>` or revert/)
+  assert.match(ship, /any other conflict → STOP, show the Human, never resolve it alone/)
+  assert.match(ship, /PR: never without the brief's Done-when met or an explicit instruction/)
+})
+
+test('review.learn: off (the default) renders no decisions block and no Learning: line; on renders both', () => {
+  const off = applyConditionals(shipSrc, { 'review.learn': 'off' })
+  assert.ok(!/Learning/.test(off), 'no Learning line with review.learn off')
+  assert.ok(!/decisions to grade|decision-review\.md/.test(off), 'no decisions block with review.learn off')
+  assert.ok(!/brain-capture\.md/.test(off), 'no brain capture with review.learn off')
+  const on = applyConditionals(shipSrc, { 'review.learn': 'on' })
+  assert.match(on, /the decisions to grade \(`docs\/agent\/decision-review\.md` → "In `\/ship`"\)/)
+  assert.match(on, /`Learning: nothing to record \| \{n\} logged, rule \{added \| none\}`/)
+  assert.ok(!/Learning/.test(shipRaw), 'this repo (review.learn off) renders no Learning line')
 })
 
 test('review-it.md: the checkers get their own LESSONS (kit first) and RULES ## checkers from the main folder', () => {
@@ -66,12 +100,6 @@ test('review-it.md: the checkers get their own LESSONS (kit first) and RULES ## 
   assert.match(reviewIt, /its own `LESSONS` and `RULES` \(above\)/)
   assert.match(reviewIt, /the verifier's `LESSONS` and `RULES`, to `orch-verify`/)
   assert.match(read('layers/cursor/.cursor/commands/review-it.md'), /Follow `\.claude\/commands\/review-it\.md` exactly/, 'the Cursor copy defers to it')
-})
-
-test('review.ship=light renders its note in ship-regular.md; checkers leaves it out', () => {
-  const src = read('core/docs/agent/ship-regular.md')
-  assert.match(applyConditionals(src, { 'review.ship': 'light' }), /This project sets `review\.ship` to `light`/)
-  assert.ok(!/This project sets `review\.ship`/.test(applyConditionals(src, { 'review.ship': 'checkers' })))
 })
 
 // review.ship = reviewer: plan-review.mjs as a command outside a run (no run folder) — a scratch repository, a fake

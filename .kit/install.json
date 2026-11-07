@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "1c8b69e8bdfeb5eb9c64bf722bbf5f6d456be5de",
+  "commit": "9da7c8a4a4f19dbe3cf95cda997a90f15e214d05",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -190,7 +190,7 @@
       "source": "core/.claude/commands/security.md"
     },
     ".claude/commands/ship.md": {
-      "sha256": "1916eb14a662aed08819cc70cea345a3e2381a6f0d81e1c18211685fb5d296a3",
+      "sha256": "53a4f879209fca4f98effdbdf43b8da6d8bc83ee31ea6cc48e72a062cc0ce5d9",
       "kind": "managed",
       "source": "core/.claude/commands/ship.md"
     },
@@ -790,7 +790,7 @@
       "source": "core/scripts/lib/plan-paths.mjs"
     },
     "scripts/lib/plan-review.mjs": {
-      "sha256": "7cfca262930168ff000859a7e77bd2a0e9cc2bfbedfcf5777d1800bb3b782c77",
+      "sha256": "a15b70f7132882a68be0f2fcc30a006ec2c423ab193b9c6552804f38c6b10f76",
       "kind": "managed",
       "source": "core/scripts/lib/plan-review.mjs"
     },
@@ -975,7 +975,7 @@
       "source": "core/scripts/session-startup.sh"
     },
     "scripts/ship-prep.mjs": {
-      "sha256": "2f3aa8baade6b1cd60e09da0497b44dad49549e7503f1ad6e320ef377b721a38",
+      "sha256": "a0bc93728733fe4f9ee446439df2fcb3cd7ab6b1335a7232a7edfe62917ce610",
       "kind": "managed",
       "source": "core/scripts/ship-prep.mjs"
     },
