@@ -3,7 +3,7 @@
     "version": "2.0.0"
   },
   "source": "local:.",
-  "commit": "dbd9a3ba68af32251465f92e163f1e62003bd1e2",
+  "commit": "c375d93cd5a946b042c2097221015f9534123d77",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -975,7 +975,7 @@
       "source": "core/scripts/session-startup.sh"
     },
     "scripts/ship-prep.mjs": {
-      "sha256": "6ec65463cbe7e51738e48defdb8ffef92b63c51318e69c029e0108fa8facd2ad",
+      "sha256": "290ff30ed86ac84dc545117d2fb5084feb2ed874b4b5f217e854d1eaeee19378",
       "kind": "managed",
       "source": "core/scripts/ship-prep.mjs"
     },

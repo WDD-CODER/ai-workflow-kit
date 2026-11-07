@@ -1,17 +1,17 @@
 /**
- * Ship prep — lane classification + baseline check for /ship, shared by
- * Claude Code and Cursor. Source of truth for the thresholds in
- * .claude/commands/ship.md Phase 0 (classify) and Phase 3 (--check-baseline).
+ * Ship prep — lane classification, the build gate and the baseline check for /ship, shared by Claude Code and Cursor.
+ * Source of truth for .claude/commands/ship.md Phase 0 (classify), Phase 1 (--gate) and Phase 3 (--check-baseline).
  *
  * Usage:
  *   node scripts/ship-prep.mjs [--mode auto|regular] [--json]
+ *   node scripts/ship-prep.mjs --gate [--lane FAST|ULTRA-TRIVIAL|REGULAR]
  *   node scripts/ship-prep.mjs --check-baseline [--json]
  *
- * Exit: 0 always (advisory tooling — the calling command decides whether to
- * stop based on the printed lane / status).
+ * Exit: 0 for the lane and the baseline (advisory — the calling command decides on the printed lane / status);
+ * --gate exits 1 on the first failing command (a hard stop) and 0 when every command passed.
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
-import { execFileSync } from 'child_process'
+import { execFileSync, spawnSync } from 'child_process'
 import { resolve, dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import { isSlot, listSlots, scopedPlanPath } from './lib/slot.mjs'
@@ -230,7 +230,55 @@ export function laneFor({ mode = 'auto', files, totalLines, sensitiveMatches = f
   }
 }
 
-function classify() {
+// ---- Phase 1: the build gate (--gate) — run by code, no runner agent ------------------------------------------------
+const GATE_PM = {{project.packageManager|json}} === 'pnpm' ? 'pnpm' : 'npm'
+const GATE_SCRIPTS = { build: {{commands.build|json}}, lint: {{commands.lint|json}}, test: {{commands.test|json}}, testCi: {{commands.testCi|json}} }
+const LEDGER_CMD = 'node scripts/plan-ledger-check.mjs'
+const GATE_TAIL = 20
+
+/**
+ * The gate's commands for a lane: build, lint, the test script (commands.testCi wins over commands.test) on REGULAR
+ * only, then the plan ledger and the override check. An unset script is left out. Exported for the tests.
+ */
+export function shipGateCommands({ lane, pm = GATE_PM, build = GATE_SCRIPTS.build, lint = GATE_SCRIPTS.lint, test = GATE_SCRIPTS.test, testCi = GATE_SCRIPTS.testCi }) {
+  const run = (s) => (typeof s === 'string' && s !== '' ? `${pm} run ${s}` : null)
+  return [run(build), run(lint), lane === 'REGULAR' ? run(testCi || test) : null, LEDGER_CMD, 'node scripts/override-check.mjs'].filter(Boolean)
+}
+
+/** One gate command by spawnSync: `node …` with this node, `npm|pnpm run <script>` (through the shell on Windows). */
+function spawnGateCommand(cmd, cwd = repoRoot) {
+  const w = cmd.split(/\s+/)
+  const argv = w[0] === 'node' ? { file: process.execPath, args: w.slice(1), shell: false }
+    : process.platform === 'win32' ? { file: cmd, args: [], shell: true } : { file: w[0], args: w.slice(1), shell: false }
+  const r = spawnSync(argv.file, argv.args, { cwd, shell: argv.shell, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, windowsHide: true })
+  return { exit: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}${r.error ? `\n${r.error.message}` : ''}` }
+}
+
+/**
+ * Run the gate in order: one `GATE: <cmd> → exit <n>` line per command; the ledger's output is printed even on exit 0
+ * (its warnings are advisory); the first failure prints its last lines and `GATE: FAIL — <cmd>` and stops (exit 1).
+ * `run` (tests) replaces spawnSync. Returns { exit, results: [{ command, status, exit, tail }] } — the gate receipt.
+ */
+export function runShipGate({ commands, run = spawnGateCommand, log = console.log }) {
+  const results = []
+  for (const command of commands) {
+    const r = run(command)
+    const lines = String(r.out ?? '').split(/\r?\n/).filter((l) => l.trim() !== '')
+    const tail = lines.slice(-GATE_TAIL).join('\n')
+    log(`GATE: ${command} → exit ${r.exit}`)
+    results.push({ command, status: r.exit === 0 ? 'pass' : 'fail', exit: r.exit, tail })
+    if (r.exit !== 0) {
+      for (const l of lines.slice(-GATE_TAIL)) log(`  | ${l}`)
+      log(`GATE: FAIL — ${command}`)
+      return { exit: 1, results }
+    }
+    if (command === LEDGER_CMD) for (const l of lines) log(`  | ${l}`)
+  }
+  log(`GATE: PASS — ${results.length} command(s)`)
+  return { exit: 0, results }
+}
+
+function classify({ write = true } = {}) {
   const branch = currentBranch()
   const head = currentHead()
 
@@ -289,7 +337,7 @@ function classify() {
     }
   }
 
-  writeBaseline(branch, head)
+  if (write) writeBaseline(branch, head)
 
   return {
     branch,
@@ -364,6 +412,17 @@ function checkBaselineReport() {
 const isMain = Boolean(process.argv[1]) && resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 if (!isMain) {
   // imported, not run
+} else if (args.gate) {
+  const LANES = ['FAST', 'ULTRA-TRIVIAL', 'REGULAR']
+  const given = typeof args.lane === 'string' ? args.lane.toUpperCase() : null
+  if (given && !LANES.includes(given)) {
+    console.log(`GATE: refused — --lane ${args.lane} is not one of ${LANES.join(', ')}`)
+    process.exit(1)
+  }
+  const lane = given ?? (mode === 'regular' ? 'REGULAR' : classify({ write: false }).lane)
+  console.log(`GATE: lane ${lane}`)
+  const gate = runShipGate({ commands: shipGateCommands({ lane }) })
+  process.exitCode = gate.exit
 } else if (checkBaseline) {
   const report = checkBaselineReport()
   if (asJson) {

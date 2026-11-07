@@ -82,7 +82,7 @@ Read `ship.md` Phase 4 "On approval" steps 1–7 and list which steps the 80-lin
 
 ## Atomic Sub-tasks
 
-- [ ] S1: `ship-prep.mjs --gate`: the Phase 1 commands by `spawnSync`, per-lane test inclusion, one line per command — core/scripts/ship-prep.mjs, tools/test/ship-prep.test.mjs
+- [x] S1: `ship-prep.mjs --gate`: the Phase 1 commands by `spawnSync`, per-lane test inclusion, one line per command — core/scripts/ship-prep.mjs, tools/test/ship-prep.test.mjs
 - [ ] S2: `plan-review.mjs --branch --base` works outside a run (no run folder: the redacted plan goes to the OS temp folder; the gate receipt is `ship-prep --gate`'s output) — core/scripts/lib/plan-review.mjs, tools/test/ship-review.test.mjs
 - [ ] S3: Rewrite `ship.md` to ≤ 80 lines: Phase 0 lane; Phase 1 `ship-prep --gate` (hard stop); Phase 2 by `review.ship` — `/review-it` checkers (default) / reviewer / light (REGULAR), skip (FAST); Phase 3 manifest + rebase (unchanged rules, shorter text); Phase 4 tree + `Y` / `merge` + the three validation blocks; "On approval" as 5 rules; wrap-up block — core/.claude/commands/ship.md
 - [ ] S4: Put the learning step behind its own switch and add the single reviewer as a second review choice — `review.learn` off (default) | on gates grade, learn, brain capture; `review.ship` keeps `checkers` (default) and `light`, and gains `reviewer`; `tools/lib/kit.mjs` validates both keys; no migration (an existing `checkers` stays `checkers`) — kit.config.json, .kit/config.json, tools/lib/kit.mjs, core/.claude/commands/ship.md
@@ -105,3 +105,29 @@ Read `ship.md` Phase 4 "On approval" steps 1–7 and list which steps the 80-lin
 - Q: `review.ship` default? A: `checkers` (Human decision 4, 2026-11-07); `reviewer` when plan 091's REVIEWER line shows precision ≥ 0.28 — a one-line config switch, not part of this plan.
 
 ## Execution Notes
+- Step 0 (branch feat/089-ship-diet from origin/main c375d93; 086, 087, 058, 088, 091 merged; `scope-check --drift` reports drift — re-read against today's code):
+  - ok 1: `ship.md` "On approval" steps kept as rules: 1 todo sync (Path A step 2), 3 `git add` only listed paths in one call + stop on a non-zero exit + one commit with the ticks, 4 commit, 5 rename, 6 push only if asked (FAST: implied), 7 commit-vs-PR; plus "never commit to main, never force-push, never amend after push". Step 2 (brain drafts, grade, learn) is procedure that moves behind `review.learn`.
+  - ok 2: `job-validation.md` → "When that moment is" (4-row table) is unchanged; the three blocks (VALIDATED BY HUMAN / HOW TO VALIDATE / VERIFIED BY AGENT, one and never none, the mix rule, `[ui]` fallback) are kept in ship.md.
+  - conflict 3: the plan's Step 0 text ("migration `checkers` → `reviewer`") is superseded by the `Revised:` header — no migration; `review.ship` today is `checkers|light` (`tools/lib/kit.mjs` `reviewProblems`); S4 adds `reviewer` and the new key `review.learn` (`off` default | `on`).
+  - conflict 4: `tools/install-check.mjs:185` asserts `docs/agent/ship-regular.md` contains `branch-autodelete-check.mjs`; deleting the file fails install-check, and `tools/install-check.mjs` is outside the scope (not pre-approved). See S5.
+  - conflict 5: instruction load today: AGENTS.md 57 + take-plan.md 94 + ship.md 253 + job-validation.md 421 + standards-git.md 135 = 960. Without ship.md the four others are already 707 > 600, and job-validation.md is Out of Scope; < 600 cannot be met by this plan. See S6.
+  - ok 6: `plan-review.mjs` is a library only (no CLI); `review()` takes agentFile/model/cwd/planText/diffText/receipt; the reviewer model is `orchestrator.reviewerModel` (sonnet); `runAgent({ trustCwdSettings: false })` refuses this folder, which holds `.claude/settings.local.json`.
+  - ok 7: `ship-prep.mjs` lines 26–40 (sensitive paths) stay byte for byte; the gate code goes below them (line 14's import gains `spawnSync`, no line shift).
+  - ok 8: text pinned by tests: `tools/test/ship-review.test.mjs` (rewritten here), `tools/test/orchestrator.test.mjs:2332` reads `docs/agent/ship-regular.md` (tools/test, pre-approved), `tools/test/ui-tier.test.mjs:154` needs `[ui]` in ship.md, `tools/install-check.mjs:265` needs `node scripts/override-check.mjs` in ship.md.
+- Rules checklist (today's ship.md + ship-regular.md → where each lives after S3/S5; checked after the rewrite):
+  - [ ] R1 never commit to main · R2 never force-push · R3 never amend after push
+  - [ ] R4 `git add` only listed paths, one `git add -- <paths>` call, stop on a non-zero exit, never relist a `git rm` path
+  - [ ] R5 one commit with job + todo/plan ticks, never a second push for checkboxes · R6 matching todos listed before Y, marked `[x]` on Y (Path A step 2)
+  - [ ] R7 merge only on the literal word `merge` in the request or the gate reply; `Y`, `--yes`, "ship fast y", an earlier turn's `merge` never count
+  - [ ] R8 `Y` alone never validates `[human]` items (`done Y` answers both) · R9 exactly one of the three validation blocks, never repeat answered cards, mix rule, `[ui]` → `[ui→human]` fallback
+  - [ ] R10 sensitive / build / CI paths force REGULAR (ship-prep) · R11 `fast` on a REGULAR plan branch → light review unless sensitive (ADR 0015)
+  - [ ] R12 rebase: hotspot add-only conflict → union, any other conflict → STOP
+  - [ ] R13 Phase 3: BRANCH_CHANGED STOP, HEAD_MOVED re-read, `scope: out` STOP + `approved: <path>`, overlaps STOP, `no_manifest` never `-A`, never stage secrets/`.env`, stage `.kit/install.json`
+  - [ ] R14 build gate unconditional hard stop; ledger exit 1 blocks, its warnings advisory; `OVERRIDE_CHECK: FAIL` → add the step back
+  - [ ] R15 review: one fix-and-recheck only, still failing → stop, no commit; `/review` read directly, never through the Skill tool; checkers on the working tree vs merge-base (`git add -N`); review fact line
+  - [ ] R16 `--skip-review` needs a reason + tags · R17 FAST: eslint --fix + one diff read + SKIPPED line · R18 ULTRA-TRIVIAL auto commit + push, never a PR, receipt tag · R19 `merge` in the request pre-approves, Phase 1/3 stops still stop
+  - [ ] R20 never open a PR without Done-when met or explicit instruction; commit-vs-PR judgment (override / brief / ask); after a PR `gh pr checks --watch` once, offer the fix loop · R21 `gh -R <owner>/<repo>`, `gh pr edit` → `gh api -X PATCH`
+  - [ ] R22 Merge Gate mandatory after push (block exactly, `later` / `open-pr-only`, checkpoint banner, slot merge + `branch-autodelete-check.mjs`, plan close after the merge) · R23 recovery → ship-recovery.md
+  - [ ] R24 brain entry: full draft body, rides Y, `no brain` · R25 decisions graded / learning step (both now behind `review.learn`)
+  - [ ] R26 rename `feat/session-*` · R27 open items into Execution Notes / PR body, no second commit · R28 wrap-up block · R29 message-only prep → git-agent; `/ship` = commit consent after explicit Y
+- S1: `ship-prep.mjs --gate [--lane]` exports `shipGateCommands` (build, lint, REGULAR only: testCi || test, then plan-ledger-check, override-check; unset scripts left out) and `runShipGate` (spawnSync, one `GATE: <cmd> → exit <n>` line each, the ledger output always, the first failure's last 20 lines + `GATE: FAIL — <cmd>`, exit 1). No `--lane` → classify without rewriting the baseline. Tests red first (3 fails), then `node --test tools/test/ship-prep.test.mjs` 6/6; `node scripts/ship-prep.mjs --gate --lane FAST` → 4 commands, `GATE: PASS`, exit 0; lines 26–40 byte for byte (diff of 24–46 empty).
