@@ -45,6 +45,7 @@ tools/test/run-plans.test.mjs
 tools/test/orchestrator.test.mjs
 tools/test/lib/**
 tools/test/fixtures/fake-claude.mjs
+tools/test/fixtures/**
 CHANGELOG.md
 ```
 
