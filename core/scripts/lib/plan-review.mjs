@@ -15,18 +15,19 @@
  *
  * Outside a run (`/ship` Phase 2 with `review.ship` = `reviewer`), as a command in the project root:
  *
- *   node scripts/lib/plan-review.mjs --branch <current branch> --base origin/<main> [--plan <file>] [--model <m>] [--receipt <file>] [--json]
+ *   node scripts/lib/plan-review.mjs --branch <current branch> --base origin/<main> [--plan <file>] [--model <m>] [--json]
  *
  * The plan comes from the branch name (`feat|fix/NNN-<slug>` → `plans/**\/NNN-*.plan.md`), redacted (lib/redact.mjs) into
- * the OS temp folder; the diff is the branch point (`git merge-base <base> <branch>`) against the working tree when the
- * branch is the current one (uncommitted and untracked files included), else `<base>...<branch>`; the receipt is the
- * last `ship-prep.mjs --gate` run's (shipGateReceiptPath). The verdict is enforced (mode gate). Prints one
+ * the OS temp folder and left out of the diff; the diff is the branch point (`git merge-base <base> <branch>`) against
+ * the working tree when the branch is the current one (uncommitted and untracked files included), else
+ * `<base>...<branch>`; the receipt is the last `ship-prep.mjs --gate` run's, used only while it matches the tree
+ * (readShipGateReceipt); the agent file is read from `<base>` (shipReview). The verdict is enforced (mode gate). Prints one
  * `REVIEW: PASS|STOP — …` line and one line per problem; exit 0 PASS, 1 STOP, 2 when the review could not run.
  */
-import { existsSync, readFileSync, readdirSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, writeFileSync, mkdtempSync, rmSync, renameSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { runAgent, parseResult, readAgent } from './claude-run.mjs'
@@ -147,10 +148,52 @@ export const problemLine = (p) => `${p.severity} ${p.file}:${p.line} ${p.rule}`
 
 // ---- outside a run: the /ship reviewer -------------------------------------------------------------------------
 
-/** Where `ship-prep.mjs --gate` leaves its receipt for this checkout: the OS temp folder, one file per project root. */
+const gitOut = (root, ...a) => {
+  const r = spawnSync('git', a, { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+  return { status: r.status, out: String(r.stdout ?? '').replace(/\r?\n$/, ''), err: String(r.stderr ?? '') }
+}
+
+/**
+ * Where `ship-prep.mjs --gate` leaves its receipt: inside this checkout's own git folder (`git rev-parse
+ * --absolute-git-dir`, one per worktree) — never a shared temp path another user or checkout could write.
+ */
 export function shipGateReceiptPath(root) {
-  const id = createHash('sha1').update(resolve(root).replace(/\\/g, '/').toLowerCase()).digest('hex').slice(0, 12)
-  return join(tmpdir(), `kit-ship-gate-${id}.json`)
+  const dir = gitOut(root, 'rev-parse', '--absolute-git-dir').out
+  return dir ? join(dir, 'kit-ship-gate.json') : null
+}
+
+/**
+ * What the checks ran on: HEAD, the index tree (`git write-tree`) and a hash of the working-tree changes against HEAD
+ * plus the untracked file names. A receipt whose stamp differs is stale (the code changed after the gate) and ignored.
+ */
+export function worktreeStamp(root) {
+  const head = gitOut(root, 'rev-parse', 'HEAD').out
+  const tree = gitOut(root, 'write-tree').out
+  const dirty = createHash('sha1').update(gitOut(root, 'diff', '--no-color', 'HEAD').out).update('\0')
+    .update(gitOut(root, 'ls-files', '--others', '--exclude-standard').out).digest('hex')
+  return { head, tree, dirty }
+}
+
+/** Write the gate receipt atomically (a private temp file in the same folder, then rename), bound to the stamp. */
+export function writeShipGateReceipt(root, data) {
+  const file = shipGateReceiptPath(root)
+  if (!file) throw new Error('not a git checkout')
+  const tmp = `${file}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`
+  writeFileSync(tmp, JSON.stringify({ ...data, stamp: worktreeStamp(root) }, null, 2), { mode: 0o600, flag: 'wx' })
+  renameSync(tmp, file)
+  return file
+}
+
+/** The receipt when it belongs to this exact tree: { receipt, why } — receipt null when missing, unreadable or stale. */
+export function readShipGateReceipt(root) {
+  const file = shipGateReceiptPath(root)
+  if (!file || !existsSync(file)) return { receipt: null, why: 'no gate receipt (run ship-prep --gate first)' }
+  let r
+  try { r = JSON.parse(readFileSync(file, 'utf8')) } catch { return { receipt: null, why: 'gate receipt unreadable' } }
+  const now = worktreeStamp(root)
+  const s = r?.stamp ?? {}
+  if (s.head !== now.head || s.tree !== now.tree || s.dirty !== now.dirty) return { receipt: null, why: 'gate receipt is stale (the tree changed after the gate) — ignored' }
+  return { receipt: r, why: null }
 }
 
 /** The plan file of a `feat|fix/NNN-<slug>` branch: the first `NNN-*.plan.md` under plans/ (any folder), else null. */
@@ -168,24 +211,31 @@ export function planForBranch(root, branch) {
   return walk('plans')
 }
 
-const gitOut = (root, ...a) => {
-  const r = spawnSync('git', a, { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
-  return { status: r.status, out: String(r.stdout ?? '').replace(/\r?\n$/, ''), err: String(r.stderr ?? '') }
-}
+/** Files the review cannot trust when the branch changes them: the reviewer's own prompt and the Claude settings. */
+export const REVIEW_TAMPER_RE = /^\.claude\/(settings[^/]*\.json|agents\/plan-reviewer\.md)$/
 
 /**
- * The diff under review: on the current branch the working tree against the branch point (staged, unstaged and the
- * untracked files as new files: at /ship the work is not committed yet), else `<base>...<branch>`.
+ * The diff under review and the files it touches: on the current branch the working tree against the branch point
+ * (staged, unstaged and the untracked files as new files: at /ship the work is not committed yet), else
+ * `<base>...<branch>`. The plan file is left out (`exclude`): its `## Execution Notes` must not reach the reviewer
+ * through the diff either; the plan reaches it redacted.
  */
-export function shipDiff(root, base, branch) {
+export function shipDiff(root, base, branch, exclude = null) {
   const current = gitOut(root, 'branch', '--show-current').out
-  if (branch !== current) return gitOut(root, 'diff', '--no-color', `${base}...${branch}`).out
+  const spec = exclude ? ['--', '.', `:(exclude)${exclude}`] : []
+  if (branch !== current) {
+    const range = `${base}...${branch}`
+    return { text: gitOut(root, 'diff', '--no-color', range, ...spec).out, files: gitOut(root, 'diff', '--name-only', range, ...spec).out.split('\n').filter(Boolean) }
+  }
   const point = gitOut(root, 'merge-base', base, 'HEAD').out || base
-  const parts = [gitOut(root, 'diff', '--no-color', point).out]
+  const parts = [gitOut(root, 'diff', '--no-color', point, ...spec).out]
+  const files = gitOut(root, 'diff', '--name-only', point, ...spec).out.split('\n').filter(Boolean)
   for (const f of gitOut(root, 'ls-files', '--others', '--exclude-standard').out.split('\n').filter(Boolean)) {
+    if (exclude && f === exclude) continue
+    files.push(f)
     parts.push(gitOut(root, 'diff', '--no-color', '--no-index', '--', '/dev/null', f).out)
   }
-  return parts.filter(Boolean).join('\n')
+  return { text: parts.filter(Boolean).join('\n'), files }
 }
 
 function cliArgs(argv) {
@@ -199,42 +249,58 @@ function cliArgs(argv) {
   return o
 }
 
-/** The /ship reviewer: one gate-mode review of `branch` against `base` in `root`. Returns the exit code. */
-export async function shipReview({ root = process.cwd(), branch, base, plan = null, model = null, receipt = null, json = false, bin, log = console.log }) {
+/**
+ * The /ship reviewer: one gate-mode review of `branch` against `base` in `root`. Returns the exit code (0 PASS,
+ * 1 STOP, 2 no verdict). Trust: the agent file comes from `base` (`git show`), never the branch's working tree; a
+ * diff that touches the reviewer's prompt or a Claude settings file gets no verdict; the call runs in a detached
+ * worktree at HEAD (no local settings file, `trustCwdSettings: false`) with no write tool and the narrow read-only Bash.
+ */
+export async function shipReview({ root = process.cwd(), branch, base, plan = null, model = null, json = false, bin, log = console.log }) {
   if (typeof branch !== 'string' || typeof base !== 'string') {
-    log('REVIEW: refused — usage: node scripts/lib/plan-review.mjs --branch <branch> --base <base> [--plan <file>] [--model <m>] [--receipt <file>] [--json]')
+    log('REVIEW: refused — usage: node scripts/lib/plan-review.mjs --branch <branch> --base <base> [--plan <file>] [--model <m>] [--json]')
     return 2
   }
-  const planPath = typeof plan === 'string' ? plan : planForBranch(root, branch)
+  const planPath = typeof plan === 'string' ? plan.replace(/\\/g, '/') : planForBranch(root, branch)
   if (!planPath || !existsSync(join(root, planPath))) {
     log(`REVIEW: refused — no plan file for ${branch} (name it with --plan <file>)`)
     return 2
   }
-  const agentFile = join(root, '.claude', 'agents', 'plan-reviewer.md')
-  if (!existsSync(agentFile)) {
-    log('REVIEW: refused — .claude/agents/plan-reviewer.md is missing')
+  const agentText = gitOut(root, 'show', `${base}:.claude/agents/plan-reviewer.md`)
+  if (agentText.status !== 0 || !agentText.out.trim()) {
+    log(`REVIEW: refused — ${base} has no .claude/agents/plan-reviewer.md (the reviewer's prompt is read from the base, never the branch)`)
     return 2
   }
-  const agent = readAgent(agentFile)
-  const useModel = typeof model === 'string' ? model : agent.model
-  if (/haiku/i.test(String(useModel ?? ''))) {
-    log(`REVIEW: refused — the reviewer never runs on Haiku (got ${useModel})`)
+  const diff = shipDiff(root, base, branch, planPath)
+  const tampered = diff.files.filter((f) => REVIEW_TAMPER_RE.test(f))
+  if (tampered.length) {
+    log(`REVIEW: no verdict — the diff changes ${tampered.join(', ')} (the reviewer's prompt or settings); review it with the checkers instead`)
     return 2
   }
-  const receiptFile = typeof receipt === 'string' ? receipt : shipGateReceiptPath(root)
-  let gate = { results: [] }
-  try { if (existsSync(receiptFile)) gate = JSON.parse(readFileSync(receiptFile, 'utf8')) } catch { /* no readable receipt: an empty one */ }
   const tmp = mkdtempSync(join(tmpdir(), 'ship-review-'))
+  const folder = join(tmp, 'tree')
   try {
+    const agentFile = join(tmp, 'plan-reviewer.md')
+    writeFileSync(agentFile, `${agentText.out}\n`)
+    const agent = readAgent(agentFile)
+    const useModel = typeof model === 'string' ? model : agent.model
+    if (/haiku/i.test(String(useModel ?? ''))) {
+      log(`REVIEW: refused — the reviewer never runs on Haiku (got ${useModel})`)
+      return 2
+    }
+    const { receipt, why } = readShipGateReceipt(root)
+    if (why) log(`  receipt: ${why}`)
     // The redacted plan lives in the OS temp folder (no run folder outside a run): the builder's notes never reach it.
     const planText = redactPlan(readFileSync(join(root, planPath), 'utf8'))
     writeFileSync(join(tmp, 'plan.md'), planText)
     const nnn = /(\d{3,4})-/.exec(planPath.split('/').pop())?.[1] ?? '?'
-    const diffText = shipDiff(root, base, branch)
-    // The folder is the shipping session's own checkout (not a builder's branch): its local settings are the Human's.
+    const add = gitOut(root, 'worktree', 'add', '--quiet', '--detach', folder, 'HEAD')
+    if (add.status !== 0) {
+      log(`REVIEW: could not run — git worktree add: ${add.err.trim().split(/\r?\n/).pop()}`)
+      return 2
+    }
     const r = await review({
-      agentFile, model: useModel, cwd: root, nnn, run: 'ship', planText, base, branch, diffText, receipt: gate, mode: 'gate',
-      call: (args) => runAgent({ ...args, agent, allow: true, trustCwdSettings: true, ...(bin ? { bin } : {}) }),
+      agentFile, model: useModel, cwd: folder, nnn, run: 'ship', planText, base, branch, diffText: diff.text, receipt: receipt ?? { results: [] }, mode: 'gate',
+      call: (args) => runAgent({ ...args, agent, allow: true, trustCwdSettings: false, ...(bin ? { bin } : {}) }),
     })
     if (!r.call.ok) {
       log(`REVIEW: could not run — ${r.call.error}`)
@@ -244,17 +310,18 @@ export async function shipReview({ root = process.cwd(), branch, base, plan = nu
     log(`REVIEW: ${r.verdict} — ${r.problems.length} problem(s), ${block.length} blocking (plan-reviewer on ${useModel ?? 'inherit'})`)
     for (const p of r.problems) log(`  ${problemLine(p)} — ${String(p.reasoning ?? '').split(/\r?\n/)[0]}`)
     if (r.note) log(`  note: ${r.note}`)
-    if (json) log(`REVIEW_JSON ${JSON.stringify({ verdict: r.verdict, problems: r.problems, model: useModel, plan: planPath, receipt: existsSync(receiptFile) ? receiptFile : null })}`)
+    if (json) log(`REVIEW_JSON ${JSON.stringify({ verdict: r.verdict, problems: r.problems, model: useModel, plan: planPath, receipt: Boolean(receipt) })}`)
     return r.verdict === 'PASS' ? 0 : 1
   } finally {
-    rmSync(tmp, { recursive: true, force: true })
+    if (existsSync(folder)) gitOut(root, 'worktree', 'remove', '--force', folder)
+    rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
   }
 }
 
 const isMain = Boolean(process.argv[1]) && resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 if (isMain) {
   const o = cliArgs(process.argv.slice(2))
-  shipReview({ branch: o.branch, base: o.base, plan: o.plan, model: o.model, receipt: o.receipt, json: Boolean(o.json) }).then(
+  shipReview({ branch: o.branch, base: o.base, plan: o.plan, model: o.model, json: Boolean(o.json) }).then(
     (code) => { process.exitCode = code },
     (e) => { console.log(`REVIEW: could not run — ${e?.message ?? e}`); process.exitCode = 2 },
   )
