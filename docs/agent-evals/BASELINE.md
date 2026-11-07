@@ -140,3 +140,9 @@ clean bug cases), so the reviewer is **not yet trustworthy as a blocking gate** 
 Critical Question). Raw reports: `runs/plan-reviewer-redact/`, `runs/plan-reviewer-redact-gate/`,
 `runs/plan-reviewer-opus-redact-gate/`; a first Sonnet run with 4 and 5 invalid results (before the prompt said `line`
 is one whole number) is kept in `runs/087-first-redact*/`.
+
+2026-11-07, plan 091 (fixed scorer: severity within one level, plan-step findings on `plan.md` unscored on bug and
+verify cases, the prompt says the diff is the whole change): plan-reviewer `--redact --with-gate` on Sonnet, 25 × 2 —
+recall 0.15, precision 0.29, noise 0.34, unscored 0, 0 errors, $2.51
+(`runs/plan-reviewer-sonnet-redact-gate-091/`). The rows above were scored with the old scorer and cannot be
+rescored. `orchestrator.reviewerModel` is `sonnet` (Human 2026-11-07). Details: `087-reviewer-ab.md` § fixed scorer.

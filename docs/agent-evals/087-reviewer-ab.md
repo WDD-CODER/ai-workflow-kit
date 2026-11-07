@@ -152,3 +152,49 @@ Before and after verify, inside this arm (same 50 runs, per finding with the sco
   about as much as the review call.
 
 No new REVIEWER: line — evidence for the Human's decision.
+
+## 2026-11-07 — fixed scorer (plan 091)
+
+New arm **sonnet-redact-gate-091** (`after` in the table): `node tools/agent-eval.mjs --agent .claude/agents/plan-reviewer.md --cases docs/agent-evals/cases --runs 2 --model sonnet --redact --with-gate --role all --case-list docs/agent-evals/baseline-2026-10-22.cases.txt --json`,
+run through a spend-capped wrapper of the same `claudeRunner()` (cap $6, outside the repo). 25 cases × 2 runs, 0 runner
+errors, 0 invalid results, no rerun. Report: `docs/agent-evals/runs/plan-reviewer-sonnet-redact-gate-091/plan-reviewer.json`.
+What changed against the earlier arms: severity matches within one level (blocker ~ major, major ~ minor); on
+`orch-check-bugs/` and `orch-verify/` cases a `plan.md` finding of category `done-when`, `scope` or a sub-task id is
+**unscored** (neither tp nor fp); the prompt says the diff is the whole change under review.
+
+**The earlier arms were scored with the old scorer** (exact severity, every plan.md finding scored, no diff sentence in
+the prompt); their raw findings were not kept, so they cannot be rescored — their rows below are as printed before
+(`n/a` unscored), not like-for-like with the new arm.
+
+Table (`node tools/agent-eval-ab.mjs --before docs/agent-evals/runs/087-checkers-sonnet-2026-10-22 --after docs/agent-evals/runs/plan-reviewer-sonnet-redact-gate-091 --arm redact=docs/agent-evals/runs/plan-reviewer-redact --arm redact-gate=docs/agent-evals/runs/plan-reviewer-redact-gate --arm opus-redact-gate=docs/agent-evals/runs/plan-reviewer-opus-redact-gate --arm sonnet-verify-redact-gate=docs/agent-evals/runs/plan-reviewer-verify-sonnet-redact-gate`):
+
+| Run | Recall | Precision | Noise | Unscored | Errors | Spread (recall / precision / noise) | Cost (USD) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| before | 0.28 | 0.28 | 0.44 | n/a | 1 | 0.00 / 0.00 / 0.00 | 6.41 |
+| redact | 0.20 | 0.09 | 0.79 | n/a | 0 | 0.22 / 0.08 / 0.00 | 5.50 |
+| redact-gate | 0.24 | 0.10 | 0.76 | n/a | 0 | 0.04 / 0.02 / 0.09 | 7.36 |
+| opus-redact-gate | 0.46 | 0.12 | 0.86 | n/a | 0 | 0.13 / 0.04 / 0.03 | 18.29 |
+| sonnet-verify-redact-gate | 0.13 | 0.10 | 0.67 | n/a | 0 | 0.00 / 0.01 / 0.02 | 4.99 |
+| after | 0.15 | 0.29 | 0.34 | 0 | 0 | 0.04 / 0.01 / 0.10 | 2.51 |
+
+Verdicts, after vs before:
+
+| Figure | Before | After | s | d | Verdict |
+| --- | --- | --- | --- | --- | --- |
+| recall | 0.28 | 0.15 | 0.04 | 0.09 | regressed |
+| precision | 0.28 | 0.29 | 0.01 | 0.05 | no real change |
+| noise | 0.44 | 0.34 | 0.10 | 0.20 | no real change |
+| errors | 1.00 | 0.00 | 0.00 | 2.00 | no real change |
+| cost | 0.26 | 0.10 | 0.00 | 0.00 | reported |
+
+- Exact totals: tp 7 / fn 39 / fp 17, unscored 0; recall 0.1522, precision 0.2917; per run recall 0.17 / 0.13,
+  precision 0.29 / 0.30; cost $2.51 ($2.02 run 1, $0.49 run 2; $0.10 per case).
+- Unscored is 0: with the diff sentence in the prompt the reviewer reported no plan-step finding on `plan.md` in a bug
+  or verify case, so the fp fall (97 in the earlier redact-gate arm → 17) comes from the prompt, not from the unscored rule.
+- By case role (tp / fn / fp): bugs 2 / 24 / 12 (14 cases), plan 1 / 9 / 3, rules 4 / 0 / 1, verify 0 / 6 / 1. The
+  reviewer now finds less on the bug cases; 12 of the 17 fp are on five planted / fixed bug cases (2–3 each), which may
+  be findings near the labelled bug that miss its line or rule — not checkable, the raw findings are not kept.
+- Precision 0.29 reaches the checkers' 0.28 (no real change by the tool's d = 0.05); recall 0.15 is below their 0.28
+  (regressed). Still far from the 0.50 that `orchestrator.reviewerMode` gate would need.
+
+REVIEWER: model=sonnet prompt=redact-gate scorer=091 precision=0.29 recall=0.15 — review.ship=reviewer when precision >= 0.28: yes
