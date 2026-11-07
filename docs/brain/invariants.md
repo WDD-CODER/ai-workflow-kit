@@ -16,8 +16,8 @@ Add only rules whose breakage users would feel; workflow choices stay prose ADRs
 Delete this file to switch the gate off.
 
 ## INV-1 — Judgment roles run on a pinned strong model
-- Rule: models.judgment names a model (default opus), never inherit; a failed plan's fresh builder and the first builder of a plan that names an invariant run on it; if that builder fails, the plan stops for the Human
-- Source: docs/brain/decisions/0016-judgment-roles-run-on-a-pinned-strong-model.md
+- Rule: models.judgment names a model (default opus), never inherit; a failed plan's fresh builder and the first builder of a plan whose Architecture Impact `changes` or `deviation`s an invariant run on it (`preserves` and `INV-none` start on `models.build`); if that builder fails, the plan stops for the Human
+- Source: docs/brain/decisions/0016-judgment-roles-run-on-a-pinned-strong-model.md; start-tier rule: docs/brain/decisions/0020-only-a-changed-invariant-starts-on-the-judgment-tier.md
 - Touches: `core/docs/agent/model-routing.md`, `core/scripts/run-plans.mjs`
 - Users lose if broken: a hard plan is judged or rebuilt by whatever model the session uses, so a weak model can approve or merge wrong work unnoticed
 - Test: tools/test/orchestrator.test.mjs "INV-1 …"

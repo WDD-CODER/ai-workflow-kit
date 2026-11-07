@@ -10,7 +10,7 @@ moves to a cheaper model.
 | --- | --- | --- | --- |
 | `mechanical` | `haiku` | Runs the commands it is given and reports in a fixed format | Interpret, fix, retry, judge |
 | `analysis` | `sonnet` | Gathers evidence with `file:line` for a question the main session asked | Decide pass/fail of a review, code quality, an architecture question |
-| `judgment` | `opus` | The builder that takes over a failed plan, and the first builder of a plan that names an invariant | — |
+| `judgment` | `opus` | The builder that takes over a failed plan, and the first builder of a plan that changes or deviates from an invariant (`preserves` starts on `build`) | — |
 | `build` | `sonnet` | Writes the code of one plan on its own branch (`orch-builder`) | Review its own work, merge, message the coordinator |
 | `review` | `sonnet` | Validates: the checkers, the verifier, the security and UI validators, the reviewer | Run on Haiku — install and sync refuse it |
 
