@@ -6,14 +6,14 @@
  *   node tools/instruction-load.mjs [--root <project folder>] [--max <lines>] [--json]
  *
  * Prints one line per file and `INSTRUCTION_LOAD: <sum> lines (max <max>) — ok | over`. Exit 0 at or under the
- * maximum (default 600), 1 above it, 2 when a file is missing. The seed of the kit's instruction budget test.
+ * maximum (default 800 for now), 1 above it, 2 when a file is missing. The seed of the kit's instruction budget test.
  */
 import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export const LOAD_FILES = ['AGENTS.md', '.claude/commands/take-plan.md', '.claude/commands/ship.md', 'docs/agent/job-validation.md', 'docs/agent/standards-git.md']
-export const DEFAULT_MAX = 600
+export const DEFAULT_MAX = 800 // Human 2026-11-07; back to 600 when job-validation.md is shortened
 
 /** Lines of a text the way `wc -l` counts them for a file that ends with a newline (a last line without one counts too). */
 export const lineCount = (text) => (text === '' ? 0 : text.replace(/\r\n/g, '\n').replace(/\n$/, '').split('\n').length)

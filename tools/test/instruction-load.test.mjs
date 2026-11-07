@@ -38,7 +38,7 @@ test('at or under the maximum: prints the sum and exits 0; above it: exits 1; a 
     assert.equal(instructionLoad(root).total, 500)
     const ok = spawnSync(process.execPath, [tool, '--root', root], { encoding: 'utf8' })
     assert.equal(ok.status, 0, ok.stdout)
-    assert.match(ok.stdout, /INSTRUCTION_LOAD: 500 lines \(max 600\) — ok/)
+    assert.match(ok.stdout, /INSTRUCTION_LOAD: 500 lines \(max 800\) — ok/)
     const edge = spawnSync(process.execPath, [tool, '--root', root, '--max', '500'], { encoding: 'utf8' })
     assert.equal(edge.status, 0, 'exactly at the maximum passes')
     const over = spawnSync(process.execPath, [tool, '--root', root, '--max', '499'], { encoding: 'utf8' })
