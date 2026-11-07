@@ -1,6 +1,6 @@
 # Plan 094 — kit-sync removes an override of a file the kit retired
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: 3f65bda387d77745ca7655782fa0be1b6c3a2664
 Source: Human, 2026-11-07 — FoodVibe1.0 kept `.claude/commands/auto-solve.md` (deleted by plan 090) through `kit-sync -Apply -Prune` because it was an override. Reliability fix, allowed in the freeze; no new capability.
