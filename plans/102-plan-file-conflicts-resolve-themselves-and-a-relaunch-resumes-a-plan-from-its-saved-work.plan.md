@@ -22,10 +22,11 @@ Source: the stops audit of 16 FoodVibe runs, mapped on 2026-11-08 (groups B and 
   - a section `## Plans changed during the run` in the report, with the diff of the plan file, cut to 40 lines;
   - one line under the plan's `## Execution Notes` on the run branch, `<date> changed during <run> in <commit>: <commit subject>`, committed by the merge step.
   A plan-file commit on a run branch whose subject has no reason (shorter than 10 characters after `plan(NNN):`) gives a run warning naming the commit.
-- [auto] `node --test tools/test/orchestrator-park-branch.test.mjs` passes, with a test that fails today: at plan start, a `feat/<NNN>` that is not based on the current run branch is renamed to `park/<old-run-or-stale>-<NNN>`, local and remote, and a fresh `feat/<NNN>` is cut. A run note names both branches. The dry run reports this as `WILL RENAME`, not as a refusal.
+- [auto] `node --test tools/test/orchestrator-park-branch.test.mjs` passes, with a test that fails today: at plan start, a `feat/<NNN>` that is stale by today's test (`staleBranchProblem`, `run-plans.mjs` l.420: neither it nor the run's base contains the other, and this run's `status.json` does not hold the plan) is renamed to `park/<old-run-or-stale>-<NNN>`, local and remote, and a fresh `feat/<NNN>` is cut. A run note names both branches. The dry run reports this as `WILL RENAME`, not as a refusal; the existing assertion `PROBLEM stale branch …` in `tools/test/run-plans.test.mjs` l.681 changes to `WILL RENAME`. A branch that is not stale keeps today's reuse (`orch-state.mjs worktree` merges the run branch into it and keeps the builder's work), and `tools/test/orchestrator-folders.test.mjs` passes unchanged.
 - [auto] `node --test tools/test/orchestrator-resume.test.mjs` passes, with tests that fail today:
   (d) a relaunched run whose plan has a `park/<run>-<NNN>` branch and a hand-off, and whose last stop is `process died`, `timed out`, `environment`, `rate-limit` or an answered question (plan 104), starts that plan from the park branch. The round counter and the tier continue, and the builder's prompt carries the hand-off;
-  (e) a plan parked for its own code (`same reason twice`, fix rounds used) is not resumed this way. It stays parked, as today.
+  (e) a plan parked for its own code (`same reason twice`, fix rounds used) is not resumed this way. It stays parked, as today;
+  (f) a relaunch with the same run name whose `feat/<NNN>` is based on this run branch and holds commits the run branch does not (the run died after the build; error-review run-095: 095 was built three times) reuses that branch and its hand-off: the next step is the gate on the existing commits, not a new builder from round 0.
 - [auto] `docs/agent/orchestrator.md` describes the plan-file rule, the rename at start and the resume rule.
 - [auto] `npm run build`, `npm run lint`, `npm test` and `node tools/drift-check.mjs --target .` pass (the builder runs the kit sync with apply first; it is a step, not a check).
 - [human] On the installed project, edit a plan file on the run branch while its builder works. The plan merges with no park, and the run note names the plan file (reply `ok`).
@@ -55,6 +56,7 @@ docs/agent/orchestrator.md
 tools/test/orchestrator-merge-plan-file.test.mjs
 tools/test/orchestrator-park-branch.test.mjs
 tools/test/orchestrator-resume.test.mjs
+tools/test/run-plans.test.mjs
 CHANGELOG.md
 docs/brain/error-review.md
 ```
@@ -73,18 +75,18 @@ the path to the scope block and retry.
 - INV-1: preserves — a resumed plan keeps the tier it stopped on; a plan that needed the judgment tier is resumed on it.
 
 ## Step 0 — Reality Check
-1. `lib/plan-merge.mjs` l.40–55: how a conflict is read (`diff --diff-filter=U`) and undone; the pin check (`merge-verify`) must still pass after a plan-file resolution. Check that it pins the plan branch's head, not the merge's content.
-2. `orch-state.mjs` `plan-info` (the `reused branch` path) and `park-save`, plus what plan 098 S8 added (the rename on park). The rename at start reuses that code.
-3. Where a relaunch rebuilds the done set (`order`, `runOrder` in `lib/run-order.mjs`) and where `ctx.round`, `ctx.tier`, `ctx.handoff` start (`run-plans.mjs` plan loop). The resume sets them from the park branch's hand-off file.
+1. `lib/plan-merge.mjs` `mergePlan` l.40–58 (checked at bf8926e): how a conflict is read (`diff --diff-filter=U` l.49) and undone (`merge --abort` l.50); the pin check (`merge-verify` l.53) must still pass after a plan-file resolution. Check that it pins the plan branch's head, not the merge's content.
+2. `orch-state.mjs` `plan-info` (l.837; the `reused branch` path l.905), `park-save` (l.1071) and what plan 098 S8 added: `park-branch` (l.519–530, the rename on park, called from `park` l.1161). The rename at start reuses that code. Plan 098's dry-run refusal of a stale branch is `run-plans.mjs` `staleBranchProblem` l.420: it becomes `WILL RENAME`.
+3. Where a relaunch rebuilds the done set (`runOrder` in `lib/run-order.mjs` l.18) and where the plan's context starts (`run-plans.mjs` l.593: `const ctx = { …, tier: l.start.tier, round: 0, … }`; there is no `ctx.handoff` today). The resume sets round, tier and the hand-off from the park branch's hand-off file (`.claude/sessions/orch-<run>/handoff-<NNN>.md`), or from `feat/<NNN>` for case (f).
 4. Plan 100's `stops[]`: the resume rule reads the plan's last stop from it.
 
 ## Atomic Sub-tasks
 - [ ] S1: Write the failing tests first for plan-file conflicts, other conflicts and the pre-build catch-up — cases (a)–(c) — tools/test/orchestrator-merge-plan-file.test.mjs
-- [ ] S2: Write the failing test that a stale branch is renamed at start, not refused — tools/test/orchestrator-park-branch.test.mjs
-- [ ] S3: Write the failing tests for resuming from saved work and for not resuming a plan that failed on its own code — cases (d), (e) — tools/test/orchestrator-resume.test.mjs
+- [ ] S2: Write the failing test that a stale branch is renamed at start, not refused — tools/test/orchestrator-park-branch.test.mjs, tools/test/run-plans.test.mjs (the dry-run assertion at l.681)
+- [ ] S3: Write the failing tests for resuming from saved work, for not resuming a plan that failed on its own code, and for a relaunch reusing a built branch — cases (d)–(f) — tools/test/orchestrator-resume.test.mjs
 - [ ] S4: Take the run branch's plan file in a merge and before a build — core/scripts/lib/plan-merge.mjs, core/scripts/run-plans.mjs
 - [ ] S5: Rename a stale plan branch at start and cut a fresh one — core/scripts/orch-state.mjs, core/scripts/run-plans.mjs
-- [ ] S6: Resume a stopped plan from its park branch with its round, tier and hand-off — core/scripts/run-plans.mjs, core/scripts/orch-state.mjs, core/scripts/plan-park.mjs
+- [ ] S6: Resume a stopped plan from its park branch or its built branch with its round, tier and hand-off — core/scripts/run-plans.mjs, core/scripts/orch-state.mjs, core/scripts/plan-park.mjs
 - [ ] S7: Describe the three rules — core/docs/agent/orchestrator.md
 - [ ] S8: Resync the installed copies, run every check, add the changelog entry — CHANGELOG.md
 

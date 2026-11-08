@@ -55,13 +55,19 @@ docs/agent/orchestrator.md
 core/.claude/agents/plan-reviewer.md
 .claude/agents/plan-reviewer.md
 docs/agent-evals/cases/**
+core/.claude/commands/plan.md
+.claude/commands/plan.md
+core/.claude/references/prd-template.md
+.claude/references/prd-template.md
+core/.claude/skills/save-plan/SKILL.md
+.claude/skills/save-plan/SKILL.md
 tools/test/scope-tests-gate.test.mjs
 tools/test/run-plans.test.mjs
 CHANGELOG.md
 docs/brain/error-review.md
 ```
 
-The planner's plan-writing doc is found in Step 0; if it is outside this list, STOP and offer `approved: <path>`.
+The plan-writing docs are `plan.md` l.68–70, `prd-template.md` l.32–33 and `save-plan/SKILL.md` (the `## Read-Write Scope` rule): each says "a code-folder glob does not cover the tests under it". `plan.md` is at 179 of its 180-line budget (`tools/size-budget.json` `commandLinesExcept`): reword in place and add no line.
 
 ## Read Scope
 
@@ -78,11 +84,11 @@ the path to the scope block and retry.
 - INV-none other expected — Step 0 confirms. If an invariant or ADR in `docs/brain/` states the rule "a code-folder glob never lists the tests under it", this plan changes it: STOP and ask the Human for `approve arch change INV-n` before S3.
 
 ## Step 0 — Reality Check
-1. `lib/plan-scope.mjs` l.44–81 (`isTestPath`, `testScopeGlobs`, `testFilesOutOfScope`, `testLocationReason`): the matcher is passed in; the sibling rule needs the scope globs and the changed file only, plus the diff for case (e).
-2. Every caller of `testFilesOutOfScope` (`grep -rn testFilesOutOfScope core/`): the run's gate (`scopeCheck` in `lib/plan-gate.mjs`), `orch-state.mjs diff`, `scope-check.mjs`; each passes the diff it already has, or gets it from git.
+1. `lib/plan-scope.mjs` l.55–82 (`isTestPath` l.55, `testScopeGlobs` l.61, `testLocationReason` l.70, `testFilesOutOfScope` l.78; checked at bf8926e): the matcher is passed in; the sibling rule needs the scope globs and the changed file only, plus the diff for case (e).
+2. Every caller of `testFilesOutOfScope` (`grep -rn testFilesOutOfScope core/`): `run-plans.mjs` `testsOutOfScope` l.412–415 (the dry run), `orch-state.mjs diff` l.1223 (`testsOutOfScope`), `scope-check.mjs` l.206. The gate's `scopeCheck` (`lib/plan-gate.mjs` l.39) checks the scope only and does not call it: find where the run's gate reads `testsOutOfScope` and keep that one path. Each caller passes the diff it already has, or gets it from git.
 3. `docs/brain/invariants.md` and `docs/brain/decisions/`: whether the test-location rule is an invariant or an ADR (see Architecture Impact).
-4. Which doc tells the planner how to write `## Read-Write Scope` (the plan template or the planner agent file).
-5. Plan 098 S7 (the dry run runs the gate's test-file check): the readiness check of this plan extends that call, not a copy of it.
+4. The plan-writing docs are named under the scope block; `lib/scope-tests-lint.mjs` (the save-plan warning) keeps warning when a scope names code and no test location, since a test outside the same folder still needs a line.
+5. Plan 098 S7 (the dry run runs the gate's test-file check, `run-plans.mjs` `testsOutOfScope` l.412): the readiness check of this plan extends that call, not a copy of it.
 
 ## Atomic Sub-tasks
 - [ ] S1: Write the failing tests first for siblings, globs, non-siblings, the same-folder rule and a weakened test — cases (a)–(e) — tools/test/scope-tests-gate.test.mjs
@@ -91,7 +97,7 @@ the path to the scope block and retry.
 - [ ] S4: Give every caller the diff it needs for the weakened-test check — core/scripts/lib/plan-gate.mjs, core/scripts/orch-state.mjs, core/scripts/scope-check.mjs
 - [ ] S5: Flag before the build the test locations a plan names but its scope doesn't cover — core/scripts/run-plans.mjs
 - [ ] S5b: Make the reviewer stop a test made easier to pass, with an eval case of a loosened matcher and one of a skipped test — core/.claude/agents/plan-reviewer.md, docs/agent-evals/cases/**
-- [ ] S6: Tell the planner and the docs the new rule — the plan-writing doc found in Step 0, core/docs/agent/orchestrator.md
+- [ ] S6: Tell the planner and the docs the new rule — core/.claude/commands/plan.md (no added line), core/.claude/references/prd-template.md, core/.claude/skills/save-plan/SKILL.md, core/docs/agent/orchestrator.md
 - [ ] S7: Resync the installed copies, run every check, add the changelog entry — CHANGELOG.md
 
 ## Technical Considerations
