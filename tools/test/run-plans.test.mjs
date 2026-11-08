@@ -305,24 +305,22 @@ test('plan-gate: the command list is prepare, project checks, manifest, scope, t
 test('config: reviewerMode, reviewerModel (never Haiku) and rateLimitWaitMin are bounded; the scaffold defaults pass', async () => {
   const { orchestratorProblems } = await import(pathToFileURL(join(kit, 'tools', 'lib', 'kit.mjs')).href)
   const scaffold = JSON.parse(readFileSync(join(kit, 'kit.config.json'), 'utf8')).orchestrator
-  assert.deepEqual([scaffold.reviewerMode, scaffold.reviewerModel, scaffold.rateLimitWaitMin, scaffold.builderIdleMin], ['gate', 'sonnet', 30, 15])
+  assert.deepEqual([scaffold.reviewerMode, scaffold.reviewerModel, scaffold.rateLimitWaitMin], ['gate', 'sonnet', 30])
   assert.equal(scaffold.builderTimeoutMin, undefined, 'no wall-clock builder limit in the scaffold')
-  assert.deepEqual(orchestratorProblems({ 'orchestrator.builderIdleMin': 15 }), [], 'the new key is not refused')
+  assert.equal(scaffold.builderIdleMin, undefined, 'the idle limit is fixed in run-plans.mjs, not a setting')
   assert.deepEqual(orchestratorProblems({ 'orchestrator.reviewerMode': 'gate', 'orchestrator.reviewerModel': 'sonnet', 'orchestrator.rateLimitWaitMin': 0 }), [])
   assert.match(orchestratorProblems({ 'orchestrator.reviewerMode': 'loud' }).join(), /reviewerMode is "loud"/)
   for (const m of ['haiku', 'claude-haiku-5-5', 'gpt']) assert.match(orchestratorProblems({ 'orchestrator.reviewerModel': m }).join(), /reviewerModel/)
   for (const w of [-1, 601, 1.5, '30']) assert.match(orchestratorProblems({ 'orchestrator.rateLimitWaitMin': w }).join(), /rateLimitWaitMin/)
 })
 
-test('098 (a) [F10] the builder has no wall clock, only an idle limit (builderIdleMin, 1-120, else 15); the gate keeps gateTimeoutMin', () => {
-  assert.equal(runPlans.builderIdleMin(15), 15)
-  assert.equal(runPlans.builderIdleMin(120), 120)
-  for (const v of [null, undefined, '', 0, 121, 1.5, 'x']) assert.equal(runPlans.builderIdleMin(v), 15, String(v))
+test('098 (a) [F10] the builder has no wall clock, only a fixed 15-min idle limit; the gate keeps gateTimeoutMin', () => {
+  assert.equal(runPlans.BUILDER_IDLE_MIN, 15)
   const src = readFileSync(join(kit, 'scripts', 'run-plans.mjs'), 'utf8')
   assert.match(src, /runAgent\(\{ \.\.\.call\.opts, cwd: wt, prompt, timeoutMs: 0, idleMs: BUILDER_IDLE_MS, watchDir: wt,/)
   assert.doesNotMatch(src, /runAgent\(\{ \.\.\.call\.opts[^\n]*GATE_TIMEOUT_MIN/, 'the builder never gets the gate\'s timeout')
   assert.match(src, /runGate\(\{ folder: wt, commands: l\.checks, timeoutMin: GATE_TIMEOUT_MIN/)
-  assert.match(src, /const BUILDER_IDLE_MIN = builderIdleMin\(15\)/, 'the installed copy renders the scaffold default')
+  assert.match(src, /RUN_PLANS_BUILDER_IDLE_MS/, 'a test-only override, no setting')
 })
 
 test('098 (a) [F10] spawnClaude: a call that keeps changing files outlives the idle limit; a silent one is stopped idle', async () => {
@@ -556,6 +554,26 @@ test('095 (a)(b)(c) Reviewer: advisory never applies to a sensitive diff: a STOP
   const sc = p.status('sens-c')
   assert.equal(sc.plans['492'].state, 'merged', c.out)
   assert.ok(sc.notes.some((n) => n.plan === '492' && /advisory review STOP \(not enforced\)/.test(n.text)), JSON.stringify(sc.notes))
+})
+
+test('099 (a) a run writes its own console log and a second launch appends to it; (b) status.json names the model of every call', () => {
+  p.addPlans({ 500: toyPlan(500) })
+  const first = p.runPlans(['--run', 'seen', '--plans', '500'])
+  const log = join(p.proj, '.claude', 'orchestrator-runs', 'seen.console.log')
+  assert.ok(existsSync(log), first.out)
+  const one = readFileSync(log, 'utf8')
+  assert.match(one, /RUN_PLANS: launch .* --run seen --plans 500/)
+  assert.match(one, /RUN_PLANS: plan 500 merged into orch\/seen/)
+  const st = p.status('seen')
+  const m = st.plans['500'].models
+  assert.ok(m.builder && m.builder.model && m.builder.tier === 'build' && m.builder.at, JSON.stringify(m))
+  assert.ok(m.reviewer && m.reviewer.model, JSON.stringify(m))
+  p.runPlans(['--run', 'seen', '--plans', '500'])
+  const two = readFileSync(log, 'utf8')
+  assert.ok(two.startsWith(one), 'the first launch\'s lines are still there')
+  assert.equal((two.match(/RUN_PLANS: launch /g) ?? []).length, 2)
+  p.runPlans(['--dry-run', '--run', 'seen-dry', '--plans', '500'])
+  assert.ok(!existsSync(join(p.proj, '.claude', 'orchestrator-runs', 'seen-dry.console.log')), 'a dry run writes no log')
 })
 
 /** A `claude` whose builder runs `builder` (JS lines; `plan`, `git`, `answer` in scope); the reviewer is the fake's. */

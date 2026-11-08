@@ -66,6 +66,7 @@ tools/test/orchestrator.test.mjs
 tools/test/decision-log.test.mjs
 CHANGELOG.md
 docs/brain/error-review.md
+tools/install-check.mjs
 ```
 
 Ten source files plus the two append-only logs; the other lines are the copies `sync` writes.

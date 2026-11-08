@@ -23,20 +23,12 @@ reviewer are model calls. This command starts no workflow and no agent; it runs 
 
 ## 2. Start the run at once
 
-After `WOULD START: yes`, run this line at once with `run_in_background` — ask for no reply, the dry run was the
-check:
-
-```
-node scripts/run-plans.mjs --run <run> --plans <NNN,NNN>
-```
-
-Print the line that follows the run from any terminal (the main folder's absolute path, quoted):
-
-```
-cd "<main folder>"; node scripts/orch-state.mjs watch --run <run>
-```
-
-Do not poll it; when it ends, go to 4.
+After `WOULD START: yes`, run it at once with `run_in_background` (no reply asked; the dry run was the check):
+`node scripts/run-plans.mjs --run <run> --plans <NNN,NNN>`. Beside a run still running, a second one starts only
+with 4 GB of free memory (`node -e "console.log(Math.floor(require('os').freemem() / 2 ** 30))"`), else it waits.
+Print the watch line (one line per plan: state, round, tier and model, minutes in it, last `calls.csv` row; the run's
+own log is `.claude/orchestrator-runs/<run>.console.log`, appended):
+`cd "<main folder>"; node scripts/orch-state.mjs watch --run <run>`. Do not poll; when it ends, go to 4.
 
 ## 3. A run the harness killed
 
@@ -51,3 +43,10 @@ Read `.claude/orchestrator-runs/<run>/status.json` and print: merged, parked (ea
 its reason), `stopReason` when set, the report (`.claude/orchestrator-runs/<run>.md`) and `calls.csv` beside the status
 file. A run stopped with `rate-limit` is relaunched with the same command after the limit resets (merged plans are left
 out). The Human merges `{{orchestrator.runBranchPrefix}}<run>`; never merge it, never touch `{{git.mainBranch}}`.
+
+## 5. The cards — without being asked
+
+Right after 4, when the report lists human items: a card that needs the app → serve the run branch in an idle slot
+(`node scripts/slot-serve.mjs --ref {{orchestrator.runBranchPrefix}}<run>`); check every card URL answers (fix a failed
+start first); print the cards (`docs/agent/job-validation.md` → Format) at once, never after a `cards` reply; when
+the Human replies, check the URLs answer again.

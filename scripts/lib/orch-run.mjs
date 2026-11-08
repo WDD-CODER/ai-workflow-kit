@@ -165,6 +165,23 @@ export function watchLine(status, { nowMs, staleMin }) {
   return { line: 'RUNNING', stuck: false }
 }
 
+/**
+ * One `watch` line per plan of a run: state, round, tier and the model of its latest call, the minutes since its last
+ * state change, and its last calls.csv row. `calls` is calls.csv's text (or ''). Plans in number order.
+ */
+export function planLines(status, { nowMs, calls = '' }) {
+  const rows = String(calls).split(/\r?\n/).slice(1).filter(Boolean)
+  const lastRow = (nnn) => rows.filter((r) => r.split(',')[0] === String(nnn)).at(-1) ?? null
+  const plans = Object.values(status?.plans ?? {}).sort((a, b) => Number(a.nnn) - Number(b.nnn))
+  return plans.map((p) => {
+    const since = Date.parse((p.history ?? []).at(-1)?.at ?? '')
+    const min = Number.isFinite(since) ? Math.max(0, Math.floor((nowMs - since) / 60000)) : null
+    const latest = Object.entries(p.models ?? {}).sort((a, b) => (Date.parse(b[1]?.at ?? '') || 0) - (Date.parse(a[1]?.at ?? '') || 0))[0]
+    const model = latest ? `${latest[0]} ${latest[1].model}` : 'no call yet'
+    return `  ${p.nnn} ${p.state ?? '?'} · round ${p.round ?? 0} · tier ${p.tier ?? '-'} · ${model} · ${min === null ? '?' : min} min in this state · last call: ${lastRow(p.nnn) ?? 'none'}`
+  })
+}
+
 // ---- UI environment (orch-preflight.mjs --ui) ----------------------------------------------------------------------
 // Each takes what a request returned — { status, allowOrigin } or { error } — and says what blocks the browser step.
 const originOf = (url) => {

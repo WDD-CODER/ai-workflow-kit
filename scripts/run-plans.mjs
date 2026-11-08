@@ -52,15 +52,9 @@ const PREPARE = []
 const CI_MIRROR = ["node tools/pack-check.mjs","node tools/drift-check.mjs --target .","node tools/install-check.mjs","node tools/workflow-link-check.mjs","node tools/e2e-check.mjs","node tools/acceptance-check.mjs --e2e"]
 const MERGE_CHECKS_MODE = "build"
 const GATE_TIMEOUT_MIN = Number(45) || 15
-/**
- * orchestrator.builderIdleMin: a whole number of minutes from 1 to 120, else 15. A builder has no wall-clock limit; it is
- * stopped only after this many minutes in which no file in its folder changed (lib/claude-run.mjs spawnClaude).
- */
-export function builderIdleMin(v) {
-  const n = Number(v)
-  return v !== null && v !== '' && Number.isInteger(n) && n >= 1 && n <= 120 ? n : 15
-}
-const BUILDER_IDLE_MIN = builderIdleMin(15)
+// A builder has no wall-clock limit: it is stopped only after this many minutes in which no file in its folder changed
+// (lib/claude-run.mjs spawnClaude). A fixed value, not a setting (the orchestrator settings are capped in size-budget.json).
+export const BUILDER_IDLE_MIN = 15
 // RUN_PLANS_BUILDER_IDLE_MS and RUN_PLANS_BUILDER_POLL_MS (tests only) replace them, like RUN_PLANS_CLAUDE replaces claude.
 const BUILDER_IDLE_MS = Number(process.env.RUN_PLANS_BUILDER_IDLE_MS) > 0 ? Number(process.env.RUN_PLANS_BUILDER_IDLE_MS) : BUILDER_IDLE_MIN * 60_000
 const BUILDER_POLL_MS = Number(process.env.RUN_PLANS_BUILDER_POLL_MS) > 0 ? Number(process.env.RUN_PLANS_BUILDER_POLL_MS) : 30_000
@@ -255,7 +249,19 @@ export function optionProblems({ nnn, planText, opts, runPlans }) {
 
 // ---- small helpers ----------------------------------------------------------------------------------------------
 const nowIso = () => new Date().toISOString()
-const say = (line) => console.log(line)
+// A real run appends every line it prints to .claude/orchestrator-runs/<run>.console.log (consoleLog below), so the
+// run keeps its own log: a relaunch adds to it, a kill keeps every line up to the kill.
+let CONSOLE_LOG = null
+export function consoleLogPath(root, run) {
+  return join(root, '.claude', 'orchestrator-runs', `${run}.console.log`)
+}
+const say = (line) => {
+  console.log(line)
+  if (!CONSOLE_LOG) return
+  try {
+    appendFileSync(CONSOLE_LOG, `${line}\n`)
+  } catch { /* the log is a convenience; the run goes on */ }
+}
 const b64 = (s) => Buffer.from(String(s), 'utf8').toString('base64')
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const lastLine = (s) => String(s ?? '').split('\n').map((l) => l.trim()).filter(Boolean).pop() ?? ''
@@ -450,6 +456,11 @@ async function main() {
   const o = parsed.opts
   const RUN = o.run
   const RUN_BRANCH = `${RUN_PREFIX}${RUN}`
+  if (!o.dryRun) {
+    CONSOLE_LOG = consoleLogPath(ROOT, RUN)
+    mkdirSync(dirname(CONSOLE_LOG), { recursive: true })
+    say(`RUN_PLANS: launch ${nowIso()} · ${process.argv.slice(2).join(' ')}`)
+  }
   const agentsDir = join(ROOT, '.claude', 'agents')
   const builderAgent = readAgent(join(agentsDir, 'orch-builder.md'))
   const reviewerAgent = readAgent(join(agentsDir, 'plan-reviewer.md'))
@@ -554,9 +565,11 @@ async function main() {
   }
 
   /** One model call with the rate-limit pause: { r } or throws RunStop on a second limit. */
-  const modelCall = async (nnn, stage, fn) => {
+  const modelCall = async (nnn, stage, fn, { model: planned = null, tier = null } = {}) => {
     for (let attempt = 1; ; attempt++) {
       if (stopReason) throw new RunStop(stopReason)
+      // status.json says which model this call runs on while it runs: plans.<NNN>.models.<stage>.
+      if (planned) setPlan(nnn, { role: stage, model: planned, ...(tier ? { 'model-tier': tier } : {}) })
       const r = await fn()
       // The model passed after --model on this call, never one the answer names.
       const model = passedModel(r.argv, r.model ?? '')
@@ -606,8 +619,8 @@ async function main() {
       const call = builderCall({ agent: builderAgent, tier: ctx.tier, reason: ctx.tierReason, settings: guardSettings })
       const prompt = builderPrompt({ RUN, RUN_BRANCH, ctx, l, LESSONS })
       say(`RUN_PLANS: plan ${nnn} ${stage} (${call.model}, tier ${call.tier}: ${call.reason}, round ${ctx.round})`)
-      // No wall clock for a builder: only the idle limit (orchestrator.builderIdleMin) on its folder's file changes.
-      const b = await modelCall(nnn, stage, () => runAgent({ ...call.opts, cwd: wt, prompt, timeoutMs: 0, idleMs: BUILDER_IDLE_MS, watchDir: wt, pollMs: BUILDER_POLL_MS, bin: o.claude }))
+      // No wall clock for a builder: only the idle limit (BUILDER_IDLE_MIN) on its folder's file changes.
+      const b = await modelCall(nnn, stage, () => runAgent({ ...call.opts, cwd: wt, prompt, timeoutMs: 0, idleMs: BUILDER_IDLE_MS, watchDir: wt, pollMs: BUILDER_POLL_MS, bin: o.claude }), { model: call.model, tier: call.tier })
       let result = null
       try {
         result = b.ok ? parseResult(b.text) : null
@@ -933,7 +946,7 @@ async function reviewIn({ nnn, RUN, RUN_BRANCH, branch, checkedHead, reviewPath,
       call: async (args) => {
         // allow: the reviewer is read-only, so only its read tools are pre-approved (no Bash); trustCwdSettings false: the
         // folder is the branch under review, and a .claude/settings.local.json in it refuses the call.
-        callAnswer = await modelCall(nnn, 'reviewer', () => runAgent({ ...args, agent: reviewerAgent, timeoutMs: REVIEW_TIMEOUT_MIN * 60_000, bin, allow: true, trustCwdSettings: false }))
+        callAnswer = await modelCall(nnn, 'reviewer', () => runAgent({ ...args, agent: reviewerAgent, timeoutMs: REVIEW_TIMEOUT_MIN * 60_000, bin, allow: true, trustCwdSettings: false }), { model: REVIEW_MODEL })
         return callAnswer
       },
     })

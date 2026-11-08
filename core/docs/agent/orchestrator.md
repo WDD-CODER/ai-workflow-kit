@@ -36,12 +36,11 @@ now are ignored by install and sync with a `NOTE orchestrator: <key> removed` li
 | `minFreeDiskGb` | `{{orchestrator.minFreeDiskGb}}` | Free disk the environment check asks for, before the run and before a retry |
 | `onPark` | `{{orchestrator.onPark}}` | What a parked plan stops: `dependents` = only the later plans that depend on it or share its files (each is `skipped` with the reason), `all` = every later plan |
 | `gateTimeoutMin` | `{{orchestrator.gateTimeoutMin}}` | Minutes one gate command (and one `prepare` script) may run |
-| `builderIdleMin` | `{{orchestrator.builderIdleMin}}` | A builder has no wall-clock limit: it is stopped only after this many minutes in which no file in its folder changed (`node_modules` and `.git` left out; 1–120, else 15). A builder stopped idle parks the plan with its work kept on `park/<run>-<NNN>` |
 | `staleMin` | `{{orchestrator.staleMin}}` | Minutes without a `status.json` update after which `orch-state.mjs watch` prints `STUCK` |
 | `mergeChecks` | `{{orchestrator.mergeChecks}}` | What the merge step runs on the merged tree: `build` = the project build plus the plan's scope check, `full` = the plan's whole check list on every merge |
 | `ciMirror` | `{{orchestrator.ciMirror|json}}` | CI commands (`npm run <script>`, `pnpm run <script>`, `node scripts/…` or `node tools/…`, no write flag) the final gate runs after the project checks and the kit manifest check. Install and sync print a `NOTE ci-mirror:` line for each CI command the final gate does not run; they never write the list |
 | `prepare` | `{{orchestrator.prepare|json}}` | Files the gate generates before the tests: `{ "missing": "<path>", "script": "<npm script>", "in": "<folder, default .>" }`, run as `node scripts/orch-state.mjs prepare …` first in every plan gate and the final gate, only when the path is absent |
-| `useSlots` | `{{orchestrator.useSlots|json}}` | Whether a builder takes an idle `{{slots.nameFormat}}` slot before making its own folder |
+| `useSlots` | `{{orchestrator.useSlots|json}}` | Whether a builder takes an idle `{{slots.nameFormat}}` slot before making its own folder. The scaffold says `false`: builders get folders of their own (one per plan in flight, at most `concurrency`), and the Human's slots stay free |
 | `reviewerMode` | `{{orchestrator.reviewerMode}}` | What a reviewer STOP does (default `gate`): `advisory` = a run note, the plan still merges; `gate` = one fix round with the findings, then the plan parks (and a review that could not run parks). `advisory` applies only to a plan whose `## Execution Mode` says `Reviewer: advisory` (any other plan is reviewed as `gate`), and never to a diff that touches a sensitive path (ship-prep's check, `security.sensitivePaths` included): that diff is always `gate`. `--reviewer-mode` overrides it for one run, within the same two rules |
 | `reviewerModel` | `{{orchestrator.reviewerModel}}` | The model `.claude/agents/plan-reviewer.md` runs on (`--model`). Never Haiku: install and sync refuse it |
 | `rateLimitWaitMin` | `{{orchestrator.rateLimitWaitMin}}` | Minutes to wait after a rate or usage limit before that call runs once more; a second limit stops the run (`stopped: rate-limit`) |
@@ -51,7 +50,11 @@ now are ignored by install and sync with a `NOTE orchestrator: <key> removed` li
 `node scripts/run-plans.mjs --run <run> --plans <NNN,NNN>`: `/orchestrate` starts it in the background as soon as the
 dry run says `WOULD START: yes` (no reply asked for), and relaunches it once, after `orch-state.mjs stop`, when the
 harness kills it (a second kill stops and is reported). The Human follows it with
-`cd "<main folder>"; node scripts/orch-state.mjs watch --run <run>`. Every step is code except the two marked **model**.
+`cd "<main folder>"; node scripts/orch-state.mjs watch --run <run>`: one line for the run, then one per plan (state,
+round, tier and the model of its latest call, minutes in that state, its last `calls.csv` row). `status.json` holds
+`plans.<NNN>.models.<stage>` (model, tier, start time) from the moment each call starts, and a real run appends every
+line it prints to `.claude/orchestrator-runs/<run>.console.log` (a relaunch adds to it). Every step is code except the
+two marked **model**.
 
 1. **Readiness lint.** `plan-order.mjs --json` gives the waves (plans already merged into the run branch are left
    out). Per plan: `scope-check.mjs --deps`, `--arch` and `--tags`; the branch name; an open `Q:` in `## Critical
@@ -85,7 +88,7 @@ harness kills it (a second kill stops and is reported). The Human follows it wit
      `handoff --reset-base` and one fresh judgment-tier builder; the same reason twice, or a failure after that,
      parks the plan (`orch-state.mjs park`: the work saved on `park/<run>-<NNN>`, the folder removed, and `feat/<NNN>`
      renamed to `park/<run>-<NNN>` here and on origin, so the next run cuts a fresh branch).
-   - **Parked at once, no further model call:** a builder stopped by `builderIdleMin` (its work is kept on
+   - **Parked at once, no further model call:** a builder stopped idle — no wall clock; 15 minutes with no file changed in its folder, `node_modules` and `.git` left out (its work is kept on
      `park/<run>-<NNN>`, never reset), and a builder `ESCALATE` about the scope (a file outside the Read-Write Scope,
      an `approved:` path) — `replan needed: …`: a judgment-tier builder cannot widen a plan's scope either. A park skips
      only what `onPark` names; the run goes on.
@@ -119,7 +122,11 @@ is refused when the review folder holds a `.claude/settings.local.json`.
   the last two hours) or one whose scope overlaps it. After a crash, `orch-state.mjs stop --run <run> --reason "<why>"`.
 - `free-merged-slots` leaves every slot a live run holds alone, and removes a merged run's merge folder
   (`<repo>-orch-merge-<run>`) once it is clean and its branch is merged.
-- To validate a run branch in an idle slot: `node scripts/slot-serve.mjs --ref <branch>` there.
+- To validate a run branch in an idle slot: `node scripts/slot-serve.mjs --ref <branch>` there. `/orchestrate` does it
+  itself at a run's end when a card needs the app, checks every card URL answers, and prints the cards unasked.
+- `decision-log.mjs grade` refuses a folder on `{{git.mainBranch}}` (exit 2, naming `<repo>-orch-merge-<run>`): the
+  grades are committed on the run branch, never on `{{git.mainBranch}}`.
+- A second run beside a running one starts only with at least 4 GB of free memory.
 
 ## State rules
 

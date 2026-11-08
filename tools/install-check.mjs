@@ -987,7 +987,7 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
       if (!existsSync(join(od, f))) fail(`orchestrator: install did not copy ${f}`)
     }
     const rp = read(od, 'scripts/run-plans.mjs')
-    if (!rp.includes('const REVIEWER_MODE = "advisory"') || !rp.includes('const REVIEWER_MODEL = "sonnet"') || !rp.includes('Number(30)')) fail('orchestrator: run-plans.mjs does not render reviewerMode "advisory" / reviewerModel "sonnet" / rateLimitWaitMin 30')
+    if (!rp.includes('const REVIEWER_MODE = "gate"') || !rp.includes('const REVIEWER_MODEL = "sonnet"') || !rp.includes('Number(30)')) fail('orchestrator: run-plans.mjs does not render reviewerMode "gate" / reviewerModel "sonnet" / rateLimitWaitMin 30')
     if (!rp.includes('const PREPARE = []') || !rp.includes('const CI_MIRROR = []')) fail('orchestrator: run-plans.mjs does not render prepare [] / ciMirror []')
     if (/\{\{[\w.|]+\}\}/.test(rp)) fail(`orchestrator: run-plans.mjs keeps a placeholder: ${/\{\{[\w.|]+\}\}/.exec(rp)[0]}`)
     const doc0 = (d) => read(d, 'docs/agent/orchestrator.md')
@@ -1005,7 +1005,7 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     if (!read(od, 'scripts/orch-state.mjs').includes('const MIN_FREE_GB = 5')) fail('orchestrator: orch-state.mjs does not render minFreeDiskGb 5')
     const doc = read(od, 'docs/agent/orchestrator.md')
     if (!doc.includes('| `runBranchPrefix` | `orch/` |') || !doc.includes('| `maxFixRounds` | `2` |') || !doc.includes('| `minFreeDiskGb` | `5` |') || !doc.includes('| `staleMin` | `10` |')) fail('orchestrator: orchestrator.md does not name the default settings')
-    if (!doc.includes('| `reviewerMode` | `advisory` |') || !doc.includes('| `reviewerModel` | `sonnet` |') || !doc.includes('| `rateLimitWaitMin` | `30` |')) fail('orchestrator: orchestrator.md does not name the run-plans settings (reviewerMode, reviewerModel, rateLimitWaitMin)')
+    if (!doc.includes('| `reviewerMode` | `gate` |') || !doc.includes('| `reviewerModel` | `sonnet` |') || !doc.includes('| `rateLimitWaitMin` | `30` |')) fail('orchestrator: orchestrator.md does not name the run-plans settings (reviewerMode, reviewerModel, rateLimitWaitMin)')
     // Plan 088: the retired keys have no settings row; the doc says they are removed.
     if (/^\| `(pilotSize|fallbackModel|maxNotesPerPlan|maxAgentCallsPerPlan|triage|triageMinAgreement|triageMinGraded)` \|/m.test(doc) || !doc.includes('NOTE orchestrator: <key> removed')) fail('orchestrator: orchestrator.md still lists a retired key as a setting, or does not say they are removed')
     if (!doc.includes('| `mergeChecks` | `build` |')) fail('orchestrator: orchestrator.md does not name mergeChecks "build"')

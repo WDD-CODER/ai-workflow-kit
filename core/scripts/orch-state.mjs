@@ -74,7 +74,7 @@ import { uiItems } from './lib/done-when.mjs'
 import { listSlots } from './lib/slot.mjs'
 import { ensureDeps, idleSlot, claimSlot, releaseSlot, releaseRunSlots } from './lib/orch-folders.mjs'
 import { agreementStats, addLesson, lessonParts, ruleLines, LESSON_ROLES } from './decision-log.mjs'
-import { planWithoutNotes, triageForce, triageView, decisionsInView, mergePlanFile, decisionType, runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine, logQueryArgs, lessonFacts, runLogRow, updateRunLog, parseRunLog, parseDecisionRows, trendOf, contextBudget, INJECTED_ROLES } from './lib/orch-run.mjs'
+import { planWithoutNotes, triageForce, triageView, decisionsInView, mergePlanFile, decisionType, runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine, planLines, logQueryArgs, lessonFacts, runLogRow, updateRunLog, parseRunLog, parseDecisionRows, trendOf, contextBudget, INJECTED_ROLES } from './lib/orch-run.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const MAIN = '{{git.mainBranch}}'
@@ -82,6 +82,8 @@ const PREFIX = '{{orchestrator.runBranchPrefix}}'
 const MIN_FREE_GB = {{orchestrator.minFreeDiskGb|json}}
 const REPO = '{{project.repoName}}'
 const PM = '{{project.packageManager}}' === 'pnpm' ? 'pnpm' : 'npm'
+// Builders take a Human's wt-N slot only when a project sets orchestrator.useSlots to true (the scaffold says false);
+// otherwise they get folders of their own (one per plan in flight, so at most orchestrator.concurrency at once).
 const USE_SLOTS = {{orchestrator.useSlots|json}} !== false
 const SERVER_ROOT = '{{paths.serverRoot}}'
 // Minutes without a status.json update after which `watch` prints STUCK (orchestrator.staleMin).
@@ -122,7 +124,9 @@ const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tie
   // switches (no value needed; `--key=<value>` is accepted too): plan-info's redacted copy, handoff's reset to the base
   'no-notes', 'reset-base',
   // run-plans.mjs: the model calls of a step (base64 JSON list of { stage, model, seconds, input, output, exit })
-  'calls-b64'])
+  'calls-b64',
+  // run-plans.mjs: the tier of the model a call starts on (with --role/--model)
+  'model-tier'])
 const SWITCHES = new Set(['no-notes', 'reset-base'])
 function parseArgs(argv) {
   const out = { _: [] }
@@ -1255,7 +1259,9 @@ const commands = {
       p.checkedHead = String(args['checked-head'])
     }
     p.models ??= {}
-    if (args.role) p.models[String(args.role)] = { model: String(args.model ?? 'unknown'), ...(args.effort ? { effort: String(args.effort) } : {}) }
+    // --role <stage> --model <m> [--model-tier <tier>]: the model a call of this plan runs on, set when the call starts
+    // (`at`), so `watch` and status.json show it while the call runs.
+    if (args.role) p.models[String(args.role)] = { model: String(args.model ?? 'unknown'), ...(args.effort ? { effort: String(args.effort) } : {}), ...(args['model-tier'] && args['model-tier'] !== true ? { tier: String(args['model-tier']) } : {}), at: new Date().toISOString() }
     // --roles orch-builder=sonnet/medium,plan-reviewer=sonnet/medium: the model each agent of this step echoed.
     if (args.roles && args.roles !== true) {
       for (const item of String(args.roles).split(',').filter(Boolean)) {
@@ -1545,7 +1551,10 @@ const commands = {
     const staleMin = args['stale-min'] !== undefined ? Number(args['stale-min']) : STALE_MIN
     if (!(Number.isFinite(staleMin) && staleMin > 0)) fail('--stale-min takes a number of minutes')
     const w = watchLine(status, { nowMs: Date.now(), staleMin })
-    emit({ ok: !w.stuck, stuck: w.stuck, line: w.line, phase: status.phase ?? 'unknown', updatedAt: status.updatedAt ?? null }, [w.line])
+    // One line per plan under the run's line: stage, round, tier + model, minutes in that stage, the last calls.csv row.
+    const csv = join(runsDir(), run, 'calls.csv')
+    const perPlan = planLines(status, { nowMs: Date.now(), calls: existsSync(csv) ? readFileSync(csv, 'utf8') : '' })
+    emit({ ok: !w.stuck, stuck: w.stuck, line: w.line, phase: status.phase ?? 'unknown', updatedAt: status.updatedAt ?? null }, [w.line, ...perPlan])
   },
 
   disk() {
