@@ -677,9 +677,11 @@ test('098 (d) the dry run runs the gate\'s test-file check and refuses a stale f
   assert.equal(p.git(p.proj, 'update-ref', 'refs/heads/feat/498-toy-498', stale).status, 0)
   try {
     const dry = p.runPlans(['--dry-run', '--run', 'stale', '--plans', '498'])
-    assert.equal(dry.json.plans['498'].ready, false, dry.out)
-    assert.match(dry.out, /PROBLEM stale branch feat\/498-toy-498: an earlier run left it and it is not built on origin\/main/)
-    assert.match(dry.out, /^WOULD START: no/m)
+    // plan 102: not a refusal — the run renames it at the plan's start
+    assert.equal(dry.json.plans['498'].ready, true, dry.out)
+    assert.match(dry.out, /WILL RENAME feat\/498-toy-498 → park\/stale-498: an earlier run left it and it is not built on origin\/main/)
+    assert.doesNotMatch(dry.out, /PROBLEM stale branch/)
+    assert.match(dry.out, /^WOULD START: yes/m)
   } finally {
     p.git(p.proj, 'update-ref', '-d', 'refs/heads/feat/498-toy-498')
   }

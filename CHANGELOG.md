@@ -10,6 +10,7 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 ## [Unreleased]
 
 ### Fixed
+- **Plan-file conflicts resolve themselves, and a relaunch resumes a plan from its saved work.** A merge whose only conflicts are in `plans/**` is completed with the run branch's copy (a run note names the file); any other conflict still fails. A plan file changed on the run branch during the run is recorded by the script (a run note, a `## Plans changed during the run` report section, one `## Execution Notes` line, a warning for a `plan(NNN):` commit with under 10 characters of reason). A stale `feat/<NNN>` is renamed to `park/stale-<NNN>` at the plan's start (the dry run prints `WILL RENAME`, not a refusal). A relaunch continues a plan that stopped for a reason that was not its code (death, time limit, environment, rate limit) from `park/<run>-<NNN>` with its round, tier and hand-off, or runs the gate on a built `feat/<NNN>`; a plan parked for its own code is rebuilt as before.
 - A plan may change the test file next to a file its scope lists (`x.component.spec.ts` beside `x.component.ts`, same
   folder or a `__tests__/` directly under it) without a scope line; a sibling test whose diff removes an assertion is
   refused (`sibling test weakened`), any other test location still needs a line, and the dry run flags a test path a

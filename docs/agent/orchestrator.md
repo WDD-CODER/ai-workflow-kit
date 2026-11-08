@@ -62,15 +62,28 @@ two marked **model**.
    Questions` refuses the run; the backticked commands of the open `[auto]` items, held to the check allowlist and to
    `orch-state.mjs check-files`: a check the runner cannot run, or whose file neither exists nor is created by the plan,
    makes the plan not ready (never a dropped note). The gate's own test-file check runs on the check files the plan
-   creates and on what an existing `feat/<NNN>` changed, and a `feat/<NNN>` an earlier run left that is not built on
-   the run branch (or `main` before the run branch exists) makes the plan not ready too. Then `orch-preflight.mjs`. A plan that is not ready, or a failed preflight, refuses the whole run before
+   creates and on what an existing `feat/<NNN>` changed. A `feat/<NNN>` an earlier run left that is not built on
+   the run branch (or `main` before the run branch exists) is not a refusal: the dry run prints `WILL RENAME`
+   (the rename at the plan's start, below). Then `orch-preflight.mjs`. A plan that is not ready, or a failed preflight, refuses the whole run before
    anything is created (exit 1). `--dry-run` stops here and prints the waves, the lint, the preflight, the gate
    commands and the exact `claude -p` lines — the builder's from the same `builderCall()` the run uses, with its
    start tier and why (`tier: build (INV-1 preserves)`).
 2. **Start.** `orch-state.mjs init` (run branch, merge folder, `status.json`). A heartbeat (`touch`) keeps
    `status.json` fresh while a builder works, so `watch` prints `RUNNING`.
 3. **Per plan, wave by wave** (plans that share files run one after the other):
-   - `plan-info --with-worktree`: the plan's own folder on `feat/<NNN>-<slug>`.
+   - `plan-info --with-worktree`: the plan's own folder on `feat/<NNN>-<slug>`. The run branch is merged into the plan
+     branch first, so the builder reads the current plan (the plan's own file keeps the run branch's text and the builder's
+     ticks). **Rename at start:** a `feat/<NNN>` that is stale (neither it nor the run branch holds the other, and this
+     run's `status.json` does not hold the plan) is renamed to `park/stale-<NNN>` here and on origin, a fresh
+     `feat/<NNN>` is cut from the run branch, and a run note names both branches. A branch based on the run branch is
+     reused as before (its work is kept).
+   - **Resume rule:** a relaunch of the same run continues a plan from its saved work when its last stop was not its own
+     code — `process died`, `timed out`, `environment`, `rate-limit` or an answered question. With a
+     `park/<run>-<NNN>` branch, `feat/<NNN>` is cut from it; the round counter and the tier continue, and the builder's
+     prompt carries the hand-off (`.claude/sessions/orch-<run>/handoff-<NNN>.md`, written when none exists). A
+     `feat/<NNN>` that holds commits the run branch does not (the run died after the build) is reused with the next step
+     the gate on those commits, not a new builder. A plan parked for its own code (`same reason twice`, fix rounds used,
+     `replan needed`) is not resumed this way: it starts again from the run branch, as before.
    - **model — builder** (`orch-builder.md` on `models.build`, or `models.judgment` when the plan's Architecture
      Impact `changes` or `deviation`s an invariant — INV-1; `preserves` stays on `models.build`). Its `decisions` and `notDone` are recorded; its `pass` is never read. The script checks the folder is
      committed and ahead of the run branch, and pushes it.
@@ -87,7 +100,14 @@ two marked **model**.
      checked head). The verdict is computed from its `blocker`/`major` problems.
    - **merge** (one at a time): `git merge --no-ff` in the merge folder with the anchored subject, `merge-verify`
      (the merge commit's second parent must be the checked head, else the folder goes back to `HEAD^` and the plan
-     parks), the `mergeChecks`, one push of the run branch.
+     parks), the `mergeChecks`, one push of the run branch. **Plan-file rule:** when the only conflicts of the merge
+     are in `plans/**` files, the merge is completed with the run branch's copy of those files (a plan file is the
+     Planner's and the Human's, never the builder's) and a run note names the file; a conflict in any other file fails
+     as before. When the run branch's copy of the plan file differs from the one the builder started from, the script
+     (not an agent) records it: a run note `plan <NNN> changed during the run: <commit> <author> — <subject>`, a
+     `## Plans changed during the run` section in the report (the diff, 40 lines), one line under the plan's
+     `## Execution Notes` committed by the merge step, and a run warning for a `plan(NNN):` commit whose subject has
+     under 10 characters of reason.
    - **A failure**: one fix round on the same tier with the findings; a second failure with a new reason gets
      `handoff --reset-base` and one fresh judgment-tier builder; the same reason twice, or a failure after that,
      parks the plan (`orch-state.mjs park`: the work saved on `park/<run>-<NNN>`, the folder removed, and `feat/<NNN>`

@@ -126,7 +126,9 @@ const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tie
   // run-plans.mjs: the model calls of a step (base64 JSON list of { stage, model, seconds, input, output, exit })
   'calls-b64',
   // run-plans.mjs: the tier of the model a call starts on (with --role/--model)
-  'model-tier'])
+  'model-tier',
+  // the plan-file change record (plan-changed) and the park branch a resumed plan is cut from (worktree, plan-info)
+  'commit', 'author', 'subject', 'diff-b64', 'warning-b64', 'from-branch'])
 const SWITCHES = new Set(['no-notes', 'reset-base'])
 function parseArgs(argv) {
   const out = { _: [] }
@@ -176,6 +178,15 @@ const fail = (error, extra = {}) => emit({ ok: false, error, ...extra }, [`ORCH_
 if (parsed.problem) fail(parsed.problem)
 
 // Run notes: pushed to status.notes in order (`note`, and `--note "a || b"` on set for this plan).
+/** The report's "## Plans changed during the run" section (from status.plansChanged), placed before the run notes. */
+function withPlansChanged(status, report) {
+  const list = Array.isArray(status.plansChanged) ? status.plansChanged : []
+  if (!list.length) return report
+  const block = ['## Plans changed during the run', '', ...list.flatMap((c) => [`- plan ${c.plan}: ${c.commit} ${c.author} — ${c.subject}`, '', '```diff', String(c.diff ?? '').split('\n').slice(0, 40).join('\n'), '```', '']), '']
+  const at = report.indexOf('## Run notes')
+  return at < 0 ? `${report}\n\n${block.join('\n')}` : `${report.slice(0, at)}${block.join('\n')}\n${report.slice(at)}`
+}
+
 function addNotes(status, items) {
   status.notes ??= []
   // An item with an id is recorded once: a rerun or a re-sent queue carries the same ids (status.noteIds).
@@ -846,15 +857,31 @@ const commands = {
     // read (PLAN: reviewPath), so the builder's own account never reaches them. The plan file itself is not touched.
     if (args['no-notes'] !== undefined) info.reviewPath = writeReviewCopy(run, nnn, text)
     const status = readStatus(run)
+    // A plan branch an earlier run left that is not built on this run's branch (neither holds the other) is renamed to
+    // park/stale-<NNN>, local and origin, and a fresh one is cut: nothing is lost, the run is not stopped. A relaunch of
+    // this run (its status holds the plan) and a branch that is based on the run branch (or the other way) are kept.
+    let staleNote = null
+    if (status && !status.plans[nnn]) {
+      fetchOrigin()
+      const base = `origin/${runBranch(run)}`
+      const anc = (a, b) => spawnSync('git', ['merge-base', '--is-ancestor', a, b], { cwd: root }).status === 0
+      const stale = refExists(base) && [`refs/heads/${info.branch}`, `refs/remotes/origin/${info.branch}`].some((ref) => refExists(ref) && !anc(base, ref) && !anc(ref, base))
+      if (stale) {
+        const b = renameParkedBranch('stale', nnn)
+        if (!b.renamed) fail(`stale branch ${info.branch} (not built on ${base}) could not be renamed: ${b.what}`)
+        staleNote = `stale ${info.branch} renamed to ${b.parkBranch}; a fresh ${info.branch} is cut from ${base}`
+      }
+    }
     if (status) {
       // plan-info starts each attempt at a plan: an earlier attempt (a relaunch) moves to `earlier`, so state, round,
       // reason and models describe this attempt only.
       const prev = status.plans[nnn]
+      if (staleNote) addNotes(status, [{ plan: nnn, text: staleNote }])
       const earlier = prev ? [...(prev.earlier ?? []), (({ earlier: _e, history: _h, humanItems: _i, ...rest }) => rest)(prev)] : []
       status.plans[nnn] = { nnn, title: info.title, branch: info.branch, state: 'queued', round: 0, tier: tier, models: {}, humanItems: info.humanItems, history: prev?.history ?? [], ...(earlier.length ? { earlier } : {}) }
       writeStatus(run, status)
     }
-    const lines = [`${nnn} ${info.title}: branch ${info.branch}, starts on ${tier}${invariants.length ? ` (${invariants.join(', ')})` : ''}`]
+    const lines = [`${nnn} ${info.title}: branch ${info.branch}, starts on ${tier}${invariants.length ? ` (${invariants.join(', ')})` : ''}`, ...(staleNote ? [staleNote] : [])]
     // --with-worktree: the plan's folder is made in the same call (one runner call instead of two) when the branch name is
     // one the run accepts; the answer is `wt` (what a `worktree` call prints). A worktree that fails is `wt.ok: false`
     // (with envFailure when the environment is to blame): the workflow then goes on with its own `worktree` retry path.
@@ -885,6 +912,14 @@ const commands = {
     if (!refExists(base)) fail(`${base} not found — run init first`)
     const lines = []
     const planFile = planPath(nnn)
+    // --from-branch <ref>: a relaunch that continues a parked plan cuts the plan branch from the park branch (its saved
+    // commits), not from the run branch. Only when the plan branch is not there yet.
+    const from = args['from-branch'] && args['from-branch'] !== true ? String(args['from-branch']) : ''
+    if (from && !refExists(`refs/heads/${branch}`) && !refExists(`refs/remotes/origin/${branch}`) && refExists(`refs/remotes/origin/${from}`)) {
+      const c = git(root, 'branch', '--no-track', branch, `refs/remotes/origin/${from}`)
+      if (c.status !== 0) fail(`git branch ${branch} from origin/${from}: ${c.err}`)
+      lines.push(`cut ${branch} from origin/${from} (the saved work of the parked attempt)`)
+    }
     const exists = refExists(`refs/heads/${branch}`)
     // A folder this plan already has wins (a relaunch): its own folder, or the slot it claimed earlier. Else an idle
     // permanent slot (detached, no marker, clean — a slot a person is using is never taken), else a new folder.
@@ -1442,6 +1477,26 @@ const commands = {
     emit({ ok: true, notes: status.notes.length })
   },
 
+  // The record of a plan file changed on the run branch while its builder worked (written by run-plans from git):
+  //   node scripts/orch-state.mjs plan-changed --run <name> --plan <NNN> --commit <sha> --author <a> --subject <s> [--diff-b64 b] [--warning-b64 b]
+  // a run note, a section of the report, and a run warning (a note starting "warning:") for a plan-file commit with no reason.
+  'plan-changed'() {
+    const run = runName()
+    const nnn = planNumber(args.plan ?? '')
+    if (!nnn) fail('--plan takes a plan number')
+    const status = needStatus(run)
+    const dec = (k) => (args[k] && args[k] !== true ? Buffer.from(String(args[k]), 'base64').toString('utf8') : '')
+    const commit = String(args.commit ?? '').slice(0, 40)
+    const author = String(args.author ?? '').slice(0, 80)
+    const subject = String(args.subject ?? '').slice(0, 200)
+    status.plansChanged = [...(status.plansChanged ?? []).filter((c) => !(c.plan === nnn && c.commit === commit)), { plan: nnn, commit, author, subject, diff: dec('diff-b64').split('\n').slice(0, 40).join('\n') }]
+    const notes = [{ plan: nnn, text: `plan ${nnn} changed during the run: ${commit} ${author} — ${subject}`, id: `plan-changed-${nnn}-${commit}` }]
+    for (const w of dec('warning-b64').split('\n').filter(Boolean)) notes.push({ plan: nnn, text: `warning: ${w}`, id: `plan-warning-${nnn}-${w.slice(0, 60)}` })
+    addNotes(status, notes)
+    writeStatus(run, status)
+    emit({ ok: true, plansChanged: status.plansChanged.length })
+  },
+
   // One decision of the run, kept in status.json (not a note: notes are capped per plan, decisions never are). With --id
   // it upserts the decision by id (a runner retry is safe) and applies the hard triage rules once more; with --dup-of it
   // files a differently worded duplicate under the kept decision's alsoFrom.
@@ -1640,7 +1695,7 @@ function publishReport(run, status, { merged, slots, message, brain }) {
     } catch (e) {
       learnError = e.message
     }
-    const report = formatReport({ status, merged, mainShaNow, finishedAt: status.finishedAt, runBranch: branch, mainBranch: MAIN, mainChangedFiles, appErrors, decisions: status.decisions ?? [], triage, learning: learned ? { budget: learned.budget.line, trend: learned.trend.line } : null })
+    const report = withPlansChanged(status, formatReport({ status, merged, mainShaNow, finishedAt: status.finishedAt, runBranch: branch, mainBranch: MAIN, mainChangedFiles, appErrors, decisions: status.decisions ?? [], triage, learning: learned ? { budget: learned.budget.line, trend: learned.trend.line } : null }))
     // What the command prints: this launch's decisions, and an earlier launch's that has no grade for this run yet.
     const attempt = status.attempts ?? 1
     const inView = decisionsInView(status.decisions ?? [], { attempt, run, gradeRows })

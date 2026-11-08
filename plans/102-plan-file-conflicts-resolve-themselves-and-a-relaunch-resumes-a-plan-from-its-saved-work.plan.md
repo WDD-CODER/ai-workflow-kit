@@ -81,14 +81,14 @@ the path to the scope block and retry.
 4. Plan 100's `stops[]`: the resume rule reads the plan's last stop from it.
 
 ## Atomic Sub-tasks
-- [ ] S1: Write the failing tests first for plan-file conflicts, other conflicts and the pre-build catch-up — cases (a)–(c) — tools/test/orchestrator-merge-plan-file.test.mjs
-- [ ] S2: Write the failing test that a stale branch is renamed at start, not refused — tools/test/orchestrator-park-branch.test.mjs, tools/test/run-plans.test.mjs (the dry-run assertion at l.681)
-- [ ] S3: Write the failing tests for resuming from saved work, for not resuming a plan that failed on its own code, and for a relaunch reusing a built branch — cases (d)–(f) — tools/test/orchestrator-resume.test.mjs
-- [ ] S4: Take the run branch's plan file in a merge and before a build — core/scripts/lib/plan-merge.mjs, core/scripts/run-plans.mjs
-- [ ] S5: Rename a stale plan branch at start and cut a fresh one — core/scripts/orch-state.mjs, core/scripts/run-plans.mjs
-- [ ] S6: Resume a stopped plan from its park branch or its built branch with its round, tier and hand-off — core/scripts/run-plans.mjs, core/scripts/orch-state.mjs, core/scripts/plan-park.mjs
-- [ ] S7: Describe the three rules — core/docs/agent/orchestrator.md
-- [ ] S8: Resync the installed copies, run every check, add the changelog entry — CHANGELOG.md
+- [x] S1: Write the failing tests first for plan-file conflicts, other conflicts and the pre-build catch-up — cases (a)–(c) — tools/test/orchestrator-merge-plan-file.test.mjs
+- [x] S2: Write the failing test that a stale branch is renamed at start, not refused — tools/test/orchestrator-park-branch.test.mjs, tools/test/run-plans.test.mjs (the dry-run assertion at l.681)
+- [x] S3: Write the failing tests for resuming from saved work, for not resuming a plan that failed on its own code, and for a relaunch reusing a built branch — cases (d)–(f) — tools/test/orchestrator-resume.test.mjs
+- [x] S4: Take the run branch's plan file in a merge and before a build — core/scripts/lib/plan-merge.mjs, core/scripts/run-plans.mjs
+- [x] S5: Rename a stale plan branch at start and cut a fresh one — core/scripts/orch-state.mjs, core/scripts/run-plans.mjs
+- [x] S6: Resume a stopped plan from its park branch or its built branch with its round, tier and hand-off — core/scripts/run-plans.mjs, core/scripts/orch-state.mjs, core/scripts/plan-park.mjs
+- [x] S7: Describe the three rules — core/docs/agent/orchestrator.md
+- [x] S8: Resync the installed copies, run every check, add the changelog entry — CHANGELOG.md
 
 ## Technical Considerations
 - The record is written by the script from git (the commit, its author and subject, the diff), never by a model. The rule "only the Planner edits a plan" stays true: the Execution Notes line is a fact the run records, the same way a park note is.
@@ -102,4 +102,5 @@ Starting the relaunch (plan 100); environment repair (plan 103); the question an
 None open.
 
 ## Execution Notes
+- 2026-11-08 Builder: npm run build/lint/test → exit 0; node --test for the merge-plan-file (6 pass), park-branch, resume (4 pass) files → exit 0; scope-check → SCOPE: ok; drift-check → KIT_DRIFT: ok. The pre-build catch-up (c) already existed in `orch-state worktree` (it merges the run branch into the plan branch, plan file by mergePlanFile); the test pins it. plan-park.mjs was not needed.
 - 2026-11-08 Planner: Depends-on no longer names 098 — it is merged into main (4518804); its open [human] item does not gate this code, and the run would otherwise rebuild it.

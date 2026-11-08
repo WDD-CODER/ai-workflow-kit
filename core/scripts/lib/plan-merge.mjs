@@ -14,6 +14,7 @@
  */
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { runGate } from './plan-gate.mjs'
 
 const git = (cwd, ...a) => {
@@ -37,18 +38,75 @@ export function orchState(root, argv) {
 /** The anchored merge subject plan-order and `orch-state done` read back from git. */
 export const mergeSubject = (branch, runBranch, nnn) => `Merge ${branch} into ${runBranch} (plan ${nnn})`
 
-export async function mergePlan({ root, run, nnn, branch, runBranch, mergeFolder, checks = [], timeoutMin = 15, onResult = null }) {
+/** A conflicted path the run branch's copy wins: only the plans' own files (the Planner's and the Human's, never the builder's). */
+export const isPlanFile = (p) => /^plans\/.+\.plan\.md$/.test(String(p).replace(/\\/g, '/'))
+
+/** The line added at the end of the plan's `## Execution Notes` section (the section is made when the plan has none). */
+export function appendExecutionNote(text, line) {
+  const crlf = text.includes('\r\n')
+  const lines = text.replace(/\r\n/g, '\n').split('\n')
+  const at = lines.findIndex((l) => /^##\s+Execution Notes\b/i.test(l))
+  let out
+  if (at < 0) out = [...lines.filter((l, i) => !(i === lines.length - 1 && l === '')), '', '## Execution Notes', line, '']
+  else {
+    let end = lines.findIndex((l, i) => i > at && /^##\s/.test(l))
+    if (end < 0) end = lines.length
+    while (end - 1 > at && lines[end - 1].trim() === '') end--
+    out = [...lines.slice(0, end), line, ...lines.slice(end)]
+  }
+  const joined = out.join('\n')
+  return crlf ? joined.replace(/\n/g, '\r\n') : joined
+}
+
+/**
+ * The plan file as the run branch holds it now (HEAD of `cwd`), against the commit the plan's builder started from: null
+ * when it did not change, else { commits: [{ sha, author, subject }], diff (cut to 40 lines), warnings }. Written from
+ * git, never by a model.
+ */
+export function planChangeRecord(cwd, { path, startCommit }) {
+  if (!startCommit || !path) return null
+  const log = git(cwd, 'log', '--format=%h%x1f%an%x1f%s', `${startCommit}..HEAD`, '--', path).out.split('\n').filter(Boolean)
+  if (!log.length) return null
+  const commits = log.map((l) => {
+    const [sha, author, subject] = l.split('\x1f')
+    return { sha, author, subject }
+  })
+  const diff = git(cwd, 'diff', '--no-color', startCommit, 'HEAD', '--', path).out.split('\n').slice(0, 40).join('\n')
+  const warnings = commits
+    .filter((c) => {
+      const m = /^plan\(\d+\):\s*(.*)$/.exec(c.subject)
+      return m && m[1].trim().length < 10
+    })
+    .map((c) => `plan-file commit ${c.sha} has no reason ("${c.subject}"): the subject after plan(NNN): is shorter than 10 characters`)
+  return { commits, diff, warnings }
+}
+
+export async function mergePlan({ root, run, nnn, branch, runBranch, mergeFolder, checks = [], timeoutMin = 15, onResult = null, plan = null }) {
   const mf = mergeFolder
   const undo = () => git(mf, 'reset', '--quiet', '--hard', 'HEAD^')
   const f = git(mf, 'fetch', '--quiet', 'origin')
   if (f.status !== 0) return { merged: false, env: true, why: `merge: git fetch origin failed: ${lastLine(f.err)}` }
   const ff = git(mf, 'merge', '--quiet', '--ff-only', `origin/${runBranch}`)
   if (ff.status !== 0) return { merged: false, why: `merge: the merge folder cannot fast-forward to origin/${runBranch}: ${lastLine(ff.err)}` }
+  // The plan file as the run branch holds it, before the merge: a change since the builder started is recorded.
+  const planChange = plan ? planChangeRecord(mf, plan) : null
   const m = git(mf, 'merge', '--no-ff', '--no-edit', '-m', mergeSubject(branch, runBranch, nnn), `origin/${branch}`)
+  const planFiles = []
   if (m.status !== 0) {
     const conflicted = git(mf, 'diff', '--name-only', '--diff-filter=U').out.split('\n').filter(Boolean)
-    git(mf, 'merge', '--abort')
-    return { merged: false, why: `merge: origin/${branch} does not merge into ${runBranch}${conflicted.length ? `: conflicts in ${conflicted.join(', ')}` : `: ${lastLine(m.err || m.out)}`}` }
+    // Only plans/** files in conflict: the run branch's copy wins (in the merge folder the run branch is HEAD = "ours").
+    let resolved = conflicted.length > 0 && conflicted.every(isPlanFile)
+    if (resolved) {
+      for (const f of conflicted) {
+        if (git(mf, 'checkout', '--ours', '--', f).status !== 0 || git(mf, 'add', '--', f).status !== 0) resolved = false
+        else planFiles.push(f)
+      }
+      if (resolved && git(mf, 'commit', '--quiet', '-m', mergeSubject(branch, runBranch, nnn)).status !== 0) resolved = false
+    }
+    if (!resolved) {
+      git(mf, 'merge', '--abort')
+      return { merged: false, why: `merge: origin/${branch} does not merge into ${runBranch}${conflicted.length ? `: conflicts in ${conflicted.join(', ')}` : `: ${lastLine(m.err || m.out)}`}` }
+    }
   }
   const v = orchState(root, ['merge-verify', `--run=${run}`, `--plan=${nnn}`])
   if (!v.ok) {
@@ -65,11 +123,21 @@ export async function mergePlan({ root, run, nnn, branch, runBranch, mergeFolder
     }
   }
   const sha = git(mf, 'rev-parse', 'HEAD').out
+  // The record of a plan changed during the run: one line under the plan's Execution Notes, committed after the merge.
+  let noted = false
+  if (planChange && plan?.path) {
+    const last = planChange.commits[0]
+    const file = join(mf, plan.path)
+    try {
+      writeFileSync(file, appendExecutionNote(readFileSync(file, 'utf8'), `- ${new Date().toISOString().slice(0, 10)} changed during ${run} in ${last.sha}: ${last.subject}`))
+      noted = git(mf, 'add', '--', plan.path).status === 0 && git(mf, 'commit', '--quiet', '-m', `plan(${nnn}): record the change made during ${run} (${last.sha})`).status === 0
+    } catch { /* the record is a courtesy: the merge goes on without the line */ }
+  }
   const p = git(mf, 'push', '--quiet', 'origin', `HEAD:refs/heads/${runBranch}`)
   if (p.status !== 0) {
-    undo()
+    git(mf, 'reset', '--quiet', '--hard', noted ? 'HEAD~2' : 'HEAD^')
     return { merged: false, env: true, why: `merge: git push origin ${runBranch} failed: ${lastLine(p.err)}` }
   }
   git(mf, 'fetch', '--quiet', 'origin', runBranch)
-  return { merged: true, sha, pinned: v.pinned !== false }
+  return { merged: true, sha, pinned: v.pinned !== false, ...(planFiles.length ? { planFiles } : {}), ...(planChange ? { planChange } : {}) }
 }
