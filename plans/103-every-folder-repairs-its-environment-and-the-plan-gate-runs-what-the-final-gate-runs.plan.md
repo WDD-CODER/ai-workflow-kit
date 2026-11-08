@@ -1,0 +1,109 @@
+# Plan 103 — Every folder repairs its environment, and the plan gate runs what the final gate runs
+
+Status: draft
+Depends-on: 098, 099
+Snapshot: 99037d4
+Source: the stops audit of 16 FoodVibe runs, mapped on 2026-11-08 (groups C, D, I: stops #1, 3, 4, 7, 8, 10–12, 15–17, 22, 24, 28, 32, 35). The Human took every recommendation on 2026-11-08. Reliability fix, allowed in the freeze; no new capability.
+
+## Problem Statement
+1. **Folders without their packages.**
+   - The merge folder had no `node_modules` (`'ng' is not recognized`, #7: the Human installed and merged by hand).
+   - The server tree had no `mongodb` (#8).
+   - In both cases the gate's environment retry ran the same failing command again, then parked the plan.
+2. **State and git calls that fail once.**
+   - `orch-state` answered without a readable `ORCH_JSON`, which parked a plan before building (#10, 2 h lost). The same thing needed retries at #16 and #22.
+   - `git fetch origin` failed with "incorrect old value provided" during a park, so the work had to be saved by hand (#32).
+3. **The final gate catches what each plan's gate did not.**
+   - The kit manifest check (#15, #28) and the breadcrumbs check (#17) failed only on the run branch. Each cost about 1.5 h and the Human's fixes.
+   - The error review notes that the per-plan manifest check reads the main folder's tree, not the plan's.
+4. **Work left undone merges anyway.** A builder that reports an `[auto]` or `[ui]` Done-when item as not done (for example "no backend or database" for an e2e screenshot, #35) still reaches the merge.
+
+## Goals & Success Criteria
+**Primary:** a missing package, a one-off state or git failure, or a check that only the final gate runs never parks a plan or stops a run; an item the plan promised is never merged undone.
+
+- [auto] `node --test tools/test/orchestrator-env-retry.test.mjs` passes, with tests that fail on today's code:
+  (a) before the builder, the gate, the merge checks, the final gate and a park, the folder gets `ensure-env`: install with the lockfile in the root, in `server/` when `server/package.json` exists, and in `scripts/`. Each install is skipped when its lockfile hash is unchanged (the existing `.last-npm-install-hash*` markers);
+  (b) a gate or merge check that fails with an environment failure runs `ensure-env` (with a clean reinstall of the failing tree) before its one retry, not the same command again;
+  (c) an `orch-state` call whose output has no readable `ORCH_JSON` is retried up to 3 times, 2 s apart, for read commands and for commands that are safe to repeat (`set`, `note` with its id, `touch`, `diff`, `plan-info`). Any other command fails as today;
+  (d) `git fetch` and `git push` in the run's helpers are retried up to 3 times, 5 s apart, on a transient error (`incorrect old value`, `cannot lock ref`, a network error). After a failed park the work is still saved to `park/<run>-<NNN>`.
+- [auto] `node --test tools/test/run-plans.test.mjs` passes, with tests that fail today:
+  (e) every command the final gate runs (`gateCommands` plus `orchestrator.ciMirror`) is in each plan's gate, and the manifest check reads the plan's folder;
+  (f) a final-gate failure that names one plan's changed file (`finalGate.blamed` has one plan) gives that plan one fix round in its folder, a re-merge and a second final gate. A second failure stops the run as today;
+  (g) a builder result whose `notDone` names an open `[auto]` or `[ui]` Done-when item fails the gate with `Done-when item left undone: <item>`. When the reason names a backend, database or dev server, the main folder's servers are started the way plan 058 starts them, then the fix round runs.
+- [auto] `docs/agent/orchestrator.md` describes `ensure-env`, the retries and the final-gate fix round.
+- [auto] `npm run build`, `npm run lint`, `npm test` and `node tools/drift-check.mjs --target .` pass (the builder runs the kit sync with apply first; it is a step, not a check).
+- [human] On the installed project, delete `node_modules` in the merge folder before a run's first merge. The plan still merges, and the run note says the folder was installed (reply `ok`).
+
+## Execution Mode
+- Parallel: no.
+- Concurrent plans: none.
+- Isolated DB: no.
+- Run: in the same run as 100, 101, 102, 104. `orch/<run>` merges into `main` only by a PR the Human approves.
+- Fallback: when the dry run says `WOULD START: no`, append one line with the date and the reason to `docs/brain/error-review.md` first, then build this plan by the solo flow (`feat/103-<slug>`, then `/ship`).
+
+## Read-Write Scope
+
+Always allowed: this plan file itself, `.claude/sessions/**`, `.kit/install.json`, plus the append-only hotspots `CHANGELOG.md` and `docs/brain/error-review.md`.
+
+```scope
+core/scripts/run-plans.mjs
+scripts/run-plans.mjs
+core/scripts/lib/plan-gate.mjs
+scripts/lib/plan-gate.mjs
+core/scripts/lib/plan-merge.mjs
+scripts/lib/plan-merge.mjs
+core/scripts/lib/orch-folders.mjs
+scripts/lib/orch-folders.mjs
+core/scripts/orch-state.mjs
+scripts/orch-state.mjs
+core/scripts/plan-park.mjs
+scripts/plan-park.mjs
+core/docs/agent/orchestrator.md
+docs/agent/orchestrator.md
+tools/test/orchestrator-env-retry.test.mjs
+tools/test/run-plans.test.mjs
+CHANGELOG.md
+docs/brain/error-review.md
+```
+
+## Read Scope
+
+Entire repo.
+
+## Escalation Protocol
+
+Thinking outside the box is expected; writing outside it requires explicit consent. If a step needs a file outside
+the `## Read-Write Scope`: STOP, tell the Human the file, the change, and why; offer `approved: <path>`; then append
+the path to the scope block and retry.
+
+## Architecture Impact
+- INV-1: preserves — the final-gate fix round uses the blamed plan's own tier and counts against its `maxFixRounds`.
+
+## Step 0 — Reality Check
+1. `lib/orch-folders.mjs` `ensureDeps` and `preflight.mjs` / the `.last-npm-install-hash*` markers: reuse them for `ensure-env`; name the one function every step calls.
+2. `lib/plan-gate.mjs` `runGate`: how `status: 'env'` is decided, and where the retry is (`run-plans.mjs` gate block); `ensure-env` goes between the failure and the retry.
+3. `lib/plan-merge.mjs` `orchState` and `run-plans.mjs` `state()`: one place for the `ORCH_JSON` retry, with the list of commands that are safe to repeat.
+4. `run-plans.mjs` final gate (`finalChecks`, `finalGate.blamed`, l.719–730) and `gateCommands` (`manifest`, `kitRoot`): why the manifest check reads the main folder's tree (the error-review row), and the change that makes it read the plan's folder.
+5. The builder result's `notDone` field (`run-plans.mjs`, the note `builder left undone`), and how an item is matched to an open Done-when line.
+
+## Atomic Sub-tasks
+- [ ] S1: Write the failing tests first for installs, the environment retry, state retries and git retries — cases (a)–(d) — tools/test/orchestrator-env-retry.test.mjs
+- [ ] S2: Write the failing tests for the plan gate, the final-gate fix round and undone items — cases (e)–(g) — tools/test/run-plans.test.mjs
+- [ ] S3: Install what a folder is missing before every step that runs code there — ensure-env — core/scripts/lib/orch-folders.mjs, core/scripts/run-plans.mjs, core/scripts/lib/plan-merge.mjs
+- [ ] S4: Retry a state call or a git call that fails once — core/scripts/lib/plan-merge.mjs, core/scripts/run-plans.mjs, core/scripts/orch-state.mjs, core/scripts/plan-park.mjs
+- [ ] S5: Run the final gate's commands in every plan's gate, on the plan's own tree — core/scripts/lib/plan-gate.mjs, core/scripts/run-plans.mjs
+- [ ] S6: Give the blamed plan one fix round when the final gate fails — core/scripts/run-plans.mjs
+- [ ] S7: Fail the gate on a promised item left undone, and start the servers it needed — core/scripts/run-plans.mjs
+- [ ] S8: Describe the rules, resync the installed copies, run every check, add the changelog entry — core/docs/agent/orchestrator.md, CHANGELOG.md
+
+## Technical Considerations
+- `ensure-env` never deletes a tree unless the failing command was an environment failure in that tree; a clean reinstall happens at most once per plan.
+- Running the final gate's commands in every plan gate makes each gate slower. `orchestrator.mergeChecks` stays `build`, so the merge itself stays fast.
+
+## Out of Scope
+Questions to the Human or the advisor (plan 104); relaunching a dead run (plan 100); project-specific checks (for example FoodVibe's breadcrumbs) beyond running what the project's own gate and `ciMirror` list.
+
+## Critical Questions
+None open.
+
+## Execution Notes
