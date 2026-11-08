@@ -1335,3 +1335,33 @@ test('final gate: a relaunch that never reaches its final gate does not inherit 
     assert.deepEqual(lib.lessonFacts(JSON.parse(readFileSync(f, 'utf8'))).filter((x) => /final gate/.test(x.text)), [])
   } finally { p.clean(); rmSync(mf, { recursive: true, force: true }) }
 })
+
+// Plan 100: a stop is added to the run's history, never written over (run-517: attempt 1's cause was lost).
+test('orch-state stop appends { at, reason, attempt } to stops[]; stopReason stays the latest; the report lists every stop', () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'orch-stops-')))
+  try {
+    cpSync(join(root, 'scripts'), join(dir, 'scripts'), { recursive: true })
+    spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: dir })
+    const run = (...a) => spawnSync(process.execPath, [join(dir, 'scripts', 'orch-state.mjs'), ...a], { cwd: dir, encoding: 'utf8' })
+    const statusDir = join(dir, '.claude', 'orchestrator-runs', 'r1')
+    mkdirSync(statusDir, { recursive: true })
+    const f = join(statusDir, 'status.json')
+    writeFileSync(f, JSON.stringify({ run: 'r1', phase: 'running', attempts: 1, plans: {}, notes: [] }))
+    const a = run('stop', '--run=r1', '--reason=process died (exit 7)')
+    assert.equal(a.status, 0, a.stdout + a.stderr)
+    // The next attempt starts (init sets running, drops stopReason) and stops for another reason.
+    const st = JSON.parse(readFileSync(f, 'utf8'))
+    writeFileSync(f, JSON.stringify({ ...st, phase: 'running', attempts: 2, stopReason: undefined }))
+    assert.equal(run('stop', '--run=r1', '--reason=rate-limit: 429').status, 0)
+    const s = JSON.parse(readFileSync(f, 'utf8'))
+    assert.deepEqual(s.stops.map((x) => [x.attempt, x.reason]), [[1, 'process died (exit 7)'], [2, 'rate-limit: 429']])
+    assert.ok(s.stops.every((x) => !Number.isNaN(Date.parse(x.at))))
+    assert.equal(s.stopReason, 'rate-limit: 429', 'stopReason is the latest for older readers')
+    const report = lib.formatReport({ status: s, merged: [], mainShaNow: 'a', finishedAt: 'T1', runBranch: 'orch/r1', mainBranch: 'main' })
+    assert.match(report, /## Stops/)
+    assert.match(report, /- attempt 1 · .* · process died \(exit 7\)/)
+    assert.match(report, /- attempt 2 · .* · rate-limit: 429/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

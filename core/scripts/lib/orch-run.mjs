@@ -124,6 +124,10 @@ export function watchModeProblem(script, pattern = '') {
   return null
 }
 
+/** Free memory in GB (one decimal, rounded down) from os.freemem(): the one helper run-supervisor.mjs's floor and
+ * /orchestrate's second-run rule (`node scripts/run-supervisor.mjs --free-mem`) both use. */
+export const freeMemGb = (bytes) => Math.floor((Number(bytes) / 2 ** 30) * 10) / 10
+
 /** Free space in GB (one decimal) from a statfs result. */
 export const freeGb = (st) => Math.floor((Number(st.bavail) * Number(st.bsize)) / 1e8) / 10
 
@@ -487,6 +491,8 @@ export function formatReport({ status, merged, mainShaNow, finishedAt, runBranch
     `Result: ${merged.length} merged, ${parked.length} parked, skipped or left out, ${plans.length} in the run (counted from git and status.json).`,
     `\`${mainBranch}\` untouched: ${untouched ? 'yes' : 'NO'}${adminNote} — origin/${mainBranch} is ${String(mainShaNow).slice(0, 7)}.`,
     status.stopReason ? `Stopped: ${status.stopReason}` : '',
+    // Every stop of every attempt (orch-state.mjs stop appends to stops[]): a later attempt never hides an earlier cause.
+    ...(Array.isArray(status.stops) && status.stops.length ? ['', '## Stops', '', ...status.stops.map((st) => `- attempt ${st.attempt ?? '?'} · ${st.at ?? '?'} · ${st.reason}`), ''] : []),
     status.finalGate ? `Final gate: ${status.finalGate.ok ? 'ok' : `failed${status.finalGate.command ? `: ${status.finalGate.command}` : ''}`} (attempt ${status.finalGate.attempt ?? 1})` : '',
     '',
     '## Plans',

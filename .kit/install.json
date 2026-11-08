@@ -3,7 +3,7 @@
     "version": "2.1.0"
   },
   "source": "local:.",
-  "commit": "b8acd81c3f7525672513e1ad7eb0ed7b98b7581c",
+  "commit": "b94afb45b34e86c92579c690b56a93048cff2bc0",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -375,7 +375,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "14161a864c3c7ece4e0ae81d5a0b59306f1f29aaaada37c25e8c182f8f6e5ff2",
+      "sha256": "d3d5cc016e542dd78ace75f0ec58ec5aa7ba6115155b9dd3cf2d341961dd2a2e",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -700,7 +700,7 @@
       "source": "core/scripts/lib/orch-folders.mjs"
     },
     "scripts/lib/orch-run.mjs": {
-      "sha256": "8368bdbac910e8950f80b4f7293453bd64ff1a28f6d5e79527a998d4573312f9",
+      "sha256": "d80ad3798a7382ec24d34e0f863161ffc18f99c699c6500e0716a0e7e1fef7d3",
       "kind": "managed",
       "source": "core/scripts/lib/orch-run.mjs"
     },
@@ -795,7 +795,7 @@
       "source": "core/scripts/orch-preflight.mjs"
     },
     "scripts/orch-state.mjs": {
-      "sha256": "5fb8406043ed1a29e1e0c0f4bb5fe5194dae8e8f36d9f5bcee9cfae75d5935d5",
+      "sha256": "489fa135058b391be77db41523550d77a5ff4d096852337c2c7b861693a81a6d",
       "kind": "managed",
       "source": "core/scripts/orch-state.mjs"
     },
@@ -870,7 +870,7 @@
       "source": "core/scripts/prune-old-sessions.sh"
     },
     "scripts/run-plans.mjs": {
-      "sha256": "9aac4bfb504faca752b08daa411d14d4e0af8e3fb771eaab4cd356afe3bc56e1",
+      "sha256": "43e72b7c374ad3c72c9b34eea5245e81b1ac8fde5ab6db2486ef2e6bc0ae5c92",
       "kind": "managed",
       "source": "core/scripts/run-plans.mjs"
     },
@@ -878,6 +878,11 @@
       "sha256": "b89ab7652bde31489a733fe8a1cd309f423726877f0ea32ed7949ace9a5417cd",
       "kind": "managed",
       "source": "core/scripts/run-python.sh"
+    },
+    "scripts/run-supervisor.mjs": {
+      "sha256": "e980c9d7fdf51a0cde9e77d3584596cc24c80401b1bd68826266f212bd1ed334",
+      "kind": "managed",
+      "source": "core/scripts/run-supervisor.mjs"
     },
     "scripts/scope-check.mjs": {
       "sha256": "0edbe00411c99b7f5c9a6444f7b71a55f538981cd7d627262d23f85cc19832eb",
