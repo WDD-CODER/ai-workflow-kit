@@ -9,7 +9,7 @@
       "nnn": "100",
       "title": "A run survives its session: a supervisor relaunches a killed run and waits out a rate limit",
       "branch": "feat/100-a-run-survives-its",
-      "state": "parked",
+      "state": "merged",
       "round": 1,
       "tier": "judgment",
       "models": {
@@ -109,33 +109,169 @@
         "at": "2026-11-08T18:49:43.802Z",
         "reason": "builder blocked: Writing core/.claude/commands/orchestrate.md is refused, both with Edit and with `cp` from a scratch file (\"Claude requested permissions to edit … which is a sensitive file\"). So `node tools/install-check.mjs` exits 1 (2 orchestrate.md assertions) and `node --test tools/test/run-supervisor.test.mjs` (fix rounds used: 1 of 2) — needs the Human"
       },
-      "parkBranch": "park/run-100-100"
+      "parkBranch": "park/run-100-100",
+      "sha": "ee369a1081e9768fd368c3bea54496fdda418ebf"
     },
     "101": {
       "nnn": "101",
+      "title": "A plan may change the test file next to a file in its scope, and readiness finds the tests it forgot",
+      "branch": "feat/101-a-plan-may-change",
+      "state": "parked",
       "round": 0,
+      "tier": "build",
       "models": {},
-      "state": "skipped",
-      "reason": "shares files with parked 100",
-      "freeDiskGb": 18.7,
+      "humanItems": [
+        "On the installed project, a run of a plan that lists only a component file, whose fix needs its `.spec.ts`, merges without a park (reply `ok`)."
+      ],
       "history": [
         {
           "at": "2026-11-08T18:49:50.990Z",
           "state": "skipped",
           "round": 0
+        },
+        {
+          "at": "2026-11-08T19:02:27.809Z",
+          "state": "building",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T19:02:27.954Z",
+          "state": "building",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T19:18:06.556Z",
+          "state": "building",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T19:18:11.734Z",
+          "state": "fixing",
+          "round": 1
+        },
+        {
+          "at": "2026-11-08T19:18:11.860Z",
+          "state": "fixing",
+          "round": 1
+        },
+        {
+          "at": "2026-11-08T19:18:54.953Z",
+          "state": "fixing",
+          "round": 1
+        },
+        {
+          "at": "2026-11-08T19:18:55.079Z",
+          "state": "parked",
+          "round": 1
+        },
+        {
+          "at": "2026-11-08T19:38:15.333Z",
+          "state": "parked",
+          "round": 0
         }
-      ]
+      ],
+      "earlier": [
+        {
+          "nnn": "101",
+          "round": 0,
+          "models": {},
+          "state": "skipped",
+          "reason": "shares files with parked 100",
+          "freeDiskGb": 18.7
+        },
+        {
+          "nnn": "101",
+          "title": "A plan may change the test file next to a file in its scope, and readiness finds the tests it forgot",
+          "branch": "feat/101-a-plan-may-change",
+          "state": "parked",
+          "round": 1,
+          "tier": "judgment",
+          "models": {
+            "builder": {
+              "model": "sonnet",
+              "tier": "build",
+              "at": "2026-11-08T19:02:27.952Z"
+            },
+            "judgment builder": {
+              "model": "opus",
+              "tier": "judgment",
+              "at": "2026-11-08T19:18:11.859Z"
+            }
+          },
+          "tiers": [
+            "build",
+            "judgment"
+          ],
+          "freeDiskGb": 18.3,
+          "roundCauses": [
+            "round 1: builder ESCALATE: Edit on core/.claude/agents/plan-reviewer.md and core/.claude/commands/plan.md returned 'Claude requested permissions to edit … which is a sensitive file' (twice). S5b and S6 need those files. I did not work around the refusal.",
+            "round 2: builder ESCALATE: Edit on core/.claude/agents/plan-reviewer.md returned 'Claude requested permissions to edit ... which is a sensitive file' (the same refusal the first builder got twice). S5b needs that file and S6 needs core/.claude/commands/plan.md, both in the plan's scope. I"
+          ],
+          "calls": [
+            {
+              "stage": "builder",
+              "model": "sonnet",
+              "seconds": 938.3,
+              "tokens": {
+                "input": 1615754,
+                "output": 26842
+              },
+              "exit": 0
+            },
+            {
+              "stage": "judgment builder",
+              "model": "opus",
+              "seconds": 42.8,
+              "tokens": {
+                "input": 119061,
+                "output": 2886
+              },
+              "exit": 0
+            }
+          ],
+          "escalations": [
+            {
+              "step": "round 1",
+              "check": "builder ESCALATE: Edit on core/.claude/agents/plan-reviewer.md and core/.claude/commands/plan.md returned 'Claude requested permissions to edit … which is a sensitive file' (twice). S5b and S6 need th"
+            }
+          ],
+          "replan": "no — The plan holds as written. The files are in the scope block, but this session cannot write under core/.claude/**. The Human must grant the permission or apply the edits.",
+          "resetToBase": "ee369a1081e9768fd368c3bea54496fdda418ebf",
+          "resetFrom": "c564320b28337aa2cfaeee911a05d1387172b28c",
+          "reason": "builder ESCALATE: Edit on core/.claude/agents/plan-reviewer.md returned 'Claude requested permissions to edit ... which is a sensitive file' (the same refusal the first builder got twice). S5b needs that file and S6 needs core/.claude/commands/plan.md, both in the plan's scope. I did not work around the refusal. (fix rounds used: 1 of 2) — needs the Human",
+          "park": {
+            "at": "2026-11-08T19:18:57.183Z",
+            "reason": "builder ESCALATE: Edit on core/.claude/agents/plan-reviewer.md returned 'Claude requested permissions to edit ... which is a sensitive file' (the same refusal the first builder got twice). S5b needs that file and S6 needs core/.claude/commands/plan.md, both in the plan's scope. I did not work around the refusal. (fix rounds used: 1 of 2) — needs the Human"
+          },
+          "parkBranch": "park/run-100-101"
+        }
+      ],
+      "tiers": [
+        "build"
+      ],
+      "reason": "worktree: git worktree add C:\\coding projects\\Cursor\\ai-workflow-kit-orch-run-100-101: fatal: 'feat/101-a-plan-may-change' is already used by worktree at 'C:/coding projects/Cursor/ai-workflow-kit-fix-100'",
+      "freeDiskGb": 18.3
     },
     "102": {
       "nnn": "102",
       "round": 0,
       "models": {},
       "state": "skipped",
-      "reason": "depends on parked 100",
-      "freeDiskGb": 18.7,
+      "reason": "shares files with parked 101",
+      "freeDiskGb": 18.3,
       "history": [
         {
           "at": "2026-11-08T18:49:51.278Z",
+          "state": "skipped",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T19:19:03.562Z",
+          "state": "skipped",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T19:38:15.961Z",
           "state": "skipped",
           "round": 0
         }
@@ -146,11 +282,21 @@
       "round": 0,
       "models": {},
       "state": "skipped",
-      "reason": "shares files with parked 100",
-      "freeDiskGb": 18.7,
+      "reason": "shares files with parked 101",
+      "freeDiskGb": 18.3,
       "history": [
         {
           "at": "2026-11-08T18:49:51.132Z",
+          "state": "skipped",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T19:19:03.686Z",
+          "state": "skipped",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T19:38:16.331Z",
           "state": "skipped",
           "round": 0
         }
@@ -161,11 +307,21 @@
       "round": 0,
       "models": {},
       "state": "skipped",
-      "reason": "depends on parked 100",
-      "freeDiskGb": 18.7,
+      "reason": "shares files with parked 101",
+      "freeDiskGb": 18.3,
       "history": [
         {
           "at": "2026-11-08T18:49:51.456Z",
+          "state": "skipped",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T19:19:03.817Z",
+          "state": "skipped",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T19:38:16.707Z",
           "state": "skipped",
           "round": 0
         }
@@ -196,12 +352,40 @@
     {
       "at": "2026-11-08T18:49:51.644Z",
       "text": "wave 1 parked 100 — skipped 102, 104; 0 later plan(s) go on"
+    },
+    {
+      "at": "2026-11-08T19:18:06.420Z",
+      "plan": "101",
+      "text": "builder left undone (round 0): S5b: the blocking rule in core/.claude/agents/plan-reviewer.md (Edit refused as a sensitive file); S6: reword core/.claude/commands/plan.md l.68–70 without adding a line; same rewording in core/.claude/references/prd-template.md l.32–33 and core/.claude/skills/save-plan/SKILL.md l.32 (Edit refused);"
+    },
+    {
+      "at": "2026-11-08T19:18:11.607Z",
+      "plan": "101",
+      "text": "escalated to a fresh judgment-tier builder (round 1): builder ESCALATE: Edit on core/.claude/agents/plan-reviewer.md and core/.claude/commands/plan.md returned 'Claude requested permissions to edit … which is a sensitive file' (twice). S5b and S6 need those files. I did not work around the refusal."
+    },
+    {
+      "at": "2026-11-08T19:18:54.831Z",
+      "plan": "101",
+      "text": "builder left undone (round 1): S1-S5: not redone. The first attempt is in c564320 (git show c564320). They are only worth redoing once S5b and S6 can be written.; S5b: core/.claude/agents/plan-reviewer.md cannot be edited in this session (sensitive-file permission); S6: core/.claude/commands/plan.md (and very likely the other cor"
+    },
+    {
+      "at": "2026-11-08T19:19:03.273Z",
+      "plan": "101",
+      "text": "parked: nothing to save (nothing uncommitted)"
+    },
+    {
+      "at": "2026-11-08T19:19:03.941Z",
+      "text": "wave 1 parked 101 — skipped 104; 0 later plan(s) go on"
+    },
+    {
+      "at": "2026-11-08T19:38:17.079Z",
+      "text": "wave 1 parked 101 — skipped 104; 0 later plan(s) go on"
     }
   ],
-  "attempts": 1,
+  "attempts": 3,
   "phase": "finished",
-  "freeDiskGb": 18.7,
-  "updatedAt": "2026-11-08T18:49:52.822Z",
+  "freeDiskGb": 18.3,
+  "updatedAt": "2026-11-08T19:53:34.894Z",
   "decisions": [
     {
       "id": "D1",
@@ -332,7 +516,66 @@
       "confidence": null,
       "rec": "",
       "why": ""
+    },
+    {
+      "id": "D11",
+      "plan": "101",
+      "type": "behaviour",
+      "text": "behaviour: I put the eval cases in a new folder docs/agent-evals/cases/plan-reviewer/ and left the role list in tools/test/eval-cases.test.mjs unchanged, because that file is outside the scope. Nothing runs these two cases until a harness names the role — reverse: add 'plan-reviewer' to ROLES there.",
+      "alsoFrom": [],
+      "attempt": 2,
+      "verdict": "none",
+      "kind": "-",
+      "confidence": null,
+      "rec": "",
+      "why": ""
+    },
+    {
+      "id": "D12",
+      "plan": "101",
+      "type": "behaviour",
+      "text": "behaviour: the weakened-test check reads the old line number of the removed assertion for the <file>:<line> in its reason — reverse: use the new numbering in removedLinesByFile()",
+      "alsoFrom": [],
+      "attempt": 2,
+      "verdict": "none",
+      "kind": "-",
+      "confidence": null,
+      "rec": "",
+      "why": ""
+    },
+    {
+      "id": "D13",
+      "plan": "101",
+      "type": "behaviour",
+      "text": "behaviour: plannedTestPaths() reads only the Atomic Sub-tasks section and the top-level '- [auto|ui|human]' Done-when lines. It skips tokens that are globs, URLs or start with a dot — reverse: widen the scan in plannedTestPaths()",
+      "alsoFrom": [],
+      "attempt": 2,
+      "verdict": "none",
+      "kind": "-",
+      "confidence": null,
+      "rec": "",
+      "why": ""
+    },
+    {
+      "id": "D14",
+      "plan": "101",
+      "type": "seen",
+      "text": "seen: tools/test/eval-cases.test.mjs:17 — the ROLES list does not include plan-reviewer, so its eval cases are never schema-checked",
+      "alsoFrom": [],
+      "attempt": 2,
+      "verdict": "none",
+      "kind": "-",
+      "confidence": null,
+      "rec": "",
+      "why": ""
     }
   ],
-  "finishedAt": "2026-11-08T18:49:52.820Z"
+  "finishedAt": "2026-11-08T19:53:34.892Z",
+  "finalGate": {
+    "ok": true,
+    "command": null,
+    "at": "2026-11-08T19:53:34.893Z",
+    "attempt": 1,
+    "blamed": []
+  }
 }
