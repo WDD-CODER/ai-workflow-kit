@@ -1529,7 +1529,9 @@ const commands = {
     const run = runName()
     const status = needStatus(run)
     status.phase = 'stopped'
+    // Every stop is kept in stops[] (a later attempt's stop never replaces an earlier one); stopReason stays the latest.
     status.stopReason = String(args.reason ?? 'stopped')
+    status.stops = [...(Array.isArray(status.stops) ? status.stops : []), { at: nowIso(), reason: status.stopReason, attempt: status.attempts ?? 1 }]
     const slots = giveSlotsBack(run, status)
     writeStatus(run, status)
     emit({ ok: true, phase: status.phase, slots: slots.lines }, slots.lines)

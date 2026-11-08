@@ -19,7 +19,7 @@
  * those rounds, default 2). A park skips only the later plans that depend on it or share its files
  * (orchestrator.onPark "dependents"); the run goes on. A call that hits a rate or usage limit pauses the run
  * (env-paused), waits orchestrator.rateLimitWaitMin minutes and retries once; a second hit stops the run with
- * `stopped: rate-limit` for the Human to relaunch after the reset.
+ * `stopped: rate-limit`, and scripts/run-supervisor.mjs relaunches it after the reset.
  *
  * --dry-run prints the waves, each plan's readiness lint, the preflight result and the commands the run would run, and
  * calls no model (nothing is created). --concurrency 2 runs two plans of one wave at once (default 1). --reviewer-mode
@@ -457,7 +457,9 @@ async function main() {
   const RUN = o.run
   const RUN_BRANCH = `${RUN_PREFIX}${RUN}`
   if (!o.dryRun) {
-    CONSOLE_LOG = consoleLogPath(ROOT, RUN)
+    // Under scripts/run-supervisor.mjs the run's stdout already goes to the console log (appended): one writer.
+    CONSOLE_LOG = process.env.RUN_SUPERVISOR_LOG === '1' ? null : consoleLogPath(ROOT, RUN)
+    mkdirSync(dirname(consoleLogPath(ROOT, RUN)), { recursive: true })
     mkdirSync(dirname(CONSOLE_LOG), { recursive: true })
     say(`RUN_PLANS: launch ${nowIso()} · ${process.argv.slice(2).join(' ')}`)
   }

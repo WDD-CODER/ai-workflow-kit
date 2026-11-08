@@ -19,7 +19,8 @@ terminal, and only the builder and the reviewer are model calls. `/orchestrate` 
 | Review | `scripts/lib/plan-review.mjs` | The reviewer's prompt (plan without its Execution Notes, the diff, the gate receipt), its result validator, the verdict computed from the problems |
 | Merge | `scripts/lib/plan-merge.mjs` | `git merge --no-ff` in the merge folder, `merge-verify` (the pin), the merge checks, one push |
 | Order | `scripts/lib/run-order.mjs` | Waves and edges from `plan-order.mjs --json`, what a park blocks (`onPark`) |
-| Command | `.claude/commands/orchestrate.md` | The dry run first, the line for the Human, `start` in the background, the watch line, the result from `status.json` |
+| Supervisor | `scripts/run-supervisor.mjs` | Starts the run detached from the session, sweeps what dead runs left, relaunches after a death (3 times) or a rate limit, waits for free memory |
+| Command | `.claude/commands/orchestrate.md` | The dry run first, the supervisor line, the watch line, the result from `status.json` |
 | State | `scripts/orch-state.mjs` | Every file, git and time step: run branch, merge folder, builder folders, `status.json`, hand-off files, the merge pin, the park, the report |
 | Preflight | `scripts/orch-preflight.mjs` | Environment checks before the run and before a retry: disk, database, packages, dev server and backend (started when missing), git identity, remote, main folder, settings, a live run; per plan the code a commit guard would refuse, `[ui]` roles with no login recipe, leftovers of earlier runs |
 | Agents | `.claude/agents/orch-builder.md`, `.claude/agents/plan-reviewer.md` | One job each; shared contract in `docs/agent/agent-roles.md` |
@@ -47,9 +48,9 @@ now are ignored by install and sync with a `NOTE orchestrator: <key> removed` li
 
 ## The run
 
-`node scripts/run-plans.mjs --run <run> --plans <NNN,NNN>`: `/orchestrate` starts it in the background as soon as the
-dry run says `WOULD START: yes` (no reply asked for), and relaunches it once, after `orch-state.mjs stop`, when the
-harness kills it (a second kill stops and is reported). The Human follows it with
+`node scripts/run-plans.mjs --run <run> --plans <NNN,NNN>`: `/orchestrate` starts it through
+`node scripts/run-supervisor.mjs --run <run> --plans <NNN,NNN>` as soon as the dry run says `WOULD START: yes` (no reply
+asked for); the supervisor runs it outside the session and brings it back (The supervisor, below). The Human follows it with
 `cd "<main folder>"; node scripts/orch-state.mjs watch --run <run>`: one line for the run, then one per plan (state,
 round, tier and the model of its latest call, minutes in that state, its last `calls.csv` row). `status.json` holds
 `plans.<NNN>.models.<stage>` (model, tier, start time) from the moment each call starts, and a real run appends every
@@ -97,6 +98,34 @@ two marked **model**.
    writes the report. Exit 0 = every plan merged, 2 = some parked or skipped. `calls.csv` in the run's folder has one
    row per model call and gate command; its `model` is the value passed after `--model` on that call.
 
+## The supervisor
+
+`scripts/run-supervisor.mjs` makes a run survive its session (a Claude Code session's clean-up of background shells
+can kill a run mid-build). It calls no model and decides nothing a plan's tiers decide (INV-1).
+
+- **Start.** It starts itself detached (its own process group, `windowsHide`, stdout and stderr appended to
+  `.claude/orchestrator-runs/<run>.console.log`), prints `SUPERVISOR_STARTED <pid>` and the launcher exits at once.
+  Checked on Windows 11: after the launcher exits, `taskkill /T /F` of the shell that ran it leaves
+  the supervisor alive, so `child_process.spawn` with `detached` + `unref()` is the launch (no `Start-Process`
+  needed); a launcher that stayed alive would take the child down with its tree. run-plans.mjs is started detached
+  too (a dead supervisor leaves the run alive) and, under the supervisor, does not append the console log itself
+  (one writer).
+- **Sweep.** At start: `orphan-sweep.mjs`, `free-merged-slots.mjs --no-fetch`, then the builder folders of runs that
+  are not live — a clean folder whose branch is merged into the run branch or `origin/main` is removed
+  with `git worktree remove` (no `--force`, the branch kept); a folder on a `park/…` branch, named in a hand-off, of a
+  live run, with uncommitted files or not listed by git is kept. One `SUPERVISOR_SWEEP:` line per folder.
+- **After each launch** (from `status.json`): `finished`, `stopped` for any reason but a rate limit, or a refusal
+  before `init`: done. Still `running` — the process died: the death is written with
+  `orch-state.mjs stop --reason "process died (exit <code>)"` (slots go back) and the same command is launched again
+  (merged plans are left out), at most `MAX_RELAUNCHES` (3) times; the next death stops the run with
+  `supervisor gave up after 3 relaunches: <cause>`. `rate-limit`: relaunched after the reset time the error names
+  (plus one minute), else after `rateLimitWaitMin`; these do not count against the 3, and their waits stop at 6 hours.
+- **Memory.** Before a relaunch, free memory (`os.freemem()`, `freeMemGb` in `lib/orch-run.mjs`; `--free-mem` prints
+  it) below `MIN_FREE_MEM_GB` (4) waits, re-checked every 2 minutes up to 60, then stops with `low memory: <n> GB free`.
+- The two limits are fixed in code, the way `BUILDER_IDLE_MIN` is; no setting. `supervisor.json` beside `status.json`
+  holds its pid, every launch, the relaunches and the waits. Every stop stays in `status.json` `stops[]`
+  (`{ at, reason, attempt }`); `stopReason` is the latest, and the report lists every stop under `## Stops`.
+
 ## Model calls
 
 | Stage | Agent | Model | Folder | When |
@@ -126,7 +155,7 @@ is refused when the review folder holds a `.claude/settings.local.json`.
   itself at a run's end when a card needs the app, checks every card URL answers, and prints the cards unasked.
 - `decision-log.mjs grade` refuses a folder on `main` (exit 2, naming `<repo>-orch-merge-<run>`): the
   grades are committed on the run branch, never on `main`.
-- A second run beside a running one starts only with at least 4 GB of free memory.
+- A second run beside a running one starts only with at least 4 GB of free memory (`node scripts/run-supervisor.mjs --free-mem`).
 
 ## State rules
 

@@ -1013,8 +1013,10 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     // for the Human, `start` in the background), names the watch line, reads status.json, and starts no workflow.
     const cmd = read(od, '.claude/commands/orchestrate.md')
     if (cmd.split('\n').length >= 60) fail(`orchestrator: orchestrate.md has ${cmd.split('\n').length} lines — the thin command stays under 60`)
-    if (!cmd.includes('node scripts/run-plans.mjs --run <run> --plans <NNN,NNN>') || !cmd.includes('node scripts/run-plans.mjs --dry-run --run <run> --plans <NNN,NNN>')) fail('orchestrator: orchestrate.md must print the run-plans.mjs line and run its dry run first')
-    if (!cmd.includes('node scripts/orch-state.mjs watch --run <run>') || !cmd.includes('run_in_background') || !cmd.includes('status.json')) fail('orchestrator: orchestrate.md must name the watch line, start on `start` with run_in_background and read the result from status.json')
+    // Plan 100: the run starts under the supervisor (detached from the session), never with run_in_background.
+    if (!cmd.includes('node scripts/run-supervisor.mjs --run <run> --plans <NNN,NNN>') || !cmd.includes('node scripts/run-plans.mjs --dry-run --run <run> --plans <NNN,NNN>')) fail('orchestrator: orchestrate.md must run the run-plans.mjs dry run first, then start the run-supervisor.mjs line')
+    if (!cmd.includes('node scripts/orch-state.mjs watch --run <run>') || !cmd.includes('SUPERVISOR_STARTED <pid>') || cmd.includes('run_in_background') || !cmd.includes('status.json')) fail('orchestrator: orchestrate.md must name the watch line, start the supervisor (SUPERVISOR_STARTED <pid>, no run_in_background) and read the result from status.json')
+    if (!existsSync(join(od, 'scripts', 'run-supervisor.mjs'))) fail('orchestrator: install did not copy scripts/run-supervisor.mjs')
     if (/workflows\/orchestrate\.js|Workflow tool|\bargs\.|"mainChecks"/.test(cmd) || /\{\{[\w.|]+\}\}/.test(cmd)) fail('orchestrator: orchestrate.md must start no workflow (no workflow file, Workflow tool, args, runner agent) and keep no placeholder')
     if (!/^\.claude\/orchestrator-runs\/$/m.test(read(od, '.gitignore'))) fail('orchestrator: the rendered .gitignore does not ignore .claude/orchestrator-runs/')
   }

@@ -1,5 +1,5 @@
 ---
-description: Run saved plans unattended into one run branch with scripts/run-plans.mjs — starts it right after a dry run that says WOULD START yes, relaunches a killed run once, reads the result from status.json; the Human merges the run branch.
+description: Run saved plans unattended into one run branch with scripts/run-plans.mjs — starts it under the supervisor right after a dry run that says WOULD START yes, reads the result from status.json; the Human merges the run branch.
 ---
 
 # /orchestrate — run saved plans with run-plans.mjs ({{project.name}})
@@ -23,26 +23,26 @@ reviewer are model calls. This command starts no workflow and no agent; it runs 
 
 ## 2. Start the run at once
 
-After `WOULD START: yes`, run it at once with `run_in_background` (no reply asked; the dry run was the check):
-`node scripts/run-plans.mjs --run <run> --plans <NNN,NNN>`. Beside a run still running, a second one starts only
-with 4 GB of free memory (`node -e "console.log(Math.floor(require('os').freemem() / 2 ** 30))"`), else it waits.
+After `WOULD START: yes`, start it at once (no reply asked; the dry run was the check):
+`node scripts/run-supervisor.mjs --run <run> --plans <NNN,NNN>`. It prints `SUPERVISOR_STARTED <pid>` and returns:
+the supervisor runs the run outside this session, so closing the session does not stop it. Beside a run still
+running, a second one starts only with 4 GB of free memory (`node scripts/run-supervisor.mjs --free-mem`).
 Print the watch line (one line per plan: state, round, tier and model, minutes in it, last `calls.csv` row; the run's
 own log is `.claude/orchestrator-runs/<run>.console.log`, appended):
-`cd "<main folder>"; node scripts/orch-state.mjs watch --run <run>`. Do not poll; when it ends, go to 4.
+`cd "<main folder>"; node scripts/orch-state.mjs watch --run <run>`. To learn when it ends, start this wait as a
+background shell command and go to 4 when it exits:
+`until ! node scripts/orch-state.mjs watch --run <run> | grep -q '^RUNNING'; do sleep 60; done`.
 
-## 3. A run the harness killed
+## 3. Deaths and rate limits
 
-When the background run ends without its last line (`RUN_PLANS_JSON`) — killed for low memory, or by the harness —
-run `node scripts/orch-state.mjs stop --run <run> --reason "killed by the harness"` and relaunch the same line once
-with `run_in_background` (merged plans are left out). A second kill: stop, and report both kills; never relaunch
-again, never send the Human to a terminal for it.
+The supervisor relaunches a run that died (up to 3 times, with 4 GB of free memory) and a run stopped by a rate
+limit (after the reset). This session never relaunches a run itself and never sends the Human to a terminal for it.
 
 ## 4. The result
 
 Read `.claude/orchestrator-runs/<run>/status.json` and print: merged, parked (each with its reason), skipped (each with
 its reason), `stopReason` when set, the report (`.claude/orchestrator-runs/<run>.md`) and `calls.csv` beside the status
-file. A run stopped with `rate-limit` is relaunched with the same command after the limit resets (merged plans are left
-out). The Human merges `{{orchestrator.runBranchPrefix}}<run>`; never merge it, never touch `{{git.mainBranch}}`.
+file; every stop is in `status.json` `stops[]`. The Human merges `{{orchestrator.runBranchPrefix}}<run>`; never merge it, never touch `{{git.mainBranch}}`.
 
 ## 5. The cards — without being asked
 
