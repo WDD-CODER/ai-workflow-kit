@@ -29,8 +29,9 @@ hotspots (`CHANGELOG.md, README.md` — add to them, never rewrite or remove an 
 
 ```scope
 [one glob per line, prefer folder globs for code]
-[and one line that must name the test location itself — a tests folder glob or a single test file — when a step
-changes code that has tests; a code-folder glob does not cover the tests under it]
+[and, when a step changes code that has tests elsewhere, one line that must name the test location itself — a tests
+folder glob or a single test file; a test beside a scoped file (same folder or its __tests__/) needs no line, but
+beyond that a code-folder glob does not cover the tests under it]
 ```
 
 ## Read Scope

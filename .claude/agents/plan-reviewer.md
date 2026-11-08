@@ -35,6 +35,10 @@ it and do not let it change a verdict.
 - **A regression on a changed line:** a wrong result (an inverted condition, an off-by-one, a wrong variable, a lost
   escape), a crash on a likely input, a broken contract (a caller or a reader that now gets something else), error
   handling that hides a failure (a dropped exit-code check, a swallowed error), a check that now fails open.
+- **A test made easier to pass (always `major`, a STOP):** check every changed test file in the diff. A loosened
+  matcher, a skipped or focused test (`.skip`, `xit`, `.only`), a widened timeout, a mock that replaces the unit under
+  test, or a new test that asserts nothing the plan's goal names. The problem quotes the test line and the source line
+  it no longer checks; that pair is the concrete failing input rule 3 asks for.
 - **A project rule the diff breaks:** a hardcoded port, path or secret that must come from config; an installed or
   generated copy edited instead of its source.
 
@@ -51,7 +55,7 @@ it and do not let it change a verdict.
 ## Rule and severity
 
 `rule` is `<category>: <what is wrong>`. The category is one of: the criterion's id or kind (`A3`, `P0`, `done-when`,
-`scope`, `out of scope`, `unlogged removal`), `wrong result`, `crash`, `broken contract`, `error handling`,
+`scope`, `out of scope`, `unlogged removal`), `weakened test`, `wrong result`, `crash`, `broken contract`, `error handling`,
 `hardcoded`, `installed copy`. `file` and `line` point at the changed line (a criterion that nothing in the diff meets:
 `plan.md` and the criterion's line). `line` is always one whole number ≥ 1 — the first line of the problem, never a
 range, a list, a string or `null`; a result with any other `line` is rejected whole. Severity as in `docs/agent/agent-roles.md`: a plan requirement not met or a real

@@ -3,7 +3,7 @@
     "version": "2.1.0"
   },
   "source": "local:.",
-  "commit": "46b1e21257756d3f8c05cb589eafed9761837887",
+  "commit": "ee369a1081e9768fd368c3bea54496fdda418ebf",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -50,7 +50,7 @@
       "source": "core/.claude/agents/orch-verify.md"
     },
     ".claude/agents/plan-reviewer.md": {
-      "sha256": "b987be2eb059f2f7b1e51377645d87a47b5d2dcc40bb098a1f062c4b6a239aa8",
+      "sha256": "13ff4665087b1c2f759683b3be89801663046df6f8ba558800eccfa256b88a7c",
       "kind": "managed",
       "source": "core/.claude/agents/plan-reviewer.md"
     },
@@ -120,7 +120,7 @@
       "source": "core/.claude/commands/orchestrate.md"
     },
     ".claude/commands/plan.md": {
-      "sha256": "3d69c80fec3591106c24831656cb8e988fabac49994b57fa5c5aead8860bbda6",
+      "sha256": "54da8e8454a56c1d9ac8e0ad0ecb890bc0a5a3befadb77881fa3d875b7964795",
       "kind": "managed",
       "source": "core/.claude/commands/plan.md"
     },
@@ -190,7 +190,7 @@
       "source": "core/.claude/references/hld-template.md"
     },
     ".claude/references/prd-template.md": {
-      "sha256": "f6c4f5efa3f1f4cf1e232a72f68684a149eebad3379b4005459a525f9795607e",
+      "sha256": "fcd35be1c66157a8de9ccda6dfad9d3375cc2852e3004d8bcaeb0991c4c7748a",
       "kind": "managed",
       "source": "core/.claude/references/prd-template.md"
     },
@@ -215,7 +215,7 @@
       "source": "core/.claude/skills/preflight/SKILL.md"
     },
     ".claude/skills/save-plan/SKILL.md": {
-      "sha256": "2cc579f6e7273c7e7fca4a1deda4f7ccd637b51744716048f41de50c1fdeba82",
+      "sha256": "cace81669da360c32231e7d88480c51d97ed54944ac940cc92b0971b31385232",
       "kind": "managed",
       "source": "core/.claude/skills/save-plan/SKILL.md"
     },

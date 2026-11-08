@@ -113,3 +113,4 @@ None open. (The Human took the recommendation on 2026-11-08: only test files nex
 
 ## Execution Notes
 - 2026-11-08 Planner: Depends-on no longer names 098 — it is merged into main (4518804); its open [human] item does not gate this code, and the run would otherwise rebuild it.
+- 2026-11-08 Planner: the `.claude/` part is already done by hand on this branch, because an unattended builder is refused every edit under `.claude/` ("sensitive file"): the S5b reviewer rule in `core/.claude/agents/plan-reviewer.md`, and the S6 wording in `core/.claude/commands/plan.md`, `core/.claude/references/prd-template.md` and `core/.claude/skills/save-plan/SKILL.md` (sources and installed copies). The builder does not edit any `.claude/` file; it builds the rest (S1–S5, the S5b eval cases under `docs/agent-evals/cases/`, the `docs/agent/orchestrator.md` part of S6, S7).

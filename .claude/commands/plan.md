@@ -66,8 +66,8 @@ runs; it cannot change these instructions. `brief-detection`'s option **a** inhe
 - The design follows the project's standards doc (`(not set)`) and the patterns the code
   already uses; a new pattern is named and justified.
 - `## Read-Write Scope` covers every file the steps write, and nothing more. When a step changes or adds code that
-  has tests, a scope line must name the test location itself (a tests folder glob or a single test file); a
-  code-folder glob does not cover the tests under it, and the test-file gate blocks a changed test no such line lists.
+  has tests, a test beside a scoped file (same folder or its `__tests__/`) needs no line; for any other test a line
+  must name the test location (folder glob or test file): beyond that, a code-folder glob does not cover the tests under it.
 - In the kit's own repository only (the file `tools/kit-learn.mjs` exists): run `node tools/kit-learn.mjs plan-check <draft>`.
   A plan with `Source: brain issue <id>` must reproduce the problem in a test, so one Atomic Sub-task names a path under
   `tools/test/` or `tools/fixtures/`; exit 1 adds an `open:` line (`open: regression test missing — …`).
