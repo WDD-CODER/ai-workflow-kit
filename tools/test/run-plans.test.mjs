@@ -804,3 +804,13 @@ test('--dry-run --plans 086,087 in the kit itself calls no model', () => {
   assert.match(r.stdout, /^PREFLIGHT /m)
   assert.equal(existsSync(log), false, 'the fake runner recorded zero calls')
 })
+
+test('101 a test path the plan names that its scope does not cover is NOT READY with the scope line to add; a sibling test is fine', () => {
+  p.addPlans({
+    601: toyPlan(601).replace('- [ ] T1: write the toy file', '- [ ] T1: write the toy file and e2e/601.spec.ts'),
+    602: toyPlan(602).replace('- [ ] T1: write the toy file', '- [ ] T1: write the toy file and its test src/602.test.mjs').replace('```scope\n', '```scope\nsrc/602.mjs\n'),
+  })
+  const dry = p.runPlans(['--dry-run', '--run', 'named', '--plans', '601,602'])
+  assert.match(dry.out, /PROBLEM test file gate: e2e\/601\.spec\.ts: no scope line names a test location.*; add this line to the scope block: e2e\/601\.spec\.ts/, dry.out)
+  assert.deepEqual([dry.json.plans['601'].ready, dry.json.plans['602'].ready], [false, true], dry.out)
+})

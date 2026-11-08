@@ -79,7 +79,10 @@ two marked **model**.
      error reruns once (a pass on that rerun is recorded with `orch-state.mjs flake`), then the environment check
      probes the failed command's own precondition, then the gate runs once more without a fix round.
    - `orch-state.mjs diff --no-notes`: the changed files, the test-file gate (a changed test file no scope line names
-     is a blocker) and the plan copy without its Execution Notes.
+     is a blocker) and the plan copy without its Execution Notes. A test file next to a file the scope covers (its path
+     minus `.spec.`/`.test.`/`_spec.`/`_test.`, same folder or a `__tests__/` directly under it) needs no line, unless
+     its diff removes an `expect(`/`assert`/`it(`/`test(`/`describe(` line (`sibling test weakened`); any other test
+     location needs a scope line, and the dry run flags a test path the plan names that has none.
    - **model — reviewer** (`plan-reviewer.md` on `reviewerModel`, no write tool, a detached review folder at the
      checked head). The verdict is computed from its `blocker`/`major` problems.
    - **merge** (one at a time): `git merge --no-ff` in the merge folder with the anchored subject, `merge-verify`
