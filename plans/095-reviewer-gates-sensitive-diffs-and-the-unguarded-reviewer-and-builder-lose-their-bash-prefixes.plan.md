@@ -83,7 +83,7 @@ the path to the scope block and retry.
 - [x] S3: Enforce the review of a sensitive diff even when the plan asks for advisory, and park when it cannot run — reviewStep mode, park on review error — core/scripts/run-plans.mjs
 - [x] S4: Take test running away from the reviewer and refuse to start a builder with no guard hooks — READ_ONLY_BASH, BUILDER_BASH removed, allowedTools throws — core/scripts/lib/claude-run.mjs
 - [x] S5: Say both review rules where projects read about the setting — orchestrator.md table row, kit.config.json $comment — core/docs/agent/orchestrator.md, kit.config.json
-- [ ] S6: Resync the installed copies, run every check, add the changelog entry — CHANGELOG.md
+- [x] S6: Resync the installed copies, run every check, add the changelog entry — CHANGELOG.md
 
 ## Technical Considerations
 - The sensitive check runs on the reviewed diff's file list, not the plan's scope: a plan can touch a guard file it did not list only if the scope check let it, and the review must still see that.
