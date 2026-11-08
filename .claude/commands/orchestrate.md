@@ -1,5 +1,5 @@
 ---
-description: Run saved plans unattended into one run branch with scripts/run-plans.mjs — prints the line to run, starts it on `start`, reads the result from status.json; the Human merges the run branch.
+description: Run saved plans unattended into one run branch with scripts/run-plans.mjs — starts it right after a dry run that says WOULD START yes, relaunches a killed run once, reads the result from status.json; the Human merges the run branch.
 ---
 
 # /orchestrate — run saved plans with run-plans.mjs (ai-workflow-kit)
@@ -21,25 +21,29 @@ reviewer are model calls. This command starts no workflow and no agent; it runs 
 - `WOULD START: no — …`: stop and show the reason (an open Critical Question, a lint problem, the preflight). Fix the
   plan or the environment first; never edit around a refusal.
 
-## 2. Hand the Human the line
+## 2. Start the run at once
 
-Print the command for a PowerShell terminal in the main folder:
+After `WOULD START: yes`, run this line at once with `run_in_background` — ask for no reply, the dry run was the
+check:
 
 ```
 node scripts/run-plans.mjs --run <run> --plans <NNN,NNN>
 ```
 
-and the line that follows the run from a second terminal:
+Print the line that follows the run from any terminal (the main folder's absolute path, quoted):
 
 ```
-node scripts/orch-state.mjs watch --run <run>
+cd "<main folder>"; node scripts/orch-state.mjs watch --run <run>
 ```
 
-Then say: reply `start` to run it from here instead.
+Do not poll it; when it ends, go to 4.
 
-## 3. `start`
+## 3. A run the harness killed
 
-Run the same command with `run_in_background`. Do not poll it; when it ends, go to 4.
+When the background run ends without its last line (`RUN_PLANS_JSON`) — killed for low memory, or by the harness —
+run `node scripts/orch-state.mjs stop --run <run> --reason "killed by the harness"` and relaunch the same line once
+with `run_in_background` (merged plans are left out). A second kill: stop, and report both kills; never relaunch
+again, never send the Human to a terminal for it.
 
 ## 4. The result
 
