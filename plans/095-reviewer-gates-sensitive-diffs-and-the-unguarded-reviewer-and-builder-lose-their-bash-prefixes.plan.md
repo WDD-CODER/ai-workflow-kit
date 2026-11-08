@@ -23,7 +23,7 @@ Two findings on kit-owned files, both reproduced in an installed project at `scr
   (d) the reviewer's `--allowedTools` holds no `node --test`; `git diff` / `git show` stay only if a test shows `--output` and `--no-index` are refused (else the reviewer gets no Bash: its diff and receipt already come inline);
   (e) `allowedTools()` for a writing agent without guard hooks throws (the run refuses to start an unguarded builder); with hooks it keeps a bare `Bash` as today; `BUILDER_BASH` is gone.
 - [auto] `docs/agent/orchestrator.md` and the `kit.config.json` `$comment` for `orchestrator.reviewerMode` state both rules: advisory applies only to a plan with `Reviewer: advisory` (plan 097, left stale there) and never to a sensitive diff (`grep -c "Reviewer: advisory" docs/agent/orchestrator.md` ≥ 1).
-- [auto] `npm run build`, `npm run lint`, `npm test` and `node tools/drift-check.mjs --target .` pass (the builder runs `node tools/sync.mjs --target . --apply` first; it is a step, not a check).
+- [auto] `npm run build`, `npm run lint`, `npm test` and `node tools/drift-check.mjs --target .` pass (the builder runs the kit sync with apply first; it is a step, not a check).
 - [human] Release the kit, run `kit-sync -Ref vX.Y.Z -Apply` on the installed project, and run one `/orchestrate` on a plan that says `Reviewer: advisory` and touches a guard file: it parks on a reviewer STOP instead of merging (reply `ok`).
 
 ## Execution Mode

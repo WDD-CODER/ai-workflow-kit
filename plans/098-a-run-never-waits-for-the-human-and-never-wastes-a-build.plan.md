@@ -31,7 +31,7 @@ The audit's Part 4 lists what cost the first runs hours and tokens:
   (e) with no `--reviewer-mode` flag and `orchestrator.reviewerMode` unset, a plan with `Reviewer: advisory` is reviewed as `gate`.
 - [auto] `node --test tools/test/orchestrator-park-branch.test.mjs` passes, with a test that fails today: parking a plan renames `feat/<NNN>` to `park/<run>-<NNN>` (local and remote), so `plan-info` of the next run cuts a fresh `feat/<NNN>` from the new run branch.
 - [auto] `kit.config.json` has `"reviewerMode": "gate"` and `"builderTimeoutMin": 45`; `docs/agent/orchestrator.md` describes both.
-- [auto] `npm run build`, `npm run lint`, `npm test` and `node tools/drift-check.mjs --target .` pass (the builder runs `node tools/sync.mjs --target . --apply` first; it is a step, not a check — under rule (c) a Done-when line names only checks the runner can run).
+- [auto] `npm run build`, `npm run lint`, `npm test` and `node tools/drift-check.mjs --target .` pass (the builder runs the kit sync with apply first; it is a step, not a check — under rule (c) a Done-when line names only checks the runner can run).
 - [human] After a kit release and `kit-sync` on the installed project, one `/orchestrate` starts the run right after its dry run with no reply asked for, and a plan parked in an earlier run starts on a fresh branch (reply `ok`).
 
 ## Execution Mode

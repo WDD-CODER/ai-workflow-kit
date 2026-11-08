@@ -33,7 +33,7 @@ Source: the first real orchestrator runs on an installed project, audited 2026-1
   - start a second run beside a running one only when free memory is at least 4 GB.
   (`grep -c "4 GB" .claude/commands/orchestrate.md` ≥ 1.)
 - [auto] `kit.config.json` has `"useSlots": false`; `docs/agent/orchestrator.md` describes the console log, the per-plan `watch` and the builder pool.
-- [auto] `npm run build`, `npm run lint`, `npm test` and `node tools/drift-check.mjs --target .` pass (the builder runs `node tools/sync.mjs --target . --apply` first; it is a step, not a check).
+- [auto] `npm run build`, `npm run lint`, `npm test` and `node tools/drift-check.mjs --target .` pass (the builder runs the kit sync with apply first; it is a step, not a check).
 - [human] After a kit release and `kit-sync` on the installed project, one `/orchestrate` run: `watch` shows each plan's stage and model while it runs, and at its end the cards arrive with every page answering, with no reply asked for first (reply `ok`).
 
 ## Execution Mode
