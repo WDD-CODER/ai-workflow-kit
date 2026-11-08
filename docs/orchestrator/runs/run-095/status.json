@@ -1,0 +1,213 @@
+{
+  "run": "run-095",
+  "branch": "orch/run-095",
+  "base": "main",
+  "startedAt": "2026-11-08T09:06:57.178Z",
+  "mainShaAtStart": "6f9662edee15c565c32e9595c021cdbffa76fbdc",
+  "plans": {
+    "095": {
+      "nnn": "095",
+      "title": "Reviewer gates sensitive diffs; the unguarded reviewer and builder lose their Bash prefixes",
+      "branch": "feat/095-reviewer-gates-sensitive-diffs",
+      "state": "parked",
+      "round": 0,
+      "tier": "build",
+      "models": {},
+      "humanItems": [
+        "Release the kit, run `kit-sync -Ref vX.Y.Z -Apply` on the installed project, and run one `/orchestrate` on a plan that says `Reviewer: advisory` and touches a guard file: it parks on a reviewer STOP instead of merging (reply `ok`)."
+      ],
+      "history": [
+        {
+          "at": "2026-11-08T09:07:03.742Z",
+          "state": "building",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T09:27:05.182Z",
+          "state": "building",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T09:27:13.616Z",
+          "state": "fixing",
+          "round": 1
+        },
+        {
+          "at": "2026-11-08T11:06:55.485Z",
+          "state": "building",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T11:16:42.976Z",
+          "state": "gate",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T11:26:40.313Z",
+          "state": "checking",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T11:26:44.924Z",
+          "state": "parked",
+          "round": 0
+        }
+      ],
+      "earlier": [
+        {
+          "nnn": "095",
+          "title": "Reviewer gates sensitive diffs; the unguarded reviewer and builder lose their Bash prefixes",
+          "branch": "feat/095-reviewer-gates-sensitive-diffs",
+          "state": "fixing",
+          "round": 1,
+          "tier": "judgment",
+          "models": {},
+          "tiers": [
+            "build",
+            "judgment"
+          ],
+          "freeDiskGb": 12.4,
+          "roundCauses": [
+            "round 1: builder: claude timed out after 20 min"
+          ],
+          "calls": [
+            {
+              "stage": "builder",
+              "model": "sonnet",
+              "seconds": 1200.9,
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "exit": 1,
+              "error": "claude timed out after 20 min"
+            }
+          ],
+          "escalations": [
+            {
+              "step": "round 1",
+              "check": "builder: claude timed out after 20 min"
+            }
+          ],
+          "replan": "no — the builder gave no planChange",
+          "resetToBase": "8429b9b2bc9c78166ebf1533e4980ef69019c023",
+          "resetFrom": "8429b9b2bc9c78166ebf1533e4980ef69019c023"
+        }
+      ],
+      "tiers": [
+        "build"
+      ],
+      "freeDiskGb": 10.8,
+      "sha": "e2d627355bc5177a49d587c6e022359b97d8c520",
+      "calls": [
+        {
+          "stage": "builder",
+          "model": "sonnet",
+          "seconds": 585.3,
+          "tokens": {
+            "input": 107339,
+            "output": 2251
+          },
+          "exit": 0
+        }
+      ],
+      "reason": "review could not run: review folder: git worktree add: fatal: Could not reset index file to revision 'HEAD'.",
+      "park": {
+        "at": "2026-11-08T11:26:48.030Z",
+        "reason": "review could not run: review folder: git worktree add: fatal: Could not reset index file to revision 'HEAD'."
+      }
+    },
+    "098": {
+      "nnn": "098",
+      "round": 0,
+      "models": {},
+      "state": "skipped",
+      "reason": "depends on parked 095",
+      "freeDiskGb": 10.8,
+      "history": [
+        {
+          "at": "2026-11-08T11:26:48.726Z",
+          "state": "skipped",
+          "round": 0
+        }
+      ]
+    },
+    "099": {
+      "nnn": "099",
+      "round": 0,
+      "models": {},
+      "state": "skipped",
+      "reason": "depends on parked 095",
+      "freeDiskGb": 10.8,
+      "history": [
+        {
+          "at": "2026-11-08T11:26:48.906Z",
+          "state": "skipped",
+          "round": 0
+        }
+      ]
+    }
+  },
+  "notes": [
+    {
+      "at": "2026-11-08T09:27:13.342Z",
+      "plan": "095",
+      "text": "escalated to a fresh judgment-tier builder (round 1): builder: claude timed out after 20 min"
+    },
+    {
+      "at": "2026-11-08T11:26:48.294Z",
+      "plan": "095",
+      "text": "parked: nothing to save (nothing uncommitted)"
+    },
+    {
+      "at": "2026-11-08T11:26:49.087Z",
+      "text": "wave 1 parked 095 — skipped 098, 099; 0 later plan(s) go on"
+    }
+  ],
+  "attempts": 2,
+  "phase": "finished",
+  "freeDiskGb": 10.8,
+  "updatedAt": "2026-11-08T11:26:50.443Z",
+  "decisions": [
+    {
+      "id": "D1",
+      "plan": "095",
+      "type": "behaviour",
+      "text": "behaviour: the reviewer gets no Bash at all (READ_ONLY_BASH = []), because a Bash(git diff:*) prefix cannot refuse --output or --no-index, so no test could show them refused — reverse: restore the git diff / git show prefixes in core/scripts/lib/claude-run.mjs",
+      "alsoFrom": [],
+      "attempt": 2,
+      "verdict": "none",
+      "kind": "-",
+      "confidence": null,
+      "rec": "",
+      "why": ""
+    },
+    {
+      "id": "D2",
+      "plan": "095",
+      "type": "behaviour",
+      "text": "behaviour: a run and its dry run now refuse to start when .claude/settings.json has no PreToolUse hooks (unguarded) — reverse: remove that check in run-plans.mjs and give allowedTools() a different fallback",
+      "alsoFrom": [],
+      "attempt": 2,
+      "verdict": "none",
+      "kind": "-",
+      "confidence": null,
+      "rec": "",
+      "why": ""
+    },
+    {
+      "id": "D3",
+      "plan": "095",
+      "type": "behaviour",
+      "text": "behaviour: isSensitive is exported from core/scripts/ship-prep.mjs, with no new sensitive-paths.mjs, because moving it would break tools/install-check.mjs, which is outside the scope — reverse: move it to lib/sensitive-paths.mjs and update install-check",
+      "alsoFrom": [],
+      "attempt": 2,
+      "verdict": "none",
+      "kind": "-",
+      "confidence": null,
+      "rec": "",
+      "why": ""
+    }
+  ],
+  "finishedAt": "2026-11-08T11:26:50.441Z"
+}
