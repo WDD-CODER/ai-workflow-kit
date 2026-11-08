@@ -32,7 +32,10 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync, rmS
 import { spawnSync } from 'node:child_process'
 import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createRequire } from 'node:module'
+import { extractScopeGlobs, testFilesOutOfScope, testLocationReason } from './lib/plan-scope.mjs'
 import { readAgent, claudeArgs, runAgent, parseResult, passedModel } from './lib/claude-run.mjs'
+import { isSensitive } from './ship-prep.mjs'
 import { gateCommands, runGate, scopeCheck, scopeMarker } from './lib/plan-gate.mjs'
 import { review, blocking, problemLine } from './lib/plan-review.mjs'
 import { mergePlan, orchState } from './lib/plan-merge.mjs'
@@ -49,12 +52,20 @@ const PREPARE = []
 const CI_MIRROR = ["node tools/pack-check.mjs","node tools/drift-check.mjs --target .","node tools/install-check.mjs","node tools/workflow-link-check.mjs","node tools/e2e-check.mjs","node tools/acceptance-check.mjs --e2e"]
 const MERGE_CHECKS_MODE = "build"
 const GATE_TIMEOUT_MIN = Number(45) || 15
+// A builder has no wall-clock limit: it is stopped only after this many minutes in which no file in its folder changed
+// (lib/claude-run.mjs spawnClaude). A fixed value, not a setting (the orchestrator settings are capped in size-budget.json).
+export const BUILDER_IDLE_MIN = 15
+// RUN_PLANS_BUILDER_IDLE_MS and RUN_PLANS_BUILDER_POLL_MS (tests only) replace them, like RUN_PLANS_CLAUDE replaces claude.
+const BUILDER_IDLE_MS = Number(process.env.RUN_PLANS_BUILDER_IDLE_MS) > 0 ? Number(process.env.RUN_PLANS_BUILDER_IDLE_MS) : BUILDER_IDLE_MIN * 60_000
+const BUILDER_POLL_MS = Number(process.env.RUN_PLANS_BUILDER_POLL_MS) > 0 ? Number(process.env.RUN_PLANS_BUILDER_POLL_MS) : 30_000
+const MAIN = 'main'
 // One plan at a time unless --concurrency 2 is given (goal decision: more builders on one machine made specs time
 // out); orchestrator.concurrency stays the workflow's setting.
 const CONCURRENCY = 1
 const ON_PARK = "dependents"
 const MAX_FIX_ROUNDS = Number(2) || 2
-const REVIEWER_MODE = "advisory" === 'gate' ? 'gate' : 'advisory'
+// Unset or anything but advisory: gate (a STOP parks after its fix round).
+const REVIEWER_MODE = "gate" === 'advisory' ? 'advisory' : 'gate'
 const REVIEWER_MODEL = "sonnet"
 const RATE_LIMIT_WAIT_MIN = Number(30) >= 0 ? Number(30) : 30
 const STALE_MIN = Number(10) || 10
@@ -238,7 +249,19 @@ export function optionProblems({ nnn, planText, opts, runPlans }) {
 
 // ---- small helpers ----------------------------------------------------------------------------------------------
 const nowIso = () => new Date().toISOString()
-const say = (line) => console.log(line)
+// A real run appends every line it prints to .claude/orchestrator-runs/<run>.console.log (consoleLog below), so the
+// run keeps its own log: a relaunch adds to it, a kill keeps every line up to the kill.
+let CONSOLE_LOG = null
+export function consoleLogPath(root, run) {
+  return join(root, '.claude', 'orchestrator-runs', `${run}.console.log`)
+}
+const say = (line) => {
+  console.log(line)
+  if (!CONSOLE_LOG) return
+  try {
+    appendFileSync(CONSOLE_LOG, `${line}\n`)
+  } catch { /* the log is a convenience; the run goes on */ }
+}
 const b64 = (s) => Buffer.from(String(s), 'utf8').toString('base64')
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const lastLine = (s) => String(s ?? '').split('\n').map((l) => l.trim()).filter(Boolean).pop() ?? ''
@@ -353,9 +376,59 @@ function lintPlan(nnn, path, runBranch, { statuses = null, opts = null, runPlans
   for (const f of missing) problems.push(`check file ${f} does not exist and the plan does not create it`)
   lines.push(`check files: ${files.length ? (missing.length ? `missing ${missing.join(', ')}` : `ok (${files.length})`) : 'none named'}`)
   if (mapped.length) lines.push(`npx: ${mapped.join('; ')}`)
-  for (const d of dropped) lines.push(`dropped: ${d}`)
+  // A check the plan's author wrote that the runner cannot run is a readiness problem, never a dropped note: the plan
+  // would merge without it.
+  for (const d of dropped) problems.push(`check command the runner cannot run: ${d}`)
+  // The plan branch an earlier run left: one not built on this run's base would be reused and fail at once.
+  const base = git(ROOT, 'rev-parse', '--verify', '--quiet', `refs/remotes/origin/${runBranch}`).status === 0 ? `origin/${runBranch}` : `origin/${MAIN}`
+  const stale = staleBranchProblem({ root: ROOT, branch, base, run: runBranch.slice(RUN_PREFIX.length), nnn })
+  if (stale) problems.push(stale)
+  // The gate's test-file check, on what the builder will change: a check file the plan creates, and what an existing
+  // plan branch already changed.
+  const created = files.filter((f) => !existsSync(join(ROOT, f)) && !missing.includes(f))
+  const onBranch = !stale && git(ROOT, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`).status === 0 ? git(ROOT, 'diff', '--name-only', '--no-renames', `${base}...${branch}`).out.split('\n').filter(Boolean) : []
+  const outOfScope = testsOutOfScope(text, [...new Set([...created, ...onBranch])].filter((f) => f !== path && !f.startsWith('.claude/sessions/')))
+  for (const f of outOfScope) problems.push(`test file gate: ${testLocationReason(f)}`)
+  lines.push(`test files: ${outOfScope.length ? `outside the scope ${outOfScope.join(', ')}` : 'ok'}`)
   const checks = gateCommands({ prepare: PREPARE, pm: PM, ...COMMANDS, kitRoot: ROOT, manifest: existsSync(join(ROOT, 'scripts', 'kit-manifest-check.mjs')) && existsSync(join(ROOT, 'docs', 'workflow-kit', 'manifest.json')), scope: { base: `origin/${runBranch}`, plan: path }, extra: extra.filter((c) => !missing.some((f) => checkFilesOf(c).includes(f))) })
   return { nnn, path, title: (/^#\s+(.*)$/m.exec(text)?.[1] ?? '').trim(), branch, lines, problems, notes, dropped, checks, start: startTier(text), reviewerMode: opt.reviewerMode, ready: problems.length === 0 }
+}
+
+/**
+ * A builder ESCALATE (or blocked) about the scope — a file outside the Read-Write Scope, an `approved:` path, a scope
+ * extension: only a plan edit fixes it. A db-write ask is not one (it goes to the Human as a question).
+ */
+export function isScopeEscalation(result) {
+  if (!result || !['ESCALATE', 'blocked'].includes(String(result.status ?? ''))) return false
+  const text = `${result.blocker ?? ''} ${result.planChange?.why ?? ''}`
+  if (/^\s*ESCALATE: db-write/i.test(String(result.blocker ?? ''))) return false
+  return /\bapproved:\s*\S|outside (?:of )?(?:the |its |this plan's |the plan's )?(?:read-write )?scope|scope extended|SCOPE_GUARD|not in (?:the |its )?(?:read-write )?scope/i.test(text)
+}
+
+/**
+ * The gate's test-file check (lib/plan-scope.mjs testFilesOutOfScope, the function `orch-state.mjs diff` runs) on the
+ * files a plan will change: the test files no scope line naming a test location lists.
+ */
+export function testsOutOfScope(planText, files) {
+  const picomatch = createRequire(import.meta.url)('picomatch')
+  return testFilesOutOfScope(files, extractScopeGlobs(String(planText).replace(/\r\n/g, '\n')) ?? [], (g) => picomatch(g, { dot: true }))
+}
+/**
+ * A plan branch (local or on origin) an earlier run left that is not built on `base`: neither holds the other, so the
+ * run would reuse it and stop at once. A relaunch of the same run (its status.json holds the plan) is not stale.
+ */
+export function staleBranchProblem({ root, branch, base, run, nnn }) {
+  const statusFile = join(root, '.claude', 'orchestrator-runs', run, 'status.json')
+  try {
+    if (existsSync(statusFile) && JSON.parse(readFileSync(statusFile, 'utf8')).plans?.[nnn]) return null
+  } catch { /* unreadable: checked as a new run */ }
+  const anc = (a, b) => spawnSync('git', ['merge-base', '--is-ancestor', a, b], { cwd: root }).status === 0
+  for (const ref of [`refs/heads/${branch}`, `refs/remotes/origin/${branch}`]) {
+    if (git(root, 'rev-parse', '--verify', '--quiet', ref).status !== 0) continue
+    if (anc(base, ref) || anc(ref, base)) continue
+    return `stale branch ${ref.replace(/^refs\/(heads|remotes)\//, '')}: an earlier run left it and it is not built on ${base} — rename it (node scripts/orch-state.mjs park-branch --run ${run} --plan ${nnn}) before the run`
+  }
+  return null
 }
 
 /**
@@ -383,6 +456,11 @@ async function main() {
   const o = parsed.opts
   const RUN = o.run
   const RUN_BRANCH = `${RUN_PREFIX}${RUN}`
+  if (!o.dryRun) {
+    CONSOLE_LOG = consoleLogPath(ROOT, RUN)
+    mkdirSync(dirname(CONSOLE_LOG), { recursive: true })
+    say(`RUN_PLANS: launch ${nowIso()} · ${process.argv.slice(2).join(' ')}`)
+  }
   const agentsDir = join(ROOT, '.claude', 'agents')
   const builderAgent = readAgent(join(agentsDir, 'orch-builder.md'))
   const reviewerAgent = readAgent(join(agentsDir, 'plan-reviewer.md'))
@@ -402,6 +480,9 @@ async function main() {
   // docs/brain/human-decisions.md is read once, never written; no file = every `default per D<n>` goes back to the Human.
   const decisionsFile = join(ROOT, 'docs', 'brain', 'human-decisions.md')
   const statuses = existsSync(decisionsFile) ? decisionStatuses(readFileSync(decisionsFile, 'utf8')) : null
+  // The builder runs only with the project's guard hooks (claude-run allowedTools() throws without them).
+  const guardFile = builderSettings(join(ROOT, '.claude', 'orchestrator-runs', RUN), { write: false })
+  const unguarded = guardFile ? null : 'no PreToolUse hooks in .claude/settings.json — a builder never runs without guard hooks'
   const lint = {}
   for (const nnn of all) {
     const l = lintPlan(nnn, order.plans[nnn]?.path, RUN_BRANCH, { statuses, opts: o, runPlans: all })
@@ -413,11 +494,13 @@ async function main() {
       say('  gate commands:')
       for (const c of l.checks) say(`    ${c}`)
       const show = (argv, cwd) => `claude ${argv.join(' ')}  (cwd ${cwd})`
-      const call = builderCall({ agent: builderAgent, ...l.start, settings: builderSettings(join(ROOT, '.claude', 'orchestrator-runs', RUN), { write: false }) })
-      const argv = claudeArgs({ ...call.opts, systemPromptFile: '<temp>/system.md' })
-      l.builder = { tier: call.tier, model: call.model, reason: call.reason, argv }
+      const call = builderCall({ agent: builderAgent, ...l.start, settings: guardFile })
       say(`  tier: ${call.tier} (${call.reason})`)
-      say(`  builder: ${show(argv, `<repo>-orch-${RUN}-${nnn}`)}`)
+      if (guardFile) {
+        const argv = claudeArgs({ ...call.opts, systemPromptFile: '<temp>/system.md' })
+        l.builder = { tier: call.tier, model: call.model, reason: call.reason, argv }
+        say(`  builder: ${show(argv, `<repo>-orch-${RUN}-${nnn}`)}`)
+      } else say(`  builder: refused — ${unguarded}`)
       say(`  reviewer: ${show(claudeArgs({ agent: reviewerAgent, model: REVIEW_MODEL, systemPromptFile: '<temp>/system.md', allow: true }), `<repo>-orch-review-${RUN}-${nnn}`)}`)
       say(`  merge: git merge --no-ff origin/${l.branch} into ${RUN_BRANCH}, merge-verify, ${mergeChecksOf(l.checks).join(', ') || 'no check'}, git push origin ${RUN_BRANCH}`)
     }
@@ -426,7 +509,7 @@ async function main() {
   const preJson = orchJson(pre.out) ?? { ok: pre.status === 0, problems: [lastLine(pre.out)] }
   for (const line of pre.out.split(/\r?\n/).filter((l) => /^(OK|FAIL|SKIP|WARN|PARK)\b/.test(l.trim()))) say(`PREFLIGHT ${line.trim()}`)
   const notReady = all.filter((n) => !lint[n].ready)
-  const refusal = !all.length ? null : notReady.length ? `plan(s) not ready: ${notReady.join(', ')}` : preJson.ok !== true ? `preflight: ${(preJson.problems ?? []).join('; ')}` : null
+  const refusal = !all.length ? null : unguarded ? unguarded : notReady.length ? `plan(s) not ready: ${notReady.join(', ')}` : preJson.ok !== true ? `preflight: ${(preJson.problems ?? []).join('; ')}` : null
   if (o.dryRun) {
     say(`WOULD START: ${refusal ? `no — ${refusal}` : all.length ? 'yes' : 'no — nothing to build'}`)
     say(`RUN_PLANS_JSON ${JSON.stringify({ ok: true, dryRun: true, run: RUN, waves: order.waves, skipped: order.skipped, plans: Object.fromEntries(all.map((n) => [n, { ready: lint[n].ready, problems: lint[n].problems, checks: lint[n].checks, builder: lint[n].builder }])), preflight: { ok: preJson.ok === true, problems: preJson.problems ?? [] }, wouldStart: !refusal && all.length > 0, modelCalls: 0 })}`)
@@ -453,7 +536,6 @@ async function main() {
   const mergeFolder = init.mergeFolder
   const runDir = join(ROOT, '.claude', 'orchestrator-runs', RUN)
   const guardSettings = builderSettings(runDir)
-  if (!guardSettings) say('RUN_PLANS: no PreToolUse hooks in .claude/settings.json — the builder runs without guard hooks and with narrow Bash patterns only')
   const csv = join(runDir, 'calls.csv')
   mkdirSync(runDir, { recursive: true })
   if (!existsSync(csv)) writeFileSync(csv, 'plan,stage,model,seconds,input_tokens,output_tokens,exit\n')
@@ -483,9 +565,11 @@ async function main() {
   }
 
   /** One model call with the rate-limit pause: { r } or throws RunStop on a second limit. */
-  const modelCall = async (nnn, stage, fn) => {
+  const modelCall = async (nnn, stage, fn, { model: planned = null, tier = null } = {}) => {
     for (let attempt = 1; ; attempt++) {
       if (stopReason) throw new RunStop(stopReason)
+      // status.json says which model this call runs on while it runs: plans.<NNN>.models.<stage>.
+      if (planned) setPlan(nnn, { role: stage, model: planned, ...(tier ? { 'model-tier': tier } : {}) })
       const r = await fn()
       // The model passed after --model on this call, never one the answer names.
       const model = passedModel(r.argv, r.model ?? '')
@@ -506,7 +590,6 @@ async function main() {
     const l = lint[nnn]
     const info = state('plan-info', { run: RUN, plan: nnn, 'with-worktree': 'yes' })
     if (!info.ok) return { nnn, state: 'parked', reason: `plan-info: ${info.error}` }
-    for (const d of l.dropped) note(`check command dropped, not run: ${d}`, nnn)
     const ctx = { nnn, info, wt: info.wt, tier: l.start.tier, tierReason: l.start.reason, round: 0, escalated: false, findings: [], lastWhy: null, mode: 'first' }
     const park = (reason, { teardown = true } = {}) => {
       setPlan(nnn, { state: 'parked', round: ctx.round, tier: ctx.tier, reason: String(reason).slice(0, 380) })
@@ -536,7 +619,8 @@ async function main() {
       const call = builderCall({ agent: builderAgent, tier: ctx.tier, reason: ctx.tierReason, settings: guardSettings })
       const prompt = builderPrompt({ RUN, RUN_BRANCH, ctx, l, LESSONS })
       say(`RUN_PLANS: plan ${nnn} ${stage} (${call.model}, tier ${call.tier}: ${call.reason}, round ${ctx.round})`)
-      const b = await modelCall(nnn, stage, () => runAgent({ ...call.opts, cwd: wt, prompt, timeoutMs: GATE_TIMEOUT_MIN * 60_000, bin: o.claude }))
+      // No wall clock for a builder: only the idle limit (BUILDER_IDLE_MIN) on its folder's file changes.
+      const b = await modelCall(nnn, stage, () => runAgent({ ...call.opts, cwd: wt, prompt, timeoutMs: 0, idleMs: BUILDER_IDLE_MS, watchDir: wt, pollMs: BUILDER_POLL_MS, bin: o.claude }), { model: call.model, tier: call.tier })
       let result = null
       try {
         result = b.ok ? parseResult(b.text) : null
@@ -544,6 +628,11 @@ async function main() {
       for (const d of (Array.isArray(result?.decisions) ? result.decisions : []).filter((x) => typeof x === 'string' && /^(behaviour|seen|removes):/i.test(x.trim()))) decisions.push({ plan: nnn, text: d.trim().slice(0, 380) })
       if (Array.isArray(result?.notDone) && result.notDone.length) note(`builder left undone (round ${ctx.round}): ${result.notDone.slice(0, 5).join('; ').slice(0, 300)}`, nnn)
       let failure = null
+      // An idle stop parks with the work kept: the park saves it to park/<run>-<NNN> (never a reset to the base, never a
+      // second builder on the same problem).
+      if (!b.ok && b.timedOut) return park(`builder stopped: ${b.error} — the work is kept on park/${RUN}-${nnn}`)
+      // A scope problem only a plan edit fixes: parked at once, no judgment-tier builder (it cannot widen the scope either).
+      if (b.ok && isScopeEscalation(result)) return park(`replan needed: ${String(result.blocker ?? result.planChange?.why ?? '').slice(0, 300) || 'a file outside the scope'}`)
       if (!b.ok) failure = { why: `builder: ${b.error}`, escalate: true }
       else if (result && ctx.tier === 'judgment' && result.planChange?.needed === true) return park(`replan needed: ${String(result.planChange.why ?? '').slice(0, 240) || '(no reason given)'}`)
       else if (result && /^ESCALATE: db-write/i.test(String(result.blocker ?? ''))) return park(`ask: ${result.blocker}`)
@@ -593,7 +682,7 @@ async function main() {
           if (r.error) {
             // A branch that brings its own local settings into the review is parked in either mode.
             if (r.refused) return park(`review ${r.error}`)
-            if ((l.reviewerMode ?? o.reviewerMode) === 'gate') return park(`review could not run: ${r.error}`)
+            if (r.mode === 'gate') return park(`review could not run: ${r.error}`)
             note(`review could not run (advisory, not enforced): ${r.error}`, nnn)
           } else if (r.enforced) {
             const kept = blocking(r.problems)
@@ -758,7 +847,7 @@ async function main() {
  * replaced by this folder's path (the same hooks, run from the same place, as the workflow's builder had). A guard that
  * judges a file in the builder's folder hands it to that folder's own guard (scripts/lib/guard.mjs, like any other
  * worktree); the gate's trusted scope check is the backstop. Returns the file, or null when there are no such hooks
- * (the builder then gets narrow Bash patterns instead of a bare Bash). `write` false: the path only (the dry run).
+ * (the run then refuses to start: a builder never runs unguarded). `write` false: the path only (the dry run).
  */
 export function builderSettings(runDir, { write = true } = {}) {
   let s
@@ -815,7 +904,31 @@ export function builderPrompt({ RUN, RUN_BRANCH, ctx, l, LESSONS }) {
 }
 
 /** The review: a detached review folder at the checked head, one reviewer call in it, the folder removed after. */
-async function reviewStep({ nnn, RUN, RUN_BRANCH, branch, checkedHead, reviewPath, receipt, reviewerAgent, REVIEW_MODEL, bin, modelCall, mode }) {
+async function reviewStep({ nnn, RUN, RUN_BRANCH, branch, checkedHead, reviewPath, receipt, reviewerAgent, REVIEW_MODEL, bin, modelCall, mode: asked }) {
+  // A sensitive diff (ship-prep's own check, security.sensitivePaths included) is reviewed as gate whatever the plan's
+  // Reviewer: line or --reviewer-mode says: a STOP gets a fix round, then parks, and a review that cannot run parks.
+  const { mode, note: sensitiveNote } = reviewModeFor({ asked, files: diffFiles(`origin/${RUN_BRANCH}...${checkedHead}`) })
+  const r = await reviewIn({ nnn, RUN, RUN_BRANCH, branch, checkedHead, reviewPath, receipt, reviewerAgent, REVIEW_MODEL, bin, modelCall, mode })
+  return { ...r, mode, note: [sensitiveNote, r.note].filter(Boolean).join(' · ') || undefined }
+}
+
+/** The files a diff range touches (git diff --name-only; renames listed by their new path). */
+function diffFiles(range) {
+  return git(ROOT, 'diff', '--name-only', '--no-renames', range).out.split(/\r?\n/).map((f) => f.trim()).filter(Boolean)
+}
+
+/**
+ * The review mode of one plan's diff: the asked mode (the plan's own, from optionProblems), except that a diff that
+ * touches a sensitive path is always gate. Returns { mode, sensitive, note }.
+ */
+export function reviewModeFor({ asked, files, sensitive = isSensitive }) {
+  const hits = files.filter(sensitive)
+  if (asked === 'gate' || !hits.length) return { mode: asked, sensitive: hits, note: null }
+  const shown = hits.slice(0, 3).join(', ') + (hits.length > 3 ? ` and ${hits.length - 3} more` : '')
+  return { mode: 'gate', sensitive: hits, note: `reviewer gate: the diff touches a sensitive path (${shown}) — advisory never applies to a sensitive diff` }
+}
+
+async function reviewIn({ nnn, RUN, RUN_BRANCH, branch, checkedHead, reviewPath, receipt, reviewerAgent, REVIEW_MODEL, bin, modelCall, mode }) {
   const repo = ROOT.split(/[\\/]/).pop()
   const folder = join(dirname(ROOT), `${repo}-orch-review-${RUN}-${nnn}`)
   if (existsSync(folder)) {
@@ -831,9 +944,9 @@ async function reviewStep({ nnn, RUN, RUN_BRANCH, branch, checkedHead, reviewPat
     const r = await review({
       agentFile: reviewerAgent.file, model: REVIEW_MODEL, cwd: folder, nnn, run: RUN, planText, base: `origin/${RUN_BRANCH}`, branch: `origin/${branch}`, diffText, receipt, mode,
       call: async (args) => {
-        // allow: the reviewer is read-only, so only narrow Bash patterns are pre-approved; trustCwdSettings false: the
+        // allow: the reviewer is read-only, so only its read tools are pre-approved (no Bash); trustCwdSettings false: the
         // folder is the branch under review, and a .claude/settings.local.json in it refuses the call.
-        callAnswer = await modelCall(nnn, 'reviewer', () => runAgent({ ...args, agent: reviewerAgent, timeoutMs: REVIEW_TIMEOUT_MIN * 60_000, bin, allow: true, trustCwdSettings: false }))
+        callAnswer = await modelCall(nnn, 'reviewer', () => runAgent({ ...args, agent: reviewerAgent, timeoutMs: REVIEW_TIMEOUT_MIN * 60_000, bin, allow: true, trustCwdSettings: false }), { model: REVIEW_MODEL })
         return callAnswer
       },
     })

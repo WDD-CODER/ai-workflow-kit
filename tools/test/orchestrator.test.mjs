@@ -314,6 +314,28 @@ test('watchLine: RUNNING, FINISHED, STOPPED, STUCK on no progress, STUCK on the 
   assert.equal(lib.watchLine(other, { nowMs: now, staleMin: 10 }).stuck, false, 'the same text on two plans is not a loop')
 })
 
+test('099 (c) planLines: one watch line per plan — state, round, tier, the latest call\'s model, minutes in the state, the last calls.csv row', () => {
+  const now = Date.parse('2026-01-01T12:00:00.000Z')
+  const min = (n) => new Date(now - n * 60000).toISOString()
+  const status = { plans: {
+    '002': { nnn: '002', state: 'queued', round: 0 },
+    '001': { nnn: '001', state: 'fixing', round: 1, tier: 'judgment', history: [{ at: min(30) }, { at: min(7) }], models: { builder: { model: 'sonnet', at: min(30) }, 'judgment builder': { model: 'opus', tier: 'judgment', at: min(7) } } },
+  } }
+  const calls = 'plan,stage,model,seconds,input_tokens,output_tokens,exit\n001,builder,sonnet,1200.4,0,0,1\n002,x,y,1,0,0,0\n001,gate: npm run lint,-,2.1,0,0,0\n'
+  const lines = lib.planLines(status, { nowMs: now, calls })
+  assert.deepEqual(lines, [
+    '  001 fixing · round 1 · tier judgment · judgment builder opus · 7 min in this state · last call: 001,gate: npm run lint,-,2.1,0,0,0',
+    '  002 queued · round 0 · tier - · no call yet · ? min in this state · last call: 002,x,y,1,0,0,0',
+  ])
+  assert.deepEqual(lib.planLines({ plans: {} }, { nowMs: now }), [])
+})
+
+test('099 (d) builders never take a wt-N slot by default: the scaffold says useSlots false and the kit renders it', () => {
+  const scaffold = JSON.parse(readFileSync(join(kit, 'kit.config.json'), 'utf8')).orchestrator
+  assert.equal(scaffold.useSlots, false)
+  assert.match(readFileSync(join(kit, 'scripts', 'orch-state.mjs'), 'utf8'), /const USE_SLOTS = false !== false/)
+})
+
 test('orch-state.mjs watch: reads status.json only, STUCK exits 1, the rest 0', () => {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'orch-watch-')))
   try {

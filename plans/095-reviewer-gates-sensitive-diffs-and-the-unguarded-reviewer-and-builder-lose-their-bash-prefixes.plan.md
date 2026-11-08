@@ -78,12 +78,12 @@ the path to the scope block and retry.
 4. Try `git diff --output=x` and `git diff --no-index a b` under `--allowedTools 'Bash(git diff:*)'` with the fake claude's argv only (no model call): decides item (d).
 
 ## Atomic Sub-tasks
-- [ ] S1: Write the failing tests first, for the sensitive diff, the failed review and the tool lists — cases (a)–(e) — tools/test/run-plans.test.mjs
-- [ ] S2: Make one sensitive-path check that the ship gate and the runner both use — isSensitive shared, security.sensitivePaths honoured — core/scripts/lib/sensitive-paths.mjs, core/scripts/ship-prep.mjs
-- [ ] S3: Enforce the review of a sensitive diff even when the plan asks for advisory, and park when it cannot run — reviewStep mode, park on review error — core/scripts/run-plans.mjs
-- [ ] S4: Take test running away from the reviewer and refuse to start a builder with no guard hooks — READ_ONLY_BASH, BUILDER_BASH removed, allowedTools throws — core/scripts/lib/claude-run.mjs
-- [ ] S5: Say both review rules where projects read about the setting — orchestrator.md table row, kit.config.json $comment — core/docs/agent/orchestrator.md, kit.config.json
-- [ ] S6: Resync the installed copies, run every check, add the changelog entry — CHANGELOG.md
+- [x] S1: Write the failing tests first, for the sensitive diff, the failed review and the tool lists — cases (a)–(e) — tools/test/run-plans.test.mjs
+- [x] S2: Make one sensitive-path check that the ship gate and the runner both use — isSensitive shared, security.sensitivePaths honoured — core/scripts/lib/sensitive-paths.mjs, core/scripts/ship-prep.mjs
+- [x] S3: Enforce the review of a sensitive diff even when the plan asks for advisory, and park when it cannot run — reviewStep mode, park on review error — core/scripts/run-plans.mjs
+- [x] S4: Take test running away from the reviewer and refuse to start a builder with no guard hooks — READ_ONLY_BASH, BUILDER_BASH removed, allowedTools throws — core/scripts/lib/claude-run.mjs
+- [x] S5: Say both review rules where projects read about the setting — orchestrator.md table row, kit.config.json $comment — core/docs/agent/orchestrator.md, kit.config.json
+- [x] S6: Resync the installed copies, run every check, add the changelog entry — CHANGELOG.md
 
 ## Technical Considerations
 - The sensitive check runs on the reviewed diff's file list, not the plan's scope: a plan can touch a guard file it did not list only if the scope check let it, and the review must still see that.
@@ -96,3 +96,12 @@ A new security agent or model call; changing `reviewerModel`; the builder's guar
 None open. (A sensitive diff is reviewed as `gate` whatever the plan's `Reviewer:` line or the `--reviewer-mode` flag says: that is the Primary goal, not a choice.)
 
 ## Execution Notes
+- 2026-11-08 run-095 round 1 (hand-off builder; the first builder timed out with no changes).
+- Step 0.1: the builder always gets `settings` when `.claude/settings.json` has PreToolUse hooks; with none, the run (and the dry run) now refuses before the start (`unguarded`), so the throw in `allowedTools()` never fires in a run.
+- Step 0.2: `isSensitive` is importable (ship-prep's main sits behind `isMain`), so it is exported from `core/scripts/ship-prep.mjs` and imported by run-plans; no `sensitive-paths.mjs` (moving it would break `tools/install-check.mjs`, outside the scope, which evaluates the `const DEFAULT_SENSITIVE_RE … const isSensitive` block of the rendered ship-prep).
+- Step 0.3: the sensitive check uses `git diff --name-only --no-renames origin/<run branch>...<checked head>` — the diff the reviewer sees (`reviewModeFor` in run-plans).
+- Step 0.4: a `Bash(git diff:*)` prefix pattern cannot refuse an argument, so no test can show `--output` / `--no-index` refused: the reviewer gets no Bash (`READ_ONLY_BASH = []`).
+- node tools/sync.mjs --target . --apply → exit 0 (4 kit-update)
+- npm run build → exit 0; npm run lint → exit 0 (after removing plan-number history from core comments); node tools/drift-check.mjs --target . → exit 0
+- node --test tools/test/ship-prep.test.mjs tools/test/agent-eval.test.mjs tools/test/ship-review.test.mjs → exit 0, pass 55, fail 0
+- grep -c "Reviewer: advisory" docs/agent/orchestrator.md → 1

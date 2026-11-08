@@ -15,7 +15,8 @@
  *   node scripts/orch-state.mjs release    --run <name> --plan <NNN>        gives the plan's slot back (detached, marker removed)
  *   node scripts/orch-state.mjs park-save  --run <name> --plan <NNN>        uncommitted work to park/<run>-<NNN> (pushed), slot released
  *   node scripts/orch-state.mjs park-record --run <name> --plan <NNN> [--reason t] [--sha x]   the park, recorded once
- *   node scripts/orch-state.mjs park       --run <name> --plan <NNN> [--reason-b64 b]   the whole teardown (runs plan-park.mjs)
+ *   node scripts/orch-state.mjs park       --run <name> --plan <NNN> [--reason-b64 b]   the whole teardown (runs plan-park.mjs), then park-branch
+ *   node scripts/orch-state.mjs park-branch --run <name> --plan <NNN>      feat/<NNN>-<slug> renamed to park/<run>-<NNN> (local and origin)
  *   node scripts/orch-state.mjs merge-verify --run <name> --plan <NNN>      HEAD^2 of the merge folder == checkedHead, else reset to HEAD^
  *   node scripts/orch-state.mjs touch      --run <name>                     renews updatedAt (run-plans' heartbeat while a step runs)
  *   node scripts/orch-state.mjs diff       --run <name> --plan <NNN>        changed files vs the run branch, sensitive?
@@ -73,7 +74,7 @@ import { uiItems } from './lib/done-when.mjs'
 import { listSlots } from './lib/slot.mjs'
 import { ensureDeps, idleSlot, claimSlot, releaseSlot, releaseRunSlots } from './lib/orch-folders.mjs'
 import { agreementStats, addLesson, lessonParts, ruleLines, LESSON_ROLES } from './decision-log.mjs'
-import { planWithoutNotes, triageForce, triageView, decisionsInView, mergePlanFile, decisionType, runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine, logQueryArgs, lessonFacts, runLogRow, updateRunLog, parseRunLog, parseDecisionRows, trendOf, contextBudget, INJECTED_ROLES } from './lib/orch-run.mjs'
+import { planWithoutNotes, triageForce, triageView, decisionsInView, mergePlanFile, decisionType, runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine, planLines, logQueryArgs, lessonFacts, runLogRow, updateRunLog, parseRunLog, parseDecisionRows, trendOf, contextBudget, INJECTED_ROLES } from './lib/orch-run.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const MAIN = '{{git.mainBranch}}'
@@ -81,6 +82,8 @@ const PREFIX = '{{orchestrator.runBranchPrefix}}'
 const MIN_FREE_GB = {{orchestrator.minFreeDiskGb|json}}
 const REPO = '{{project.repoName}}'
 const PM = '{{project.packageManager}}' === 'pnpm' ? 'pnpm' : 'npm'
+// Builders take a Human's wt-N slot only when a project sets orchestrator.useSlots to true (the scaffold says false);
+// otherwise they get folders of their own (one per plan in flight, so at most orchestrator.concurrency at once).
 const USE_SLOTS = {{orchestrator.useSlots|json}} !== false
 const SERVER_ROOT = '{{paths.serverRoot}}'
 // Minutes without a status.json update after which `watch` prints STUCK (orchestrator.staleMin).
@@ -121,7 +124,9 @@ const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tie
   // switches (no value needed; `--key=<value>` is accepted too): plan-info's redacted copy, handoff's reset to the base
   'no-notes', 'reset-base',
   // run-plans.mjs: the model calls of a step (base64 JSON list of { stage, model, seconds, input, output, exit })
-  'calls-b64'])
+  'calls-b64',
+  // run-plans.mjs: the tier of the model a call starts on (with --role/--model)
+  'model-tier'])
 const SWITCHES = new Set(['no-notes', 'reset-base'])
 function parseArgs(argv) {
   const out = { _: [] }
@@ -508,6 +513,63 @@ function sensitiveTests() {
 function fetchOrigin() {
   const f = git(root, 'fetch', '--quiet', 'origin')
   if (f.status !== 0) fail(`git fetch origin failed: ${f.err.split('\n').pop()}`, { envFailure: true })
+}
+
+/**
+ * A parked plan's branch feat/<NNN>-<slug> becomes park/<run>-<NNN> (local and origin), so the next run cuts a fresh
+ * feat/<NNN> from its own run branch instead of reusing a stale one. The name is the one park-save writes: a park that
+ * saved uncommitted work and a park that renamed the branch end on the same branch. Never loses a commit: park/… gets
+ * the plan branch (or already holds it), and a plan branch and a park branch that went apart are joined by one merge
+ * commit (the newer side's files). A branch still checked out in a folder is kept. Answers { renamed, parkBranch, what }
+ * or { error }.
+ */
+function renameParkedBranch(run, nnn) {
+  const branch = branchOf(planPath(nnn), nnn)
+  const park = `park/${run}-${nnn}`
+  const f = git(root, 'fetch', '--quiet', 'origin')
+  if (f.status !== 0) return { renamed: false, parkBranch: null, what: `not renamed — git fetch origin: ${f.err.split('\n').pop()}`, error: `git fetch origin failed: ${f.err.split('\n').pop()}` }
+  const sha = (ref) => git(root, 'rev-parse', '--verify', '--quiet', `${ref}^{commit}`).out
+  const isAncestor = (a, b) => spawnSync('git', ['merge-base', '--is-ancestor', a, b], { cwd: root }).status === 0
+  const local = sha(`refs/heads/${branch}`)
+  const remote = sha(`refs/remotes/origin/${branch}`)
+  const feat = local || remote
+  if (!feat) return { renamed: false, parkBranch: null, what: `no ${branch} to rename` }
+  const busy = git(root, 'worktree', 'list', '--porcelain').out.split('\n').some((l) => l.trim() === `branch refs/heads/${branch}`)
+  if (busy) return { renamed: false, parkBranch: null, what: `${branch} kept — still checked out in a folder` }
+  // a remote plan branch with commits the local one lacks: both are kept in the park branch
+  let tip = feat
+  if (local && remote && !isAncestor(remote, local)) tip = isAncestor(local, remote) ? remote : null
+  const parked = sha(`refs/remotes/origin/${park}`) || sha(`refs/heads/${park}`)
+  const join2 = (a, b) => {
+    const newer = Number(git(root, 'log', '-1', '--format=%ct', a).out) >= Number(git(root, 'log', '-1', '--format=%ct', b).out) ? a : b
+    const c = git(root, 'commit-tree', `${newer}^{tree}`, '-p', a, '-p', b, '-m', `park ${run} ${nnn}: join ${branch} and ${park}`)
+    return c.status === 0 ? c.out : null
+  }
+  if (!tip) tip = join2(local, remote)
+  if (!tip) return { renamed: false, parkBranch: null, what: `${branch} kept — its local and origin heads could not be joined`, error: `joining ${branch} and origin/${branch} failed` }
+  let target = tip
+  if (parked) target = isAncestor(tip, parked) ? parked : isAncestor(parked, tip) ? tip : join2(parked, tip)
+  if (!target) return { renamed: false, parkBranch: null, what: `${branch} kept — it could not be joined with ${park}`, error: `joining ${branch} and ${park} failed` }
+  if (target !== sha(`refs/remotes/origin/${park}`)) {
+    const p = git(root, 'push', '--quiet', 'origin', `${target}:refs/heads/${park}`)
+    if (p.status !== 0) return { renamed: false, parkBranch: null, what: `${branch} kept — push of ${park} failed: ${p.err.split('\n').pop()}`, error: `push of ${park} failed: ${p.err.split('\n').pop()}` }
+  }
+  // origin holds every commit now: the plan branch goes, here and on origin (never a forced delete).
+  if (sha(`refs/heads/${park}`)) git(root, 'update-ref', '-d', `refs/heads/${park}`)
+  if (local) {
+    git(root, 'update-ref', '-d', `refs/heads/${branch}`, local)
+    git(root, 'config', '--remove-section', `branch.${branch}`)
+  }
+  if (remote) {
+    const d = git(root, 'push', '--quiet', 'origin', '--delete', branch)
+    if (d.status !== 0) return { renamed: true, parkBranch: park, what: `${branch} → ${park} (${target.slice(0, 7)}); origin/${branch} not deleted: ${d.err.split('\n').pop()}` }
+  }
+  const st = readStatus(run)
+  if (st?.plans?.[nnn]) {
+    st.plans[nnn].parkBranch = park
+    writeStatus(run, st)
+  }
+  return { renamed: true, parkBranch: park, what: `${branch} → ${park} (${target.slice(0, 7)}), local and origin` }
 }
 
 // ---- what the run learns (docs/agent/decision-review.md §0; no model call) ---------------------------------------------------
@@ -1096,7 +1158,21 @@ const commands = {
       answer = line ? JSON.parse(line.slice('ORCH_JSON '.length)) : null
     } catch { /* unreadable */ }
     if (!answer) fail(`plan-park.mjs gave no answer (exit ${r.status}): ${String(r.stderr ?? '').trim().split('\n').pop() ?? ''}`)
-    emit({ ...answer, ok: true }, out.filter((l) => l.startsWith('plan-park: ')))
+    // Last step: the plan branch becomes park/<run>-<NNN>, so the next run cuts a fresh feat/<NNN> from its run branch.
+    const b = renameParkedBranch(run, nnn)
+    const steps = [...(answer.steps ?? []), { step: 'rename', what: b.what }]
+    emit({ ...answer, ok: true, steps, renamed: b.renamed, parkBranch: b.parkBranch }, [...out.filter((l) => l.startsWith('plan-park: ')), `plan-park: rename: ${b.what}`])
+  },
+
+  // A parked plan's branch, renamed on its own (the `park` command runs this as its last step):
+  //   node scripts/orch-state.mjs park-branch --run <name> --plan <NNN>
+  'park-branch'() {
+    const run = runName()
+    const nnn = planNumber(args.plan ?? '')
+    if (!nnn) fail('--plan takes a plan number')
+    const b = renameParkedBranch(run, nnn)
+    if (b.error) fail(b.error)
+    emit({ ok: true, ...b }, [`plan ${nnn}: ${b.what}`])
   },
 
   // A park, recorded once (plan-park.mjs's last step):
@@ -1183,7 +1259,9 @@ const commands = {
       p.checkedHead = String(args['checked-head'])
     }
     p.models ??= {}
-    if (args.role) p.models[String(args.role)] = { model: String(args.model ?? 'unknown'), ...(args.effort ? { effort: String(args.effort) } : {}) }
+    // --role <stage> --model <m> [--model-tier <tier>]: the model a call of this plan runs on, set when the call starts
+    // (`at`), so `watch` and status.json show it while the call runs.
+    if (args.role) p.models[String(args.role)] = { model: String(args.model ?? 'unknown'), ...(args.effort ? { effort: String(args.effort) } : {}), ...(args['model-tier'] && args['model-tier'] !== true ? { tier: String(args['model-tier']) } : {}), at: new Date().toISOString() }
     // --roles orch-builder=sonnet/medium,plan-reviewer=sonnet/medium: the model each agent of this step echoed.
     if (args.roles && args.roles !== true) {
       for (const item of String(args.roles).split(',').filter(Boolean)) {
@@ -1473,7 +1551,10 @@ const commands = {
     const staleMin = args['stale-min'] !== undefined ? Number(args['stale-min']) : STALE_MIN
     if (!(Number.isFinite(staleMin) && staleMin > 0)) fail('--stale-min takes a number of minutes')
     const w = watchLine(status, { nowMs: Date.now(), staleMin })
-    emit({ ok: !w.stuck, stuck: w.stuck, line: w.line, phase: status.phase ?? 'unknown', updatedAt: status.updatedAt ?? null }, [w.line])
+    // One line per plan under the run's line: stage, round, tier + model, minutes in that stage, the last calls.csv row.
+    const csv = join(runsDir(), run, 'calls.csv')
+    const perPlan = planLines(status, { nowMs: Date.now(), calls: existsSync(csv) ? readFileSync(csv, 'utf8') : '' })
+    emit({ ok: !w.stuck, stuck: w.stuck, line: w.line, phase: status.phase ?? 'unknown', updatedAt: status.updatedAt ?? null }, [w.line, ...perPlan])
   },
 
   disk() {
