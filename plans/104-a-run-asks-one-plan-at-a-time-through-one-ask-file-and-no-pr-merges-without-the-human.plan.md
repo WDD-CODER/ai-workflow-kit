@@ -93,7 +93,7 @@ the path to the scope block and retry.
 - [x] S5: Add the answer command, and resume the plan in the same run — core/scripts/orch-state.mjs, core/scripts/run-plans.mjs
 - [ ] S6: Show open asks in watch, and tell the session to print them at once — core/scripts/orch-state.mjs, core/.claude/commands/orchestrate.md
 - [ ] S7: Make Claude Code ask the Human before any PR merge or push to main — core/.claude/settings.json, core/docs/agent/orchestrator.md
-- [ ] S8: Fix the answer wait in code with a test-only override, resync the installed copies, run every check, add the changelog entry — ASK_WAIT_MIN — core/scripts/run-plans.mjs, tools/test/run-plans-ask.test.mjs, CHANGELOG.md
+- [x] S8: Fix the answer wait in code with a test-only override, resync the installed copies, run every check, add the changelog entry — ASK_WAIT_MIN — core/scripts/run-plans.mjs, tools/test/run-plans-ask.test.mjs, CHANGELOG.md
 
 ## Technical Considerations
 - The advisor will be one more writer of `<id>.answer.json` with `by: advisor`. Nothing in the run changes when it arrives.
@@ -114,3 +114,4 @@ None open. (The Human took the recommendation on 2026-11-08: a question stops on
 - S5: `orch-state.mjs answer --run <run> --id <id> --choice <n> | --text "<answer>"` writes `<id>.answer.json` (by: human). Scenario run: 701 got a scope answer, its scope was extended on orch/asks, it resumed from park/asks-701 with ANSWER in its prompt and merged; then 703 and 704 merged.
 - S6 (code half): `watch` prints one card per open ask and `asks[]` in ORCH_JSON. orchestrate.md is the Planner's.
 - S7 (docs half): core/docs/agent/orchestrator.md `## Merges` makes the three statements. settings.json is the Planner's.
+- S8: `export const ASK_WAIT_MIN = 180` plus the test-only overrides; no kit.config.json key, and a test checks the scaffold has none. Ran `node tools/sync.mjs --target . --apply`. Results: `npm run build` → 0; `npm run lint` → 0; `node --test tools/test/run-plans-ask.test.mjs` → pass 4, fail 0; `node --test tools/test/orchestrator.test.mjs` → 0 (pass 78, todo 1 = settings.json); `node --test tools/test/size-budget.test.mjs` → 0; `node tools/drift-check.mjs --target .` → 0 (KIT_DRIFT: ok); scope-check against origin/orch/run-100 → 0 (SCOPE: ok). The CHANGELOG has an entry. `npm test` (full) is left to the Planner. Existing tests run with RUN_PLANS_ASK_WAIT_MS=1: orchestrator-resume.test.mjs pass 4/4. run-plans.test.mjs was stopped early (slow machine); the runs it finished (main, gated, sens-a, sens-b) gave the states and reasons its assertions expect.
