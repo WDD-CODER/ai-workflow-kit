@@ -38,19 +38,19 @@ as `npm run {{commands.devLocal}}`) and `project.packageManager` can be `pnpm`.
 **Primary:** `/orchestrate` on a main folder with no dev server running starts the servers the run needs and proceeds to
 `go` with no server question; a server that already answers is never touched.
 
-- [auto] `node scripts/slot-serve.mjs --main` in a scratch main folder (no `.worktree-port`) starts a stub frontend
+- [auto] (F01) `node scripts/slot-serve.mjs --main` in a scratch main folder (no `.worktree-port`) starts a stub frontend
   (a `commands.dev` script that listens on the base port), prints `SLOT_SERVE: main fe=<port> started`, and a second run
   prints `kept` without starting a second process. Test in `tools/test/orchestrator-folders.test.mjs`.
 - [auto] `slot-serve.mjs --main` refuses in a slot (`.worktree-port` present), refuses a port held by another program with
   the holder's PID and command in the message (never kills it), and runs no package install, no `environment.slot`
   copy and no `commands.slotPrepare` step.
-- [auto] With `--servers be`, the backend starts in `server/` with `<project.packageManager> run <commands.devLocal>` (default
+- [auto] (F01) With `--servers be`, the backend starts in `server/` with `<project.packageManager> run <commands.devLocal>` (default
   script `dev:local`), with the process environment unchanged (no `PORT`, no `ALLOWED_ORIGIN` set by the kit); `remote`
   runs `commands.devRemote` (default `dev:remote`) instead.
 - [auto] A chain started with `pnpm` or with the `dev:remote` script is recognised as a dev-server chain (`CHAIN_CMD` in
   `core/scripts/lib/slot-procs.mjs`), so a failed start is killed from its root and `slot-stop.mjs --main` stops it —
   unit test on the matcher plus the stub-server stop test.
-- [auto] `orch-preflight.mjs` starts a missing frontend through `slot-serve.mjs --main` and prints `OK dev server`;
+- [auto] (F01) `orch-preflight.mjs` starts a missing frontend through `slot-serve.mjs --main` and prints `OK dev server`;
   it starts the backend only when a plan named in `--plans` has an open `[auto:main]` item (new helper
   `mainAutoItems` in `core/scripts/lib/done-when.mjs`, unit-tested), else prints `SKIP backend: no plan needs it`.
 - [auto] A failed start is a `FAIL` that carries the last lines of the server log (as `startServer` returns them), and the
@@ -203,7 +203,7 @@ None (scripts and docs only). Preflight output stays one line per check.
 
 Every step names its own test location.
 
-- [x] A1: Reproduce the gap with failing tests before any fix — in `tools/test/orchestrator-folders.test.mjs`: preflight in a scratch main folder whose `commands.dev` script starts a stub server returns `FAIL dev server … not a slot` today; `slot-serve.mjs --main` is an unknown flag today; add the Step 0 findings to Execution Notes; print the failures, then continue (no Human stop unless Step 0 item 3 found a second gap)
+- [x] A1: (F01) Reproduce the gap with failing tests before any fix — in `tools/test/orchestrator-folders.test.mjs`: preflight in a scratch main folder whose `commands.dev` script starts a stub server returns `FAIL dev server … not a slot` today; `slot-serve.mjs --main` is an unknown flag today; add the Step 0 findings to Execution Notes; print the failures, then continue (no Human stop unless Step 0 item 3 found a second gap)
   - Scope: `tools/test/orchestrator-folders.test.mjs`
 - [x] B1: Add the main-folder serve mode — `spawnPm`, `CHAIN_CMD` matching `pnpm` and the backend scripts, `.claude/.main-serve-pids` read/write with a file-name parameter on the existing helpers, a stop that reads only that file, `slot-serve.mjs --main`, `slot-stop.mjs --main`, the slot backend script from `commands.devLocal`; tests for: starts, kept, refused in a slot, held port named and not killed, no install/prepare, a pnpm / `dev:remote` chain matched, hand-started server survives `slot-stop --main`
   - Scope: `core/scripts/slot-serve.mjs`, `core/scripts/slot-stop.mjs`, `core/scripts/lib/slot-procs.mjs`, `core/scripts/local-excludes.mjs`, `.gitignore`, `tools/test/orchestrator-folders.test.mjs`

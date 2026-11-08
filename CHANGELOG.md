@@ -9,6 +9,9 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Changed
+- **`/plan`'s Architect + PM review answers a question from the Human's recorded decisions instead of asking.** When `docs/brain/human-decisions.md` exists, the review reads its Decisions table first; a row whose status is `in force` and answers the question becomes `default per D<n>: …` in the draft, and no `open:` line is written. Superseded, frozen and open rows answer nothing; two `in force` rows that disagree are asked about, with both ids. The file is read, never written; without it the review behaves as before. No project action.
+
 ## [2.1.0] - 2026-11-07
 
 ### Fixed

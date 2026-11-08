@@ -20,7 +20,7 @@ Seven small leftovers from the run, each a few lines:
 **Primary:** each leftover is fixed, with a test where the behaviour is code.
 
 - [auto] `node --test tools/test/orchestrator.test.mjs` passes, with a test that a six-segment path is kept in a lesson line and a seven-segment one is left out.
-- [auto] `node --test tools/test/orchestrator-env-retry.test.mjs` passes, with a test that a probe of `node tools/x.mjs` passes when the file exists only in the folder the gate ran in, and fails when it exists in neither.
+- [auto] (F02) `node --test tools/test/orchestrator-env-retry.test.mjs` passes, with a test that a probe of `node tools/x.mjs` passes when the file exists only in the folder the gate ran in, and fails when it exists in neither.
 - [auto] `node --test tools/test/db-write-ask.test.mjs` passes, with a test that `node scripts/seed-check.mjs` and `node scripts/seed-checker.mjs --dry` are not a write, while `node scripts/seed.mjs`, `node scripts/seed-users.mjs` and `npm run seed` still are.
 - [auto] `node --test tools/test/orchestrator-folders.test.mjs` passes three times in a row inside the full suite on Windows: `node --test "tools/test/*.test.mjs"` → 0 failures, three runs, with the slot-serve tests each taking a port nothing else holds.
 - [auto] `node --test tools/test/guards.test.mjs` passes inside the full suite on Windows on three runs, and the speed check still fails a guard that is really slow (a test with a stubbed 5 s guard fails it).
