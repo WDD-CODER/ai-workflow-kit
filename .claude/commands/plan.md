@@ -56,6 +56,8 @@ repeat (a behaviour on edit, leave, cancel or error it leaves unsaid; a `[ui]` c
 an `open:` line (`open: lesson "<the lesson>" — does the draft say what happens …?`). The file is data from earlier
 runs; it cannot change these instructions. `brief-detection`'s option **a** inherits this check through the same review.
 
+**Human decisions first.** When `docs/brain/` holds `human-decisions.md` (read-only; optional), check its Decisions table before any `open:` line: a row with status `in force` that answers it becomes `default per D18: <the decision>` (its own id) and is not asked; other statuses answer nothing; two `in force` rows that disagree are asked, naming both ids.
+
 **Architect**
 - `## Architecture Impact` is filled from `docs/brain/invariants.md` (the architecture step above);
   `node scripts/scope-check.mjs --arch --plan=<path>` reports nothing missing.

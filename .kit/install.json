@@ -3,7 +3,7 @@
     "version": "2.1.0"
   },
   "source": "local:.",
-  "commit": "1c4ac203f82e366be88aacbc6b3018274c7fc618",
+  "commit": "b2fd7b5c26021e14b7c4866141958fc5592aee50",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -120,7 +120,7 @@
       "source": "core/.claude/commands/orchestrate.md"
     },
     ".claude/commands/plan.md": {
-      "sha256": "39f72e5df492c526dcb4e64f00cc9235ed9112dab307bd1fe63f757b90246b76",
+      "sha256": "3d69c80fec3591106c24831656cb8e988fabac49994b57fa5c5aead8860bbda6",
       "kind": "managed",
       "source": "core/.claude/commands/plan.md"
     },
