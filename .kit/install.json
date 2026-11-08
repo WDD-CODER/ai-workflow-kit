@@ -3,7 +3,7 @@
     "version": "2.1.0"
   },
   "source": "local:.",
-  "commit": "8429b9b2bc9c78166ebf1533e4980ef69019c023",
+  "commit": "7c2c3a2691a0abd9e7f06c95f0d83501c50fccc9",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -115,7 +115,7 @@
       "source": "core/.claude/commands/kit-feedback.md"
     },
     ".claude/commands/orchestrate.md": {
-      "sha256": "9e75dc0e3b76df9ea157dc988d25ae4a640d962d5b8af8c74c25a6b912283da5",
+      "sha256": "017b7ea19682edfdeb019e45be83cdf60338df51b44d6a11e38d1e941d4666fd",
       "kind": "managed",
       "source": "core/.claude/commands/orchestrate.md"
     },
@@ -375,7 +375,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "472a1bf0a8e2ed2ed5858a482236e2a63047b0c54e0823759a37c15592ef0e5f",
+      "sha256": "150c6d18946a43e891c718ca4a13729c8e33c43067449ebaf65185f42401906f",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -665,7 +665,7 @@
       "source": "core/scripts/lib/brain-doc.mjs"
     },
     "scripts/lib/claude-run.mjs": {
-      "sha256": "9eedba809c89a31ddba16985ad981bfc52c6fa29aaaee34a796f743d2be9b90d",
+      "sha256": "69b2870d79a20f0fbaf2cfa08e2376099d5c6a7c8133d1f68ca3cab318a401c6",
       "kind": "managed",
       "source": "core/scripts/lib/claude-run.mjs"
     },
@@ -795,7 +795,7 @@
       "source": "core/scripts/orch-preflight.mjs"
     },
     "scripts/orch-state.mjs": {
-      "sha256": "777c846b054eca9d510a9ab075c92a23356742b95c5051f3437e2ce44378d8fd",
+      "sha256": "1bcc5249f9c120235054ba972a2e0356883209327d81bfb31ae881aeac350199",
       "kind": "managed",
       "source": "core/scripts/orch-state.mjs"
     },
@@ -870,7 +870,7 @@
       "source": "core/scripts/prune-old-sessions.sh"
     },
     "scripts/run-plans.mjs": {
-      "sha256": "40bb4a0ae2f574fceba2e33f912f221923147df681647b216051ebf8ee2487d8",
+      "sha256": "89723f6ee8b0e3938d8b2eafb734816ec17663da9bc888c3c585d169d749834e",
       "kind": "managed",
       "source": "core/scripts/run-plans.mjs"
     },

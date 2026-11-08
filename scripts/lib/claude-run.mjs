@@ -17,7 +17,7 @@
  * `bin` is the claude command (RUN_PLANS_CLAUDE or "claude"); a `.mjs`/`.js` file is run with node (tests' fake).
  * On Windows `claude` is a .cmd shim: it runs through the shell with every argument quoted. Node built-ins only.
  */
-import { readFileSync, writeFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, mkdtempSync, rmSync, readdirSync, statSync } from 'node:fs'
 import { join, resolve, dirname } from 'node:path'
 import { tmpdir } from 'node:os'
 import { spawn, spawnSync } from 'node:child_process'
@@ -128,11 +128,39 @@ function killTree(child) {
   } catch { /* gone */ }
 }
 
+/** The newest modification time (ms) of any file under `dir`, `node_modules` and `.git` left out; 0 when there is none. */
+export function newestChange(dir) {
+  let newest = 0
+  const walk = (d) => {
+    let entries
+    try {
+      entries = readdirSync(d, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      if (e.name === 'node_modules' || e.name === '.git') continue
+      const p = join(d, e.name)
+      if (e.isDirectory()) walk(p)
+      else {
+        try {
+          newest = Math.max(newest, statSync(p).mtimeMs)
+        } catch { /* removed meanwhile */ }
+      }
+    }
+  }
+  walk(dir)
+  return newest
+}
+
 /**
- * Spawn `bin args…` in `cwd` with `input` on stdin. Resolves { stdout, stderr, code, timedOut, error } — never rejects.
- * A `.mjs`/`.js` bin runs with this node; on Windows any other bin runs through the shell with quoted arguments.
+ * Spawn `bin args…` in `cwd` with `input` on stdin. Resolves { stdout, stderr, code, timedOut, idle, error } — never
+ * rejects. A `.mjs`/`.js` bin runs with this node; on Windows any other bin runs through the shell with quoted arguments.
+ * `timeoutMs` is a wall-clock limit (0 = none). `idleMs` with `watchDir` is an idle limit instead: every `pollMs` the
+ * newest file change under `watchDir` (and any output) counts as activity, and the call is stopped only after `idleMs`
+ * with none (`idle: true`) — a call that keeps changing files is never stopped.
  */
-export function spawnClaude({ bin, args, cwd, input = '', timeoutMs = 600_000, env = process.env }) {
+export function spawnClaude({ bin, args, cwd, input = '', timeoutMs = 600_000, idleMs = 0, watchDir = null, pollMs = 30_000, env = process.env }) {
   return new Promise((done) => {
     const script = /\.m?js$/i.test(bin) && existsSync(bin)
     const win = process.platform === 'win32' && !script
@@ -148,19 +176,36 @@ export function spawnClaude({ bin, args, cwd, input = '', timeoutMs = 600_000, e
     let stdout = ''
     let stderr = ''
     let timedOut = false
-    const timer = setTimeout(() => {
+    let idle = false
+    const timer = timeoutMs > 0 && Number.isFinite(timeoutMs) ? setTimeout(() => {
       timedOut = true
       killTree(child)
-    }, timeoutMs)
-    child.stdout.on('data', (d) => { stdout += d })
-    child.stderr.on('data', (d) => { stderr += d })
+    }, timeoutMs) : null
+    let lastActive = Date.now()
+    let lastSeen = idleMs > 0 && watchDir ? newestChange(watchDir) : 0
+    const watch = idleMs > 0 && watchDir ? setInterval(() => {
+      const seen = newestChange(watchDir)
+      if (seen > lastSeen) {
+        lastSeen = seen
+        lastActive = Date.now()
+      } else if (Date.now() - lastActive >= idleMs) {
+        idle = true
+        killTree(child)
+      }
+    }, Math.max(10, pollMs)) : null
+    const stop = () => {
+      if (timer) clearTimeout(timer)
+      if (watch) clearInterval(watch)
+    }
+    child.stdout.on('data', (d) => { stdout += d; lastActive = Date.now() })
+    child.stderr.on('data', (d) => { stderr += d; lastActive = Date.now() })
     child.on('error', (e) => {
-      clearTimeout(timer)
-      done({ stdout, stderr, code: null, timedOut, error: e.message })
+      stop()
+      done({ stdout, stderr, code: null, timedOut, idle, error: e.message })
     })
     child.on('close', (code) => {
-      clearTimeout(timer)
-      done({ stdout, stderr, code, timedOut, error: null })
+      stop()
+      done({ stdout, stderr, code, timedOut, idle, error: null })
     })
     child.stdin.on('error', () => { /* the child closed stdin early */ })
     child.stdin.end(input)
@@ -173,7 +218,7 @@ export function spawnClaude({ bin, args, cwd, input = '', timeoutMs = 600_000, e
  * agent's final reply (its JSON result inside), `ok` false on a non-zero exit, a timeout, an `is_error` answer or
  * unreadable output; `rateLimited` when the failure names a rate or usage limit.
  */
-export async function runAgent({ agent = null, agentFile = null, model = null, cwd, prompt, timeoutMs = 600_000, bin = process.env.RUN_PLANS_CLAUDE || 'claude', allow = false, settings = null, trustCwdSettings = true, env = process.env }) {
+export async function runAgent({ agent = null, agentFile = null, model = null, cwd, prompt, timeoutMs = 600_000, idleMs = 0, watchDir = null, pollMs = 30_000, bin = process.env.RUN_PLANS_CLAUDE || 'claude', allow = false, settings = null, trustCwdSettings = true, env = process.env }) {
   const a = agent ?? readAgent(agentFile)
   // An untrusted folder with its own local settings: refused before anything is spawned.
   const planted = trustCwdSettings ? null : untrustedSettings(cwd)
@@ -184,7 +229,7 @@ export async function runAgent({ agent = null, agentFile = null, model = null, c
     const systemPromptFile = join(tmp, 'system.md')
     writeFileSync(systemPromptFile, systemPromptOf(a))
     const args = claudeArgs({ agent: a, model, systemPromptFile, allow, settings })
-    const r = await spawnClaude({ bin, args, cwd, input: prompt, timeoutMs, env })
+    const r = await spawnClaude({ bin, args, cwd, input: prompt, timeoutMs, idleMs, watchDir, pollMs, env })
     const seconds = Math.round((Date.now() - started) / 100) / 10
     let json = null
     try {
@@ -192,10 +237,11 @@ export async function runAgent({ agent = null, agentFile = null, model = null, c
     } catch { /* not JSON: an error before the answer */ }
     const text = json && typeof json.result === 'string' ? json.result : ''
     const usage = json?.usage ?? null
-    const base = { text, usage, tokens: tokensOf(usage), costUsd: Number(json?.total_cost_usd) || 0, exit: r.code, seconds, timedOut: r.timedOut, argv: args, agent: a.name, model: model ?? a.model }
+    const base = { text, usage, tokens: tokensOf(usage), costUsd: Number(json?.total_cost_usd) || 0, exit: r.code, seconds, timedOut: r.timedOut || r.idle, idle: r.idle, argv: args, agent: a.name, model: model ?? a.model }
     const tail = (s) => String(s ?? '').trim().split(/\r?\n/).filter(Boolean).slice(-3).join(' | ')
     let error = null
     if (r.error) error = `claude could not start: ${r.error}`
+    else if (r.idle) error = `claude idle for ${Math.round(idleMs / 60000)} min (no file changed in its folder)`
     else if (r.timedOut) error = `claude timed out after ${Math.round(timeoutMs / 60000)} min`
     else if (r.code !== 0) error = `claude exited ${r.code}: ${tail(text || r.stderr || r.stdout)}`
     else if (!json) error = `claude printed no JSON: ${tail(r.stdout || r.stderr)}`

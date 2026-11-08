@@ -35,26 +35,31 @@ now are ignored by install and sync with a `NOTE orchestrator: <key> removed` li
 | `maxFixRounds` | `2` | How many times problems go back to a build-tier builder before the plan escalates or parks |
 | `minFreeDiskGb` | `5` | Free disk the environment check asks for, before the run and before a retry |
 | `onPark` | `dependents` | What a parked plan stops: `dependents` = only the later plans that depend on it or share its files (each is `skipped` with the reason), `all` = every later plan |
-| `gateTimeoutMin` | `20` | Minutes one gate command (and one `prepare` script) may run |
+| `gateTimeoutMin` | `45` | Minutes one gate command (and one `prepare` script) may run |
+| `builderIdleMin` | `15` | A builder has no wall-clock limit: it is stopped only after this many minutes in which no file in its folder changed (`node_modules` and `.git` left out; 1–120, else 15). A builder stopped idle parks the plan with its work kept on `park/<run>-<NNN>` |
 | `staleMin` | `10` | Minutes without a `status.json` update after which `orch-state.mjs watch` prints `STUCK` |
 | `mergeChecks` | `build` | What the merge step runs on the merged tree: `build` = the project build plus the plan's scope check, `full` = the plan's whole check list on every merge |
 | `ciMirror` | `["node tools/pack-check.mjs","node tools/drift-check.mjs --target .","node tools/install-check.mjs","node tools/workflow-link-check.mjs","node tools/e2e-check.mjs","node tools/acceptance-check.mjs --e2e"]` | CI commands (`npm run <script>`, `pnpm run <script>`, `node scripts/…` or `node tools/…`, no write flag) the final gate runs after the project checks and the kit manifest check. Install and sync print a `NOTE ci-mirror:` line for each CI command the final gate does not run; they never write the list |
 | `prepare` | `[]` | Files the gate generates before the tests: `{ "missing": "<path>", "script": "<npm script>", "in": "<folder, default .>" }`, run as `node scripts/orch-state.mjs prepare …` first in every plan gate and the final gate, only when the path is absent |
 | `useSlots` | `false` | Whether a builder takes an idle `wt-N` slot before making its own folder |
-| `reviewerMode` | `advisory` | What a reviewer STOP does: `advisory` = a run note, the plan still merges; `gate` = one fix round with the findings, then the plan parks (and a review that could not run parks). `advisory` applies only to a plan whose `## Execution Mode` says `Reviewer: advisory` (any other plan is reviewed as `gate`), and never to a diff that touches a sensitive path (ship-prep's check, `security.sensitivePaths` included): that diff is always `gate`. `--reviewer-mode` overrides it for one run, within the same two rules |
+| `reviewerMode` | `gate` | What a reviewer STOP does (default `gate`): `advisory` = a run note, the plan still merges; `gate` = one fix round with the findings, then the plan parks (and a review that could not run parks). `advisory` applies only to a plan whose `## Execution Mode` says `Reviewer: advisory` (any other plan is reviewed as `gate`), and never to a diff that touches a sensitive path (ship-prep's check, `security.sensitivePaths` included): that diff is always `gate`. `--reviewer-mode` overrides it for one run, within the same two rules |
 | `reviewerModel` | `sonnet` | The model `.claude/agents/plan-reviewer.md` runs on (`--model`). Never Haiku: install and sync refuse it |
 | `rateLimitWaitMin` | `30` | Minutes to wait after a rate or usage limit before that call runs once more; a second limit stops the run (`stopped: rate-limit`) |
 
 ## The run
 
-`node scripts/run-plans.mjs --run <run> --plans <NNN,NNN>` in a terminal; the Human follows it with
-`node scripts/orch-state.mjs watch --run <run>`. Every step is code except the two marked **model**.
+`node scripts/run-plans.mjs --run <run> --plans <NNN,NNN>`: `/orchestrate` starts it in the background as soon as the
+dry run says `WOULD START: yes` (no reply asked for), and relaunches it once, after `orch-state.mjs stop`, when the
+harness kills it (a second kill stops and is reported). The Human follows it with
+`cd "<main folder>"; node scripts/orch-state.mjs watch --run <run>`. Every step is code except the two marked **model**.
 
 1. **Readiness lint.** `plan-order.mjs --json` gives the waves (plans already merged into the run branch are left
    out). Per plan: `scope-check.mjs --deps`, `--arch` and `--tags`; the branch name; an open `Q:` in `## Critical
    Questions` refuses the run; the backticked commands of the open `[auto]` items, held to the check allowlist and to
-   `orch-state.mjs check-files` (a check whose file neither exists nor is created by the plan is dropped with the
-   reason). Then `orch-preflight.mjs`. A plan that is not ready, or a failed preflight, refuses the whole run before
+   `orch-state.mjs check-files`: a check the runner cannot run, or whose file neither exists nor is created by the plan,
+   makes the plan not ready (never a dropped note). The gate's own test-file check runs on the check files the plan
+   creates and on what an existing `feat/<NNN>` changed, and a `feat/<NNN>` an earlier run left that is not built on
+   the run branch (or `main` before the run branch exists) makes the plan not ready too. Then `orch-preflight.mjs`. A plan that is not ready, or a failed preflight, refuses the whole run before
    anything is created (exit 1). `--dry-run` stops here and prints the waves, the lint, the preflight, the gate
    commands and the exact `claude -p` lines — the builder's from the same `builderCall()` the run uses, with its
    start tier and why (`tier: build (INV-1 preserves)`).
@@ -78,7 +83,11 @@ now are ignored by install and sync with a `NOTE orchestrator: <key> removed` li
      parks), the `mergeChecks`, one push of the run branch.
    - **A failure**: one fix round on the same tier with the findings; a second failure with a new reason gets
      `handoff --reset-base` and one fresh judgment-tier builder; the same reason twice, or a failure after that,
-     parks the plan (`orch-state.mjs park`: the work saved on `park/<run>-<NNN>`, the folder removed). A park skips
+     parks the plan (`orch-state.mjs park`: the work saved on `park/<run>-<NNN>`, the folder removed, and `feat/<NNN>`
+     renamed to `park/<run>-<NNN>` here and on origin, so the next run cuts a fresh branch).
+   - **Parked at once, no further model call:** a builder stopped by `builderIdleMin` (its work is kept on
+     `park/<run>-<NNN>`, never reset), and a builder `ESCALATE` about the scope (a file outside the Read-Write Scope,
+     an `approved:` path) — `replan needed: …`: a judgment-tier builder cannot widen a plan's scope either. A park skips
      only what `onPark` names; the run goes on.
 4. **Final gate** on the run branch (`prepare`, the project checks, the manifest check, `ciMirror`).
 5. **Report.** The builders' `behaviour:` / `seen:` / `removes:` decisions go in one `decisions` call; `finish`

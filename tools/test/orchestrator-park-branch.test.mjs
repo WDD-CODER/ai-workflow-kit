@@ -54,6 +54,44 @@ function setup() {
 }
 const remoteHead = (bare, branch) => spawnSync('git', ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`], { cwd: bare, encoding: 'utf8' }).stdout.trim()
 
+test('098: a park renames feat/<NNN> to park/<run>-<NNN> (local and origin), so the next run cuts a fresh feat/<NNN> from its run branch', () => {
+  const t = setup()
+  try {
+    assert.equal(t.state('init', '--run=r').ok, true)
+    const wt = t.state('worktree', '--run=r', '--plan=001')
+    assert.equal(wt.ok, true, JSON.stringify(wt))
+    // the builder committed and pushed, then left one more file uncommitted
+    mkdirSync(join(t.slot, 'work'))
+    writeFileSync(join(t.slot, 'work', 'done.txt'), 'done\n')
+    sh(t.slot, 'add', 'work/done.txt')
+    sh(t.slot, 'commit', '-q', '-m', 'built part')
+    sh(t.slot, 'push', '-q', 'origin', 'feat/001-x')
+    writeFileSync(join(t.slot, 'work', 'wip.txt'), 'wip\n')
+    const parked = t.state('park', '--run=r', '--plan=001')
+    assert.equal(parked.ok, true, JSON.stringify(parked))
+    assert.equal(parked.renamed, true, JSON.stringify(parked.steps))
+    assert.ok(parked.steps.some((s) => s.step === 'rename' && /feat\/001-x → park\/r-001/.test(s.what)), JSON.stringify(parked.steps))
+    // the plan branch is gone here and on origin; park/r-001 holds the commit and the uncommitted file
+    assert.equal(spawnSync('git', ['rev-parse', '--verify', '--quiet', 'refs/heads/feat/001-x'], { cwd: t.dir }).status, 1, 'no local feat/001-x')
+    assert.equal(remoteHead(t.bare, 'feat/001-x'), '', 'no feat/001-x on origin')
+    assert.equal(sh(t.bare, 'show', 'park/r-001:work/done.txt'), 'done')
+    assert.equal(sh(t.bare, 'show', 'park/r-001:work/wip.txt'), 'wip')
+    // the next run: plan-info cuts a fresh feat/001-x from its own run branch
+    assert.equal(t.state('init', '--run=r2').ok, true)
+    const info = t.state('plan-info', '--run=r2', '--plan=001', '--with-worktree=yes')
+    assert.equal(info.wt?.ok, true, JSON.stringify(info))
+    assert.equal(info.wt.resumed, undefined, 'nothing carried over from the parked attempt')
+    assert.equal(sh(t.dir, 'rev-parse', 'feat/001-x'), sh(t.dir, 'rev-parse', 'origin/orch/r2'))
+    assert.equal(existsSync(join(info.wt.path, 'work', 'done.txt')), false)
+    // park-branch on a plan whose branch is already renamed: nothing to do, not an error
+    const again = t.state('park-branch', '--run=r2', '--plan=001')
+    assert.deepEqual([again.ok, again.renamed], [true, false], JSON.stringify(again))
+  } finally {
+    drop(t.parent)
+    drop(t.bare)
+  }
+})
+
 test('park-save: uncommitted work goes to park/<run>-<NNN> on origin, the slot is released; a second park adds to the same branch; nothing to commit makes no branch', () => {
   const t = setup()
   try {

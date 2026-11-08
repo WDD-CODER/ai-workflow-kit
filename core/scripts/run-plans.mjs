@@ -32,6 +32,8 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync, rmS
 import { spawnSync } from 'node:child_process'
 import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createRequire } from 'node:module'
+import { extractScopeGlobs, testFilesOutOfScope, testLocationReason } from './lib/plan-scope.mjs'
 import { readAgent, claudeArgs, runAgent, parseResult, passedModel } from './lib/claude-run.mjs'
 import { isSensitive } from './ship-prep.mjs'
 import { gateCommands, runGate, scopeCheck, scopeMarker } from './lib/plan-gate.mjs'
@@ -50,12 +52,26 @@ const PREPARE = {{orchestrator.prepare|json}}
 const CI_MIRROR = {{orchestrator.ciMirror|json}}
 const MERGE_CHECKS_MODE = {{orchestrator.mergeChecks|json}}
 const GATE_TIMEOUT_MIN = Number({{orchestrator.gateTimeoutMin|json}}) || 15
+/**
+ * orchestrator.builderIdleMin: a whole number of minutes from 1 to 120, else 15. A builder has no wall-clock limit; it is
+ * stopped only after this many minutes in which no file in its folder changed (lib/claude-run.mjs spawnClaude).
+ */
+export function builderIdleMin(v) {
+  const n = Number(v)
+  return v !== null && v !== '' && Number.isInteger(n) && n >= 1 && n <= 120 ? n : 15
+}
+const BUILDER_IDLE_MIN = builderIdleMin({{orchestrator.builderIdleMin|json}})
+// RUN_PLANS_BUILDER_IDLE_MS and RUN_PLANS_BUILDER_POLL_MS (tests only) replace them, like RUN_PLANS_CLAUDE replaces claude.
+const BUILDER_IDLE_MS = Number(process.env.RUN_PLANS_BUILDER_IDLE_MS) > 0 ? Number(process.env.RUN_PLANS_BUILDER_IDLE_MS) : BUILDER_IDLE_MIN * 60_000
+const BUILDER_POLL_MS = Number(process.env.RUN_PLANS_BUILDER_POLL_MS) > 0 ? Number(process.env.RUN_PLANS_BUILDER_POLL_MS) : 30_000
+const MAIN = '{{git.mainBranch}}'
 // One plan at a time unless --concurrency 2 is given (goal decision: more builders on one machine made specs time
 // out); orchestrator.concurrency stays the workflow's setting.
 const CONCURRENCY = 1
 const ON_PARK = {{orchestrator.onPark|json}}
 const MAX_FIX_ROUNDS = Number({{orchestrator.maxFixRounds|json}}) || 2
-const REVIEWER_MODE = {{orchestrator.reviewerMode|json}} === 'gate' ? 'gate' : 'advisory'
+// Unset or anything but advisory: gate (a STOP parks after its fix round).
+const REVIEWER_MODE = {{orchestrator.reviewerMode|json}} === 'advisory' ? 'advisory' : 'gate'
 const REVIEWER_MODEL = {{orchestrator.reviewerModel|json}}
 const RATE_LIMIT_WAIT_MIN = Number({{orchestrator.rateLimitWaitMin|json}}) >= 0 ? Number({{orchestrator.rateLimitWaitMin|json}}) : 30
 const STALE_MIN = Number({{orchestrator.staleMin|json}}) || 10
@@ -354,9 +370,59 @@ function lintPlan(nnn, path, runBranch, { statuses = null, opts = null, runPlans
   for (const f of missing) problems.push(`check file ${f} does not exist and the plan does not create it`)
   lines.push(`check files: ${files.length ? (missing.length ? `missing ${missing.join(', ')}` : `ok (${files.length})`) : 'none named'}`)
   if (mapped.length) lines.push(`npx: ${mapped.join('; ')}`)
-  for (const d of dropped) lines.push(`dropped: ${d}`)
+  // A check the plan's author wrote that the runner cannot run is a readiness problem, never a dropped note: the plan
+  // would merge without it.
+  for (const d of dropped) problems.push(`check command the runner cannot run: ${d}`)
+  // The plan branch an earlier run left: one not built on this run's base would be reused and fail at once.
+  const base = git(ROOT, 'rev-parse', '--verify', '--quiet', `refs/remotes/origin/${runBranch}`).status === 0 ? `origin/${runBranch}` : `origin/${MAIN}`
+  const stale = staleBranchProblem({ root: ROOT, branch, base, run: runBranch.slice(RUN_PREFIX.length), nnn })
+  if (stale) problems.push(stale)
+  // The gate's test-file check, on what the builder will change: a check file the plan creates, and what an existing
+  // plan branch already changed.
+  const created = files.filter((f) => !existsSync(join(ROOT, f)) && !missing.includes(f))
+  const onBranch = !stale && git(ROOT, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`).status === 0 ? git(ROOT, 'diff', '--name-only', '--no-renames', `${base}...${branch}`).out.split('\n').filter(Boolean) : []
+  const outOfScope = testsOutOfScope(text, [...new Set([...created, ...onBranch])].filter((f) => f !== path && !f.startsWith('.claude/sessions/')))
+  for (const f of outOfScope) problems.push(`test file gate: ${testLocationReason(f)}`)
+  lines.push(`test files: ${outOfScope.length ? `outside the scope ${outOfScope.join(', ')}` : 'ok'}`)
   const checks = gateCommands({ prepare: PREPARE, pm: PM, ...COMMANDS, kitRoot: ROOT, manifest: existsSync(join(ROOT, 'scripts', 'kit-manifest-check.mjs')) && existsSync(join(ROOT, 'docs', 'workflow-kit', 'manifest.json')), scope: { base: `origin/${runBranch}`, plan: path }, extra: extra.filter((c) => !missing.some((f) => checkFilesOf(c).includes(f))) })
   return { nnn, path, title: (/^#\s+(.*)$/m.exec(text)?.[1] ?? '').trim(), branch, lines, problems, notes, dropped, checks, start: startTier(text), reviewerMode: opt.reviewerMode, ready: problems.length === 0 }
+}
+
+/**
+ * A builder ESCALATE (or blocked) about the scope — a file outside the Read-Write Scope, an `approved:` path, a scope
+ * extension: only a plan edit fixes it. A db-write ask is not one (it goes to the Human as a question).
+ */
+export function isScopeEscalation(result) {
+  if (!result || !['ESCALATE', 'blocked'].includes(String(result.status ?? ''))) return false
+  const text = `${result.blocker ?? ''} ${result.planChange?.why ?? ''}`
+  if (/^\s*ESCALATE: db-write/i.test(String(result.blocker ?? ''))) return false
+  return /\bapproved:\s*\S|outside (?:of )?(?:the |its |this plan's |the plan's )?(?:read-write )?scope|scope extended|SCOPE_GUARD|not in (?:the |its )?(?:read-write )?scope/i.test(text)
+}
+
+/**
+ * The gate's test-file check (lib/plan-scope.mjs testFilesOutOfScope, the function `orch-state.mjs diff` runs) on the
+ * files a plan will change: the test files no scope line naming a test location lists.
+ */
+export function testsOutOfScope(planText, files) {
+  const picomatch = createRequire(import.meta.url)('picomatch')
+  return testFilesOutOfScope(files, extractScopeGlobs(String(planText).replace(/\r\n/g, '\n')) ?? [], (g) => picomatch(g, { dot: true }))
+}
+/**
+ * A plan branch (local or on origin) an earlier run left that is not built on `base`: neither holds the other, so the
+ * run would reuse it and stop at once. A relaunch of the same run (its status.json holds the plan) is not stale.
+ */
+export function staleBranchProblem({ root, branch, base, run, nnn }) {
+  const statusFile = join(root, '.claude', 'orchestrator-runs', run, 'status.json')
+  try {
+    if (existsSync(statusFile) && JSON.parse(readFileSync(statusFile, 'utf8')).plans?.[nnn]) return null
+  } catch { /* unreadable: checked as a new run */ }
+  const anc = (a, b) => spawnSync('git', ['merge-base', '--is-ancestor', a, b], { cwd: root }).status === 0
+  for (const ref of [`refs/heads/${branch}`, `refs/remotes/origin/${branch}`]) {
+    if (git(root, 'rev-parse', '--verify', '--quiet', ref).status !== 0) continue
+    if (anc(base, ref) || anc(ref, base)) continue
+    return `stale branch ${ref.replace(/^refs\/(heads|remotes)\//, '')}: an earlier run left it and it is not built on ${base} — rename it (node scripts/orch-state.mjs park-branch --run ${run} --plan ${nnn}) before the run`
+  }
+  return null
 }
 
 /**
@@ -511,7 +577,6 @@ async function main() {
     const l = lint[nnn]
     const info = state('plan-info', { run: RUN, plan: nnn, 'with-worktree': 'yes' })
     if (!info.ok) return { nnn, state: 'parked', reason: `plan-info: ${info.error}` }
-    for (const d of l.dropped) note(`check command dropped, not run: ${d}`, nnn)
     const ctx = { nnn, info, wt: info.wt, tier: l.start.tier, tierReason: l.start.reason, round: 0, escalated: false, findings: [], lastWhy: null, mode: 'first' }
     const park = (reason, { teardown = true } = {}) => {
       setPlan(nnn, { state: 'parked', round: ctx.round, tier: ctx.tier, reason: String(reason).slice(0, 380) })
@@ -541,7 +606,8 @@ async function main() {
       const call = builderCall({ agent: builderAgent, tier: ctx.tier, reason: ctx.tierReason, settings: guardSettings })
       const prompt = builderPrompt({ RUN, RUN_BRANCH, ctx, l, LESSONS })
       say(`RUN_PLANS: plan ${nnn} ${stage} (${call.model}, tier ${call.tier}: ${call.reason}, round ${ctx.round})`)
-      const b = await modelCall(nnn, stage, () => runAgent({ ...call.opts, cwd: wt, prompt, timeoutMs: GATE_TIMEOUT_MIN * 60_000, bin: o.claude }))
+      // No wall clock for a builder: only the idle limit (orchestrator.builderIdleMin) on its folder's file changes.
+      const b = await modelCall(nnn, stage, () => runAgent({ ...call.opts, cwd: wt, prompt, timeoutMs: 0, idleMs: BUILDER_IDLE_MS, watchDir: wt, pollMs: BUILDER_POLL_MS, bin: o.claude }))
       let result = null
       try {
         result = b.ok ? parseResult(b.text) : null
@@ -549,6 +615,11 @@ async function main() {
       for (const d of (Array.isArray(result?.decisions) ? result.decisions : []).filter((x) => typeof x === 'string' && /^(behaviour|seen|removes):/i.test(x.trim()))) decisions.push({ plan: nnn, text: d.trim().slice(0, 380) })
       if (Array.isArray(result?.notDone) && result.notDone.length) note(`builder left undone (round ${ctx.round}): ${result.notDone.slice(0, 5).join('; ').slice(0, 300)}`, nnn)
       let failure = null
+      // An idle stop parks with the work kept: the park saves it to park/<run>-<NNN> (never a reset to the base, never a
+      // second builder on the same problem).
+      if (!b.ok && b.timedOut) return park(`builder stopped: ${b.error} — the work is kept on park/${RUN}-${nnn}`)
+      // A scope problem only a plan edit fixes: parked at once, no judgment-tier builder (it cannot widen the scope either).
+      if (b.ok && isScopeEscalation(result)) return park(`replan needed: ${String(result.blocker ?? result.planChange?.why ?? '').slice(0, 300) || 'a file outside the scope'}`)
       if (!b.ok) failure = { why: `builder: ${b.error}`, escalate: true }
       else if (result && ctx.tier === 'judgment' && result.planChange?.needed === true) return park(`replan needed: ${String(result.planChange.why ?? '').slice(0, 240) || '(no reason given)'}`)
       else if (result && /^ESCALATE: db-write/i.test(String(result.blocker ?? ''))) return park(`ask: ${result.blocker}`)

@@ -9,6 +9,9 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Fixed
+- **A run never waits for the Human and never wastes a build.** `/orchestrate` starts the run right after `WOULD START: yes` (no reply `start`) and relaunches a killed background run once. A builder has no wall-clock limit any more: it is stopped only after `orchestrator.builderIdleMin` minutes (default 15) in which no file in its folder changed, and its work is kept on `park/<run>-<NNN>`. A builder ESCALATE on scope parks the plan `replan needed` at once. The dry run refuses what the real run refuses (test-file scope, a stale `feat/<NNN>`, a check command the runner cannot run). Parking renames `feat/<NNN>` to `park/<run>-<NNN>`. `orchestrator.reviewerMode` now defaults to `gate`.
+
 ### Security
 - **`scripts/run-plans.mjs` always enforces the review of a sensitive diff, and no headless agent gets an interpreter-wide Bash prefix.** A plan whose diff touches a sensitive path (ship-prep's own check, now exported as `isSensitive`, with `security.sensitivePaths` included) is reviewed as `gate` even when its `## Execution Mode` says `Reviewer: advisory` or the run says `--reviewer-mode advisory`: a reviewer STOP gets one fix round, then the plan parks, and a review that could not run parks the plan instead of leaving a note. The reviewer is pre-approved its read tools only (`git diff`, `git show` and `node --test` are gone: a prefix cannot refuse `git diff --output`, and `node --test` ran any test file the reviewed diff brought; its diff and receipt come inline). `BUILDER_BASH` is removed: `allowedTools()` throws for a writing agent without guard hooks, and a run (and its dry run) refuses to start when `.claude/settings.json` has no `PreToolUse` hooks. **Project action:** keep the kit's guard hooks in `.claude/settings.json` to run `/orchestrate`.
 

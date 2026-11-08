@@ -305,11 +305,58 @@ test('plan-gate: the command list is prepare, project checks, manifest, scope, t
 test('config: reviewerMode, reviewerModel (never Haiku) and rateLimitWaitMin are bounded; the scaffold defaults pass', async () => {
   const { orchestratorProblems } = await import(pathToFileURL(join(kit, 'tools', 'lib', 'kit.mjs')).href)
   const scaffold = JSON.parse(readFileSync(join(kit, 'kit.config.json'), 'utf8')).orchestrator
-  assert.deepEqual([scaffold.reviewerMode, scaffold.reviewerModel, scaffold.rateLimitWaitMin], ['advisory', 'sonnet', 30])
+  assert.deepEqual([scaffold.reviewerMode, scaffold.reviewerModel, scaffold.rateLimitWaitMin, scaffold.builderIdleMin], ['gate', 'sonnet', 30, 15])
+  assert.equal(scaffold.builderTimeoutMin, undefined, 'no wall-clock builder limit in the scaffold')
+  assert.deepEqual(orchestratorProblems({ 'orchestrator.builderIdleMin': 15 }), [], 'the new key is not refused')
   assert.deepEqual(orchestratorProblems({ 'orchestrator.reviewerMode': 'gate', 'orchestrator.reviewerModel': 'sonnet', 'orchestrator.rateLimitWaitMin': 0 }), [])
   assert.match(orchestratorProblems({ 'orchestrator.reviewerMode': 'loud' }).join(), /reviewerMode is "loud"/)
   for (const m of ['haiku', 'claude-haiku-5-5', 'gpt']) assert.match(orchestratorProblems({ 'orchestrator.reviewerModel': m }).join(), /reviewerModel/)
   for (const w of [-1, 601, 1.5, '30']) assert.match(orchestratorProblems({ 'orchestrator.rateLimitWaitMin': w }).join(), /rateLimitWaitMin/)
+})
+
+test('098 (a) [F10] the builder has no wall clock, only an idle limit (builderIdleMin, 1-120, else 15); the gate keeps gateTimeoutMin', () => {
+  assert.equal(runPlans.builderIdleMin(15), 15)
+  assert.equal(runPlans.builderIdleMin(120), 120)
+  for (const v of [null, undefined, '', 0, 121, 1.5, 'x']) assert.equal(runPlans.builderIdleMin(v), 15, String(v))
+  const src = readFileSync(join(kit, 'scripts', 'run-plans.mjs'), 'utf8')
+  assert.match(src, /runAgent\(\{ \.\.\.call\.opts, cwd: wt, prompt, timeoutMs: 0, idleMs: BUILDER_IDLE_MS, watchDir: wt,/)
+  assert.doesNotMatch(src, /runAgent\(\{ \.\.\.call\.opts[^\n]*GATE_TIMEOUT_MIN/, 'the builder never gets the gate\'s timeout')
+  assert.match(src, /runGate\(\{ folder: wt, commands: l\.checks, timeoutMin: GATE_TIMEOUT_MIN/)
+  assert.match(src, /const BUILDER_IDLE_MIN = builderIdleMin\(15\)/, 'the installed copy renders the scaffold default')
+})
+
+test('098 (a) [F10] spawnClaude: a call that keeps changing files outlives the idle limit; a silent one is stopped idle', async () => {
+  const { spawnClaude, newestChange } = await import(pathToFileURL(join(kit, 'scripts', 'lib', 'claude-run.mjs')).href)
+  const tmp = mkdtempSync(join(tmpdir(), 'rp-idle-'))
+  try {
+    mkdirSync(join(tmp, 'node_modules'), { recursive: true })
+    writeFileSync(join(tmp, 'node_modules', 'x.js'), '')
+    assert.equal(newestChange(join(tmp, 'node_modules')) > 0, true)
+    const busy = join(tmp, 'busy.mjs')
+    writeFileSync(busy, "import { writeFileSync } from 'node:fs'\nlet i = 0\nconst t = setInterval(() => { writeFileSync('work.txt', String(i++)); if (i > 12) { clearInterval(t); console.log('done') } }, 150)\n")
+    const silent = join(tmp, 'silent.mjs')
+    writeFileSync(silent, 'setTimeout(() => console.log("late"), 20000)\n')
+    const t0 = Date.now()
+    const a = await spawnClaude({ bin: busy, args: [], cwd: tmp, timeoutMs: 0, idleMs: 700, watchDir: tmp, pollMs: 50 })
+    assert.equal(a.idle, false, 'a builder that keeps writing is never stopped')
+    assert.equal(a.code, 0)
+    assert.ok(Date.now() - t0 > 1500, 'it ran longer than the idle limit')
+    const b = await spawnClaude({ bin: silent, args: [], cwd: tmp, timeoutMs: 0, idleMs: 700, watchDir: tmp, pollMs: 50 })
+    assert.equal(b.idle, true, 'a silent call is stopped idle')
+    assert.equal(b.timedOut, false, 'no wall clock')
+  } finally {
+    rmSync(tmp, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 })
+  }
+})
+
+test('098 (b) a scope ESCALATE is recognised; a db-write ask or another blocker is not', () => {
+  const r = (blocker, status = 'ESCALATE') => runPlans.isScopeEscalation({ status, blocker })
+  assert.equal(r('src/other.ts is outside the Read-Write Scope'), true)
+  assert.equal(r('needs approved: src/other.ts'), true)
+  assert.equal(r('SCOPE_GUARD: x is outside this plan\'s Read-Write Scope', 'blocked'), true)
+  assert.equal(r('ESCALATE: db-write psql -c insert …'), false)
+  assert.equal(r('the build keeps failing'), false)
+  assert.equal(runPlans.isScopeEscalation({ status: 'built', blocker: 'outside the scope' }), false)
 })
 
 // ---- whole runs in a scratch project ----------------------------------------------------------------------------
@@ -339,7 +386,7 @@ function withImpact(plan, line, scope = null) {
 
 const stagesOf = (st, nnn) => (st.plans[nnn].calls ?? []).map((c) => c.stage)
 let main
-test('one run of seven plans: (a) a passing plan merges --no-ff at its checked head; (b) one fix round; (c) a twice-failing gate parks and only its dependent is skipped; (d) advisory STOP merges; (e) a moved branch is refused; escalation', () => {
+test('one run of seven plans: (a) a passing plan merges --no-ff at its checked head; (b) one fix round; (c) a twice-failing gate parks and only its dependent is skipped; (d) a Reviewer: advisory STOP is enforced by default; (e) a moved branch is refused; escalation', () => {
   main = p.runPlans(['--run', 'main', '--plans', '451,452,453,455,457,458,462,474'], {
     scenario: {
       474: { builder: [{ tamper: true }, { tamper: true }] },
@@ -374,9 +421,10 @@ test('one run of seven plans: (a) a passing plan merges --no-ff at its checked h
   assert.equal(existsSync(join(p.root, 'rp-app-orch-main-453')), false, 'the parked plan\'s folder is gone')
   assert.equal(st.plans['455'].state, 'skipped')
   assert.equal(st.plans['455'].reason, 'depends on parked 453')
-  // (d, advisory) a STOP is recorded, not enforced
+  // (d) the config default is gate (plan 098): the Reviewer: advisory plan's STOP gets a fix round, then it merges
   assert.equal(st.plans['457'].state, 'merged')
-  assert.ok(st.notes.some((n) => n.plan === '457' && /advisory review STOP \(not enforced\)/.test(n.text)), JSON.stringify(st.notes))
+  assert.deepEqual(stagesOf(st, '457'), ['builder', 'reviewer', 'builder fix', 'reviewer'])
+  assert.ok(!st.notes.some((n) => n.plan === '457' && /advisory review STOP/.test(n.text)), JSON.stringify(st.notes))
   // (e) the branch moved between the review and the merge: refused with both shas, parked, the run branch untouched
   assert.equal(st.plans['458'].state, 'parked')
   assert.match(st.plans['458'].reason, new RegExp(`the branch moved after its checks: the merge took [0-9a-f]{40} but the checked head is ${st.plans['458'].checkedHead}`))
@@ -473,7 +521,7 @@ test('095 (a)(b)(c) Reviewer: advisory never applies to a sensitive diff: a STOP
   const sensitivePlan = (nnn) => withImpact(withExecution(toyPlan(nnn), '- Reviewer: advisory'), '- none', `src/auth-${nnn}.txt`)
   p.addPlans({ 490: sensitivePlan(490), 491: sensitivePlan(491), 492: withExecution(toyPlan(492), '- Reviewer: advisory') })
   // (a) sensitive + advisory + STOP: one fix round, then parked — never merged
-  const a = p.runPlans(['--run', 'sens-a', '--plans', '490'], { scenario: { 490: { builder: [{ extraFile: 'src/auth-490.txt' }], reviewer: [{ verdict: 'STOP' }, { verdict: 'STOP' }] } } })
+  const a = p.runPlans(['--run', 'sens-a', '--plans', '490', '--reviewer-mode', 'advisory'], { scenario: { 490: { builder: [{ extraFile: 'src/auth-490.txt' }], reviewer: [{ verdict: 'STOP' }, { verdict: 'STOP' }] } } })
   assert.equal(a.status, 2, a.out)
   const sa = p.status('sens-a')
   assert.equal(sa.plans['490'].state, 'parked', a.out)
@@ -495,7 +543,7 @@ test('095 (a)(b)(c) Reviewer: advisory never applies to a sensitive diff: a STOP
       "process.stdout.write(r.stdout ?? ''); process.stderr.write(r.stderr ?? ''); process.exit(r.status ?? 1)",
       '',
     ].join('\n'))
-    const b = p.runPlans(['--run', 'sens-b', '--plans', '491', '--claude', bin], { scenario: { 491: { builder: [{ extraFile: 'src/auth-491.txt' }] } } })
+    const b = p.runPlans(['--run', 'sens-b', '--plans', '491', '--reviewer-mode', 'advisory', '--claude', bin], { scenario: { 491: { builder: [{ extraFile: 'src/auth-491.txt' }] } } })
     assert.equal(b.status, 2, b.out)
     const sb = p.status('sens-b')
     assert.equal(sb.plans['491'].state, 'parked', b.out)
@@ -504,10 +552,131 @@ test('095 (a)(b)(c) Reviewer: advisory never applies to a sensitive diff: a STOP
     rmSync(tmp, { recursive: true, force: true })
   }
   // (c) the same advisory plan with a plain diff: the STOP is recorded and the plan merges (plan 097's rule unchanged)
-  const c = p.runPlans(['--run', 'sens-c', '--plans', '492'], { scenario: { 492: { reviewer: [{ verdict: 'STOP' }] } } })
+  const c = p.runPlans(['--run', 'sens-c', '--plans', '492', '--reviewer-mode', 'advisory'], { scenario: { 492: { reviewer: [{ verdict: 'STOP' }] } } })
   const sc = p.status('sens-c')
   assert.equal(sc.plans['492'].state, 'merged', c.out)
   assert.ok(sc.notes.some((n) => n.plan === '492' && /advisory review STOP \(not enforced\)/.test(n.text)), JSON.stringify(sc.notes))
+})
+
+/** A `claude` whose builder runs `builder` (JS lines; `plan`, `git`, `answer` in scope); the reviewer is the fake's. */
+function builderBin(dir, name, builder) {
+  const bin = join(dir, `${name}.mjs`)
+  writeFileSync(bin, [
+    "import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs'",
+    "import { spawnSync } from 'node:child_process'",
+    'const argv = process.argv.slice(2)',
+    "const sys = argv[argv.indexOf('--system-prompt-file') + 1]",
+    'const input = readFileSync(0)',
+    "const prompt = String(input)",
+    "const git = (...a) => spawnSync('git', a, { encoding: 'utf8' })",
+    "const answer = (o) => console.log(JSON.stringify({ type: 'result', is_error: false, result: '```json\\n' + JSON.stringify(o) + '\\n```', usage: {} }))",
+    "if (sys && existsSync(sys) && /^# orch-builder\\b/m.test(readFileSync(sys, 'utf8'))) {",
+    "  const plan = (/Build plan (\\d+)/.exec(prompt) ?? [])[1]",
+    ...builder,
+    '} else {',
+    `  const r = spawnSync(process.execPath, [${JSON.stringify(FAKE(kit))}, ...argv], { input, encoding: 'utf8' })`,
+    "  process.stdout.write(r.stdout ?? ''); process.stderr.write(r.stderr ?? ''); process.exit(r.status ?? 1)",
+    '}',
+    '',
+  ].join('\n'))
+  return bin
+}
+
+test('098 (a) [F10] a builder stopped idle parks at once: no judgment builder, no reset, the work kept on park/<run>-<NNN>', () => {
+  p.addPlans({ 493: toyPlan(493) })
+  const tmp = mkdtempSync(join(tmpdir(), 'rp-098a-'))
+  p.env.RUN_PLANS_BUILDER_IDLE_MS = '3000'
+  p.env.RUN_PLANS_BUILDER_POLL_MS = '200'
+  try {
+    const bin = builderBin(tmp, 'claude-slow', [
+      "  mkdirSync('src', { recursive: true })",
+      "  writeFileSync(`src/${plan}.txt`, 'work in progress\\n')",
+      "  git('add', '--', `src/${plan}.txt`)",
+      "  git('commit', '-q', '-m', `toy ${plan}: half done`)",
+      '  setTimeout(() => {}, 120000)',
+    ])
+    const r = p.runPlans(['--run', 'slow', '--plans', '493', '--claude', bin])
+    assert.equal(r.status, 2, r.out)
+    const st = p.status('slow')
+    assert.equal(st.plans['493'].state, 'parked', r.out)
+    assert.match(st.plans['493'].reason, /^builder stopped: claude idle for .* the work is kept on park\/slow-493/)
+    assert.deepEqual(stagesOf(st, '493'), ['builder'], 'no fix round, no judgment builder')
+    assert.ok(!st.plans['493'].resetToBase, 'no handoff --reset-base')
+    p.git(p.proj, 'fetch', '-q', 'origin')
+    assert.equal(p.git(p.proj, 'show', 'origin/park/slow-493:src/493.txt').out.trim(), 'work in progress', 'the committed work is on park/slow-493')
+    assert.equal(p.git(p.proj, 'rev-parse', '--verify', '--quiet', 'refs/heads/feat/493-toy-493').status, 1, 'feat/493 renamed')
+  } finally {
+    delete p.env.RUN_PLANS_BUILDER_IDLE_MS
+    delete p.env.RUN_PLANS_BUILDER_POLL_MS
+    rmSync(tmp, { recursive: true, force: true })
+  }
+})
+
+test('098 (b) a builder ESCALATE about the scope parks replan needed at once — no judgment-tier call', () => {
+  p.addPlans({ 494: toyPlan(494) })
+  const tmp = mkdtempSync(join(tmpdir(), 'rp-098b-'))
+  try {
+    const bin = builderBin(tmp, 'claude-scope', [
+      "  answer({ role: 'orch-builder', model: 'x', effort: 'medium', status: 'ESCALATE', branch: 'b', summary: 's', evidence: [], blocker: 'src/other.txt is outside the Read-Write Scope; offer approved: src/other.txt', notDone: ['T1'], planChange: { needed: true, why: 'scope' } })",
+    ])
+    const before = p.calls().length
+    const r = p.runPlans(['--run', 'scope-esc', '--plans', '494', '--claude', bin])
+    assert.equal(r.status, 2, r.out)
+    const st = p.status('scope-esc')
+    assert.equal(st.plans['494'].state, 'parked', r.out)
+    assert.match(st.plans['494'].reason, /^replan needed: src\/other\.txt is outside the Read-Write Scope/)
+    assert.deepEqual(stagesOf(st, '494'), ['builder'], 'one builder call, then the park')
+    assert.equal(p.calls().length, before, 'the fake claude recorded zero further calls')
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
+})
+
+test('098 (c) a Done-when check the runner cannot run is NOT READY in the dry run and refused in the real run', () => {
+  p.addPlans({ 495: toyPlan(495).replace('## Read-Write Scope', '- [auto] `node scripts/run-plans.mjs --dry-run --plans 495` prints WOULD START\n\n## Read-Write Scope') })
+  const dry = p.runPlans(['--dry-run', '--run', 'drop', '--plans', '495'])
+  assert.equal(dry.json.plans['495'].ready, false, dry.out)
+  assert.match(dry.out, /PROBLEM check command the runner cannot run: node scripts\/run-plans\.mjs --dry-run --plans 495: run-plans changes state or pushes/)
+  assert.match(dry.out, /^WOULD START: no/m)
+  const run = p.runPlans(['--run', 'drop', '--plans', '495'])
+  assert.equal(run.status, 1, run.out)
+  assert.match(run.out, /refused before the start/)
+  assert.equal(run.calls.length, 0)
+})
+
+test('098 (d) the dry run runs the gate\'s test-file check and refuses a stale feat/<NNN> an earlier run left', () => {
+  p.addPlans({
+    496: toyPlan(496).replace('## Read-Write Scope', '- [auto] `node --test tests/496.test.mjs` passes\n\n## Read-Write Scope').replace('- [ ] T1: write the toy file', '- [ ] T1: write the toy file and tests/496.test.mjs'),
+    497: toyPlan(497).replace('## Read-Write Scope', '- [auto] `node --test tests/497.test.mjs` passes\n\n## Read-Write Scope').replace('```scope\n', '```scope\ntests/497.test.mjs\n'),
+    498: toyPlan(498),
+  })
+  const tests = p.runPlans(['--dry-run', '--run', 'tests', '--plans', '496,497'])
+  assert.match(tests.out, /PROBLEM test file gate: tests\/496\.test\.mjs: no scope line names a test location/, tests.out)
+  assert.deepEqual([tests.json.plans['496'].ready, tests.json.plans['497'].ready], [false, true], tests.out)
+  // a feat/498 cut from an older main with a commit of its own: not built on the run's base
+  const old = p.git(p.proj, 'rev-parse', 'HEAD~1').out.trim()
+  const stale = p.git(p.proj, 'commit-tree', `${old}^{tree}`, '-p', old, '-m', 'an earlier run').out.trim()
+  assert.equal(p.git(p.proj, 'update-ref', 'refs/heads/feat/498-toy-498', stale).status, 0)
+  try {
+    const dry = p.runPlans(['--dry-run', '--run', 'stale', '--plans', '498'])
+    assert.equal(dry.json.plans['498'].ready, false, dry.out)
+    assert.match(dry.out, /PROBLEM stale branch feat\/498-toy-498: an earlier run left it and it is not built on origin\/main/)
+    assert.match(dry.out, /^WOULD START: no/m)
+  } finally {
+    p.git(p.proj, 'update-ref', '-d', 'refs/heads/feat/498-toy-498')
+  }
+  assert.equal(p.runPlans(['--dry-run', '--run', 'stale', '--plans', '498']).json.plans['498'].ready, true)
+})
+
+test('098 (e) no --reviewer-mode and no orchestrator.reviewerMode: a Reviewer: advisory plan is reviewed as gate', () => {
+  p.addPlans({ 499: withExecution(toyPlan(499), '- Reviewer: advisory') })
+  const r = p.runPlans(['--run', 'default-gate', '--plans', '499'], { scenario: { 499: { reviewer: [{ verdict: 'STOP' }, { verdict: 'STOP' }] } } })
+  assert.equal(r.status, 2, r.out)
+  assert.match(r.out, /reviewer sonnet \(gate\)/)
+  const st = p.status('default-gate')
+  assert.equal(st.plans['499'].state, 'parked')
+  assert.match(st.plans['499'].reason, /^same reason twice: review STOP: major src\/499\.txt:1/)
+  assert.deepEqual(stagesOf(st, '499'), ['builder', 'reviewer', 'builder fix', 'reviewer'])
 })
 
 test('(f) a plan with an open Critical Question is refused before any build, with the question printed', () => {
