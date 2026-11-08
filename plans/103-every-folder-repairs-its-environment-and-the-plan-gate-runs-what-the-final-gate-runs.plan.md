@@ -1,7 +1,7 @@
 # Plan 103 — Every folder repairs its environment, and the plan gate runs what the final gate runs
 
 Status: draft
-Depends-on: 098, 099
+Depends-on: none
 Snapshot: 99037d4
 Source: the stops audit of 16 FoodVibe runs, mapped on 2026-11-08 (groups C, D, I: stops #1, 3, 4, 7, 8, 10–12, 15–17, 22, 24, 28, 32, 35). The Human took every recommendation on 2026-11-08. Reliability fix, allowed in the freeze; no new capability.
 
@@ -113,3 +113,4 @@ Questions to the Human or the advisor (plan 104); relaunching a dead run (plan 1
 None open.
 
 ## Execution Notes
+- 2026-11-08 Planner: Depends-on no longer names 098/099 — both are merged into main (4518804); their open [human] items do not gate this code, and the run would otherwise rebuild them.

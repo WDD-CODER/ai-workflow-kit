@@ -1,7 +1,7 @@
 # Plan 102 — Plan-file conflicts resolve themselves, and a relaunch resumes a plan from its saved work
 
 Status: draft
-Depends-on: 098, 100
+Depends-on: 100
 Snapshot: 99037d4
 Source: the stops audit of 16 FoodVibe runs, mapped on 2026-11-08 (groups B and H: stops #12, 14, 18, 21, 29). The Human took every recommendation on 2026-11-08. Reliability fix, allowed in the freeze; no new capability.
 
@@ -102,3 +102,4 @@ Starting the relaunch (plan 100); environment repair (plan 103); the question an
 None open.
 
 ## Execution Notes
+- 2026-11-08 Planner: Depends-on no longer names 098 — it is merged into main (4518804); its open [human] item does not gate this code, and the run would otherwise rebuild it.

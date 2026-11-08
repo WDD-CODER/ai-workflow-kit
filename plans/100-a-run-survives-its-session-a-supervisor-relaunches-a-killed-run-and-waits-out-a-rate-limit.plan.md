@@ -1,7 +1,7 @@
 # Plan 100 — A run survives its session: a supervisor relaunches a killed run and waits out a rate limit
 
 Status: draft
-Depends-on: 098, 099
+Depends-on: none
 Snapshot: 99037d4
 Source: the stops audit of 16 FoodVibe runs (2026-10-27 → 2026-11-08, 36 stops), mapped in the chat session on 2026-11-08 (groups F and J). The Human took every recommendation on 2026-11-08. Reliability fix, allowed in the freeze; no new capability.
 
@@ -23,7 +23,7 @@ Source: the stops audit of 16 FoodVibe runs (2026-10-27 → 2026-11-08, 36 stops
   (e) a child that ends `finished`, or `stopped` with any other reason, is not relaunched.
 - [auto] `node --test tools/test/orchestrator.test.mjs` passes, with a test that fails today: `orch-state.mjs stop` appends `{ at, reason, attempt }` to `status.json` `stops[]` and never replaces an earlier entry; `stopReason` stays the latest for older readers; the report lists every stop.
 - [auto] `node --test tools/test/run-supervisor.test.mjs` passes a test that the supervisor starts the child detached (its own process group, `windowsHide`, stdio to `.claude/orchestrator-runs/<run>.console.log` in append mode), and that the launching process can exit while the child keeps running.
-- [auto] `.claude/commands/orchestrate.md` (installed copy) starts the run with `node scripts/run-supervisor.mjs --run <run> --plans <NNN,…>`, which prints `SUPERVISOR_STARTED <pid>` and returns at once; it names no `run_in_background` step and no relaunch step of its own (`grep -c "run_in_background" .claude/commands/orchestrate.md` = 0). `tools/install-check.mjs` l.1015–1017 today fails an `orchestrate.md` without `run_in_background` or without the line `node scripts/run-plans.mjs --run <run> --plans <NNN,NNN>`: those assertions change to the supervisor line in the same commit, and `node tools/install-check.mjs` passes. The command stays under install-check's 60-line limit (52 lines at bf8926e).
+- [auto] `.claude/commands/orchestrate.md` (installed copy) starts the run with the supervisor line (scripts/run-supervisor.mjs with --run <run> and --plans <NNN,…>), which prints `SUPERVISOR_STARTED <pid>` and returns at once; it names no run_in_background step and no relaunch step of its own (a test in tools/test/run-supervisor.test.mjs asserts both on the installed copy). tools/install-check.mjs l.1015–1017 today fails an orchestrate.md without run_in_background or without the run-plans.mjs start line: those assertions change to the supervisor line in the same commit, and `node tools/install-check.mjs` passes. The command stays under install-check's 60-line limit (52 lines at bf8926e).
 - [auto] At start, the supervisor runs the existing leftover sweep for runs that are not live (`orphan-sweep.mjs`, `prune-merged-worktrees.sh` or their script equivalents) and prints one line per folder or branch it removed or kept, with the reason; a folder named in a parked plan's hand-off or a `park/…` branch is always kept.
 - [auto] The two limits are fixed in code, the way `BUILDER_IDLE_MIN` is (`run-plans.mjs` l.57–59): `export const MAX_RELAUNCHES = 3` and `export const MIN_FREE_MEM_GB = 4` in `run-supervisor.mjs`, with the test-only overrides `RUN_SUPERVISOR_MAX_RELAUNCHES` and `RUN_SUPERVISOR_MIN_FREE_MEM_GB`. `kit.config.json` gets no new orchestrator key (size budget `orchestratorKeys`: 15 of 15). A test asserts the scaffold has neither `maxRelaunches` nor `minFreeMemGb`, and `node --test tools/test/size-budget.test.mjs` passes. `docs/agent/orchestrator.md` describes the supervisor.
 - [auto] `npm run build`, `npm run lint`, `npm test` and `node tools/drift-check.mjs --target .` pass (the builder runs the kit sync with apply first; it is a step, not a check).
@@ -108,3 +108,4 @@ Resuming a parked plan from its saved commits (plan 102); environment repair ins
 None open. (The Human took the recommendations on 2026-11-08: up to 3 relaunches per run, only with at least 4 GB free memory, waiting otherwise.)
 
 ## Execution Notes
+- 2026-11-08 Planner: Depends-on no longer names 098/099 — both are merged into main (4518804); their open [human] items do not gate this code, and the run would otherwise rebuild them.
