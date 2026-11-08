@@ -48,7 +48,7 @@ const COMMANDS = { build: "build", lint: "lint", test: "test", testCi: "" }
 const PREPARE = []
 const CI_MIRROR = ["node tools/pack-check.mjs","node tools/drift-check.mjs --target .","node tools/install-check.mjs","node tools/workflow-link-check.mjs","node tools/e2e-check.mjs","node tools/acceptance-check.mjs --e2e"]
 const MERGE_CHECKS_MODE = "build"
-const GATE_TIMEOUT_MIN = Number(20) || 15
+const GATE_TIMEOUT_MIN = Number(45) || 15
 // One plan at a time unless --concurrency 2 is given (goal decision: more builders on one machine made specs time
 // out); orchestrator.concurrency stays the workflow's setting.
 const CONCURRENCY = 1

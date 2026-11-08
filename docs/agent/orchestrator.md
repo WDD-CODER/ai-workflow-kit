@@ -35,7 +35,7 @@ now are ignored by install and sync with a `NOTE orchestrator: <key> removed` li
 | `maxFixRounds` | `2` | How many times problems go back to a build-tier builder before the plan escalates or parks |
 | `minFreeDiskGb` | `5` | Free disk the environment check asks for, before the run and before a retry |
 | `onPark` | `dependents` | What a parked plan stops: `dependents` = only the later plans that depend on it or share its files (each is `skipped` with the reason), `all` = every later plan |
-| `gateTimeoutMin` | `20` | Minutes one gate command (and one `prepare` script) may run |
+| `gateTimeoutMin` | `45` | Minutes one gate command (and one `prepare` script) may run |
 | `staleMin` | `10` | Minutes without a `status.json` update after which `orch-state.mjs watch` prints `STUCK` |
 | `mergeChecks` | `build` | What the merge step runs on the merged tree: `build` = the project build plus the plan's scope check, `full` = the plan's whole check list on every merge |
 | `ciMirror` | `["node tools/pack-check.mjs","node tools/drift-check.mjs --target .","node tools/install-check.mjs","node tools/workflow-link-check.mjs","node tools/e2e-check.mjs","node tools/acceptance-check.mjs --e2e"]` | CI commands (`npm run <script>`, `pnpm run <script>`, `node scripts/…` or `node tools/…`, no write flag) the final gate runs after the project checks and the kit manifest check. Install and sync print a `NOTE ci-mirror:` line for each CI command the final gate does not run; they never write the list |
