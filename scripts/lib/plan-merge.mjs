@@ -8,7 +8,7 @@
  * In the run's merge folder: fetch, fast-forward to origin/<run branch>, `git merge --no-ff` origin/<plan branch> with
  * the anchored subject `Merge <plan branch> into <run branch> (plan NNN)`, then `orch-state.mjs merge-verify` (the merge
  * commit's second parent must be the plan's checkedHead; else the folder is reset to HEAD^ and the plan parks with both
- * shas), then the merge checks (orchestrator.mergeChecks: the build by default), then ONE push of the run branch. A
+ * shas), then the merge checks (after `ensure`, the caller's ensure-env for the merge folder) (orchestrator.mergeChecks: the build by default), then ONE push of the run branch. A
  * conflict or a failing check undoes the merge in the merge folder (abort, or reset to HEAD^); origin never moves.
  * The main branch is never touched. Callers run one merge at a time (one merge folder per run).
  */
@@ -16,23 +16,44 @@ import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { runGate } from './plan-gate.mjs'
+import { retryGit, sleepSync } from './orch-folders.mjs'
 
-const git = (cwd, ...a) => {
+const rawGit = (cwd, ...a) => {
   const r = spawnSync('git', a, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
   return { status: r.status ?? 1, out: String(r.stdout ?? '').trim(), err: String(r.stderr ?? '').trim() }
 }
+// fetch and push retry on a transient error (3 runs, 5 s apart); every other git call runs once.
+const git = (cwd, ...a) => retryGit(cwd, a, { exec: (c, args) => rawGit(c, ...args) })
 const lastLine = (s) => String(s ?? '').split('\n').filter(Boolean).pop() ?? ''
 
-/** The run's state script: { ok, ...ORCH_JSON } or { ok: false, error }. */
-export function orchState(root, argv) {
-  const r = spawnSync(process.execPath, [join(root, 'scripts', 'orch-state.mjs'), ...argv], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 30 * 60_000 })
-  const line = String(r.stdout ?? '').split(/\r?\n/).reverse().find((l) => l.startsWith('ORCH_JSON '))
-  if (!line) return { ok: false, error: `orch-state ${argv[0]} gave no answer (exit ${r.status}): ${lastLine(r.stderr) || lastLine(r.stdout)}`, lines: String(r.stdout ?? '') }
-  try {
-    return { ...JSON.parse(line.slice('ORCH_JSON '.length)), lines: String(r.stdout ?? '').split(/\r?\n/).filter((l) => l && !l.startsWith('ORCH_JSON ')) }
-  } catch (e) {
-    return { ok: false, error: `orch-state ${argv[0]}: unreadable answer: ${e.message}` }
+/** orch-state commands that only read, or that give the same state when run twice: an answer lost to a one-off failure is asked again. */
+export const STATE_READ = new Set(['order', 'done', 'check-files', 'scripts', 'context', 'watch', 'disk', 'merge-ready', 'plan-info', 'diff', 'set', 'touch'])
+/** Whether `orch-state <argv>` may be run again when it gave no readable ORCH_JSON (`note` only with an --id). */
+export const stateRepeatable = (argv) => STATE_READ.has(argv[0]) || (argv[0] === 'note' && argv.some((a) => /^--id(=|$)/.test(a)))
+
+/**
+ * The run's state script: { ok, ...ORCH_JSON } or { ok: false, error }. An answer without a readable ORCH_JSON is asked
+ * again up to 3 runs, 2 s apart, for a command in STATE_READ; any other command fails as before. `spawn(argv)` and
+ * `sleep(ms)` are injectable for tests.
+ */
+export function orchState(root, argv, { spawn = null, sleep = sleepSync, tries = 3, delayMs = 2000 } = {}) {
+  const call = spawn ?? ((a) => spawnSync(process.execPath, [join(root, 'scripts', 'orch-state.mjs'), ...a], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 30 * 60_000 }))
+  let fail = null
+  for (let i = 0; i < (stateRepeatable(argv) ? tries : 1); i++) {
+    if (i > 0) sleep(delayMs)
+    const r = call(argv)
+    const line = String(r.stdout ?? '').split(/\r?\n/).reverse().find((l) => l.startsWith('ORCH_JSON '))
+    if (!line) {
+      fail = { ok: false, error: `orch-state ${argv[0]} gave no answer (exit ${r.status}): ${lastLine(r.stderr) || lastLine(r.stdout)}`, lines: String(r.stdout ?? '') }
+      continue
+    }
+    try {
+      return { ...JSON.parse(line.slice('ORCH_JSON '.length)), lines: String(r.stdout ?? '').split(/\r?\n/).filter((l) => l && !l.startsWith('ORCH_JSON ')) }
+    } catch (e) {
+      fail = { ok: false, error: `orch-state ${argv[0]}: unreadable answer: ${e.message}` }
+    }
   }
+  return fail
 }
 
 /** The anchored merge subject plan-order and `orch-state done` read back from git. */
@@ -81,7 +102,7 @@ export function planChangeRecord(cwd, { path, startCommit }) {
   return { commits, diff, warnings }
 }
 
-export async function mergePlan({ root, run, nnn, branch, runBranch, mergeFolder, checks = [], timeoutMin = 15, onResult = null, plan = null }) {
+export async function mergePlan({ root, run, nnn, branch, runBranch, mergeFolder, checks = [], timeoutMin = 15, onResult = null, plan = null, ensure = null }) {
   const mf = mergeFolder
   const undo = () => git(mf, 'reset', '--quiet', '--hard', 'HEAD^')
   const f = git(mf, 'fetch', '--quiet', 'origin')
@@ -115,7 +136,9 @@ export async function mergePlan({ root, run, nnn, branch, runBranch, mergeFolder
     return { merged: false, why: `merge-verify: ${v.error}` }
   }
   if (checks.length) {
-    const g = await runGate({ folder: mf, commands: checks, timeoutMin, receipt: false, onResult })
+    // ensure(clean, command, result): ensure-env in the merge folder; before the checks, and (clean) before a check's one retry.
+    if (ensure) await ensure(false)
+    const g = await runGate({ folder: mf, commands: checks, timeoutMin, receipt: false, onResult, beforeRetry: ensure ? (command, r) => ensure(true, command, r) : null })
     if (g.status !== 'pass') {
       undo()
       const bad = g.results.find((x) => x.status !== 'pass')

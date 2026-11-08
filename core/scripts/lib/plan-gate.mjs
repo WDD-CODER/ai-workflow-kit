@@ -57,7 +57,7 @@ export function scopeCheck({ folder, base, planText, planPath, hotspots = [], up
 }
 
 /** Output that names an environment problem, not a code problem. */
-export const ENV_FAIL_RE = /\b(EBUSY|EPERM|EACCES|ENOSPC|EADDRINUSE|ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|EMFILE)\b|socket hang up|getaddrinfo/
+export const ENV_FAIL_RE = /\b(EBUSY|EPERM|EACCES|ENOSPC|EADDRINUSE|ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|EMFILE)\b|socket hang up|getaddrinfo|is not recognized as an internal or external command|command not found/
 export const RECEIPT_REL = '.claude/gate-receipt.json'
 export const TAIL_LINES = 50
 
@@ -75,7 +75,7 @@ export function words(cmd) {
  * npm script names (testCi wins over test); `manifest` adds the kit manifest check; `scope` = { plan, base } adds the
  * plan's scope check against the run branch; `extra` = the plan's own [auto] commands (already allowed).
  */
-export function gateCommands({ prepare = [], pm = 'npm', build = '', lint = '', test = '', testCi = '', manifest = false, kitRoot = null, scope = null, extra = [] } = {}) {
+export function gateCommands({ prepare = [], pm = 'npm', build = '', lint = '', test = '', testCi = '', manifest = false, kitRoot = null, scope = null, ciMirror = [], extra = [] } = {}) {
   const run = (s) => (typeof s === 'string' && s !== '' ? `${pm} run ${s}` : null)
   const prep = (Array.isArray(prepare) ? prepare : [])
     .filter((p) => p && typeof p.missing === 'string' && typeof p.script === 'string')
@@ -85,8 +85,10 @@ export function gateCommands({ prepare = [], pm = 'npm', build = '', lint = '', 
     run(build), run(lint), run(testCi || test),
     // The policy checks come from the main folder's scripts (kitRoot), never from the branch under test: a builder that
     // edits its own copy cannot pass them. The manifest check reads the folder it runs in.
-    manifest ? (kitRoot ? `node "${String(kitRoot).replace(/\\/g, '/')}/scripts/kit-manifest-check.mjs"` : 'node scripts/kit-manifest-check.mjs') : null,
+    manifest ? (kitRoot ? `node "${String(kitRoot).replace(/\\/g, '/')}/scripts/kit-manifest-check.mjs" --root .` : 'node scripts/kit-manifest-check.mjs') : null,
     scope ? scopeMarker(scope.base, scope.plan) : null,
+    // What the run's final gate also runs (orchestrator.ciMirror): a plan's gate fails on it before the merge, not after.
+    ...(Array.isArray(ciMirror) ? ciMirror : []),
     ...extra,
   ].filter(Boolean).map((c) => String(c).trim())
   return [...new Set(list)]
@@ -170,7 +172,7 @@ function excludeReceipt(folder) {
  * Run the commands in order in `folder`. Every command runs (a failure does not stop the next one), so the receipt and
  * a fix round see every failing check at once. `onResult(result)` is called after each command (the caller's calls.csv).
  */
-export async function runGate({ folder, commands, timeoutMin = 15, receipt = true, onResult = null, env = process.env, builtins = {} }) {
+export async function runGate({ folder, commands, timeoutMin = 15, receipt = true, onResult = null, env = process.env, builtins = {}, beforeRetry = null }) {
   const results = []
   const flaky = []
   const timeoutMs = Math.max(1, Number(timeoutMin) || 15) * 60_000
@@ -186,6 +188,8 @@ export async function runGate({ folder, commands, timeoutMin = 15, receipt = tru
     let status = statusOf(r)
     let seconds = r.seconds
     if (status === 'env-fail') {
+      // beforeRetry(command, result): the caller repairs the environment (ensure-env), so the retry is not the same failing command.
+      if (beforeRetry) await beforeRetry(command, r)
       const again = await run(command)
       seconds += again.seconds
       const st = statusOf(again)

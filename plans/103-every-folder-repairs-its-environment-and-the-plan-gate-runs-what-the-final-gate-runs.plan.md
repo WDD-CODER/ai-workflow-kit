@@ -92,15 +92,15 @@ the path to the scope block and retry.
 6. `orch-preflight.mjs` header comment (its list of checks) and the checks themselves: the `git longpaths` check sits beside `git identity`, and runs in the full preflight and with `--env-only`.
 
 ## Atomic Sub-tasks
-- [ ] S1: Write the failing tests first for installs, the environment retry, state retries and git retries — cases (a)–(d) — tools/test/orchestrator-env-retry.test.mjs
-- [ ] S2: Write the failing tests for the plan gate, the final-gate fix round and undone items — cases (e)–(g) — tools/test/run-plans.test.mjs
-- [ ] S3: Install what a folder is missing before every step that runs code there — ensure-env — core/scripts/lib/orch-folders.mjs, core/scripts/run-plans.mjs, core/scripts/lib/plan-merge.mjs
-- [ ] S3b: Turn on long Windows paths for git before a run, or say the exact command when that fails — git longpaths check, case (h) — core/scripts/orch-preflight.mjs, tools/test/orchestrator-env-retry.test.mjs
-- [ ] S4: Retry a state call or a git call that fails once — core/scripts/lib/plan-merge.mjs, core/scripts/run-plans.mjs, core/scripts/orch-state.mjs, core/scripts/plan-park.mjs
-- [ ] S5: Run the final gate's commands in every plan's gate, on the plan's own tree — core/scripts/lib/plan-gate.mjs, core/scripts/run-plans.mjs
-- [ ] S6: Give the blamed plan one fix round when the final gate fails — core/scripts/run-plans.mjs
-- [ ] S7: Fail the gate on a promised item left undone, and start the servers it needed — core/scripts/run-plans.mjs
-- [ ] S8: Describe the rules, resync the installed copies, run every check, add the changelog entry — core/docs/agent/orchestrator.md, CHANGELOG.md
+- [x] S1: Write the failing tests first for installs, the environment retry, state retries and git retries — cases (a)–(d) — tools/test/orchestrator-env-retry.test.mjs
+- [x] S2: Write the failing tests for the plan gate, the final-gate fix round and undone items — cases (e)–(g) — tools/test/run-plans.test.mjs
+- [x] S3: Install what a folder is missing before every step that runs code there — ensure-env — core/scripts/lib/orch-folders.mjs, core/scripts/run-plans.mjs, core/scripts/lib/plan-merge.mjs
+- [x] S3b: Turn on long Windows paths for git before a run, or say the exact command when that fails — git longpaths check, case (h) — core/scripts/orch-preflight.mjs, tools/test/orchestrator-env-retry.test.mjs
+- [x] S4: Retry a state call or a git call that fails once — core/scripts/lib/plan-merge.mjs, core/scripts/run-plans.mjs, core/scripts/orch-state.mjs, core/scripts/plan-park.mjs
+- [x] S5: Run the final gate's commands in every plan's gate, on the plan's own tree — core/scripts/lib/plan-gate.mjs, core/scripts/run-plans.mjs
+- [x] S6: Give the blamed plan one fix round when the final gate fails — core/scripts/run-plans.mjs
+- [x] S7: Fail the gate on a promised item left undone, and start the servers it needed — core/scripts/run-plans.mjs
+- [x] S8: Describe the rules, resync the installed copies, run every check, add the changelog entry — core/docs/agent/orchestrator.md, CHANGELOG.md
 
 ## Technical Considerations
 - `ensure-env` never deletes a tree unless the failing command was an environment failure in that tree; a clean reinstall happens at most once per plan.
@@ -113,4 +113,6 @@ Questions to the Human or the advisor (plan 104); relaunching a dead run (plan 1
 None open.
 
 ## Execution Notes
+- 2026-11-08 Builder: npm run build -> exit 0; npm run lint -> exit 0; npm test -> exit 0; node --test tools/test/orchestrator-env-retry.test.mjs -> exit 0 (11 pass); node --test tools/test/run-plans.test.mjs -> exit 0 (47 pass); node tools/drift-check.mjs --target . -> ok; scope-check (kit copy) -> SCOPE: ok.
+- 2026-11-08 Builder: the (f) final-gate fix round has unit tests (blameFinalGate) and source-shape tests only, no end-to-end test (the fake-builder fixture is outside this plan's scope). The [human] item stays open.
 - 2026-11-08 Planner: Depends-on no longer names 098/099 — both are merged into main (4518804); their open [human] items do not gate this code, and the run would otherwise rebuild them.

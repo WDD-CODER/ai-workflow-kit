@@ -284,7 +284,7 @@ test('run-order: blockedBy follows dependencies and shared files; units keep a l
 
 test('plan-gate: the command list is prepare, project checks, manifest, scope, then the plan\'s own; a failing command is in the receipt', async () => {
   const cmds = gateCommands({ prepare: [{ missing: 'gen/x', script: 'gen' }], pm: 'npm', build: 'build', lint: 'lint', test: 'test', testCi: 'test:ci', manifest: true, kitRoot: 'C:/main folder', scope: { base: 'origin/orch/r', plan: 'plans/1-x.plan.md' }, extra: ['npm run build', 'node --test a.test.mjs'] })
-  assert.deepEqual(cmds, ['node scripts/orch-state.mjs prepare --missing gen/x --script gen', 'npm run build', 'npm run lint', 'npm run test:ci', 'node "C:/main folder/scripts/kit-manifest-check.mjs"', 'scope-check (kit copy) --diff=origin/orch/r --plan=plans/1-x.plan.md', 'node --test a.test.mjs'])
+  assert.deepEqual(cmds, ['node scripts/orch-state.mjs prepare --missing gen/x --script gen', 'npm run build', 'npm run lint', 'npm run test:ci', 'node "C:/main folder/scripts/kit-manifest-check.mjs" --root .', 'scope-check (kit copy) --diff=origin/orch/r --plan=plans/1-x.plan.md', 'node --test a.test.mjs'])
   const tmp = mkdtempSync(join(tmpdir(), 'rp-gate-'))
   try {
     spawnSync('git', ['init', '-q'], { cwd: tmp })
@@ -815,4 +815,71 @@ test('101 a test path the plan names that its scope does not cover is NOT READY 
   const dry = p.runPlans(['--dry-run', '--run', 'named', '--plans', '601,602'])
   assert.match(dry.out, /PROBLEM test file gate: e2e\/601\.spec\.ts: no scope line names a test location.*; add this line to the scope block: e2e\/601\.spec\.ts/, dry.out)
   assert.deepEqual([dry.json.plans['601'].ready, dry.json.plans['602'].ready], [false, true], dry.out)
+})
+
+// ---- plan 103: the plan gate runs what the final gate runs; the final-gate fix round; undone items -------------------------
+test('103 (e) gateCommands adds the ciMirror commands to the plan gate, and the trusted manifest check reads the plan\'s folder (--root .)', () => {
+  const cmds = gateCommands({ pm: 'npm', build: 'build', lint: 'lint', test: 'test', manifest: true, kitRoot: 'C:/main folder', ciMirror: ['node tools/drift-check.mjs --target .', 'npm run build'], scope: { base: 'origin/orch/r', plan: 'plans/1-x.plan.md' } })
+  assert.deepEqual(cmds, ['npm run build', 'npm run lint', 'npm run test', 'node "C:/main folder/scripts/kit-manifest-check.mjs" --root .', 'scope-check (kit copy) --diff=origin/orch/r --plan=plans/1-x.plan.md', 'node tools/drift-check.mjs --target .'])
+  assert.deepEqual(runPlans.ciMirrorChecks(['npm run lint', 'git push', 'node scripts/kit-manifest-check.mjs', ' node tools/x.mjs '], ['lint'], { manifest: true }), ['npm run lint', 'node tools/x.mjs'], 'a command the runner cannot run is left out; the manifest check is the trusted one')
+})
+
+test('103 (e) the dry run puts every command of the final gate (the project checks and orchestrator.ciMirror) in each plan\'s gate', () => {
+  const q = makeProject({ kit, config: { ciMirror: ['node scripts/toy-check.mjs 9', 'npm run lint'] } })
+  try {
+    q.addPlans({ 731: toyPlan(731) })
+    const dry = q.runPlans(['--dry-run', '--run', 'mirror', '--plans', '731'])
+    assert.equal(dry.status, 0, dry.out)
+    const checks = dry.json.plans['731'].checks
+    for (const c of ['npm run build', 'npm run lint', 'npm run test', 'node scripts/toy-check.mjs 9']) assert.ok(checks.includes(c), `${c} in ${checks.join(' | ')}`)
+    assert.equal(new Set(checks).size, checks.length, 'no command twice')
+  } finally {
+    q.cleanup()
+  }
+})
+
+test('103 (f) blameFinalGate: a failing output that names a file exactly one merged plan changed blames that plan; a shared file or two plans blame nobody', () => {
+  const merged = { 101: ['src/a.ts', 'src/shared.ts'], 102: ['src/b.ts', 'src/shared.ts'], 103: ['docs/c.md'] }
+  assert.equal(runPlans.blameFinalGate({ output: 'ERROR in src/a.ts:12:3 TS2322', merged }), '101')
+  assert.equal(runPlans.blameFinalGate({ output: 'FAIL src\\b.ts', merged: { 102: ['src/b.ts'] } }), '102', 'Windows slashes')
+  assert.equal(runPlans.blameFinalGate({ output: 'ERROR in src/shared.ts', merged }), null, 'two plans changed it')
+  assert.equal(runPlans.blameFinalGate({ output: 'src/a.ts and src/b.ts failed', merged }), null, 'two plans named')
+  assert.equal(runPlans.blameFinalGate({ output: 'src/a.ts and src/shared.ts failed', merged }), '101', 'the shared file blames nobody, the other file one plan')
+  assert.equal(runPlans.blameFinalGate({ output: 'nothing named here', merged }), null)
+  assert.equal(runPlans.blameFinalGate({ output: '', merged: {} }), null)
+})
+
+test('103 (f) run-plans gives the blamed plan one fix round in the final gate and records finalGate.blamed', () => {
+  const src = readFileSync(join(kit, 'scripts', 'run-plans.mjs'), 'utf8')
+  assert.match(src, /finalGate\.blamed = blamed/)
+  assert.match(src, /runPlan\(blamed, \{ finalFix:/)
+  assert.match(src, /\(Number\(prior\.round\) \|\| 0\) \+ 1 <= MAX_FIX_ROUNDS/, 'counted against maxFixRounds')
+})
+
+test('103 (g) a notDone entry that names an open [auto] or [ui] Done-when item is found; a ticked item, a [human] item or a sub-task is not', () => {
+  const text = [
+    '# Plan 9 — x', '', '## Goals & Success Criteria',
+    '- [auto] `node --test tools/test/x.test.mjs` passes',
+    '- [x] [auto] `npm run build` passes',
+    '- [ui] The settings page shows the text "Saved" after one click',
+    '- [human] The Human sees the colours', '',
+    '## Atomic Sub-tasks', '- [ ] T1: write the parser',
+  ].join('\n')
+  assert.deepEqual(runPlans.openDoneWhenItems(text).map((i) => i.tag), ['auto', 'ui'])
+  const hit = runPlans.undoneItems(text, ['node --test tools/test/x.test.mjs not run: no backend or database'])
+  assert.equal(hit.length, 1)
+  assert.match(hit[0].item, /^\[auto\] `node --test tools\/test\/x\.test\.mjs` passes/)
+  assert.equal(runPlans.undoneItems(text, ['The settings page shows the text "Saved" after one click: no dev server'])[0].item.startsWith('[ui]'), true)
+  assert.deepEqual(runPlans.undoneItems(text, ['npm run build', 'T1: write the parser', 'The Human sees the colours']), [])
+  assert.deepEqual(runPlans.undoneItems(text, []), [])
+  assert.equal(runPlans.serversNamed('no backend or database for an e2e screenshot'), 'be')
+  assert.equal(runPlans.serversNamed('the dev server was not running'), 'fe')
+  assert.equal(runPlans.serversNamed('ran out of time'), null)
+})
+
+test('103 (g) a builder result with a notDone Done-when item fails the gate with "Done-when item left undone: <item>"', () => {
+  const src = readFileSync(join(kit, 'scripts', 'run-plans.mjs'), 'utf8')
+  assert.match(src, /undoneItems\(planText, result\.notDone\)/)
+  assert.match(src, /`Done-when item left undone: \$\{first\.item\}`/)
+  assert.match(src, /slot-serve\.mjs', \['--main', '--servers', servers/)
 })

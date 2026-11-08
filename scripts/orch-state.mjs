@@ -72,7 +72,7 @@ import { scopeTestsLint } from './lib/scope-tests-lint.mjs'
 import { planNumber, planTitle, mergeSubjectRe } from './lib/plan-deps.mjs'
 import { uiItems } from './lib/done-when.mjs'
 import { listSlots } from './lib/slot.mjs'
-import { ensureDeps, idleSlot, claimSlot, releaseSlot, releaseRunSlots } from './lib/orch-folders.mjs'
+import { ensureDeps, idleSlot, claimSlot, releaseSlot, releaseRunSlots, retryGit } from './lib/orch-folders.mjs'
 import { agreementStats, addLesson, lessonParts, ruleLines, LESSON_ROLES } from './decision-log.mjs'
 import { planWithoutNotes, triageForce, triageView, decisionsInView, mergePlanFile, decisionType, runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine, planLines, logQueryArgs, lessonFacts, runLogRow, updateRunLog, parseRunLog, parseDecisionRows, trendOf, contextBudget, INJECTED_ROLES } from './lib/orch-run.mjs'
 
@@ -259,10 +259,14 @@ function applyDecision(status, a, where = '') {
   return { ok: true, id: next.id, verdict: next.verdict, forced: next.forced ?? null, decisions: status.decisions.length }
 }
 
-function git(cwd, ...a) {
+function rawGit(cwd, ...a) {
   const r = spawnSync('git', a, { cwd, encoding: 'utf8', maxBuffer: 512 * 1024 * 1024 })
   // truncated: the output hit maxBuffer (ENOBUFS) — a reader must not trust it.
   return { status: r.status ?? 1, out: (r.stdout ?? '').replace(/\r?\n+$/, ''), err: (r.stderr ?? '').trim(), truncated: r.error?.code === 'ENOBUFS' }
+}
+// git fetch and git push retry on a transient error (incorrect old value, cannot lock ref, a network error): 3 runs, 5 s apart.
+function git(cwd, ...a) {
+  return retryGit(cwd, a, { exec: (c, args) => rawGit(c, ...args) })
 }
 const refExists = (ref) => git(root, 'rev-parse', '--verify', '--quiet', ref).status === 0
 
