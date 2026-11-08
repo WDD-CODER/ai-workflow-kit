@@ -9,7 +9,7 @@
       "nnn": "095",
       "title": "Reviewer gates sensitive diffs; the unguarded reviewer and builder lose their Bash prefixes",
       "branch": "feat/095-reviewer-gates-sensitive-diffs",
-      "state": "parked",
+      "state": "merged",
       "round": 0,
       "tier": "build",
       "models": {},
@@ -50,6 +50,31 @@
         {
           "at": "2026-11-08T11:26:44.924Z",
           "state": "parked",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T11:28:07.055Z",
+          "state": "building",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T11:38:37.264Z",
+          "state": "gate",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T11:48:13.640Z",
+          "state": "checking",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T11:48:41.003Z",
+          "state": "merging",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T11:48:49.772Z",
+          "state": "merged",
           "round": 0
         }
       ],
@@ -92,56 +117,184 @@
           "replan": "no — the builder gave no planChange",
           "resetToBase": "8429b9b2bc9c78166ebf1533e4980ef69019c023",
           "resetFrom": "8429b9b2bc9c78166ebf1533e4980ef69019c023"
+        },
+        {
+          "nnn": "095",
+          "title": "Reviewer gates sensitive diffs; the unguarded reviewer and builder lose their Bash prefixes",
+          "branch": "feat/095-reviewer-gates-sensitive-diffs",
+          "state": "parked",
+          "round": 0,
+          "tier": "build",
+          "models": {},
+          "tiers": [
+            "build"
+          ],
+          "freeDiskGb": 10.8,
+          "sha": "e2d627355bc5177a49d587c6e022359b97d8c520",
+          "calls": [
+            {
+              "stage": "builder",
+              "model": "sonnet",
+              "seconds": 585.3,
+              "tokens": {
+                "input": 107339,
+                "output": 2251
+              },
+              "exit": 0
+            }
+          ],
+          "reason": "review could not run: review folder: git worktree add: fatal: Could not reset index file to revision 'HEAD'.",
+          "park": {
+            "at": "2026-11-08T11:26:48.030Z",
+            "reason": "review could not run: review folder: git worktree add: fatal: Could not reset index file to revision 'HEAD'."
+          }
         }
       ],
       "tiers": [
         "build"
       ],
       "freeDiskGb": 10.8,
-      "sha": "e2d627355bc5177a49d587c6e022359b97d8c520",
+      "sha": "688afe34a498e36ed759438215ef1ba62007da2d",
       "calls": [
         {
           "stage": "builder",
           "model": "sonnet",
-          "seconds": 585.3,
+          "seconds": 628.1,
           "tokens": {
-            "input": 107339,
-            "output": 2251
+            "input": 85107,
+            "output": 1598
+          },
+          "exit": 0
+        },
+        {
+          "stage": "reviewer",
+          "model": "sonnet",
+          "seconds": 22.9,
+          "tokens": {
+            "input": 80337,
+            "output": 922
           },
           "exit": 0
         }
       ],
-      "reason": "review could not run: review folder: git worktree add: fatal: Could not reset index file to revision 'HEAD'.",
-      "park": {
-        "at": "2026-11-08T11:26:48.030Z",
-        "reason": "review could not run: review folder: git worktree add: fatal: Could not reset index file to revision 'HEAD'."
-      }
+      "checkedHead": "827ac0f3ee872c2f3ac68ba402f44e6868f1a80e"
     },
     "098": {
       "nnn": "098",
-      "round": 0,
+      "title": "A run never waits for the Human and never wastes a build",
+      "branch": "feat/098-a-run-never-waits",
+      "state": "parked",
+      "round": 1,
+      "tier": "judgment",
       "models": {},
-      "state": "skipped",
-      "reason": "depends on parked 095",
-      "freeDiskGb": 10.8,
+      "humanItems": [
+        "After a kit release and `kit-sync` on the installed project, one `/orchestrate` starts the run right after its dry run with no reply asked for, and a plan parked in an earlier run starts on a fresh branch (reply `ok`)."
+      ],
       "history": [
         {
           "at": "2026-11-08T11:26:48.726Z",
           "state": "skipped",
           "round": 0
+        },
+        {
+          "at": "2026-11-08T11:48:56.289Z",
+          "state": "building",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T12:08:57.008Z",
+          "state": "building",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T12:09:00.879Z",
+          "state": "fixing",
+          "round": 1
+        },
+        {
+          "at": "2026-11-08T12:29:01.436Z",
+          "state": "fixing",
+          "round": 1
+        },
+        {
+          "at": "2026-11-08T12:29:01.747Z",
+          "state": "parked",
+          "round": 1
         }
-      ]
+      ],
+      "earlier": [
+        {
+          "nnn": "098",
+          "round": 0,
+          "models": {},
+          "state": "skipped",
+          "reason": "depends on parked 095",
+          "freeDiskGb": 10.8
+        }
+      ],
+      "tiers": [
+        "build",
+        "judgment"
+      ],
+      "freeDiskGb": 11.3,
+      "roundCauses": [
+        "round 1: builder: claude timed out after 20 min",
+        "round 2: builder: claude timed out after 20 min"
+      ],
+      "calls": [
+        {
+          "stage": "builder",
+          "model": "sonnet",
+          "seconds": 1200.4,
+          "tokens": {
+            "input": 0,
+            "output": 0
+          },
+          "exit": 1,
+          "error": "claude timed out after 20 min"
+        },
+        {
+          "stage": "judgment builder",
+          "model": "opus",
+          "seconds": 1200.3,
+          "tokens": {
+            "input": 0,
+            "output": 0
+          },
+          "exit": 1,
+          "error": "claude timed out after 20 min"
+        }
+      ],
+      "escalations": [
+        {
+          "step": "round 1",
+          "check": "builder: claude timed out after 20 min"
+        }
+      ],
+      "replan": "no — the builder gave no planChange",
+      "resetToBase": "688afe34a498e36ed759438215ef1ba62007da2d",
+      "resetFrom": "688afe34a498e36ed759438215ef1ba62007da2d",
+      "reason": "same reason twice: builder: claude timed out after 20 min",
+      "park": {
+        "at": "2026-11-08T12:29:04.288Z",
+        "reason": "same reason twice: builder: claude timed out after 20 min"
+      }
     },
     "099": {
       "nnn": "099",
       "round": 0,
       "models": {},
       "state": "skipped",
-      "reason": "depends on parked 095",
-      "freeDiskGb": 10.8,
+      "reason": "depends on parked 098",
+      "freeDiskGb": 11.3,
       "history": [
         {
           "at": "2026-11-08T11:26:48.906Z",
+          "state": "skipped",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T12:29:05.183Z",
           "state": "skipped",
           "round": 0
         }
@@ -162,12 +315,26 @@
     {
       "at": "2026-11-08T11:26:49.087Z",
       "text": "wave 1 parked 095 — skipped 098, 099; 0 later plan(s) go on"
+    },
+    {
+      "at": "2026-11-08T12:09:00.642Z",
+      "plan": "098",
+      "text": "escalated to a fresh judgment-tier builder (round 1): builder: claude timed out after 20 min"
+    },
+    {
+      "at": "2026-11-08T12:29:04.455Z",
+      "plan": "098",
+      "text": "parked: nothing to save (nothing uncommitted)"
+    },
+    {
+      "at": "2026-11-08T12:29:05.440Z",
+      "text": "wave 2 parked 098 — skipped 099; 0 later plan(s) go on"
     }
   ],
-  "attempts": 2,
+  "attempts": 3,
   "phase": "finished",
-  "freeDiskGb": 10.8,
-  "updatedAt": "2026-11-08T11:26:50.443Z",
+  "freeDiskGb": 11.3,
+  "updatedAt": "2026-11-08T12:46:53.938Z",
   "decisions": [
     {
       "id": "D1",
@@ -207,7 +374,53 @@
       "confidence": null,
       "rec": "",
       "why": ""
+    },
+    {
+      "id": "D4",
+      "plan": "095",
+      "type": "behaviour",
+      "text": "behaviour: the reviewer gets no Bash at all (READ_ONLY_BASH = []) because a `Bash(git diff:*)` prefix cannot refuse `--output` or `--no-index`, so plan item (d) cannot be tested — reverse: restore the prefixes in core/scripts/lib/claude-run.mjs",
+      "alsoFrom": [],
+      "attempt": 3,
+      "verdict": "none",
+      "kind": "-",
+      "confidence": null,
+      "rec": "",
+      "why": ""
+    },
+    {
+      "id": "D5",
+      "plan": "095",
+      "type": "behaviour",
+      "text": "behaviour: a run with no PreToolUse guard hooks now refuses to start, in the dry run too, instead of falling back to a wide Bash list — reverse: remove the unguarded check in run-plans.mjs",
+      "alsoFrom": [],
+      "attempt": 3,
+      "verdict": "none",
+      "kind": "-",
+      "confidence": null,
+      "rec": "",
+      "why": ""
+    },
+    {
+      "id": "D6",
+      "plan": "095",
+      "type": "behaviour",
+      "text": "behaviour: isSensitive is exported from ship-prep.mjs instead of moved to sensitive-paths.mjs, because tools/install-check.mjs (outside the scope) evaluates that block — reverse: move it to the new lib file and update install-check",
+      "alsoFrom": [],
+      "attempt": 3,
+      "verdict": "none",
+      "kind": "-",
+      "confidence": null,
+      "rec": "",
+      "why": ""
     }
   ],
-  "finishedAt": "2026-11-08T11:26:50.441Z"
+  "finishedAt": "2026-11-08T12:46:53.936Z",
+  "finalGate": {
+    "ok": true,
+    "command": null,
+    "at": "2026-11-08T12:46:53.938Z",
+    "attempt": 1,
+    "blamed": []
+  }
 }
