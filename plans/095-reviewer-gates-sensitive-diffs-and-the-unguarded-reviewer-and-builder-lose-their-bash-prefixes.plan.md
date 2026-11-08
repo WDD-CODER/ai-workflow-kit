@@ -23,20 +23,22 @@ Two findings on kit-owned files, both reproduced in an installed project at `scr
   (d) the reviewer's `--allowedTools` holds no `node --test`; `git diff` / `git show` stay only if a test shows `--output` and `--no-index` are refused (else the reviewer gets no Bash: its diff and receipt already come inline);
   (e) `allowedTools()` for a writing agent without guard hooks throws (the run refuses to start an unguarded builder); with hooks it keeps a bare `Bash` as today; `BUILDER_BASH` is gone.
 - [auto] `docs/agent/orchestrator.md` and the `kit.config.json` `$comment` for `orchestrator.reviewerMode` state both rules: advisory applies only to a plan with `Reviewer: advisory` (plan 097, left stale there) and never to a sensitive diff (`grep -c "Reviewer: advisory" docs/agent/orchestrator.md` ≥ 1).
-- [auto] `npm run build`, `npm run lint`, `npm test`, `node --test "tools/test/*.test.mjs"` pass; `node tools/sync.mjs --target . --apply` then `node tools/drift-check.mjs --target .` report no drift.
+- [auto] `npm run build`, `npm run lint`, `npm test` and `node tools/drift-check.mjs --target .` pass (the builder runs `node tools/sync.mjs --target . --apply` first; it is a step, not a check).
 - [human] Release the kit, run `kit-sync -Ref vX.Y.Z -Apply` on the installed project, and run one `/orchestrate` on a plan that says `Reviewer: advisory` and touches a guard file: it parks on a reviewer STOP instead of merging (reply `ok`).
 
 ## Execution Mode
 - Parallel: no.
 - Concurrent plans: none.
 - Isolated DB: no.
-- Solo kit flow: `feat/095-<slug>` in this folder, then `/ship`.
+- Run: first plan of `/orchestrate 095,098,099` on the kit; merges pre-approved by the Human on 2026-11-08, `orch/<run>` into `main` by a PR after the final gate and the `[human]` cards.
+- Fallback: when the dry run says `WOULD START: no`, append one line with the date and the reason to `docs/brain/error-review.md` first, then build this plan by the solo flow (`feat/095-<slug>` in this folder, then `/ship`).
 
 ## Read-Write Scope
 
-Always allowed: this plan file itself, `.claude/sessions/**`, `.kit/install.json`, plus the append-only hotspot `CHANGELOG.md`.
+Always allowed: this plan file itself, `.claude/sessions/**`, `.kit/install.json`, plus the append-only hotspots `CHANGELOG.md` and `docs/brain/error-review.md`.
 
 ```scope
+docs/brain/error-review.md
 core/scripts/lib/claude-run.mjs
 scripts/lib/claude-run.mjs
 core/scripts/run-plans.mjs
