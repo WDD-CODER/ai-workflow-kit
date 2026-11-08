@@ -1,6 +1,6 @@
 # Plan 097 — the runner checks human-decisions.md before choosing a default, with two hard limits
 
-Status: draft
+Status: done
 Depends-on: 058, 096
 Snapshot: b2fd7b5
 Source: Human, 2026-11-07 — plan 096's request item 2: "the same lookup before choosing a default. Add two hard limits
