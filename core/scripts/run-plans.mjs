@@ -1174,8 +1174,9 @@ async function main() {
         skip(new Map(later.flat().map((p) => [p, `not started: ${stopReason}`])))
         break
       }
+      // Every park is a root, also when no later wave is left: a plan an ask holds is checked against it when freed.
+      if (parked.length) parkedRoots.push(...parked)
       if (parked.length && later.flat().length) {
-        parkedRoots.push(...parked)
         const a = afterPark({ parked: parkedRoots, laterWaves: later, edges: order.edges, onPark: ON_PARK, why: `wave ${w + 1} parked ${parked.join(', ')}` })
         skip(a.blocked)
         for (let k = 0; k < later.length; k++) waves[w + 1 + k] = a.waves[k]

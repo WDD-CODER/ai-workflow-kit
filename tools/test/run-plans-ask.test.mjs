@@ -19,7 +19,7 @@ let tmp
 before(() => {
   p = makeProject({ kit })
   tmp = mkdtempSync(join(tmpdir(), 'rp-ask-'))
-  p.addPlans({ 701: toyPlan(701), 702: toyPlan(702), 703: toyPlan(703, { deps: '701' }), 704: toyPlan(704), 711: toyPlan(711), 712: toyPlan(712, { deps: '711' }), 713: toyPlan(713) })
+  p.addPlans({ 701: toyPlan(701), 702: toyPlan(702), 703: toyPlan(703, { deps: '701' }), 704: toyPlan(704), 711: toyPlan(711), 712: toyPlan(712, { deps: '711' }), 713: toyPlan(713), 721: toyPlan(721), 722: toyPlan(722, { deps: '723' }), 723: toyPlan(723), 724: toyPlan(724, { deps: '721, 722' }) })
 })
 after(() => {
   p?.cleanup()
@@ -154,6 +154,32 @@ test('(a)(c)(d)(e) one plan asks, the others go on; watch shows RUNNING and the 
     assert.ok(builds('703')[0].at > builds('701')[1].at)
   } finally {
     // A failed assertion leaves the run waiting for answers: stop it, so the file ends.
+    if (run && run.child.exitCode === null) run.child.kill()
+    delete p.env.RUN_PLANS_ASK_WAIT_MS
+    delete p.env.RUN_PLANS_ASK_POLL_MS
+  }
+})
+
+test('a plan an ask holds stays blocked by a park in the last wave: freed by the answer, it is skipped, not built', async () => {
+  // 721 asks (wave 1), so 724 (needs 721 and 722) is held and wave 3 is left empty; 722 parks in wave 2 on an
+  // environment failure. When the answer frees 724, the park of 722 must still skip it.
+  const b = bin('claude-hold', { escalate: { 721: { status: 'ESCALATE', blocker: 'ESCALATE: db-write psql -c "insert into toys"' } } })
+  Object.assign(p.env, { RUN_PLANS_ASK_WAIT_MS: '240000', RUN_PLANS_ASK_POLL_MS: '300' })
+  let run = null
+  try {
+    run = p.startPlans(['--run', 'hold', '--plans', '721,722,723,724', '--claude', b.file], { scenario: { 722: { builder: [{ gate: 'fail', text: 'Error: listen EADDRINUSE: address already in use :::3000' }] } } })
+    const st = () => p.status('hold')
+    await until('721 asking and 722 parked', () => st().plans['721'].state === 'asking' && st().plans['722'].state === 'parked', 600000)
+    const ans = p.state('answer', '--run=hold', '--id=721-1', '--text=no database write: build the toy without it')
+    assert.equal(ans.status, 0, ans.out)
+    const r = await run.done
+    const s = st()
+    assert.equal(s.plans['721'].state, 'merged', r.out)
+    assert.equal(s.plans['723'].state, 'merged', r.out)
+    assert.equal(s.plans['724'].state, 'skipped', r.out)
+    assert.match(s.plans['724'].reason, /depends on parked 722/)
+    assert.equal(b.calls().filter((c) => c.role === 'builder' && c.plan === '724').length, 0, 'the held plan was never built')
+  } finally {
     if (run && run.child.exitCode === null) run.child.kill()
     delete p.env.RUN_PLANS_ASK_WAIT_MS
     delete p.env.RUN_PLANS_ASK_POLL_MS
