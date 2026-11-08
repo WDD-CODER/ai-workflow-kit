@@ -161,6 +161,87 @@ test('plan text: open Critical Questions and the [auto] commands are read by scr
   assert.equal(runPlans.checkProblem('node --test tools/test/x.test.mjs'), null)
 })
 
+// ---- plan 097: the Human's decisions and the two hard limits ----------------------------------------------------
+const DECISIONS = [
+  '# Human decisions', '', '## 1. Decisions (chronological)', '',
+  '| id | date | situation | suggested | the Human decided | reason | kind | status | ev |',
+  '|---|---|---|---|---|---|---|---|---|',
+  '| D04 | 10-21 | a | b | c | d | model-choice | in force | [H] |',
+  '| D17 | 11-01 | a | b | c | d | data-env | superseded by D18 | [H] |',
+  '| D18 | 11-02 | a | b | c | d | data-env | in force (goal step 3) | [H] |',
+  '| D26 | 11-03 | a | b | c | d | learning | 071; frozen (D29.7) | [H] |',
+  '| D30 | 11-04 | a | b | c | d | learning | open (and frozen by D29.7) | [S] |',
+  '', '## 2. Standing rules', '- R1 not a table',
+].join('\n')
+const withQuestion = (nnn, line) => toyPlan(nnn).replace('- Q: anything open? A: no', line)
+const withExecution = (plan, ...lines) => plan.replace('## Read-Write Scope', `## Execution Mode\n${lines.join('\n')}\n\n## Read-Write Scope`)
+
+test('097 (a)(b) an A: default per D<n> answer stands only while D<n> is in force in human-decisions.md', () => {
+  const st = runPlans.decisionStatuses(DECISIONS)
+  assert.equal(st.get('D18'), 'in force (goal step 3)')
+  assert.equal(st.get('D17'), 'superseded by D18')
+  assert.equal(st.size, 5, 'only the Decisions table, never a later section')
+  for (const id of ['D4', 'D04', 'd004']) assert.deepEqual(runPlans.decisionProblems(withQuestion(1, `- Q1: Escalate after? A: default per ${id} — one failure`), st), [], `${id} is the table's D04`)
+  assert.deepEqual(runPlans.decisionProblems(withQuestion(1, '- Q1: Start the server? A: default per D18 — start what is missing'), st), [])
+  for (const [id, status] of [['D17', 'superseded by D18'], ['D26', '071; frozen (D29.7)'], ['D30', 'open (and frozen by D29.7)'], ['D44', 'not recorded']]) {
+    const probs = runPlans.decisionProblems(withQuestion(1, `- Q1: Start the server? A: default per ${id} — x`), st)
+    assert.equal(probs.length, 1, id)
+    assert.ok(probs[0].startsWith(`default per ${id}: decision is ${status} — ask the Human`), probs[0])
+  }
+  // (b) no human-decisions.md: a default answer is refused the same way, never a silent pass
+  const none = runPlans.decisionProblems(withQuestion(1, '- Q1: Start the server? A: default per D18 — x'), null)
+  assert.equal(none.length, 1)
+  assert.match(none[0], /^default per D18: decision is unknown \(no docs\/brain\/human-decisions\.md\) — ask the Human/)
+  // an answer the Human gave, or no default named, is not checked
+  assert.deepEqual(runPlans.decisionProblems(withQuestion(1, '- Q1: Start the server? A: (Human, 2026-11-08) yes'), null), [])
+})
+
+test('097 (c) a run option above the plan\'s own Execution Mode lines is refused; a config default of advisory runs the plan on gate', () => {
+  const plain = toyPlan(1)
+  const opts = { concurrency: 1, reviewerMode: 'gate', reviewerModeSet: false, db: 'local' }
+  const run = ['001', '002']
+  assert.deepEqual(runPlans.optionProblems({ nnn: '001', planText: plain, opts, runPlans: run }), { problems: [], reviewerMode: 'gate', notes: [] })
+  // concurrency 2: only a Concurrent plans line naming another plan of the same run asks for it
+  const c2 = { ...opts, concurrency: 2 }
+  const refusedC = 'more autonomy than plan 001 asks for: --concurrency 2'
+  assert.deepEqual(runPlans.optionProblems({ nnn: '001', planText: plain, opts: c2, runPlans: run }).problems, [refusedC])
+  assert.deepEqual(runPlans.optionProblems({ nnn: '001', planText: withExecution(plain, '- Parallel: no. Concurrent plans: none.'), opts: c2, runPlans: run }).problems, [refusedC])
+  assert.deepEqual(runPlans.optionProblems({ nnn: '001', planText: withExecution(plain, '- Concurrent plans: 009'), opts: c2, runPlans: run }).problems, [refusedC], 'a plan outside the run')
+  assert.deepEqual(runPlans.optionProblems({ nnn: '001', planText: withExecution(plain, '- Parallel: yes. CONCURRENT PLANS: 002.'), opts: c2, runPlans: run }).problems, [])
+  assert.deepEqual(runPlans.optionProblems({ nnn: '001', planText: plain.replace('## Atomic Sub-tasks', 'Concurrent plans: 002\n\n## Atomic Sub-tasks'), opts: c2, runPlans: run }).problems, [refusedC], 'free text asks for nothing')
+  // advisory review: an explicit --reviewer-mode advisory is refused without a Reviewer: advisory line
+  const adv = { ...opts, reviewerMode: 'advisory', reviewerModeSet: true }
+  assert.deepEqual(runPlans.optionProblems({ nnn: '001', planText: plain, opts: adv, runPlans: run }).problems, ['more autonomy than plan 001 asks for: --reviewer-mode advisory'])
+  assert.deepEqual(runPlans.optionProblems({ nnn: '001', planText: withExecution(plain, '- reviewer: ADVISORY'), opts: adv, runPlans: run }), { problems: [], reviewerMode: 'advisory', notes: [] })
+  assert.equal(runPlans.optionProblems({ nnn: '001', planText: withExecution(plain, '- Reviewer: advisory later'), opts: adv, runPlans: run }).problems.length, 1, 'exact value')
+  // the config default (no flag) never gives more autonomy than the plan asks for: that plan's review is enforced
+  const cfg = runPlans.optionProblems({ nnn: '001', planText: plain, opts: { ...adv, reviewerModeSet: false }, runPlans: run })
+  assert.deepEqual([cfg.problems, cfg.reviewerMode], [[], 'gate'])
+  assert.match(cfg.notes[0], /reviewer gate for plan 001: the plan has no Reviewer: advisory line/)
+  // remote database: only a Database: remote line asks for it
+  const remote = { ...opts, db: 'remote' }
+  assert.deepEqual(runPlans.optionProblems({ nnn: '001', planText: plain, opts: remote, runPlans: run }).problems, ['more spend/risk than plan 001 asks for: --db remote'])
+  assert.deepEqual(runPlans.optionProblems({ nnn: '001', planText: withExecution(plain, '- Database: remote'), opts: remote, runPlans: run }).problems, [])
+  assert.equal(runPlans.optionProblems({ nnn: '001', planText: withQuestion(1, '- Q1: Database: remote? A: (Human, 2026-11-08) yes'), opts: remote, runPlans: run }).problems.length, 1, 'a Critical Question asks for nothing')
+})
+
+test('097 (d) a production question about a database or folder needs the Human\'s own answer, never a default', () => {
+  const refused = (line) => runPlans.productionProblems('001', withQuestion(1, line))
+  assert.deepEqual(refused('- Q1: Is the shared DB production? A: default per D18 — no'), ['production needs an explicit Human answer (plan 001 Q1)'])
+  assert.deepEqual(refused('- Q2: Does the prod-db cluster take writes? A: no, local only'), ['production needs an explicit Human answer (plan 001 Q2)'], 'an answer not marked as the Human\'s is not explicit')
+  assert.deepEqual(refused('- Q1: Is the LIVE server folder touched? A: default per D22'), ['production needs an explicit Human answer (plan 001 Q1)'])
+  assert.deepEqual(refused('- Q1: Is the shared DB production? A: (Human, 2026-11-08) no, it is the local dev DB'), [])
+  assert.deepEqual(refused('- Q1: Which product name does the producer database use? A: default per D18'), [], 'prod inside product / producer')
+  assert.deepEqual(refused('- Q1: Does the live preview reload? A: default per D18'), [], 'live with no database or folder word')
+  assert.deepEqual(refused('- Q1: Is production ready? A: default per D18'), [], 'production with no database or folder word')
+})
+
+test('097 (e) the builder\'s task carries both hard limits word for word', () => {
+  const prompt = runPlans.builderPrompt({ RUN: 'r', RUN_BRANCH: 'orch/r', ctx: { nnn: '001', mode: 'first', tier: 'build', round: 1, info: { branch: 'feat/001-x' }, wt: { path: 'w' }, findings: [] }, l: { path: 'plans/001-x.plan.md', checks: [] }, LESSONS: [] })
+  assert.ok(prompt.includes('Never choose more autonomy or more spend than the plan asks for.'), prompt)
+  assert.ok(prompt.includes('Never treat a database or folder as production without an explicit Human answer.'), prompt)
+})
+
 test('run-order: blockedBy follows dependencies and shared files; units keep a lock group in order; onPark all stops every later plan', () => {
   const edges = [{ from: '1', to: '2' }, { from: '2', to: '3' }, { from: '1', to: '4', lock: true }, { from: '4', to: '5' }]
   assert.deepEqual([...blockedBy(['1'], ['2', '3', '4', '5', '6'], edges)], [['2', 'depends on parked 1'], ['3', 'depends on parked 1'], ['4', 'shares files with parked 1'], ['5', 'depends on parked 1']])
@@ -204,10 +285,13 @@ let p
 before(() => {
   p = makeProject({ kit })
   p.addPlans({
-    474: toyPlan(474), 451: toyPlan(451), 452: toyPlan(452), 453: toyPlan(453), 455: toyPlan(455, { deps: '453' }), 457: toyPlan(457), 458: toyPlan(458), 462: toyPlan(462),
+    474: toyPlan(474), 451: toyPlan(451), 452: toyPlan(452), 453: toyPlan(453), 455: toyPlan(455, { deps: '453' }), 457: withExecution(toyPlan(457), '- Reviewer: advisory'), 458: toyPlan(458), 462: toyPlan(462),
     456: toyPlan(456), 459: toyPlan(459, { question: 'Which database does the toy write to?' }),
     463: toyPlan(463), 464: toyPlan(464, { deps: '463' }),
-    465: toyPlan(465), 466: toyPlan(466),
+    465: withExecution(toyPlan(465), '- Parallel: yes. Concurrent plans: 466.'), 466: withExecution(toyPlan(466), '- Parallel: yes. Concurrent plans: 465.'),
+    482: withQuestion(482, '- Q1: Start the server? A: default per D17 — start it by hand'),
+    483: withQuestion(483, '- Q1: Is the shared DB production? A: default per D18 — no'),
+    484: withQuestion(484, '- Q1: Start the server? A: default per D18 — start what is missing'),
     470: toyPlan(470), 471: toyPlan(471, { deps: '470' }), 472: toyPlan(472, { deps: '471' }),
     480: withImpact(toyPlan(480), '- INV-1: preserves — the toy leaves it as it is'),
     481: withImpact(toyPlan(481), '- INV-1: changes — ADR docs/brain/decisions/0099-toy.md. Arch-approved: Human 2026-11-07', 'docs/brain/decisions/0099-toy.md'),
@@ -389,6 +473,31 @@ test('--concurrency 2 runs two builders of one wave at once; watch prints RUNNIN
   const [a, b] = r.calls.filter((c) => c.role === 'builder')
   assert.ok(a && b && overlaps(a, b), 'the two builders ran at the same time')
   assert.notEqual(a.cwd, b.cwd, 'each in its own folder')
+})
+
+test('097: the dry run refuses a stale default, a production default and run options above the plan, calls no model and never writes human-decisions.md', () => {
+  const file = join(p.proj, 'docs', 'brain', 'human-decisions.md')
+  mkdirSync(join(p.proj, 'docs', 'brain'), { recursive: true })
+  writeFileSync(file, DECISIONS)
+  try {
+    const r = p.runPlans(['--dry-run', '--run', 'decide', '--plans', '482,483,484'])
+    assert.equal(r.status, 0, r.out)
+    assert.equal(r.calls.length, 0)
+    assert.equal(r.json.modelCalls, 0)
+    assert.match(r.out, /PROBLEM default per D17: decision is superseded by D18 — ask the Human/)
+    assert.match(r.out, /PROBLEM production needs an explicit Human answer \(plan 483 Q1\)/)
+    assert.deepEqual([r.json.plans['482'].ready, r.json.plans['483'].ready, r.json.plans['484'].ready], [false, false, true], r.out)
+    assert.match(r.out, /^WOULD START: no/m)
+    for (const [flag, re] of [[['--concurrency', '2'], /more autonomy than plan 484 asks for: --concurrency 2/], [['--db', 'remote'], /more spend\/risk than plan 484 asks for: --db remote/], [['--reviewer-mode', 'advisory'], /more autonomy than plan 484 asks for: --reviewer-mode advisory/]]) {
+      const o = p.runPlans(['--dry-run', '--run', 'decide', '--plans', '484', ...flag])
+      assert.match(o.out, re, o.out)
+      assert.equal(o.json.plans['484'].ready, false)
+      assert.equal(o.calls.length, 0)
+    }
+    assert.equal(readFileSync(file, 'utf8'), DECISIONS, 'read, never written')
+  } finally {
+    rmSync(join(p.proj, 'docs', 'brain', 'human-decisions.md'), { force: true })
+  }
 })
 
 test('--dry-run prints the waves, the readiness lint, the preflight and the commands, and calls no model', () => {
