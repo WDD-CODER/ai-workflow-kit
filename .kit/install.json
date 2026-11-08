@@ -3,7 +3,7 @@
     "version": "2.1.0"
   },
   "source": "local:.",
-  "commit": "b94afb45b34e86c92579c690b56a93048cff2bc0",
+  "commit": "46b1e21257756d3f8c05cb589eafed9761837887",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -115,7 +115,7 @@
       "source": "core/.claude/commands/kit-feedback.md"
     },
     ".claude/commands/orchestrate.md": {
-      "sha256": "53d81ff0b1b4c982c24dfcd228a4418e6e9696761951dcab32309b2cfdb1b236",
+      "sha256": "fbfd7bc8afab93e5567f6e369123c0b814bb96aba0a5d913398653697f609cbf",
       "kind": "managed",
       "source": "core/.claude/commands/orchestrate.md"
     },
