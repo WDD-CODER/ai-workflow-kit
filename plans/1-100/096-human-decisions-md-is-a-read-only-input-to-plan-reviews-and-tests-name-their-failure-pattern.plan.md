@@ -1,6 +1,6 @@
 # Plan 096 — human-decisions.md is a read-only input to plan reviews, and tests name their failure pattern
 
-Status: in progress
+Status: done
 Depends-on: none
 Snapshot: b2fd7b5
 Source: Human, 2026-11-07 — "Add docs/brain/human-decisions.md … as a read-only input to the workflow." Docs + plan text only; no new agent, no model call. Allowed in the freeze (no new capability; the brain stays frozen until plan 090's bar).
