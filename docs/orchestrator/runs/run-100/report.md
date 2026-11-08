@@ -1,6 +1,6 @@
 # Orchestrator run run-100
 
-Run branch: `orch/run-100` (from `origin/main` at ceaf4ef) · started 2026-11-08T18:21:01.292Z · finished 2026-11-08T19:37:37.299Z
+Run branch: `orch/run-100` (from `origin/main` at ceaf4ef) · started 2026-11-08T18:21:01.292Z · finished 2026-11-08T19:53:34.892Z
 Result: 1 merged, 4 parked, skipped or left out, 5 in the run (counted from git and status.json).
 `main` untouched: yes — origin/main is ceaf4ef.
 
@@ -11,7 +11,7 @@ Final gate: ok (attempt 1)
 | Plan | State | Rounds | Builder tier | Merge | Why |
 | --- | --- | --- | --- | --- | --- |
 | 100 A run survives its session: a supervisor relaunches a killed run and waits out a rate limit | merged | 1 | build → judgment | ee369a1 | builder blocked: Writing core/.claude/commands/orchestrate.md is refused, both with Edit and with `cp` from a scratch file ("Claude requested permissions to edit … which is a sensitive file"). So `node tools/install-check.mjs` exits 1 (2 orchestrate.md assertions) and `node --test tools/test/run-supervisor.test.mjs` (fix rounds used: 1 of 2) — needs the Human |
-| 101 A plan may change the test file next to a file in its scope, and readiness finds the tests it forgot | parked | 1 | build → judgment |  | builder ESCALATE: Edit on core/.claude/agents/plan-reviewer.md returned 'Claude requested permissions to edit ... which is a sensitive file' (the same refusal the first builder got twice). S5b needs that file and S6 needs core/.claude/commands/plan.md, both in the plan's scope. I did not work around the refusal. (fix rounds used: 1 of 2) — needs the Human |
+| 101 A plan may change the test file next to a file in its scope, and readiness finds the tests it forgot | parked | 0 | build |  | worktree: git worktree add C:\coding projects\Cursor\ai-workflow-kit-orch-run-100-101: fatal: 'feat/101-a-plan-may-change' is already used by worktree at 'C:/coding projects/Cursor/ai-workflow-kit-fix-100' |
 | 102  | skipped | 0 |  |  | shares files with parked 101 |
 | 103  | skipped | 0 |  |  | shares files with parked 101 |
 | 104  | skipped | 0 |  |  | shares files with parked 101 |
@@ -49,13 +49,12 @@ triage: shadow · agreement (last 50): 89% · collapsed: 0 · ask: 0 · follow-u
 - 101: builder left undone (round 1): S1-S5: not redone. The first attempt is in c564320 (git show c564320). They are only worth redoing once S5b and S6 can be written.; S5b: core/.claude/agents/plan-reviewer.md cannot be edited in this session (sensitive-file permission); S6: core/.claude/commands/plan.md (and very likely the other cor
 - 101: parked: nothing to save (nothing uncommitted)
 - wave 1 parked 101 — skipped 104; 0 later plan(s) go on
+- wave 1 parked 101 — skipped 104; 0 later plan(s) go on
 
 ## Models per agent
 
 - 100 builder: sonnet
 - 100 judgment builder: opus
-- 101 builder: sonnet
-- 101 judgment builder: opus
 
 ## What only the Human can do
 
@@ -67,7 +66,7 @@ triage: shadow · agreement (last 50): 89% · collapsed: 0 · ask: 0 · follow-u
 
 2. 100 A run survives its session: a supervisor relaunches a killed run and waits out a rate limit: On the installed project (Windows), start a run with `/orchestrate`, then close that Claude Code session: the run goes on (`watch` keeps showing progress) and ends with its report (reply `ok`).
 
-- Decide on 101: builder ESCALATE: Edit on core/.claude/agents/plan-reviewer.md returned 'Claude requested permissions to edit ... which is a sensitive file' (the same refusal the first builder got twice). S5b needs that file and S6 needs core/.claude/commands/plan.md, both in the plan's scope. I did not work around the refusal. (fix rounds used: 1 of 2) — needs the Human
+- Decide on 101: worktree: git worktree add C:\coding projects\Cursor\ai-workflow-kit-orch-run-100-101: fatal: 'feat/101-a-plan-may-change' is already used by worktree at 'C:/coding projects/Cursor/ai-workflow-kit-fix-100'
 - Decide on 102: shares files with parked 101
 - Decide on 103: shares files with parked 101
 - Decide on 104: shares files with parked 101
@@ -78,6 +77,6 @@ git fetch origin
 gh pr create --base main --head orch/run-100 --title "Orchestrator run run-100" --body-file .claude\orchestrator-runs\run-100.md
 ```
 
-Context added by learning: 578 chars across 2 roles
+Context added by learning: 618 chars across 2 roles
 
-Trend (last 3 runs): ✗ per plan 0 → 0 → - · fix rounds per plan 0 → 0.33 → 0.4 · parked 0 → 1 → 1
+Trend (last 3 runs): ✗ per plan 0 → 0 → - · fix rounds per plan 0 → 0.33 → 0.2 · parked 0 → 1 → 1

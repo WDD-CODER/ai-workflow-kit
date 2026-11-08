@@ -7,4 +7,4 @@ One row per orchestrator run, written by `node scripts/orch-state.mjs finish` fr
 | 2026-11-05 | run-065 | 065 | 0 | 0 | - | 1 | 0 | 1 | ok | 0 | 0 | 0 |
 | 2026-11-07 | first | 092 | 1 | 0 | - | 0 | 0 | 0 | ok | 0 | 0 | 0 |
 | 2026-11-08 | run-095 | 095,098,099 | 1 | 1 | same-reason-twice | 1 | 1 | 0 | ok | 0 | 0 | 0 |
-| 2026-11-08 | run-100 | 100,101,102,103,104 | 1 | 1 | fix-rounds | 2 | 2 | 0 | ok | - | - | - |
+| 2026-11-08 | run-100 | 100,101,102,103,104 | 1 | 1 | environment | 1 | 1 | 0 | ok | - | - | - |

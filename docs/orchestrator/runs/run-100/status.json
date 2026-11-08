@@ -117,20 +117,9 @@
       "title": "A plan may change the test file next to a file in its scope, and readiness finds the tests it forgot",
       "branch": "feat/101-a-plan-may-change",
       "state": "parked",
-      "round": 1,
-      "tier": "judgment",
-      "models": {
-        "builder": {
-          "model": "sonnet",
-          "tier": "build",
-          "at": "2026-11-08T19:02:27.952Z"
-        },
-        "judgment builder": {
-          "model": "opus",
-          "tier": "judgment",
-          "at": "2026-11-08T19:18:11.859Z"
-        }
-      },
+      "round": 0,
+      "tier": "build",
+      "models": {},
       "humanItems": [
         "On the installed project, a run of a plan that lists only a component file, whose fix needs its `.spec.ts`, merges without a park (reply `ok`)."
       ],
@@ -174,6 +163,11 @@
           "at": "2026-11-08T19:18:55.079Z",
           "state": "parked",
           "round": 1
+        },
+        {
+          "at": "2026-11-08T19:38:15.333Z",
+          "state": "parked",
+          "round": 0
         }
       ],
       "earlier": [
@@ -184,54 +178,79 @@
           "state": "skipped",
           "reason": "shares files with parked 100",
           "freeDiskGb": 18.7
+        },
+        {
+          "nnn": "101",
+          "title": "A plan may change the test file next to a file in its scope, and readiness finds the tests it forgot",
+          "branch": "feat/101-a-plan-may-change",
+          "state": "parked",
+          "round": 1,
+          "tier": "judgment",
+          "models": {
+            "builder": {
+              "model": "sonnet",
+              "tier": "build",
+              "at": "2026-11-08T19:02:27.952Z"
+            },
+            "judgment builder": {
+              "model": "opus",
+              "tier": "judgment",
+              "at": "2026-11-08T19:18:11.859Z"
+            }
+          },
+          "tiers": [
+            "build",
+            "judgment"
+          ],
+          "freeDiskGb": 18.3,
+          "roundCauses": [
+            "round 1: builder ESCALATE: Edit on core/.claude/agents/plan-reviewer.md and core/.claude/commands/plan.md returned 'Claude requested permissions to edit … which is a sensitive file' (twice). S5b and S6 need those files. I did not work around the refusal.",
+            "round 2: builder ESCALATE: Edit on core/.claude/agents/plan-reviewer.md returned 'Claude requested permissions to edit ... which is a sensitive file' (the same refusal the first builder got twice). S5b needs that file and S6 needs core/.claude/commands/plan.md, both in the plan's scope. I"
+          ],
+          "calls": [
+            {
+              "stage": "builder",
+              "model": "sonnet",
+              "seconds": 938.3,
+              "tokens": {
+                "input": 1615754,
+                "output": 26842
+              },
+              "exit": 0
+            },
+            {
+              "stage": "judgment builder",
+              "model": "opus",
+              "seconds": 42.8,
+              "tokens": {
+                "input": 119061,
+                "output": 2886
+              },
+              "exit": 0
+            }
+          ],
+          "escalations": [
+            {
+              "step": "round 1",
+              "check": "builder ESCALATE: Edit on core/.claude/agents/plan-reviewer.md and core/.claude/commands/plan.md returned 'Claude requested permissions to edit … which is a sensitive file' (twice). S5b and S6 need th"
+            }
+          ],
+          "replan": "no — The plan holds as written. The files are in the scope block, but this session cannot write under core/.claude/**. The Human must grant the permission or apply the edits.",
+          "resetToBase": "ee369a1081e9768fd368c3bea54496fdda418ebf",
+          "resetFrom": "c564320b28337aa2cfaeee911a05d1387172b28c",
+          "reason": "builder ESCALATE: Edit on core/.claude/agents/plan-reviewer.md returned 'Claude requested permissions to edit ... which is a sensitive file' (the same refusal the first builder got twice). S5b needs that file and S6 needs core/.claude/commands/plan.md, both in the plan's scope. I did not work around the refusal. (fix rounds used: 1 of 2) — needs the Human",
+          "park": {
+            "at": "2026-11-08T19:18:57.183Z",
+            "reason": "builder ESCALATE: Edit on core/.claude/agents/plan-reviewer.md returned 'Claude requested permissions to edit ... which is a sensitive file' (the same refusal the first builder got twice). S5b needs that file and S6 needs core/.claude/commands/plan.md, both in the plan's scope. I did not work around the refusal. (fix rounds used: 1 of 2) — needs the Human"
+          },
+          "parkBranch": "park/run-100-101"
         }
       ],
       "tiers": [
-        "build",
-        "judgment"
+        "build"
       ],
-      "freeDiskGb": 18.3,
-      "roundCauses": [
-        "round 1: builder ESCALATE: Edit on core/.claude/agents/plan-reviewer.md and core/.claude/commands/plan.md returned 'Claude requested permissions to edit … which is a sensitive file' (twice). S5b and S6 need those files. I did not work around the refusal.",
-        "round 2: builder ESCALATE: Edit on core/.claude/agents/plan-reviewer.md returned 'Claude requested permissions to edit ... which is a sensitive file' (the same refusal the first builder got twice). S5b needs that file and S6 needs core/.claude/commands/plan.md, both in the plan's scope. I"
-      ],
-      "calls": [
-        {
-          "stage": "builder",
-          "model": "sonnet",
-          "seconds": 938.3,
-          "tokens": {
-            "input": 1615754,
-            "output": 26842
-          },
-          "exit": 0
-        },
-        {
-          "stage": "judgment builder",
-          "model": "opus",
-          "seconds": 42.8,
-          "tokens": {
-            "input": 119061,
-            "output": 2886
-          },
-          "exit": 0
-        }
-      ],
-      "escalations": [
-        {
-          "step": "round 1",
-          "check": "builder ESCALATE: Edit on core/.claude/agents/plan-reviewer.md and core/.claude/commands/plan.md returned 'Claude requested permissions to edit … which is a sensitive file' (twice). S5b and S6 need th"
-        }
-      ],
-      "replan": "no — The plan holds as written. The files are in the scope block, but this session cannot write under core/.claude/**. The Human must grant the permission or apply the edits.",
-      "resetToBase": "ee369a1081e9768fd368c3bea54496fdda418ebf",
-      "resetFrom": "c564320b28337aa2cfaeee911a05d1387172b28c",
-      "reason": "builder ESCALATE: Edit on core/.claude/agents/plan-reviewer.md returned 'Claude requested permissions to edit ... which is a sensitive file' (the same refusal the first builder got twice). S5b needs that file and S6 needs core/.claude/commands/plan.md, both in the plan's scope. I did not work around the refusal. (fix rounds used: 1 of 2) — needs the Human",
-      "park": {
-        "at": "2026-11-08T19:18:57.183Z",
-        "reason": "builder ESCALATE: Edit on core/.claude/agents/plan-reviewer.md returned 'Claude requested permissions to edit ... which is a sensitive file' (the same refusal the first builder got twice). S5b needs that file and S6 needs core/.claude/commands/plan.md, both in the plan's scope. I did not work around the refusal. (fix rounds used: 1 of 2) — needs the Human"
-      },
-      "parkBranch": "park/run-100-101"
+      "reason": "worktree: git worktree add C:\\coding projects\\Cursor\\ai-workflow-kit-orch-run-100-101: fatal: 'feat/101-a-plan-may-change' is already used by worktree at 'C:/coding projects/Cursor/ai-workflow-kit-fix-100'",
+      "freeDiskGb": 18.3
     },
     "102": {
       "nnn": "102",
@@ -248,6 +267,11 @@
         },
         {
           "at": "2026-11-08T19:19:03.562Z",
+          "state": "skipped",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T19:38:15.961Z",
           "state": "skipped",
           "round": 0
         }
@@ -270,6 +294,11 @@
           "at": "2026-11-08T19:19:03.686Z",
           "state": "skipped",
           "round": 0
+        },
+        {
+          "at": "2026-11-08T19:38:16.331Z",
+          "state": "skipped",
+          "round": 0
         }
       ]
     },
@@ -288,6 +317,11 @@
         },
         {
           "at": "2026-11-08T19:19:03.817Z",
+          "state": "skipped",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T19:38:16.707Z",
           "state": "skipped",
           "round": 0
         }
@@ -342,12 +376,16 @@
     {
       "at": "2026-11-08T19:19:03.941Z",
       "text": "wave 1 parked 101 — skipped 104; 0 later plan(s) go on"
+    },
+    {
+      "at": "2026-11-08T19:38:17.079Z",
+      "text": "wave 1 parked 101 — skipped 104; 0 later plan(s) go on"
     }
   ],
-  "attempts": 2,
+  "attempts": 3,
   "phase": "finished",
   "freeDiskGb": 18.3,
-  "updatedAt": "2026-11-08T19:37:37.301Z",
+  "updatedAt": "2026-11-08T19:53:34.894Z",
   "decisions": [
     {
       "id": "D1",
@@ -532,11 +570,11 @@
       "why": ""
     }
   ],
-  "finishedAt": "2026-11-08T19:37:37.299Z",
+  "finishedAt": "2026-11-08T19:53:34.892Z",
   "finalGate": {
     "ok": true,
     "command": null,
-    "at": "2026-11-08T19:37:37.300Z",
+    "at": "2026-11-08T19:53:34.893Z",
     "attempt": 1,
     "blamed": []
   }
