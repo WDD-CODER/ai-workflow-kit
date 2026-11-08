@@ -21,7 +21,7 @@ The audit's Part 4 lists what cost the first runs hours and tokens:
 **Primary:** after `WOULD START: yes`, a run needs nothing from the Human until its end, and no model call is spent on a problem only a plan edit can fix.
 
 - [auto] `docs/brain/first-run-audit-2026-11-08.md` exists and `npm run lint` passes (the public copy carries no project name, path or port).
-- [auto] `docs/brain/error-review.md` exists with the four lines listed in S2 (`grep -c "^- " docs/brain/error-review.md` ≥ 4).
+- [auto] `docs/brain/error-review.md` has the four rows listed in S2 (`grep -c "^| 2026-11-08 | run-517" docs/brain/error-review.md` ≥ 4).
 - [auto] `.claude/commands/orchestrate.md` (installed copy) has no reply-`start` step: `grep -c "reply \`start\`" .claude/commands/orchestrate.md` = 0; it says to run the line at once after `WOULD START: yes`, to relaunch a killed background run once after `orch-state stop`, and its watch line starts with `cd "`.
 - [auto] `node --test tools/test/run-plans.test.mjs` passes, with tests that fail on today's code:
   (a) a builder call gets `orchestrator.builderTimeoutMin` (default 45) as its timeout, the gate keeps `gateTimeoutMin`; a builder timeout keeps the plan's worktree and branch (the work is saved to `park/<run>-<NNN>`, never removed);
@@ -84,8 +84,8 @@ the path to the scope block and retry.
 4. `kit.config.json` l.116–125 and `tools/lib/kit.mjs` `orchestratorProblems`: `builderTimeoutMin` is read with a clamp (1–180, else 45) in `run-plans.mjs`, so `kit.mjs` needs no change. If a test shows `orchestratorProblems` rejects an unknown key, STOP and offer `approved: tools/lib/kit.mjs`.
 
 ## Atomic Sub-tasks
-- [ ] S1: Put the first-run audit in the brain as the record these fixes come from — copy the cleaned public copy as it is — docs/brain/first-run-audit-2026-11-08.md
-- [ ] S2: Start the error review with the four leftovers that stay a line, not a fix — the per-plan manifest check runs the main folder's tree, not the plan's; the app's e2e base URL is hard-coded instead of read from the environment; decision-review.md names an `/orchestrate` step 5 that does not exist; a replan reason says "on the run branch" while plans live on main — docs/brain/error-review.md
+- [x] S1: Put the first-run audit in the brain as the record these fixes come from — copy the cleaned public copy as it is — docs/brain/first-run-audit-2026-11-08.md
+- [x] S2: Add to the error review the four leftovers that stay a line, not a fix — the per-plan manifest check runs the main folder's tree, not the plan's; the app's e2e base URL is hard-coded instead of read from the environment; decision-review.md names an `/orchestrate` step 5 that does not exist; a replan reason says "on the run branch" while plans live on main — docs/brain/error-review.md
 - [ ] S3: Write the failing tests first for the timeout, the scope park, the dropped check, the dry run and the reviewer default — cases (a)–(e) — tools/test/run-plans.test.mjs
 - [ ] S4: Write the failing test that a park renames the plan branch so the next run starts clean — tools/test/orchestrator-park-branch.test.mjs
 - [ ] S5: Give the builder its own longer timeout and keep its work when it runs out — builderTimeoutMin, keep the worktree — core/scripts/run-plans.mjs, kit.config.json
@@ -108,3 +108,4 @@ Visibility (the console log, `watch`, the model per call), the end-of-run cards 
 None open. (Answered `go` on 2026-11-08: numbers 098/099; the public audit copy; order 095 → 098 → 099; the fallback to the solo flow, logged first in `docs/brain/error-review.md`; the merge of `orch/<run>` into `main` is pre-approved.)
 
 ## Execution Notes
+- S1, S2 done before the run by the Planner session: merged in ee80ad8 (PR #119). The error review already existed (a table), so S2 added four rows to it. The builder does not redo them; the Done-when checks for S1 and S2 already pass.
