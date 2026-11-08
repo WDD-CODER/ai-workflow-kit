@@ -3,7 +3,7 @@
     "version": "2.1.0"
   },
   "source": "local:.",
-  "commit": "de5034f583a8ba51a8f7c159aaf0095b16de881a",
+  "commit": "8429b9b2bc9c78166ebf1533e4980ef69019c023",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -375,7 +375,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "6e48ed7f374c9c6cf18fb2af9a223a3b31e14d75cc288a93782fca67b60fc9fd",
+      "sha256": "472a1bf0a8e2ed2ed5858a482236e2a63047b0c54e0823759a37c15592ef0e5f",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -665,7 +665,7 @@
       "source": "core/scripts/lib/brain-doc.mjs"
     },
     "scripts/lib/claude-run.mjs": {
-      "sha256": "1029853c8a93a772479914855990d7ce900647126b5fcc15bc9eba508610709d",
+      "sha256": "9eedba809c89a31ddba16985ad981bfc52c6fa29aaaee34a796f743d2be9b90d",
       "kind": "managed",
       "source": "core/scripts/lib/claude-run.mjs"
     },
@@ -870,7 +870,7 @@
       "source": "core/scripts/prune-old-sessions.sh"
     },
     "scripts/run-plans.mjs": {
-      "sha256": "f09444324232b594341c09924ea5e83f9e5ed3d7dc8545c95ad1133b98bf6dac",
+      "sha256": "40bb4a0ae2f574fceba2e33f912f221923147df681647b216051ebf8ee2487d8",
       "kind": "managed",
       "source": "core/scripts/run-plans.mjs"
     },
@@ -925,7 +925,7 @@
       "source": "core/scripts/session-startup.sh"
     },
     "scripts/ship-prep.mjs": {
-      "sha256": "a0bc93728733fe4f9ee446439df2fcb3cd7ab6b1335a7232a7edfe62917ce610",
+      "sha256": "c42a7128fcfe9cdbe2cfe4df78f68b1aa8823734b7107b34982b044e1eb4653e",
       "kind": "managed",
       "source": "core/scripts/ship-prep.mjs"
     },

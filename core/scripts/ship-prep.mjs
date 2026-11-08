@@ -38,6 +38,8 @@ function sensitiveTests() {
 }
 const SENSITIVE_TESTS = sensitiveTests()
 const isSensitive = (f) => SENSITIVE_TESTS.some((re) => re.test(f))
+// Exported: scripts/run-plans.mjs reviews a sensitive diff as gate with this same check.
+export { isSensitive }
 // Build and CI files take the REGULAR lane whatever security.sensitivePaths says: a project regex replaces the default
 // list above, and one that left these out once sent a 22-file package-manager move down the FAST lane.
 export const BUILD_RE = /(^|\/)(package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|kit\.config\.json)$|^\.github\/workflows\//

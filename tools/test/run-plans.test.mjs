@@ -23,7 +23,7 @@ const runPlans = await import(pathToFileURL(join(kit, 'scripts', 'run-plans.mjs'
 test('claude-run: every call carries the four context-saving flags, json output, the model and the agent\'s tools', () => {
   const builder = readAgent(join(kit, '.claude', 'agents', 'orch-builder.md'))
   const reviewer = readAgent(join(kit, '.claude', 'agents', 'plan-reviewer.md'))
-  const b = claudeArgs({ agent: builder, model: 'sonnet', systemPromptFile: 's.md', allow: true })
+  const b = claudeArgs({ agent: builder, model: 'sonnet', systemPromptFile: 's.md', allow: true, settings: 'C:/run/builder-settings.json' })
   for (const f of ['-p', '--setting-sources', 'local', '--strict-mcp-config', '--disable-slash-commands', '--no-session-persistence']) assert.ok(b.includes(f), f)
   assert.deepEqual(CONTEXT_FLAGS, ['--setting-sources', 'local', '--strict-mcp-config', '--disable-slash-commands', '--no-session-persistence'])
   assert.equal(b[b.indexOf('--output-format') + 1], 'json')
@@ -45,17 +45,49 @@ test('claude-run: tools are pre-approved only when asked; the builder gets its l
   const builder = readAgent(join(kit, '.claude', 'agents', 'orch-builder.md'))
   const reviewer = readAgent(join(kit, '.claude', 'agents', 'plan-reviewer.md'))
   for (const agent of [builder, reviewer]) assert.ok(!claudeArgs({ agent, model: 'x', systemPromptFile: 's.md' }).includes('--allowedTools'), `${agent.name}: off by default`)
-  const b = claudeArgs({ agent: builder, model: 'x', systemPromptFile: 's.md', allow: true })
-  assert.equal(b[b.indexOf('--allowedTools') + 1], 'Read,Edit,Write,Grep,Glob,Bash(git:*),Bash(npm run:*),Bash(pnpm run:*),Bash(node:*)', 'no guard hooks: no bare Bash for the builder either')
-  assert.ok(!b.includes('--settings'))
   const g = claudeArgs({ agent: builder, model: 'x', systemPromptFile: 's.md', allow: true, settings: 'C:/run/builder-settings.json' })
   assert.equal(g[g.indexOf('--settings') + 1], 'C:/run/builder-settings.json')
   assert.equal(g[g.indexOf('--allowedTools') + 1], 'Read,Edit,Write,Grep,Glob,Bash', 'with the guard hooks loaded the builder keeps a bare Bash')
   const r = claudeArgs({ agent: reviewer, model: 'x', systemPromptFile: 's.md', allow: true })
   const allowed = r[r.indexOf('--allowedTools') + 1].split(',')
-  assert.deepEqual(allowed, ['Read', 'Grep', 'Glob', 'Bash(git diff:*)', 'Bash(git show:*)', 'Bash(node --test:*)'])
   assert.ok(!allowed.includes('Bash'), 'no bare Bash for the reviewer')
   assert.equal(r[r.indexOf('--disallowedTools') + 1], 'Edit,Write,MultiEdit,NotebookEdit')
+})
+
+test('095 (d) the reviewer is pre-approved no Bash: no node --test, and no git diff / git show (a prefix cannot refuse --output or --no-index)', async () => {
+  const { READ_ONLY_BASH, allowedTools } = await lib('claude-run.mjs')
+  const reviewer = readAgent(join(kit, '.claude', 'agents', 'plan-reviewer.md'))
+  assert.deepEqual(READ_ONLY_BASH, [])
+  const r = claudeArgs({ agent: reviewer, model: 'x', systemPromptFile: 's.md', allow: true })
+  const allowed = r[r.indexOf('--allowedTools') + 1].split(',')
+  assert.deepEqual(allowed, ['Read', 'Grep', 'Glob'])
+  assert.ok(!allowed.some((t) => /node --test|git diff|git show|^Bash/.test(t)), allowed.join(','))
+  assert.deepEqual(allowedTools(reviewer), ['Read', 'Grep', 'Glob'])
+})
+
+test('095 (e) allowedTools() refuses a writing agent without guard hooks; with them it keeps a bare Bash; BUILDER_BASH is gone', async () => {
+  const m = await lib('claude-run.mjs')
+  const builder = readAgent(join(kit, '.claude', 'agents', 'orch-builder.md'))
+  assert.equal('BUILDER_BASH' in m, false)
+  assert.throws(() => m.allowedTools(builder), /refusing to start it unguarded/)
+  assert.throws(() => claudeArgs({ agent: builder, model: 'x', systemPromptFile: 's.md', allow: true }), /unguarded/)
+  assert.deepEqual(m.allowedTools(builder, { guarded: true }), ['Read', 'Edit', 'Write', 'Grep', 'Glob', 'Bash'])
+  // the run refuses before anything starts: no guard hooks, no builder
+  const src = readFileSync(join(kit, 'scripts', 'run-plans.mjs'), 'utf8')
+  assert.match(src, /a builder never runs without guard hooks/)
+})
+
+test('095 reviewModeFor: a sensitive diff is gate whatever was asked; a non-sensitive diff keeps the asked mode', () => {
+  const s = (f) => /guard|auth/.test(f)
+  assert.deepEqual(runPlans.reviewModeFor({ asked: 'advisory', files: ['src/a.ts'], sensitive: s }), { mode: 'advisory', sensitive: [], note: null })
+  const g = runPlans.reviewModeFor({ asked: 'advisory', files: ['src/a.ts', 'src/auth/guard.ts'], sensitive: s })
+  assert.equal(g.mode, 'gate')
+  assert.deepEqual(g.sensitive, ['src/auth/guard.ts'])
+  assert.match(g.note, /sensitive path \(src\/auth\/guard\.ts\)/)
+  assert.equal(runPlans.reviewModeFor({ asked: 'gate', files: [], sensitive: s }).mode, 'gate')
+  // the default check is ship-prep's (security.sensitivePaths included)
+  assert.equal(runPlans.reviewModeFor({ asked: 'advisory', files: ['src/app/core/guards/x.ts'] }).mode, 'gate')
+  assert.equal(runPlans.reviewModeFor({ asked: 'advisory', files: ['src/451.txt'] }).mode, 'advisory')
 })
 
 test('claude-run: runAgent pre-approves nothing by default, and refuses a folder that brings its own .claude/settings.local.json', async () => {
@@ -384,7 +416,7 @@ test('the argv of every call: the flags, the tier\'s model, the builder in its o
   assert.equal(r.argv[r.argv.indexOf('--disallowedTools') + 1], 'Edit,Write,MultiEdit,NotebookEdit')
   assert.equal(b.argv[b.argv.indexOf('--allowedTools') + 1], 'Read,Edit,Write,Grep,Glob,Bash', 'only the builder, with its guard hooks loaded, keeps a bare Bash')
   assert.ok(!r.argv.includes('--settings'), 'the reviewer gets no settings file')
-  assert.equal(r.argv[r.argv.indexOf('--allowedTools') + 1], 'Read,Grep,Glob,Bash(git diff:*),Bash(git show:*),Bash(node --test:*)', 'the reviewer: no bare Bash')
+  assert.equal(r.argv[r.argv.indexOf('--allowedTools') + 1], 'Read,Grep,Glob', 'the reviewer: no Bash at all (plan 095)')
   assert.equal(basename(r.cwd), 'rp-app-orch-review-main-451')
   assert.equal(existsSync(r.cwd), false, 'the review folder is removed after the review')
 })
@@ -435,6 +467,47 @@ test('(d) gate mode: a reviewer STOP gets one fix round, then the plan parks', (
   assert.match(st.plans['456'].reason, /^same reason twice: review STOP: major src\/456\.txt:1/)
   assert.deepEqual(stagesOf(st, '456'), ['builder', 'reviewer', 'builder fix', 'reviewer'])
   assert.ok(r.calls.find((c) => c.plan === '456' && c.role === 'builder' && c.findings), 'the fix round gets the findings')
+})
+
+test('095 (a)(b)(c) Reviewer: advisory never applies to a sensitive diff: a STOP parks, a review that cannot run parks; a plain diff stays advisory', () => {
+  const sensitivePlan = (nnn) => withImpact(withExecution(toyPlan(nnn), '- Reviewer: advisory'), '- none', `src/auth-${nnn}.txt`)
+  p.addPlans({ 490: sensitivePlan(490), 491: sensitivePlan(491), 492: withExecution(toyPlan(492), '- Reviewer: advisory') })
+  // (a) sensitive + advisory + STOP: one fix round, then parked — never merged
+  const a = p.runPlans(['--run', 'sens-a', '--plans', '490'], { scenario: { 490: { builder: [{ extraFile: 'src/auth-490.txt' }], reviewer: [{ verdict: 'STOP' }, { verdict: 'STOP' }] } } })
+  assert.equal(a.status, 2, a.out)
+  const sa = p.status('sens-a')
+  assert.equal(sa.plans['490'].state, 'parked', a.out)
+  assert.match(sa.plans['490'].reason, /^same reason twice: review STOP: major src\/490\.txt:1/)
+  assert.deepEqual(stagesOf(sa, '490'), ['builder', 'reviewer', 'builder fix', 'reviewer'])
+  assert.ok(sa.notes.some((n) => n.plan === '490' && /sensitive path \(src\/auth-490\.txt\)/.test(n.text)), JSON.stringify(sa.notes))
+  assert.ok(!p.git(p.proj, 'log', '--format=%s', 'origin/orch/sens-a').out.split('\n').some((l) => /\(plan 490\)$/.test(l)), 'no merge of 490')
+  // (b) sensitive + advisory + the reviewer call exits non-zero: parked ("review could not run")
+  const tmp = mkdtempSync(join(tmpdir(), 'rp-095-'))
+  try {
+    const bin = join(tmp, 'claude-review-fails.mjs')
+    writeFileSync(bin, [
+      "import { readFileSync, existsSync } from 'node:fs'",
+      "import { spawnSync } from 'node:child_process'",
+      'const argv = process.argv.slice(2)',
+      "const sys = argv[argv.indexOf('--system-prompt-file') + 1]",
+      "if (sys && existsSync(sys) && /^# plan-reviewer\\b/m.test(readFileSync(sys, 'utf8'))) { console.error('review crashed'); process.exit(1) }",
+      `const r = spawnSync(process.execPath, [${JSON.stringify(FAKE(kit))}, ...argv], { input: readFileSync(0), encoding: 'utf8' })`,
+      "process.stdout.write(r.stdout ?? ''); process.stderr.write(r.stderr ?? ''); process.exit(r.status ?? 1)",
+      '',
+    ].join('\n'))
+    const b = p.runPlans(['--run', 'sens-b', '--plans', '491', '--claude', bin], { scenario: { 491: { builder: [{ extraFile: 'src/auth-491.txt' }] } } })
+    assert.equal(b.status, 2, b.out)
+    const sb = p.status('sens-b')
+    assert.equal(sb.plans['491'].state, 'parked', b.out)
+    assert.match(sb.plans['491'].reason, /^review could not run: claude exited 1/)
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
+  // (c) the same advisory plan with a plain diff: the STOP is recorded and the plan merges (plan 097's rule unchanged)
+  const c = p.runPlans(['--run', 'sens-c', '--plans', '492'], { scenario: { 492: { reviewer: [{ verdict: 'STOP' }] } } })
+  const sc = p.status('sens-c')
+  assert.equal(sc.plans['492'].state, 'merged', c.out)
+  assert.ok(sc.notes.some((n) => n.plan === '492' && /advisory review STOP \(not enforced\)/.test(n.text)), JSON.stringify(sc.notes))
 })
 
 test('(f) a plan with an open Critical Question is refused before any build, with the question printed', () => {
