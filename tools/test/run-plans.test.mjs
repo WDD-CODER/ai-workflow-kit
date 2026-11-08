@@ -558,6 +558,26 @@ test('095 (a)(b)(c) Reviewer: advisory never applies to a sensitive diff: a STOP
   assert.ok(sc.notes.some((n) => n.plan === '492' && /advisory review STOP \(not enforced\)/.test(n.text)), JSON.stringify(sc.notes))
 })
 
+test('099 (a) a run writes its own console log and a second launch appends to it; (b) status.json names the model of every call', () => {
+  p.addPlans({ 500: toyPlan(500) })
+  const first = p.runPlans(['--run', 'seen', '--plans', '500'])
+  const log = join(p.proj, '.claude', 'orchestrator-runs', 'seen.console.log')
+  assert.ok(existsSync(log), first.out)
+  const one = readFileSync(log, 'utf8')
+  assert.match(one, /RUN_PLANS: launch .* --run seen --plans 500/)
+  assert.match(one, /RUN_PLANS: plan 500 merged into orch\/seen/)
+  const st = p.status('seen')
+  const m = st.plans['500'].models
+  assert.ok(m.builder && m.builder.model && m.builder.tier === 'build' && m.builder.at, JSON.stringify(m))
+  assert.ok(m.reviewer && m.reviewer.model, JSON.stringify(m))
+  p.runPlans(['--run', 'seen', '--plans', '500'])
+  const two = readFileSync(log, 'utf8')
+  assert.ok(two.startsWith(one), 'the first launch\'s lines are still there')
+  assert.equal((two.match(/RUN_PLANS: launch /g) ?? []).length, 2)
+  p.runPlans(['--dry-run', '--run', 'seen-dry', '--plans', '500'])
+  assert.ok(!existsSync(join(p.proj, '.claude', 'orchestrator-runs', 'seen-dry.console.log')), 'a dry run writes no log')
+})
+
 /** A `claude` whose builder runs `builder` (JS lines; `plan`, `git`, `answer` in scope); the reviewer is the fake's. */
 function builderBin(dir, name, builder) {
   const bin = join(dir, `${name}.mjs`)

@@ -150,6 +150,22 @@ const grade = (s, reply, runName = 'run-1') => run(['grade', '--dir', s.dir, '--
 const jsonLines = (file) => readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))
 const followIds = (s) => readFileSync(s.follow, 'utf8').split('\n').filter((l) => /^\| 2026/.test(l)).map((l) => l.split('|')[4].trim())
 
+test('grade: a folder on the main branch is refused (exit 2, the run\'s merge folder named); on the run branch it writes', () => {
+  const s = gradeSetup()
+  try {
+    const g = (...a) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: s.dir, encoding: 'utf8' })
+    g('init', '-q', '-b', 'main')
+    g('commit', '-q', '--allow-empty', '-m', 'base')
+    const r = grade(s, 'decisions: ok', 'r1')
+    assert.equal(r.status, 2, r.stdout)
+    assert.match(r.stderr, /never on main: .* Run it with --dir .*-orch-merge-r1 \(the run's merge folder\)/)
+    assert.ok(!existsSync(s.grades), 'nothing written on main')
+    g('switch', '-q', '-c', 'orch/r1')
+    assert.equal(grade(s, 'decisions: ok', 'r1').status, 0)
+    assert.equal(jsonLines(s.grades).length, 6, 'the run branch gets the rows')
+  } finally { rmSync(s.dir, { recursive: true, force: true }) }
+})
+
 test('grade: one JSON line per item, ok ones too, with the 13 fields; never twice for one run and id', () => {
   const s = gradeSetup()
   try {

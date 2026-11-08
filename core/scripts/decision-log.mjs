@@ -297,6 +297,18 @@ const pairs = (s) => Object.fromEntries(String(s === true ? '' : (s ?? '')).spli
 function main(argv) {
   const cmd = argv[0]
   const flags = {}
+  // A folder whose checkout is the main branch (origin/HEAD, else main): grade must not write there. Returns the refusal
+  // naming the run's merge folder (<repo>-orch-merge-<run>, a worktree on the run branch), or null.
+  const mainFolderProblem = (folder, run) => {
+    const g = (...a) => spawnSync('git', a, { cwd: folder, encoding: 'utf8' })
+    const branch = (g('rev-parse', '--abbrev-ref', 'HEAD').stdout ?? '').trim()
+    if (!branch) return null
+    const main = ((g('symbolic-ref', '--short', 'refs/remotes/origin/HEAD').stdout ?? '').trim().replace(/^origin\//, '')) || 'main'
+    if (branch !== main) return null
+    const top = (g('rev-parse', '--show-toplevel').stdout ?? '').trim() || folder
+    const merge = join(dirname(top), `${top.split(/[\\/]/).pop()}-orch-merge-${run}`).replace(/\\/g, '/')
+    return `grade writes docs/brain on the run branch, never on ${main}: ${folder.replace(/\\/g, '/')} is on ${main}. Run it with --dir ${merge} (the run's merge folder)`
+  }
   const usage = (why) => {
     process.stderr.write(`DECISION_LOG: ${why}\n${USAGE}\n`)
     process.exit(2)
@@ -505,6 +517,9 @@ function main(argv) {
   // Human agreed; the seen: items (and a behaviour: item the triage called a follow-up) are kept as follow-up rows.
   const grade = () => {
     if (typeof flags.run !== 'string' || !flags.run) usage('--run is required')
+    // The grade rows are committed with the run (or the ship), never on the main branch: a folder on it is refused.
+    const onMain = mainFolderProblem(dir, flags.run)
+    if (onMain) usage(onMain)
     if (typeof flags.reply !== 'string') usage('--reply is required')
     if (typeof flags.decisions !== 'string') usage('--decisions <file> is required')
     let list
