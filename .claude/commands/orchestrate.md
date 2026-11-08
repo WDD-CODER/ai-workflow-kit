@@ -37,6 +37,10 @@ background shell command and go to 4 when it exits:
 
 The supervisor relaunches a run that died (up to 3 times, with 4 GB of free memory) and a run stopped by a rate
 limit (after the reset). This session never relaunches a run itself and never sends the Human to a terminal for it.
+A question stops only its own plan: print every `ASK` card `watch` shows as soon as it appears, without waiting for the
+run's end; the Human answers with the card's line (`node scripts/orch-state.mjs answer --run <run> --id <id> --choice <n>`).
+Never ask the Human a question the card marks "the Human or the advisor answers" when its recommendation answers it,
+unless the Human asked to be asked.
 
 ## 4. The result
 

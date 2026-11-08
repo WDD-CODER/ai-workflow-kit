@@ -3,7 +3,7 @@
     "version": "2.1.0"
   },
   "source": "local:.",
-  "commit": "8abf80295a9ac7600c698dc156cff601f7230c1f",
+  "commit": "457a9d597d3cb8ec2efb998491b263cb6ca41d05",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -15,7 +15,7 @@
       "source": "core/.claude/agents/git-agent.md"
     },
     ".claude/agents/orch-builder.md": {
-      "sha256": "106b492343fb9423ed564ecdfaffa57782f4fa6b17769de65700413ca08b628a",
+      "sha256": "2b8711a28536573c629c0ead164fc09d1a05f8685f2f4107273e94fece322244",
       "kind": "managed",
       "source": "core/.claude/agents/orch-builder.md"
     },
@@ -115,7 +115,7 @@
       "source": "core/.claude/commands/kit-feedback.md"
     },
     ".claude/commands/orchestrate.md": {
-      "sha256": "fbfd7bc8afab93e5567f6e369123c0b814bb96aba0a5d913398653697f609cbf",
+      "sha256": "e6e0bd284a55f3b0714b5a0653be45805876476e9572f0b0fc827e8301124f31",
       "kind": "managed",
       "source": "core/.claude/commands/orchestrate.md"
     },
@@ -195,7 +195,7 @@
       "source": "core/.claude/references/prd-template.md"
     },
     ".claude/settings.json": {
-      "sha256": "537c74b81a7019db5efcd5d9e99eecf22a1a57daee8b32fd1f932635c97aa880",
+      "sha256": "e1bab3771c069193ebefc9845e0dfe4b53d7bc33f90b4430707b36f990497f0a",
       "kind": "managed",
       "source": "core/.claude/settings.json"
     },
