@@ -167,6 +167,37 @@ test('103 (b) a gate command that fails with an environment error runs ensure-en
   }
 })
 
+test('103 (b) a clean reinstall deletes no tree for a failure that is not about packages, and a failed remove or install is reported, not thrown', () => {
+  const trees = ['.', 'server', 'scripts']
+  for (const out of ['getaddrinfo ENOTFOUND registry.npmjs.org', 'connect ECONNREFUSED 127.0.0.1:27017', 'listen EADDRINUSE: address already in use :::4200']) {
+    assert.equal(folders.failingTree(out, trees), null, `no tree for: ${out}`)
+  }
+  // A database or port failure whose stack trace passes through node_modules is still not a package failure.
+  assert.equal(folders.failingTree('MongoServerSelectionError: connect ECONNREFUSED 127.0.0.1:27017\n    at Topology (/p/server/node_modules/mongodb/lib/sdam/topology.js:1:1)', trees), null)
+  assert.equal(folders.failingTree('Error: listen EADDRINUSE :::3000\n    at Server (/p/server/node_modules/express/lib/application.js:1:1)', trees), null)
+  // The tree comes from the line that says packages are missing, not from a test name elsewhere in the output.
+  assert.equal(folders.failingTree("not ok 1 - server/api.test.mjs\nError: Cannot find module 'picomatch'", trees), '.')
+  assert.equal(folders.failingTree("Error: Cannot find module 'picomatch'", trees), '.')
+  assert.equal(folders.failingTree("Cannot find package 'mongodb' imported from server/src/db.js", trees), 'server')
+  const dir = envProject()
+  try {
+    mkdirSync(join(dir, 'server', 'node_modules'), { recursive: true })
+    let r
+    assert.doesNotThrow(() => {
+      r = folders.ensureEnv({ folder: dir, serverRoot: 'server/', clean: true, only: ['server'], runner: fakeInstall([]), remove: () => { throw new Error('EBUSY: resource busy or locked, unlink esbuild.exe') } })
+    })
+    assert.equal(r.ok, false)
+    assert.match(r.lines.join('\n'), /could not remove server node_modules: EBUSY/)
+    assert.doesNotThrow(() => {
+      r = folders.ensureEnv({ folder: dir, serverRoot: 'server/', clean: true, only: ['server'], runner: () => { throw new Error('spawn npm ENOENT') }, remove: () => {} })
+    })
+    assert.equal(r.ok, false)
+    assert.match(r.lines.join('\n'), /install in server failed: .*ENOENT/)
+  } finally {
+    drop(dir)
+  }
+})
+
 test('103 (b) the merge step calls ensure before its checks and, clean, before a check\'s retry', () => {
   const src = readFileSync(join(root, 'scripts', 'lib', 'plan-merge.mjs'), 'utf8')
   assert.match(src, /ensure\(false\)/)

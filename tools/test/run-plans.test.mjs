@@ -872,6 +872,9 @@ test('103 (g) a notDone entry that names an open [auto] or [ui] Done-when item i
   assert.equal(runPlans.undoneItems(text, ['The settings page shows the text "Saved" after one click: no dev server'])[0].item.startsWith('[ui]'), true)
   assert.deepEqual(runPlans.undoneItems(text, ['npm run build', 'T1: write the parser', 'The Human sees the colours']), [])
   assert.deepEqual(runPlans.undoneItems(text, []), [])
+  // A note that only shares some words with a met item is not that item (a builder's honest out-of-scope gap).
+  const docs = '# Plan 9 — x\n\n## Goals & Success Criteria\n- [auto] `docs/agent/orchestrator.md` describes `ensure-env`, the retries and the final-gate fix round\n'
+  assert.deepEqual(runPlans.undoneItems(docs, ['no end-to-end test for the final gate fix round']), [])
   assert.equal(runPlans.serversNamed('no backend or database for an e2e screenshot'), 'be')
   assert.equal(runPlans.serversNamed('the dev server was not running'), 'fe')
   assert.equal(runPlans.serversNamed('ran out of time'), null)

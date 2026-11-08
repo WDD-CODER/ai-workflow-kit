@@ -103,9 +103,26 @@ export function ensureEnv({ folder, serverRoot = '', pm = 'npm', clean = false, 
     } catch { /* no marker */ }
     const there = existsSync(join(to, 'node_modules'))
     if (!clean && there && (!hasLock || hash === seen)) continue
-    if (clean && there) remove(join(to, 'node_modules'))
+    // A failed remove or install is reported (ok: false), never thrown: a throw here would escape the gate or the merge
+    // before it undoes its work.
+    if (clean && there) {
+      try {
+        // The marker goes first: a tree half-deleted by a failed remove is then reinstalled by the next ensure-env.
+        rmSync(marker, { force: true })
+        remove(join(to, 'node_modules'))
+      } catch (e) {
+        ok = false
+        lines.push(`ensure-env: could not remove ${f === '.' ? 'root' : f} node_modules: ${String(e?.message ?? e).split('\n')[0]}`)
+        continue
+      }
+    }
     const [cmd, a] = hasLock ? installCommand(fpm) : ['npm', ['install', '--no-audit', '--no-fund', '--no-package-lock']]
-    const r = runner(to, cmd, a)
+    let r
+    try {
+      r = runner(to, cmd, a)
+    } catch (e) {
+      r = { status: 1, out: '', err: String(e?.message ?? e) }
+    }
     if (r.status === 0) {
       installed.push(f)
       lines.push(`ensure-env: ${clean ? 'reinstalled' : 'installed'} the ${f === '.' ? 'root' : f} packages (${cmd} ${a[0]})`)
@@ -123,9 +140,18 @@ export function ensureEnv({ folder, serverRoot = '', pm = 'npm', clean = false, 
   return { ok, lines, installed }
 }
 
-/** Which tree an environment failure's output names: the backend or scripts/ when its path shows, else the root. */
+/** Output that says packages are missing or broken (the only environment failure a clean reinstall can repair). */
+export const PACKAGE_FAIL_RE = /Cannot find (?:module|package)|ERR_MODULE_NOT_FOUND|MODULE_NOT_FOUND|is not recognized as an internal or external command|command not found/
+
+/**
+ * Which tree an environment failure's output names — or null when no line says packages are missing (a network, port
+ * or database failure, even with node_modules in its stack trace: no tree is deleted). Only the lines that say so are
+ * read: the backend or scripts/ when such a line shows its path, else the root.
+ */
 export function failingTree(out, folders) {
-  const text = String(out ?? '').replace(/\\/g, '/')
+  const lines = String(out ?? '').replace(/\\/g, '/').split('\n').filter((l) => PACKAGE_FAIL_RE.test(l))
+  if (!lines.length) return null
+  const text = lines.join('\n')
   return folders.filter((f) => f !== '.').find((f) => text.includes(`${f}/`)) ?? '.'
 }
 

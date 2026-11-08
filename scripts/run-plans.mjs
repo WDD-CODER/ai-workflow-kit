@@ -150,7 +150,6 @@ export function openDoneWhenItems(planText) {
   }
   return out
 }
-const words4 = (s) => [...new Set(String(s).toLowerCase().match(/[a-z0-9_.\/-]{4,}/g) ?? [])]
 /**
  * The open [auto]/[ui] Done-when items a builder's `notDone` list names (its entries are free text): an entry names an
  * item when it holds the item's backticked command or its opening words, is a long part of it, or shares most of its
@@ -166,10 +165,8 @@ export function undoneItems(planText, notDone) {
       const el = e.toLowerCase()
       if (cmds.some((c) => c.length > 6 && el.includes(c))) return true
       if (low.length >= 20 && el.includes(low.slice(0, 40))) return true
-      if (el.length >= 20 && low.includes(el)) return true
-      const w = words4(el)
-      const shared = w.filter((x) => low.includes(x)).length
-      return w.length >= 3 && shared >= 3 && shared / w.length >= 0.6
+      // Only a named item counts: its command, its opening words, or the whole note inside it — never shared words.
+      return el.length >= 20 && low.includes(el)
     })
     if (entry) found.push({ item: `[${item.tag}] ${item.text}`.slice(0, 200), reason: entry })
   }
@@ -698,8 +695,10 @@ async function main() {
   const ensureIn = (folder, { nnn = null, clean = false, out = '' } = {}) => {
     let only = null
     let reinstall = clean
-    if (clean) {
-      const tree = failingTree(out, depFolders(folder, SERVER_ROOT))
+    const tree = clean ? failingTree(out, depFolders(folder, SERVER_ROOT)) : null
+    // Not a package failure (network, port, database): no tree is deleted, only the plain ensure runs before the retry.
+    if (clean && tree === null) reinstall = false
+    else if (clean) {
       const key = `${folder}|${tree}`
       reinstall = !cleaned.has(key)
       cleaned.add(key)
