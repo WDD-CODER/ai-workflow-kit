@@ -52,14 +52,18 @@ const PREPARE = {{orchestrator.prepare|json}}
 const CI_MIRROR = {{orchestrator.ciMirror|json}}
 const MERGE_CHECKS_MODE = {{orchestrator.mergeChecks|json}}
 const GATE_TIMEOUT_MIN = Number({{orchestrator.gateTimeoutMin|json}}) || 15
-/** orchestrator.builderTimeoutMin: a whole number of minutes from 1 to 180, else 45 (the builder's own timeout). */
-export function builderTimeoutMin(v) {
+/**
+ * orchestrator.builderIdleMin: a whole number of minutes from 1 to 120, else 15. A builder has no wall-clock limit; it is
+ * stopped only after this many minutes in which no file in its folder changed (lib/claude-run.mjs spawnClaude).
+ */
+export function builderIdleMin(v) {
   const n = Number(v)
-  return v !== null && v !== '' && Number.isInteger(n) && n >= 1 && n <= 180 ? n : 45
+  return v !== null && v !== '' && Number.isInteger(n) && n >= 1 && n <= 120 ? n : 15
 }
-const BUILDER_TIMEOUT_MIN = builderTimeoutMin({{orchestrator.builderTimeoutMin|json}})
-// RUN_PLANS_BUILDER_TIMEOUT_MS (tests only) replaces it, like RUN_PLANS_CLAUDE replaces the claude command.
-const BUILDER_TIMEOUT_MS = Number(process.env.RUN_PLANS_BUILDER_TIMEOUT_MS) > 0 ? Number(process.env.RUN_PLANS_BUILDER_TIMEOUT_MS) : BUILDER_TIMEOUT_MIN * 60_000
+const BUILDER_IDLE_MIN = builderIdleMin({{orchestrator.builderIdleMin|json}})
+// RUN_PLANS_BUILDER_IDLE_MS and RUN_PLANS_BUILDER_POLL_MS (tests only) replace them, like RUN_PLANS_CLAUDE replaces claude.
+const BUILDER_IDLE_MS = Number(process.env.RUN_PLANS_BUILDER_IDLE_MS) > 0 ? Number(process.env.RUN_PLANS_BUILDER_IDLE_MS) : BUILDER_IDLE_MIN * 60_000
+const BUILDER_POLL_MS = Number(process.env.RUN_PLANS_BUILDER_POLL_MS) > 0 ? Number(process.env.RUN_PLANS_BUILDER_POLL_MS) : 30_000
 const MAIN = '{{git.mainBranch}}'
 // One plan at a time unless --concurrency 2 is given (goal decision: more builders on one machine made specs time
 // out); orchestrator.concurrency stays the workflow's setting.
@@ -602,8 +606,8 @@ async function main() {
       const call = builderCall({ agent: builderAgent, tier: ctx.tier, reason: ctx.tierReason, settings: guardSettings })
       const prompt = builderPrompt({ RUN, RUN_BRANCH, ctx, l, LESSONS })
       say(`RUN_PLANS: plan ${nnn} ${stage} (${call.model}, tier ${call.tier}: ${call.reason}, round ${ctx.round})`)
-      // The builder's own timeout (orchestrator.builderTimeoutMin), never the gate's.
-      const b = await modelCall(nnn, stage, () => runAgent({ ...call.opts, cwd: wt, prompt, timeoutMs: BUILDER_TIMEOUT_MS, bin: o.claude }))
+      // No wall clock for a builder: only the idle limit (orchestrator.builderIdleMin) on its folder's file changes.
+      const b = await modelCall(nnn, stage, () => runAgent({ ...call.opts, cwd: wt, prompt, timeoutMs: 0, idleMs: BUILDER_IDLE_MS, watchDir: wt, pollMs: BUILDER_POLL_MS, bin: o.claude }))
       let result = null
       try {
         result = b.ok ? parseResult(b.text) : null
@@ -611,9 +615,9 @@ async function main() {
       for (const d of (Array.isArray(result?.decisions) ? result.decisions : []).filter((x) => typeof x === 'string' && /^(behaviour|seen|removes):/i.test(x.trim()))) decisions.push({ plan: nnn, text: d.trim().slice(0, 380) })
       if (Array.isArray(result?.notDone) && result.notDone.length) note(`builder left undone (round ${ctx.round}): ${result.notDone.slice(0, 5).join('; ').slice(0, 300)}`, nnn)
       let failure = null
-      // A timeout parks with the work kept: the park saves it to park/<run>-<NNN> (never a reset to the base, never a
+      // An idle stop parks with the work kept: the park saves it to park/<run>-<NNN> (never a reset to the base, never a
       // second builder on the same problem).
-      if (!b.ok && b.timedOut) return park(`builder timed out: ${b.error} — the work is kept on park/${RUN}-${nnn}`)
+      if (!b.ok && b.timedOut) return park(`builder stopped: ${b.error} — the work is kept on park/${RUN}-${nnn}`)
       // A scope problem only a plan edit fixes: parked at once, no judgment-tier builder (it cannot widen the scope either).
       if (b.ok && isScopeEscalation(result)) return park(`replan needed: ${String(result.blocker ?? result.planChange?.why ?? '').slice(0, 300) || 'a file outside the scope'}`)
       if (!b.ok) failure = { why: `builder: ${b.error}`, escalate: true }

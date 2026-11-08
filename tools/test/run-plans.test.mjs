@@ -305,23 +305,48 @@ test('plan-gate: the command list is prepare, project checks, manifest, scope, t
 test('config: reviewerMode, reviewerModel (never Haiku) and rateLimitWaitMin are bounded; the scaffold defaults pass', async () => {
   const { orchestratorProblems } = await import(pathToFileURL(join(kit, 'tools', 'lib', 'kit.mjs')).href)
   const scaffold = JSON.parse(readFileSync(join(kit, 'kit.config.json'), 'utf8')).orchestrator
-  assert.deepEqual([scaffold.reviewerMode, scaffold.reviewerModel, scaffold.rateLimitWaitMin, scaffold.builderTimeoutMin], ['gate', 'sonnet', 30, 45])
-  assert.deepEqual(orchestratorProblems({ 'orchestrator.builderTimeoutMin': 45 }), [], 'the new key is not refused')
+  assert.deepEqual([scaffold.reviewerMode, scaffold.reviewerModel, scaffold.rateLimitWaitMin, scaffold.builderIdleMin], ['gate', 'sonnet', 30, 15])
+  assert.equal(scaffold.builderTimeoutMin, undefined, 'no wall-clock builder limit in the scaffold')
+  assert.deepEqual(orchestratorProblems({ 'orchestrator.builderIdleMin': 15 }), [], 'the new key is not refused')
   assert.deepEqual(orchestratorProblems({ 'orchestrator.reviewerMode': 'gate', 'orchestrator.reviewerModel': 'sonnet', 'orchestrator.rateLimitWaitMin': 0 }), [])
   assert.match(orchestratorProblems({ 'orchestrator.reviewerMode': 'loud' }).join(), /reviewerMode is "loud"/)
   for (const m of ['haiku', 'claude-haiku-5-5', 'gpt']) assert.match(orchestratorProblems({ 'orchestrator.reviewerModel': m }).join(), /reviewerModel/)
   for (const w of [-1, 601, 1.5, '30']) assert.match(orchestratorProblems({ 'orchestrator.rateLimitWaitMin': w }).join(), /rateLimitWaitMin/)
 })
 
-test('098 (a) the builder has its own timeout (builderTimeoutMin, 1-180, else 45); the gate keeps gateTimeoutMin', () => {
-  assert.equal(runPlans.builderTimeoutMin(45), 45)
-  assert.equal(runPlans.builderTimeoutMin(120), 120)
-  for (const v of [null, undefined, '', 0, 181, 1.5, 'x']) assert.equal(runPlans.builderTimeoutMin(v), 45, String(v))
+test('098 (a) [F10] the builder has no wall clock, only an idle limit (builderIdleMin, 1-120, else 15); the gate keeps gateTimeoutMin', () => {
+  assert.equal(runPlans.builderIdleMin(15), 15)
+  assert.equal(runPlans.builderIdleMin(120), 120)
+  for (const v of [null, undefined, '', 0, 121, 1.5, 'x']) assert.equal(runPlans.builderIdleMin(v), 15, String(v))
   const src = readFileSync(join(kit, 'scripts', 'run-plans.mjs'), 'utf8')
-  assert.match(src, /runAgent\(\{ \.\.\.call\.opts, cwd: wt, prompt, timeoutMs: BUILDER_TIMEOUT_MS,/)
+  assert.match(src, /runAgent\(\{ \.\.\.call\.opts, cwd: wt, prompt, timeoutMs: 0, idleMs: BUILDER_IDLE_MS, watchDir: wt,/)
   assert.doesNotMatch(src, /runAgent\(\{ \.\.\.call\.opts[^\n]*GATE_TIMEOUT_MIN/, 'the builder never gets the gate\'s timeout')
   assert.match(src, /runGate\(\{ folder: wt, commands: l\.checks, timeoutMin: GATE_TIMEOUT_MIN/)
-  assert.match(src, /const BUILDER_TIMEOUT_MIN = builderTimeoutMin\(45\)/, 'the installed copy renders the scaffold default')
+  assert.match(src, /const BUILDER_IDLE_MIN = builderIdleMin\(15\)/, 'the installed copy renders the scaffold default')
+})
+
+test('098 (a) [F10] spawnClaude: a call that keeps changing files outlives the idle limit; a silent one is stopped idle', async () => {
+  const { spawnClaude, newestChange } = await import(pathToFileURL(join(kit, 'scripts', 'lib', 'claude-run.mjs')).href)
+  const tmp = mkdtempSync(join(tmpdir(), 'rp-idle-'))
+  try {
+    mkdirSync(join(tmp, 'node_modules'), { recursive: true })
+    writeFileSync(join(tmp, 'node_modules', 'x.js'), '')
+    assert.equal(newestChange(join(tmp, 'node_modules')) > 0, true)
+    const busy = join(tmp, 'busy.mjs')
+    writeFileSync(busy, "import { writeFileSync } from 'node:fs'\nlet i = 0\nconst t = setInterval(() => { writeFileSync('work.txt', String(i++)); if (i > 12) { clearInterval(t); console.log('done') } }, 150)\n")
+    const silent = join(tmp, 'silent.mjs')
+    writeFileSync(silent, 'setTimeout(() => console.log("late"), 20000)\n')
+    const t0 = Date.now()
+    const a = await spawnClaude({ bin: busy, args: [], cwd: tmp, timeoutMs: 0, idleMs: 700, watchDir: tmp, pollMs: 50 })
+    assert.equal(a.idle, false, 'a builder that keeps writing is never stopped')
+    assert.equal(a.code, 0)
+    assert.ok(Date.now() - t0 > 1500, 'it ran longer than the idle limit')
+    const b = await spawnClaude({ bin: silent, args: [], cwd: tmp, timeoutMs: 0, idleMs: 700, watchDir: tmp, pollMs: 50 })
+    assert.equal(b.idle, true, 'a silent call is stopped idle')
+    assert.equal(b.timedOut, false, 'no wall clock')
+  } finally {
+    rmSync(tmp, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 })
+  }
 })
 
 test('098 (b) a scope ESCALATE is recognised; a db-write ask or another blocker is not', () => {
@@ -557,10 +582,11 @@ function builderBin(dir, name, builder) {
   return bin
 }
 
-test('098 (a) a builder that runs out of its timeout parks at once: no judgment builder, no reset, the work kept on park/<run>-<NNN>', () => {
+test('098 (a) [F10] a builder stopped idle parks at once: no judgment builder, no reset, the work kept on park/<run>-<NNN>', () => {
   p.addPlans({ 493: toyPlan(493) })
   const tmp = mkdtempSync(join(tmpdir(), 'rp-098a-'))
-  p.env.RUN_PLANS_BUILDER_TIMEOUT_MS = '4000'
+  p.env.RUN_PLANS_BUILDER_IDLE_MS = '3000'
+  p.env.RUN_PLANS_BUILDER_POLL_MS = '200'
   try {
     const bin = builderBin(tmp, 'claude-slow', [
       "  mkdirSync('src', { recursive: true })",
@@ -573,14 +599,15 @@ test('098 (a) a builder that runs out of its timeout parks at once: no judgment 
     assert.equal(r.status, 2, r.out)
     const st = p.status('slow')
     assert.equal(st.plans['493'].state, 'parked', r.out)
-    assert.match(st.plans['493'].reason, /^builder timed out: .* the work is kept on park\/slow-493/)
+    assert.match(st.plans['493'].reason, /^builder stopped: claude idle for .* the work is kept on park\/slow-493/)
     assert.deepEqual(stagesOf(st, '493'), ['builder'], 'no fix round, no judgment builder')
     assert.ok(!st.plans['493'].resetToBase, 'no handoff --reset-base')
     p.git(p.proj, 'fetch', '-q', 'origin')
     assert.equal(p.git(p.proj, 'show', 'origin/park/slow-493:src/493.txt').out.trim(), 'work in progress', 'the committed work is on park/slow-493')
     assert.equal(p.git(p.proj, 'rev-parse', '--verify', '--quiet', 'refs/heads/feat/493-toy-493').status, 1, 'feat/493 renamed')
   } finally {
-    delete p.env.RUN_PLANS_BUILDER_TIMEOUT_MS
+    delete p.env.RUN_PLANS_BUILDER_IDLE_MS
+    delete p.env.RUN_PLANS_BUILDER_POLL_MS
     rmSync(tmp, { recursive: true, force: true })
   }
 })
