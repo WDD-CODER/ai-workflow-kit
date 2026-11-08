@@ -122,26 +122,118 @@ export function autoCommands(planText) {
   }
   return out
 }
-/** The open questions of `## Critical Questions`: a `Q:` whose answer says `A: open` (or has no answer). */
-export function openQuestions(planText) {
+/** Every `Q:` of `## Critical Questions` with its number and answer ('' when none): [{ n, question, answer }]. */
+export function criticalQuestions(planText) {
   const lines = String(planText).replace(/\r\n/g, '\n').split('\n')
   const at = lines.findIndex((l) => /^##\s+Critical Questions\b/i.test(l))
   if (at < 0) return []
   const out = []
   for (let i = at + 1; i < lines.length && !/^##\s/.test(lines[i]); i++) {
-    const q = /^\s*[-*]?\s*(?:\*\*)?Q(?:\d+)?(?:\*\*)?\s*[:.]\s*(.*)$/.exec(lines[i])
+    const q = /^\s*[-*]?\s*(?:\*\*)?Q(\d+)?(?:\*\*)?\s*[:.]\s*(.*)$/.exec(lines[i])
     if (!q) continue
-    const inline = /\bA\s*:\s*(.*)$/.exec(q[1])
+    const inline = /\bA\s*:\s*(.*)$/.exec(q[2])
     let answer = inline ? inline[1] : null
-    const question = (inline ? q[1].slice(0, inline.index) : q[1]).trim()
+    const question = (inline ? q[2].slice(0, inline.index) : q[2]).trim()
     if (answer === null) {
       const next = lines.slice(i + 1).find((l) => l.trim() !== '')
       const a = next ? /^\s*[-*]?\s*(?:\*\*)?A(?:\d+)?(?:\*\*)?\s*:\s*(.*)$/.exec(next) : null
       answer = a ? a[1] : ''
     }
-    if (!answer.trim() || /^open\b/i.test(answer.trim())) out.push(question)
+    out.push({ n: q[1] ?? String(out.length + 1), question, answer: answer.trim() })
   }
   return out
+}
+const isOpen = (answer) => !answer || /^open\b/i.test(answer)
+/** The open questions of `## Critical Questions`: a `Q:` whose answer says `A: open` (or has no answer). */
+export function openQuestions(planText) {
+  return criticalQuestions(planText).filter((q) => isOpen(q.answer)).map((q) => q.question)
+}
+
+// ---- the Human's decisions and the two hard limits ---------------------------------------------------------------
+/** Given to every builder, word for word (docs/brain/human-decisions.md, section 4). */
+export const HARD_LIMITS = [
+  'Never choose more autonomy or more spend than the plan asks for.',
+  'Never treat a database or folder as production without an explicit Human answer.',
+]
+/** D01, d1 and D1 are one decision: `D` and the number without leading zeros. */
+const decisionId = (id) => `D${Number(String(id).slice(1))}`
+/** id → status of the `## 1. Decisions` table of human-decisions.md (read-only); null text → null (no file). */
+export function decisionStatuses(text) {
+  if (text === null || text === undefined) return null
+  const out = new Map()
+  const lines = String(text).replace(/\r\n/g, '\n').split('\n')
+  const at = lines.findIndex((l) => /^##\s+(?:\d+\.\s*)?Decisions\b/i.test(l))
+  if (at < 0) return out
+  let col = -1
+  for (let i = at + 1; i < lines.length && !/^##\s/.test(lines[i]); i++) {
+    if (!lines[i].trim().startsWith('|')) continue
+    const cells = lines[i].trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim())
+    if (col < 0) {
+      col = cells.findIndex((c) => /^status$/i.test(c))
+      continue
+    }
+    if (/^D\d+$/i.test(cells[0]) && cells[col] !== undefined) out.set(decisionId(cells[0]), cells[col])
+  }
+  return out
+}
+/** An answer marked as the Human's own: `A: (Human, <date>) …` or `A: Human …`. */
+const isHumanAnswer = (answer) => /^\(?\s*Human\b/i.test(answer)
+/** `A: default per D<n>` stands only while D<n> is `in force`; anything else (or no file) goes back to the Human. */
+export function decisionProblems(planText, statuses) {
+  const out = []
+  for (const q of criticalQuestions(planText)) {
+    if (isHumanAnswer(q.answer)) continue
+    for (const m of q.answer.matchAll(/\bdefault per (D\d+)\b/gi)) {
+      const id = m[1].toUpperCase()
+      const status = statuses === null ? 'unknown (no docs/brain/human-decisions.md)' : statuses.get(decisionId(id)) ?? 'not recorded'
+      if (!/^in force\b/i.test(status)) out.push(`default per ${id}: decision is ${status} — ask the Human (Q${q.n})`)
+    }
+  }
+  return out
+}
+const PROD_WORD = /\b(?:production|prod|live)\b/i
+const PLACE_WORD = /\b(?:databases?|dbs?|clusters?|atlas|folders?|servers?)\b/i
+/** A production question (a production word and a database/folder word) needs the Human's own answer. */
+export function productionProblems(nnn, planText) {
+  return criticalQuestions(planText)
+    .filter((q) => !isOpen(q.answer) && PROD_WORD.test(q.question) && PLACE_WORD.test(q.question) && !isHumanAnswer(q.answer))
+    .map((q) => `production needs an explicit Human answer (plan ${nnn} Q${q.n})`)
+}
+/** What the plan asks for: only the lines of its `## Execution Mode`, case-insensitive, exact value. */
+export function executionAsks(planText) {
+  const lines = String(planText).replace(/\r\n/g, '\n').split('\n')
+  const at = lines.findIndex((l) => /^##\s+Execution Mode\b/i.test(l))
+  const section = []
+  for (let i = at + 1; at >= 0 && i < lines.length && !/^##\s/.test(lines[i]); i++) section.push(lines[i])
+  const asks = { concurrentPlans: [], reviewerAdvisory: false, dbRemote: false }
+  const end = '\\s*(?:[.;,]|$)'
+  for (const l of section) {
+    const c = /\bConcurrent plans:\s*([^.;\n]*)/i.exec(l)
+    if (c) asks.concurrentPlans.push(...(c[1].match(/\b\d{1,4}\b/g) ?? []).map((n) => n.padStart(3, '0')))
+    if (new RegExp(`\\bReviewer:\\s*advisory${end}`, 'i').test(l)) asks.reviewerAdvisory = true
+    if (new RegExp(`\\bDatabase:\\s*remote${end}`, 'i').test(l)) asks.dbRemote = true
+  }
+  return asks
+}
+/**
+ * The run options against what plan `nnn` asks for: more autonomy or spend than it asks is refused. A config default
+ * of advisory review (no --reviewer-mode flag) is never refused: that plan's review is enforced (gate) instead.
+ */
+export function optionProblems({ nnn, planText, opts, runPlans }) {
+  const asks = executionAsks(planText)
+  const problems = []
+  const notes = []
+  let reviewerMode = opts.reviewerMode
+  if (opts.concurrency > 1 && !asks.concurrentPlans.some((p) => p !== nnn && runPlans.includes(p))) problems.push(`more autonomy than plan ${nnn} asks for: --concurrency ${opts.concurrency}`)
+  if (opts.reviewerMode === 'advisory' && !asks.reviewerAdvisory) {
+    if (opts.reviewerModeSet) problems.push(`more autonomy than plan ${nnn} asks for: --reviewer-mode advisory`)
+    else {
+      reviewerMode = 'gate'
+      notes.push(`reviewer gate for plan ${nnn}: the plan has no Reviewer: advisory line (config default advisory not used)`)
+    }
+  }
+  if (opts.db === 'remote' && !asks.dbRemote) problems.push(`more spend/risk than plan ${nnn} asks for: --db remote`)
+  return { problems, reviewerMode, notes }
 }
 
 // ---- small helpers ----------------------------------------------------------------------------------------------
@@ -181,7 +273,10 @@ function parseArgs(argv) {
     else if (k === '--concurrency') o.concurrency = Number(val())
     else if (k === '--db') o.db = val()
     else if (k === '--claude') o.claude = val()
-    else if (k === '--reviewer-mode') o.reviewerMode = val()
+    else if (k === '--reviewer-mode') {
+      o.reviewerMode = val()
+      o.reviewerModeSet = true
+    }
     else return { problem: `unknown argument ${a}` }
   }
   if (!o.run && o.dryRun) o.run = 'dry-run'
@@ -205,11 +300,17 @@ function npmScripts() {
   }
   return scriptBodies
 }
-function lintPlan(nnn, path, runBranch) {
+function lintPlan(nnn, path, runBranch, { statuses = null, opts = null, runPlans = [] } = {}) {
   const lines = []
   const problems = []
   const notes = []
   const text = readFileSync(join(ROOT, path), 'utf8')
+  // The Human's decisions and the two hard limits: a stale default, a production default or a run option
+  // above the plan's own Execution Mode lines makes the plan not ready.
+  const opt = opts ? optionProblems({ nnn, planText: text, opts, runPlans }) : { problems: [], reviewerMode: null, notes: [] }
+  const decided = [...decisionProblems(text, statuses), ...productionProblems(nnn, text), ...opt.problems]
+  problems.push(...decided)
+  lines.push(`decisions: ${decided.length ? `${decided.length} problem(s)` : 'ok'}${opt.notes.length ? ` · ${opt.notes.join(' · ')}` : ''}`)
   for (const mode of ['deps', 'arch', 'tags']) {
     const r = node('scope-check.mjs', [`--${mode}`, `--plan=${path}`])
     const line = lastLine(r.out) || `exit ${r.status}`
@@ -254,7 +355,7 @@ function lintPlan(nnn, path, runBranch) {
   if (mapped.length) lines.push(`npx: ${mapped.join('; ')}`)
   for (const d of dropped) lines.push(`dropped: ${d}`)
   const checks = gateCommands({ prepare: PREPARE, pm: PM, ...COMMANDS, kitRoot: ROOT, manifest: existsSync(join(ROOT, 'scripts', 'kit-manifest-check.mjs')) && existsSync(join(ROOT, 'docs', 'workflow-kit', 'manifest.json')), scope: { base: `origin/${runBranch}`, plan: path }, extra: extra.filter((c) => !missing.some((f) => checkFilesOf(c).includes(f))) })
-  return { nnn, path, title: (/^#\s+(.*)$/m.exec(text)?.[1] ?? '').trim(), branch, lines, problems, notes, dropped, checks, start: startTier(text), ready: problems.length === 0 }
+  return { nnn, path, title: (/^#\s+(.*)$/m.exec(text)?.[1] ?? '').trim(), branch, lines, problems, notes, dropped, checks, start: startTier(text), reviewerMode: opt.reviewerMode, ready: problems.length === 0 }
 }
 
 /**
@@ -298,9 +399,12 @@ async function main() {
   say(`RUN_PLANS: ${o.dryRun ? 'dry run of' : 'run'} ${RUN} → ${RUN_BRANCH} · ${all.length} plan(s) in ${order.waves.length} wave(s) · concurrency ${o.concurrency} · reviewer ${REVIEW_MODEL} (${o.reviewerMode})`)
   order.waves.forEach((w, i) => say(`WAVE ${i + 1}: ${w.join(', ')}`))
   if (order.skipped.length) say(`DONE already (left out): ${order.skipped.join(', ')}`)
+  // docs/brain/human-decisions.md is read once, never written; no file = every `default per D<n>` goes back to the Human.
+  const decisionsFile = join(ROOT, 'docs', 'brain', 'human-decisions.md')
+  const statuses = existsSync(decisionsFile) ? decisionStatuses(readFileSync(decisionsFile, 'utf8')) : null
   const lint = {}
   for (const nnn of all) {
-    const l = lintPlan(nnn, order.plans[nnn]?.path, RUN_BRANCH)
+    const l = lintPlan(nnn, order.plans[nnn]?.path, RUN_BRANCH, { statuses, opts: o, runPlans: all })
     lint[nnn] = l
     say(`PLAN ${nnn} ${l.ready ? 'ready' : 'NOT READY'} — ${l.title} (${l.branch})`)
     for (const line of l.lines) say(`  ${line}`)
@@ -484,12 +588,12 @@ async function main() {
           const findings = diff.testsOutOfScope.map((f, i) => ({ id: `scope-${i + 1}`, severity: 'blocker', file: f, line: 1, rule: 'no scope line names a test location', reasoning: `${f} is a test file no line of the plan's Read-Write Scope names; revert it or ask the Human for approved: ${f}` }))
           failure = { why: `scope: ${diff.testsOutOfScope.join(', ')}`, fingerprint: `scope: ${diff.testsOutOfScope.join(',')}`, findings }
         } else {
-          const r = await reviewStep({ nnn, RUN, RUN_BRANCH, branch: info.branch, checkedHead, reviewPath: diff.reviewPath, receipt, reviewerAgent, REVIEW_MODEL, bin: o.claude, modelCall, mode: o.reviewerMode })
+          const r = await reviewStep({ nnn, RUN, RUN_BRANCH, branch: info.branch, checkedHead, reviewPath: diff.reviewPath, receipt, reviewerAgent, REVIEW_MODEL, bin: o.claude, modelCall, mode: l.reviewerMode ?? o.reviewerMode })
           if (r.note) note(r.note, nnn)
           if (r.error) {
             // A branch that brings its own local settings into the review is parked in either mode.
             if (r.refused) return park(`review ${r.error}`)
-            if (o.reviewerMode === 'gate') return park(`review could not run: ${r.error}`)
+            if ((l.reviewerMode ?? o.reviewerMode) === 'gate') return park(`review could not run: ${r.error}`)
             note(`review could not run (advisory, not enforced): ${r.error}`, nnn)
           } else if (r.enforced) {
             const kept = blocking(r.problems)
@@ -692,8 +796,8 @@ function landBranch(wt, branch, runBranch) {
   return null
 }
 
-/** The builder's task, in the workflow's KEY: value shape. */
-function builderPrompt({ RUN, RUN_BRANCH, ctx, l, LESSONS }) {
+/** The builder's task, in the workflow's KEY: value shape, with the Human's two hard limits. */
+export function builderPrompt({ RUN, RUN_BRANCH, ctx, l, LESSONS }) {
   const task = (o) => Object.entries(o).filter(([, v]) => v !== undefined).map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`).join('\n')
   return [
     `Build plan ${ctx.nnn} of orchestrator run ${RUN} (mode: ${ctx.mode}). Follow your instructions (.claude/agents/orch-builder.md) and docs/agent/agent-roles.md.`,
@@ -701,6 +805,7 @@ function builderPrompt({ RUN, RUN_BRANCH, ctx, l, LESSONS }) {
       PLAN: l.path, BRANCH: ctx.info.branch, WORKTREE: ctx.wt.path, RUN_BRANCH, MODE: ctx.mode, TIER: ctx.tier, ROUND: ctx.round, CHECKS: l.checks,
       FINDINGS: ctx.mode === 'fix' && ctx.findings.length ? ctx.findings : undefined, HANDOFF: ctx.mode === 'handoff' ? ctx.handoff : undefined, LESSONS,
     }),
+    `HARD LIMITS (the Human's; an open choice that would break one is a blocker, not a default): ${HARD_LIMITS.join(' ')}`,
     `Push with git push -u origin ${ctx.info.branch} — never a bare git push (the branch tracks its own remote branch, never the run branch).`,
     ctx.mode === 'fix' ? 'Fix exactly the FINDINGS, rerun the checks, commit and push your branch.' : '',
     ctx.mode === 'handoff' ? 'You are a fresh builder: the folder is back at the plan branch\'s base. Read the HANDOFF file and the plan, rerun the failing check first, and re-implement the plan from the base.' : '',

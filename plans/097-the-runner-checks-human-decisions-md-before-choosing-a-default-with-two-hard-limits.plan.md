@@ -56,6 +56,7 @@ Always allowed: this plan file itself, `.claude/sessions/**`, `.kit/install.json
 
 ```scope
 core/scripts/run-plans.mjs
+scripts/run-plans.mjs
 tools/test/run-plans.test.mjs
 ```
 
@@ -83,11 +84,11 @@ block and retry.
    2026-11-07)`), so (d)'s "explicit Human answer" matches the real shape.
 
 ## Atomic Sub-tasks
-- [ ] R1: Write the failing tests (a)–(e) first — tools/test/run-plans.test.mjs
-- [ ] R2: Read the Decisions table (status by id) once per run; an `A: default per D<n>` answer is open unless D<n> is `in force` — core/scripts/run-plans.mjs
-- [ ] R3: Refuse run options above the plan's own ask (concurrency, reviewer mode, remote DB) — core/scripts/run-plans.mjs
-- [ ] R4: A production question needs a Human answer, never a default; both hard limits go into the builder prompt — core/scripts/run-plans.mjs
-- [ ] R5: Sync, run every check, changelog — CHANGELOG.md
+- [x] R1: Write the failing tests (a)–(e) first — tools/test/run-plans.test.mjs
+- [x] R2: Read the Decisions table (status by id) once per run; an `A: default per D<n>` answer is open unless D<n> is `in force` — core/scripts/run-plans.mjs
+- [x] R3: Refuse run options above the plan's own ask (concurrency, reviewer mode, remote DB) — core/scripts/run-plans.mjs
+- [x] R4: A production question needs a Human answer, never a default; both hard limits go into the builder prompt — core/scripts/run-plans.mjs
+- [x] R5: Sync, run every check, changelog — CHANGELOG.md
 
 ## Out of Scope
 Matching a question to a decision by meaning (that is `/plan`'s job, plan 096; the runner checks only the id it was
@@ -107,3 +108,8 @@ call.
   silent default is not.
 
 ## Execution Notes
+- Step 0: 058 is merged (PR 86, PR 106) though its plan file still says draft; the dependency is met. The config default `orchestrator.reviewerMode` is `advisory`.
+- decision: behaviour: the config default `advisory` (no `--reviewer-mode` flag) is not refused — that would stop every run — but applies only to a plan with a `Reviewer: advisory` line; any other plan's review runs as `gate` (less autonomy, the safe side of the hard limit), printed on the plan's `decisions:` lint line. An explicit `--reviewer-mode advisory` is refused per (c). Existing tests: plan 457 (advisory STOP merges) gained `Reviewer: advisory`, plans 465/466 (`--concurrency 2`) gained `Concurrent plans:` lines.
+- seen: `docs/agent/orchestrator.md` and the `kit.config.json` `$comment` still describe `reviewerMode: advisory` as applying to every plan; both are outside this plan's scope.
+- review: checkers kept 1 dropped 0 rechecked 0 minutes 10 models check-plan=sonnet,check-bugs=sonnet,check-rules=sonnet (minor bugs-1: `default per D1` did not match the table's `D01` — fixed, ids normalised, test added)
+- test: failing first — the five 097 tests failed on today's code (5/5); after: `node --test tools/test/run-plans.test.mjs` 27/27, `node --test "tools/test/*.test.mjs"` 499 pass 0 fail, build, lint (0 leaks), sync + drift-check no drift.
