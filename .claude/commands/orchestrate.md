@@ -29,9 +29,10 @@ the supervisor runs the run outside this session, so closing the session does no
 running, a second one starts only with 4 GB of free memory (`node scripts/run-supervisor.mjs --free-mem`).
 Print the watch line (one line per plan: state, round, tier and model, minutes in it, last `calls.csv` row; the run's
 own log is `.claude/orchestrator-runs/<run>.console.log`, appended):
-`cd "<main folder>"; node scripts/orch-state.mjs watch --run <run>`. To learn when it ends, start this wait as a
-background shell command and go to 4 when it exits:
-`until ! node scripts/orch-state.mjs watch --run <run> | grep -q '^RUNNING'; do sleep 60; done`.
+`cd "<main folder>"; node scripts/orch-state.mjs watch --run <run>`. To learn when it ends or asks, start this wait as
+a background shell command (one `-e 'ASK <id> '` per card already printed; none yet: `-e '^$'`):
+`until ! node scripts/orch-state.mjs watch --run <run> | grep -q '^RUNNING' || node scripts/orch-state.mjs watch --run <run> | grep '^ASK ' | grep -qv -e '^$'; do sleep 60; done`.
+When it exits while the run is still RUNNING, print the new card (3) and start the wait again; else go to 4.
 
 ## 3. Deaths and rate limits
 
