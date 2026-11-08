@@ -26,13 +26,18 @@ database or folder as production with no Human answer.
   `human-decisions.md` is ready; the same with D18 `superseded by D40`, `frozen`, `open` or no D18 row is refused with
   `default per D18: decision is <status> — ask the Human` and no model call;
   (b) no `human-decisions.md` in the repo: an `A: default per D<n>` answer is refused the same way (no silent pass);
-  (c) `--concurrency 2` on a plan whose `## Execution Mode` does not say `Concurrent plans:` with another plan of the
-  run is refused `more autonomy than plan NNN asks for: --concurrency 2`; `--reviewer-mode advisory` on a plan that does
-  not ask for it is refused the same way; `--db remote` on a plan that does not name the remote database is refused
-  `more spend/risk than plan NNN asks for: --db remote`;
-  (d) a Critical Question about production (`production`, `prod`, `live` database or folder) answered only by
-  `default per D<n>` is refused `production needs an explicit Human answer (plan NNN Q<n>)`; the same question with a
-  Human answer (`A (Human, <date>): …`) is ready;
+  (c) only lines of the plan's `## Execution Mode` count (Q1), matched case-insensitively with an exact value:
+  `--concurrency 2` is refused `more autonomy than plan NNN asks for: --concurrency 2` unless a `Concurrent plans: NNN`
+  line names another plan of the same run (`Concurrent plans: none`, a plan outside the run, or no line → refused);
+  `--reviewer-mode advisory` is refused the same way without a `Reviewer: advisory` line; `--db remote` is refused
+  `more spend/risk than plan NNN asks for: --db remote` without a `Database: remote` line; the same words in Critical
+  Questions or free text ask for nothing;
+  (d) a Critical Question is a production question (Q2) when it holds `production`, `prod` or `live` as a whole word
+  (case-insensitive) and also names `database`, `db`, `cluster`, `atlas`, `folder` or `server`; answered only by
+  `default per D<n>` it is refused `production needs an explicit Human answer (plan NNN Q<n>)`, and with a Human answer
+  (`A: (Human, <date>) …`) it is ready; `product`, `producer` or `live` with no database/folder word never trigger it;
+  a question the matcher cannot classify with certainty is refused and asked (a false refusal is fine, a silent default
+  is not);
   (e) the builder prompt carries both hard limits word for word (string test on `builderPrompt`).
 - [auto] `node scripts/run-plans.mjs --dry-run --plans <fixture>` prints each refusal above and `modelCalls: 0`.
 - [auto] `run-plans.mjs` only reads `docs/brain/human-decisions.md` — never writes it (test: file bytes unchanged after
@@ -90,9 +95,15 @@ given); writing to `human-decisions.md`, `readiness-answers.jsonl` or lessons (f
 call.
 
 ## Critical Questions
-- Q1: Which plan text counts as "the plan asks for" concurrency 2, advisory review and the remote database — the exact
-  `## Execution Mode` / Critical Question wording to match? A: open
-- Q2: Is the production keyword list in (d) (`production`, `prod`, `live`) enough, or does the Human want a different
-  trigger? A: open
+- Q1: Which plan text counts as "the plan asks for" concurrency 2, advisory review and the remote database?
+  A: (Human, 2026-11-08) Only explicit lines in the plan's `## Execution Mode`, nowhere else (not Critical Questions,
+  not free text): concurrency 2 → `Concurrent plans: NNN` naming another plan in the same run (`none` = refuse);
+  advisory review → a line `Reviewer: advisory`; remote database → a line `Database: remote`. A missing line means the
+  plan does not ask for it. Case-insensitive match on the line, exact value.
+- Q2: Is the production keyword list (`production`, `prod`, `live`) enough?
+  A: (Human, 2026-11-08) Keep the three words, matched as whole words only, case-insensitive, and only when the same
+  question also names a database or folder (`database`, `db`, `cluster`, `atlas`, `folder`, `server`). `prod` must not
+  match inside words like `product` or `producer`. When in doubt, refuse and ask the Human: a false refusal is fine, a
+  silent default is not.
 
 ## Execution Notes
