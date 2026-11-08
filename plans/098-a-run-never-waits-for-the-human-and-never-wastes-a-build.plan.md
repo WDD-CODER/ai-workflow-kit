@@ -86,15 +86,15 @@ the path to the scope block and retry.
 ## Atomic Sub-tasks
 - [x] S1: Put the first-run audit in the brain as the record these fixes come from — copy the cleaned public copy as it is — docs/brain/first-run-audit-2026-11-08.md
 - [x] S2: Add to the error review the four leftovers that stay a line, not a fix — the per-plan manifest check runs the main folder's tree, not the plan's; the app's e2e base URL is hard-coded instead of read from the environment; decision-review.md names an `/orchestrate` step 5 that does not exist; a replan reason says "on the run branch" while plans live on main — docs/brain/error-review.md
-- [ ] S3: Write the failing tests first for the timeout, the scope park, the dropped check, the dry run and the reviewer default — cases (a)–(e) — tools/test/run-plans.test.mjs
-- [ ] S4: Write the failing test that a park renames the plan branch so the next run starts clean — tools/test/orchestrator-park-branch.test.mjs
-- [ ] S5: Give the builder its own longer timeout and keep its work when it runs out — builderTimeoutMin, keep the worktree — core/scripts/run-plans.mjs, kit.config.json
-- [ ] S6: Park a scope problem at once instead of paying a stronger model that cannot fix it — ESCALATE on scope or approved: path → park "replan needed" — core/scripts/run-plans.mjs
-- [ ] S7: Make the dry run refuse what the real run would refuse — the gate's test-file check, a stale feat branch, a check the runner cannot run — core/scripts/run-plans.mjs
-- [ ] S8: Rename a parked plan's branch so nobody has to delete it — feat/NNN → park/run-NNN on park — core/scripts/orch-state.mjs
-- [ ] S9: Make the reviewer's STOP park by default — reviewerMode "gate" — kit.config.json, core/docs/agent/orchestrator.md
-- [ ] S10: Start the run as soon as the dry run says yes, and relaunch it once if it is killed — no reply-start step, watch line with cd — core/.claude/commands/orchestrate.md, core/docs/agent/orchestrator.md
-- [ ] S11: Resync the installed copies, run every check, add the changelog entry — CHANGELOG.md
+- [x] S3: Write the failing tests first for the timeout, the scope park, the dropped check, the dry run and the reviewer default — cases (a)–(e) — tools/test/run-plans.test.mjs
+- [x] S4: Write the failing test that a park renames the plan branch so the next run starts clean — tools/test/orchestrator-park-branch.test.mjs
+- [x] S5: Give the builder its own longer timeout and keep its work when it runs out — builderTimeoutMin, keep the worktree — core/scripts/run-plans.mjs, kit.config.json
+- [x] S6: Park a scope problem at once instead of paying a stronger model that cannot fix it — ESCALATE on scope or approved: path → park "replan needed" — core/scripts/run-plans.mjs
+- [x] S7: Make the dry run refuse what the real run would refuse — the gate's test-file check, a stale feat branch, a check the runner cannot run — core/scripts/run-plans.mjs
+- [x] S8: Rename a parked plan's branch so nobody has to delete it — feat/NNN → park/run-NNN on park — core/scripts/orch-state.mjs
+- [x] S9: Make the reviewer's STOP park by default — reviewerMode "gate" — kit.config.json, core/docs/agent/orchestrator.md
+- [x] S10: Start the run as soon as the dry run says yes, and relaunch it once if it is killed — no reply-start step, watch line with cd — core/.claude/commands/orchestrate.md, core/docs/agent/orchestrator.md
+- [x] S11: Resync the installed copies, run every check, add the changelog entry — CHANGELOG.md
 
 ## Technical Considerations
 - A scope ESCALATE that parks still keeps the builder's work on `park/<run>-<NNN>` (the existing `park-save`), so a replan can start from it.
