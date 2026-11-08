@@ -3,7 +3,7 @@
     "version": "2.1.0"
   },
   "source": "local:.",
-  "commit": "c27a2feb642ebcbce80e0afde8c3a000e9eca3eb",
+  "commit": "9cf69ab5c3ea3d6c75f907f691b4dcf8e492e03e",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -375,7 +375,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "05c677426e5b06e20221b0d704f6c010269b60a3439db4b3ff1cc1a069ef865a",
+      "sha256": "3fc7c9a42de1df27f95cb82fe25d4981569be6339c60eb2e5e39db6c953c1fea",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -730,7 +730,7 @@
       "source": "core/scripts/lib/plan-guard-scan.mjs"
     },
     "scripts/lib/plan-merge.mjs": {
-      "sha256": "35f0086d6e42a28e33eb5b8f5a9f3257821b6fd002f9911de9d82c66c1fa67c5",
+      "sha256": "7706d9cb77b8e24ac8de2188f13aa226e029447edd8a74026433067d82cc891a",
       "kind": "managed",
       "source": "core/scripts/lib/plan-merge.mjs"
     },
@@ -795,7 +795,7 @@
       "source": "core/scripts/orch-preflight.mjs"
     },
     "scripts/orch-state.mjs": {
-      "sha256": "0d8b02b89896ad754692e350729b680c4f52138c969a2c0a2dbdc7cb75fff04b",
+      "sha256": "41724170172e1a196c707fdb72a9698b9b7a3a40abfc10821296279db90932d3",
       "kind": "managed",
       "source": "core/scripts/orch-state.mjs"
     },
@@ -870,7 +870,7 @@
       "source": "core/scripts/prune-old-sessions.sh"
     },
     "scripts/run-plans.mjs": {
-      "sha256": "753e923b8b775f82fc5f5d326ee39aba0dcf4bffa496e50448f3b9711b7dc1f1",
+      "sha256": "fd8c4a6298dbc0231311bccb94dea31f7f01478de0c1323231e2c03ab0ae2575",
       "kind": "managed",
       "source": "core/scripts/run-plans.mjs"
     },

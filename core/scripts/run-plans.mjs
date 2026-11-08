@@ -382,7 +382,8 @@ function lintPlan(nnn, path, runBranch, { statuses = null, opts = null, runPlans
   // The plan branch an earlier run left: one not built on this run's base would be reused and fail at once.
   const base = git(ROOT, 'rev-parse', '--verify', '--quiet', `refs/remotes/origin/${runBranch}`).status === 0 ? `origin/${runBranch}` : `origin/${MAIN}`
   const stale = staleBranchProblem({ root: ROOT, branch, base, run: runBranch.slice(RUN_PREFIX.length), nnn })
-  if (stale) problems.push(stale)
+  // Not a refusal: the run renames it to park/stale-<NNN> at the plan's start and cuts a fresh branch (orch-state plan-info).
+  if (stale) lines.push(stale)
   // The gate's test-file check, on what the builder will change: a check file the plan creates, and what an existing
   // plan branch already changed.
   const created = files.filter((f) => !existsSync(join(ROOT, f)) && !missing.includes(f))
@@ -437,8 +438,9 @@ export function plannedTestPaths(planText) {
   return [...out]
 }
 /**
- * A plan branch (local or on origin) an earlier run left that is not built on `base`: neither holds the other, so the
- * run would reuse it and stop at once. A relaunch of the same run (its status.json holds the plan) is not stale.
+ * A plan branch (local or on origin) an earlier run left that is not built on `base`: neither holds the other. The run
+ * renames it to park/stale-<NNN> at the plan's start and cuts a fresh one (the line returned says WILL RENAME). A
+ * relaunch of the same run (its status.json holds the plan) is not stale.
  */
 export function staleBranchProblem({ root, branch, base, run, nnn }) {
   const statusFile = join(root, '.claude', 'orchestrator-runs', run, 'status.json')
@@ -449,9 +451,49 @@ export function staleBranchProblem({ root, branch, base, run, nnn }) {
   for (const ref of [`refs/heads/${branch}`, `refs/remotes/origin/${branch}`]) {
     if (git(root, 'rev-parse', '--verify', '--quiet', ref).status !== 0) continue
     if (anc(base, ref) || anc(ref, base)) continue
-    return `stale branch ${ref.replace(/^refs\/(heads|remotes)\//, '')}: an earlier run left it and it is not built on ${base} — rename it (node scripts/orch-state.mjs park-branch --run ${run} --plan ${nnn}) before the run`
+    return `WILL RENAME ${ref.replace(/^refs\/(heads|remotes)\//, '')} → park/stale-${nnn}: an earlier run left it and it is not built on ${base}; a fresh ${branch} is cut at the plan's start`
   }
   return null
+}
+
+/** A stop that was the plan's own code: never resumed this way (it stays parked, as today). */
+export const OWN_CODE_STOP_RE = /same reason twice|fix rounds used|replan needed|needs the Human/i
+/** A stop that was not the plan's code: a death, a time limit, the environment, a rate limit, an answered question. */
+export const OUTSIDE_STOP_RE = /process died|timed out|builder stopped|environment|rate[- ]limit|answered/i
+
+/**
+ * Does a relaunch continue this plan from its saved commits? `prev` is the plan's record in the run's status.json (the
+ * stopped attempt), `hasPark` a park/<run>-<NNN> branch on origin, `hasBuilt` a feat/<NNN> based on the run branch that
+ * holds commits the run branch does not. 'built': the next step is the gate on those commits; 'park': a plan branch is
+ * cut from the park branch; null: start from round 0 as before.
+ */
+export function resumeKind({ prev, hasPark, hasBuilt }) {
+  if (!prev || prev.state === 'merged' || prev.state === 'skipped') return null
+  const reason = `${prev.reason ?? ''} ${prev.park?.reason ?? ''}`
+  if (OWN_CODE_STOP_RE.test(reason)) return null
+  const stopped = prev.state === 'parked' && OUTSIDE_STOP_RE.test(reason)
+  if (hasBuilt && (stopped || ['gate', 'checking', 'merging'].includes(prev.state))) return 'built'
+  if (stopped && hasPark) return 'park'
+  return null
+}
+
+/** The resume of a plan this run already knew (a relaunch under the same run name): { kind, prev, parkBranch } or null. */
+function resumeOf({ root, run, runBranch, nnn, branch }) {
+  let prev = null
+  try {
+    prev = JSON.parse(readFileSync(join(root, '.claude', 'orchestrator-runs', run, 'status.json'), 'utf8')).plans?.[nnn] ?? null
+  } catch { /* no status: a new run */ }
+  if (!prev) return null
+  git(root, 'fetch', '--quiet', 'origin')
+  const parkBranch = `park/${run}-${nnn}`
+  const has = (ref) => git(root, 'rev-parse', '--verify', '--quiet', ref).status === 0
+  const base = `origin/${runBranch}`
+  const feat = [`refs/heads/${branch}`, `refs/remotes/origin/${branch}`].find(has)
+  // This run's own plan branch (its status.json holds the plan): cut from this run branch, which may have moved on since
+  // (merges, the report), so it need not contain the run branch's tip — it holds commits the run branch does not.
+  const hasBuilt = Boolean(feat && has(base) && git(root, 'merge-base', base, feat).status === 0 && Number(git(root, 'rev-list', '--count', `${base}..${feat}`).out) > 0)
+  const kind = resumeKind({ prev, hasPark: has(`refs/remotes/origin/${parkBranch}`), hasBuilt })
+  return kind ? { kind, prev, parkBranch } : null
 }
 
 /**
@@ -613,9 +655,24 @@ async function main() {
 
   const runPlan = async (nnn) => {
     const l = lint[nnn]
-    const info = state('plan-info', { run: RUN, plan: nnn, 'with-worktree': 'yes' })
+    // A relaunch continues a plan that stopped for a reason that was not its own code: from the saved work.
+    const resume = resumeOf({ root: ROOT, run: RUN, runBranch: RUN_BRANCH, nnn, branch: l.branch })
+    const info = state('plan-info', { run: RUN, plan: nnn, 'with-worktree': 'yes', 'from-branch': resume?.kind === 'park' ? resume.parkBranch : undefined })
     if (!info.ok) return { nnn, state: 'parked', reason: `plan-info: ${info.error}` }
     const ctx = { nnn, info, wt: info.wt, tier: l.start.tier, tierReason: l.start.reason, round: 0, escalated: false, findings: [], lastWhy: null, mode: 'first' }
+    if (resume) {
+      // The round counter and the tier continue where the stopped attempt left them.
+      ctx.round = Number(resume.prev.round) || 0
+      if (resume.prev.tier === 'judgment') {
+        ctx.tier = 'judgment'
+        ctx.tierReason = 'resumed on the tier the stopped attempt ran on'
+        ctx.escalated = ctx.round > 0
+      }
+      ctx.mode = resume.kind === 'park' ? 'resume' : 'first'
+      ctx.skipBuild = resume.kind === 'built'
+    }
+    // The plan file the builder starts from (the run branch's commit that last changed it): a later change is recorded.
+    let planStart = null
     const park = (reason, { teardown = true } = {}) => {
       setPlan(nnn, { state: 'parked', round: ctx.round, tier: ctx.tier, reason: String(reason).slice(0, 380) })
       if (teardown && ctx.wt?.ok) {
@@ -635,23 +692,40 @@ async function main() {
       if (!ctx.wt?.ok) return park(`worktree: ${ctx.wt?.error ?? 'no folder'}`, { teardown: false })
     }
     const wt = ctx.wt.path
+    planStart = git(ROOT, 'log', '-1', '--format=%H', `origin/${RUN_BRANCH}`, '--', l.path).out || null
+    if (resume) {
+      const rel = `.claude/sessions/orch-${RUN}/handoff-${nnn}.md`
+      if (existsSync(join(ROOT, rel))) ctx.handoff = rel
+      else {
+        const h = state('handoff', { run: RUN, plan: nnn, step: `resumed after: ${String(resume.prev.reason ?? '').slice(0, 150)}`, tried: `${resume.prev.tier ?? 'build'} builder, round ${ctx.round}`, replan: 'no' })
+        if (h.ok) ctx.handoff = h.path
+      }
+      note(resume.kind === 'park' ? `resumed from ${resume.parkBranch}: round ${ctx.round}, tier ${ctx.tier}, after: ${String(resume.prev.reason ?? '').slice(0, 160)}` : `resumed from the built ${info.branch}: the gate runs on its existing commits (round ${ctx.round}, tier ${ctx.tier})`, nnn)
+    }
     if (ctx.tier === 'judgment') note(`starts on the judgment tier: ${ctx.tierReason}`, nnn)
     for (;;) {
       if (stopReason) return park(`stopped: ${stopReason}`, { teardown: false })
       // ---- builder ----
-      const stage = ctx.mode === 'first' ? 'builder' : ctx.mode === 'handoff' ? 'judgment builder' : 'builder fix'
-      setPlan(nnn, { state: ctx.round ? 'fixing' : 'building', round: ctx.round, tier: ctx.tier })
-      const call = builderCall({ agent: builderAgent, tier: ctx.tier, reason: ctx.tierReason, settings: guardSettings })
-      const prompt = builderPrompt({ RUN, RUN_BRANCH, ctx, l, LESSONS })
-      say(`RUN_PLANS: plan ${nnn} ${stage} (${call.model}, tier ${call.tier}: ${call.reason}, round ${ctx.round})`)
-      // No wall clock for a builder: only the idle limit (BUILDER_IDLE_MIN) on its folder's file changes.
-      const b = await modelCall(nnn, stage, () => runAgent({ ...call.opts, cwd: wt, prompt, timeoutMs: 0, idleMs: BUILDER_IDLE_MS, watchDir: wt, pollMs: BUILDER_POLL_MS, bin: o.claude }), { model: call.model, tier: call.tier })
+      const stage = ctx.mode === 'first' || ctx.mode === 'resume' ? 'builder' : ctx.mode === 'handoff' ? 'judgment builder' : 'builder fix'
+      let b = { ok: true, text: '' }
       let result = null
-      try {
-        result = b.ok ? parseResult(b.text) : null
-      } catch { /* an unreadable receipt: the gate decides */ }
-      for (const d of (Array.isArray(result?.decisions) ? result.decisions : []).filter((x) => typeof x === 'string' && /^(behaviour|seen|removes):/i.test(x.trim()))) decisions.push({ plan: nnn, text: d.trim().slice(0, 380) })
-      if (Array.isArray(result?.notDone) && result.notDone.length) note(`builder left undone (round ${ctx.round}): ${result.notDone.slice(0, 5).join('; ').slice(0, 300)}`, nnn)
+      if (ctx.skipBuild) {
+        // The run died after the build: the branch has its commits, so the next step is the gate on them, no new builder.
+        ctx.skipBuild = false
+        say(`RUN_PLANS: plan ${nnn} resumes at the gate on the existing commits of ${info.branch} (round ${ctx.round})`)
+      } else {
+        setPlan(nnn, { state: ctx.round ? 'fixing' : 'building', round: ctx.round, tier: ctx.tier })
+        const call = builderCall({ agent: builderAgent, tier: ctx.tier, reason: ctx.tierReason, settings: guardSettings })
+        const prompt = builderPrompt({ RUN, RUN_BRANCH, ctx, l, LESSONS })
+        say(`RUN_PLANS: plan ${nnn} ${stage} (${call.model}, tier ${call.tier}: ${call.reason}, round ${ctx.round})`)
+        // No wall clock for a builder: only the idle limit (BUILDER_IDLE_MIN) on its folder's file changes.
+        b = await modelCall(nnn, stage, () => runAgent({ ...call.opts, cwd: wt, prompt, timeoutMs: 0, idleMs: BUILDER_IDLE_MS, watchDir: wt, pollMs: BUILDER_POLL_MS, bin: o.claude }), { model: call.model, tier: call.tier })
+        try {
+          result = b.ok ? parseResult(b.text) : null
+        } catch { /* an unreadable receipt: the gate decides */ }
+        for (const d of (Array.isArray(result?.decisions) ? result.decisions : []).filter((x) => typeof x === 'string' && /^(behaviour|seen|removes):/i.test(x.trim()))) decisions.push({ plan: nnn, text: d.trim().slice(0, 380) })
+        if (Array.isArray(result?.notDone) && result.notDone.length) note(`builder left undone (round ${ctx.round}): ${result.notDone.slice(0, 5).join('; ').slice(0, 300)}`, nnn)
+      }
       let failure = null
       // An idle stop parks with the work kept: the park saves it to park/<run>-<NNN> (never a reset to the base, never a
       // second builder on the same problem).
@@ -719,8 +793,14 @@ async function main() {
       // ---- merge ----
       if (!failure) {
         setPlan(nnn, { state: 'merging', round: ctx.round, 'checked-head': checkedHead })
-        const m = await serial(() => mergePlan({ root: ROOT, run: RUN, nnn, branch: info.branch, runBranch: RUN_BRANCH, mergeFolder, checks: mergeChecksOf(l.checks), timeoutMin: GATE_TIMEOUT_MIN, onResult: (row) => csvRow(nnn, `merge check: ${row.command}`, '-', row.seconds, 0, 0, row.exit) }))
+        const m = await serial(() => mergePlan({ root: ROOT, run: RUN, nnn, branch: info.branch, runBranch: RUN_BRANCH, mergeFolder, checks: mergeChecksOf(l.checks), timeoutMin: GATE_TIMEOUT_MIN, plan: { path: l.path, startCommit: planStart }, onResult: (row) => csvRow(nnn, `merge check: ${row.command}`, '-', row.seconds, 0, 0, row.exit) }))
         if (m.merged) {
+          // The records, written from git by the merge step: the plan-file conflicts it resolved, and a plan changed during the run.
+          for (const f of m.planFiles ?? []) note(`merge: ${f} conflicted — the run branch's copy was taken`, nnn)
+          if (m.planChange) {
+            const c = m.planChange.commits[0]
+            state('plan-changed', { run: RUN, plan: nnn, commit: c.sha, author: c.author, subject: c.subject, 'diff-b64': b64(m.planChange.diff), ...(m.planChange.warnings.length ? { 'warning-b64': b64(m.planChange.warnings.join('\n')) } : {}) })
+          }
           setPlan(nnn, { state: 'merged', round: ctx.round, tier: ctx.tier, sha: m.sha })
           say(`RUN_PLANS: plan ${nnn} merged into ${RUN_BRANCH} (${m.sha.slice(0, 7)})`)
           return { nnn, state: 'merged', sha: m.sha, round: ctx.round }
@@ -917,12 +997,13 @@ export function builderPrompt({ RUN, RUN_BRANCH, ctx, l, LESSONS }) {
     `Build plan ${ctx.nnn} of orchestrator run ${RUN} (mode: ${ctx.mode}). Follow your instructions (.claude/agents/orch-builder.md) and docs/agent/agent-roles.md.`,
     task({
       PLAN: l.path, BRANCH: ctx.info.branch, WORKTREE: ctx.wt.path, RUN_BRANCH, MODE: ctx.mode, TIER: ctx.tier, ROUND: ctx.round, CHECKS: l.checks,
-      FINDINGS: ctx.mode === 'fix' && ctx.findings.length ? ctx.findings : undefined, HANDOFF: ctx.mode === 'handoff' ? ctx.handoff : undefined, LESSONS,
+      FINDINGS: ctx.mode === 'fix' && ctx.findings.length ? ctx.findings : undefined, HANDOFF: ctx.mode === 'handoff' || ctx.mode === 'resume' ? ctx.handoff : undefined, LESSONS,
     }),
     `HARD LIMITS (the Human's; an open choice that would break one is a blocker, not a default): ${HARD_LIMITS.join(' ')}`,
     `Push with git push -u origin ${ctx.info.branch} — never a bare git push (the branch tracks its own remote branch, never the run branch).`,
     ctx.mode === 'fix' ? 'Fix exactly the FINDINGS, rerun the checks, commit and push your branch.' : '',
     ctx.mode === 'handoff' ? 'You are a fresh builder: the folder is back at the plan branch\'s base. Read the HANDOFF file and the plan, rerun the failing check first, and re-implement the plan from the base.' : '',
+    ctx.mode === 'resume' ? 'You continue an attempt that stopped (not for its own code): the branch holds its saved commits and the packages are installed. Read the HANDOFF file and git diff against the run branch, tick the plan\'s sub-tasks they finish, and continue from there.' : '',
     ctx.mode === 'first' && ctx.wt.resumed ? `The branch already has ${ctx.wt.resumed} commit(s) from an earlier attempt, and the packages are installed: read git diff against the run branch, tick the plan's sub-tasks they finish, and continue from there.` : '',
     'Return only your JSON result.',
   ].filter(Boolean).join('\n\n')
