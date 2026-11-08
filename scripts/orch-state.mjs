@@ -45,7 +45,10 @@
  *   node scripts/orch-state.mjs stop       --run <name> --reason "<why the run stopped>"   (gives every held slot back)
  *   node scripts/orch-state.mjs watch      --run <name> [--stale-min <n>]   one line: RUNNING, FINISHED, STOPPED: <why>
  *                                          or STUCK: plan <NNN> · <state> · no progress for <n> min · last: <note>
- *                                          (exit 1); reads status.json only — no git, no agent, no lock
+ *                                          (exit 1); reads status.json only — no git, no agent, no lock;
+ *                                          then one card per open ask (question, options, the answer command)
+ *   node scripts/orch-state.mjs answer     --run <name> --id <NNN-n> --choice <n> | --text "<answer>"
+ *                                          writes asks/<id>.answer.json (by: human); the run resumes the plan
  *   node scripts/orch-state.mjs disk       [--min <gb>]                     free disk vs orchestrator.minFreeDiskGb
  *   node scripts/orch-state.mjs clean      --run <name>                     the merge folder has no uncommitted file
  *   node scripts/orch-state.mjs finish     --run <name>                     report on the run branch + local copy
@@ -61,7 +64,7 @@
  *   builders   <parent>/<repo>-orch-<run>-<NNN> (a worktree on the plan branch)
  * ORCH_FREE_GB (a number) replaces the measured free disk — for tests only.
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync, statfsSync, openSync, closeSync, statSync, unlinkSync, renameSync, linkSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, statfsSync, openSync, closeSync, statSync, unlinkSync, renameSync, linkSync, readdirSync } from 'fs'
 import { spawnSync } from 'child_process'
 import { resolve, dirname, join, relative } from 'path'
 import { fileURLToPath } from 'url'
@@ -74,7 +77,7 @@ import { uiItems } from './lib/done-when.mjs'
 import { listSlots } from './lib/slot.mjs'
 import { ensureDeps, idleSlot, claimSlot, releaseSlot, releaseRunSlots } from './lib/orch-folders.mjs'
 import { agreementStats, addLesson, lessonParts, ruleLines, LESSON_ROLES } from './decision-log.mjs'
-import { planWithoutNotes, triageForce, triageView, decisionsInView, mergePlanFile, decisionType, runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine, planLines, logQueryArgs, lessonFacts, runLogRow, updateRunLog, parseRunLog, parseDecisionRows, trendOf, contextBudget, INJECTED_ROLES } from './lib/orch-run.mjs'
+import { planWithoutNotes, triageForce, triageView, decisionsInView, mergePlanFile, decisionType, runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine, planLines, logQueryArgs, lessonFacts, runLogRow, updateRunLog, parseRunLog, parseDecisionRows, trendOf, contextBudget, INJECTED_ROLES, askCard, ASK_ID_RE } from './lib/orch-run.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const MAIN = 'main'
@@ -128,7 +131,9 @@ const FLAGS = new Set(['run', 'started', 'plans', 'plan', 'state', 'round', 'tie
   // run-plans.mjs: the tier of the model a call starts on (with --role/--model)
   'model-tier',
   // the plan-file change record (plan-changed) and the park branch a resumed plan is cut from (worktree, plan-info)
-  'commit', 'author', 'subject', 'diff-b64', 'warning-b64', 'from-branch'])
+  'commit', 'author', 'subject', 'diff-b64', 'warning-b64', 'from-branch',
+  // `answer`: the option number the Human picked (or --text)
+  'choice'])
 const SWITCHES = new Set(['no-notes', 'reset-base'])
 function parseArgs(argv) {
   const out = { _: [] }
@@ -1612,7 +1617,48 @@ const commands = {
     // One line per plan under the run's line: stage, round, tier + model, minutes in that stage, the last calls.csv row.
     const csv = join(runsDir(), run, 'calls.csv')
     const perPlan = planLines(status, { nowMs: Date.now(), calls: existsSync(csv) ? readFileSync(csv, 'utf8') : '' })
-    emit({ ok: !w.stuck, stuck: w.stuck, line: w.line, phase: status.phase ?? 'unknown', updatedAt: status.updatedAt ?? null }, [w.line, ...perPlan])
+    // Then one card per open ask: the plan still asking, no answer file yet.
+    const asks = openAsks(run, status)
+    emit({ ok: !w.stuck, stuck: w.stuck, line: w.line, phase: status.phase ?? 'unknown', updatedAt: status.updatedAt ?? null, asks: asks.map((a) => ({ id: a.id, plan: a.plan, kind: a.kind, humanOnly: a.humanOnly })) },
+      [w.line, ...perPlan, ...asks.flatMap((a) => ['', ...askCard(a, run)])])
+  },
+
+  // The Human's answer to one open ask (docs/agent/orchestrator.md "Asks"):
+  //   node scripts/orch-state.mjs answer --run <name> --id <NNN-n> --choice <n> | --text "<answer>"
+  // writes .claude/orchestrator-runs/<run>/asks/<id>.answer.json with by: human. run-plans.mjs reads it at its next
+  // poll and resumes the plan in the same run. No lock: status.json is not written here.
+  answer() {
+    const run = runName()
+    const id = String(args.id ?? '')
+    if (!ASK_ID_RE.test(id)) fail('--id takes an ask id like 104-1 (watch prints it)')
+    const dir = join(runsDir(), run, 'asks')
+    const file = join(dir, `${id}.json`)
+    if (!existsSync(file)) fail(`no ask ${id} in run "${run}"`)
+    let ask
+    try {
+      ask = JSON.parse(readFileSync(file, 'utf8'))
+    } catch (e) {
+      fail(`ask ${id} is unreadable: ${e.message}`)
+    }
+    const state = readStatus(run)?.plans?.[ask.plan]?.state
+    if (state !== 'asking') fail(`plan ${ask.plan} is ${state ?? 'unknown'}, not waiting on an answer`)
+    if (existsSync(join(dir, `${id}.answer.json`))) fail(`ask ${id} already has an answer`)
+    if ((args.choice !== undefined) === (args.text !== undefined)) fail('give one of --choice <n> or --text "<answer>"')
+    const options = Array.isArray(ask.options) ? ask.options : []
+    let choice = null
+    let option = null
+    let text = null
+    if (args.choice !== undefined) {
+      choice = Number(args.choice)
+      if (!Number.isInteger(choice) || choice < 1 || choice > options.length) fail(`--choice takes 1 to ${options.length} (the options of ask ${id})`)
+      option = options[choice - 1]
+    } else {
+      text = cutText(args.text, 2000)
+      if (!text) fail('--text is empty')
+    }
+    const answer = { id, by: 'human', choice, option, text, at: nowIso() }
+    writeFileSync(join(dir, `${id}.answer.json`), `${JSON.stringify(answer, null, 2)}\n`)
+    emit({ ok: true, answer }, [`ask ${id} answered: ${option ?? text} — run ${run} resumes plan ${ask.plan} at its next poll`])
   },
 
   disk() {
@@ -1668,6 +1714,23 @@ const commands = {
     fetchOrigin()
     publishReport(run, status, { merged: mergedPlans(run), slots: { lines: [] }, message: `orch(${run}): final gate ${result}`, brain: false })
   },
+}
+
+/** The open asks of a run: an ask file whose plan is still `asking` and that has no answer file yet, in id order. */
+function openAsks(run, status) {
+  const dir = join(runsDir(), run, 'asks')
+  if (!existsSync(dir)) return []
+  const out = []
+  for (const f of readdirSync(dir)) {
+    const id = f.replace(/\.json$/, '')
+    if (!ASK_ID_RE.test(id) || existsSync(join(dir, `${id}.answer.json`))) continue
+    try {
+      const a = JSON.parse(readFileSync(join(dir, f), 'utf8'))
+      if (status?.plans?.[a.plan]?.state === 'asking') out.push(a)
+    } catch { /* an unreadable ask is not shown */ }
+  }
+  const key = (id) => id.split('-').map(Number)
+  return out.sort((a, b) => key(a.id)[0] - key(b.id)[0] || key(a.id)[1] - key(b.id)[1])
 }
 
 // The report, the lesson lines and the run-log row from status.json, then their commit: the tail of `finish`, and what a

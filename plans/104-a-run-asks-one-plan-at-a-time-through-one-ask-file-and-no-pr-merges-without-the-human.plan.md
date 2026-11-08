@@ -86,11 +86,11 @@ the path to the scope block and retry.
 5. Plan 102's resume entry point: the answer resumes through it, not a second path.
 
 ## Atomic Sub-tasks
-- [ ] S1: Write the failing tests first for writing an ask, Human-only kinds, waiting, answering and a refused advisor answer — cases (a)–(e) — tools/test/run-plans-ask.test.mjs
-- [ ] S2: Write the failing test that watch prints an open ask as a card with the command to answer it — tools/test/orchestrator.test.mjs
-- [ ] S3: Turn each question a run raises into one ask file that only its own plan waits on — core/scripts/run-plans.mjs, core/scripts/lib/orch-run.mjs
+- [x] S1: Write the failing tests first for writing an ask, Human-only kinds, waiting, answering and a refused advisor answer — cases (a)–(e) — tools/test/run-plans-ask.test.mjs
+- [x] S2: Write the failing test that watch prints an open ask as a card with the command to answer it — tools/test/orchestrator.test.mjs
+- [x] S3: Turn each question a run raises into one ask file that only its own plan waits on — core/scripts/run-plans.mjs, core/scripts/lib/orch-run.mjs
 - [ ] S4: Let the builder say what kind of question it has, within the agent file's line budget — the kind in ESCALATE — core/.claude/agents/orch-builder.md, core/docs/agent/agent-roles.md
-- [ ] S5: Add the answer command, and resume the plan in the same run — core/scripts/orch-state.mjs, core/scripts/run-plans.mjs
+- [x] S5: Add the answer command, and resume the plan in the same run — core/scripts/orch-state.mjs, core/scripts/run-plans.mjs
 - [ ] S6: Show open asks in watch, and tell the session to print them at once — core/scripts/orch-state.mjs, core/.claude/commands/orchestrate.md
 - [ ] S7: Make Claude Code ask the Human before any PR merge or push to main — core/.claude/settings.json, core/docs/agent/orchestrator.md
 - [ ] S8: Fix the answer wait in code with a test-only override, resync the installed copies, run every check, add the changelog entry — ASK_WAIT_MIN — core/scripts/run-plans.mjs, tools/test/run-plans-ask.test.mjs, CHANGELOG.md
@@ -107,3 +107,10 @@ The advisor agent itself (decided 2026-11-01: after about a month of runs with t
 None open. (The Human took the recommendation on 2026-11-08: a question stops only its own plan, and the run goes on with the rest.)
 
 ## Execution Notes
+- Step 0 (builder, on orch/run-100 at 8abf802): 1. 15 `park(` calls in run-plans.mjs. They become asks: scope ESCALATE (`replan needed`), judgment-tier `planChange`, `ESCALATE: db-write`, `same reason twice`, fix rounds used, a gate-mode review that could not run (after one new retry). They stay parks: worktree, `stopped:`, builder idle, both environment parks, a refused review, the pin failure, the merge environment failure, the hand-off file failure. 2. `ESCALATE`, `blocker` and `planChange` are read in run-plans.mjs right after `parseResult` (lib/claude-run.mjs, unchanged). A kind is added as an optional `ask` object or an `ESCALATE: <kind>` blocker prefix; an older answer without either still works (scope by text, else `unstated` = Human-only). 3. `unitsOf` plus `afterPark`/`blockedBy` decide what a park blocks; an asking plan uses the same `afterPark`, but its blocked plans are held instead of skipped. 4. The Claude Code docs (permission-modes.md: "doesn't auto-approve … in any mode, including `bypassPermissions` … Tools matched by an explicit ask rule"; auto mode: "Explicit ask rules still force a prompt") say `permissions.ask` prompts in every mode, so no PreToolUse hook is needed. In `claude -p` an ask rule has no one to answer and is denied. 5. Plan 102's entry point is `resumeOf`/`resumeKind` in run-plans.mjs (plus `plan-info --from-branch`); the answer resumes through it (`resumeKind({ answered: true })` → `park`).
+- S1: tools/test/run-plans-ask.test.mjs covers cases (a)–(e) with a fake claude; it failed on the old code (`runPlans.builderAsk is not a function`, `undefined !== 180`). Result: see S8.
+- S2: orchestrator.test.mjs `104 watch prints each open ask as one card` (red before: no card lines); plus the S7 rule-matching test and a `todo` test for settings.json (the Planner's half).
+- S3: run-plans.mjs `ask()`/`writeAsk`/`builderAsk`/`askOptions`, the hold/release wave logic and `waitForAnswers`; lib/orch-run.mjs `HUMAN_ONLY_KINDS`, `OPEN_KINDS`, `humanOnlyAsk`, `askCard`, the `asking` state. The scenario run in run-plans-ask.test.mjs: 702 merged while 701 and 704 asked, and 703 was held.
+- S5: `orch-state.mjs answer --run <run> --id <id> --choice <n> | --text "<answer>"` writes `<id>.answer.json` (by: human). Scenario run: 701 got a scope answer, its scope was extended on orch/asks, it resumed from park/asks-701 with ANSWER in its prompt and merged; then 703 and 704 merged.
+- S6 (code half): `watch` prints one card per open ask and `asks[]` in ORCH_JSON. orchestrate.md is the Planner's.
+- S7 (docs half): core/docs/agent/orchestrator.md `## Merges` makes the three statements. settings.json is the Planner's.

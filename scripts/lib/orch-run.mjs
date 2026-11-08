@@ -15,7 +15,7 @@ export function runNameProblem(name) {
 }
 
 /** The states a plan moves through in a run; status.json refuses any other. */
-export const PLAN_STATES = ['queued', 'building', 'gate', 'checking', 'fixing', 'env-paused', 'merging', 'merged', 'parked', 'left-run', 'skipped']
+export const PLAN_STATES = ['queued', 'building', 'gate', 'checking', 'fixing', 'env-paused', 'asking', 'merging', 'merged', 'parked', 'left-run', 'skipped']
 
 /** The only shape a plan branch may have: it reaches git commands and agent prompts. */
 export const PLAN_BRANCH_RE = /^feat\/\d+-[a-z0-9-]+$/
@@ -184,6 +184,36 @@ export function planLines(status, { nowMs, calls = '' }) {
     const model = latest ? `${latest[0]} ${latest[1].model}` : 'no call yet'
     return `  ${p.nnn} ${p.state ?? '?'} · round ${p.round ?? 0} · tier ${p.tier ?? '-'} · ${model} · ${min === null ? '?' : min} min in this state · last call: ${lastRow(p.nnn) ?? 'none'}`
   })
+}
+
+// ---- asks: one question of one plan, one file (docs/agent/orchestrator.md "Asks") -------------------------------
+/** Kinds only the Human answers; the two hard limits are `spend` and `production`. */
+export const HUMAN_ONLY_KINDS = ['data', 'privacy', 'product', 'design', 'production', 'spend', 'decision-stale', 'db-write']
+/** Kinds the Human or, later, the advisor answers. */
+export const OPEN_KINDS = ['scope', 'technical', 'environment', 'review']
+export const ASK_KINDS = [...HUMAN_ONLY_KINDS, ...OPEN_KINDS]
+/** An ask id: `<NNN>-<n>` (the plan and its n-th ask in the run). */
+export const ASK_ID_RE = /^\d{3,4}-\d{1,3}$/
+/** Only the Human answers a Human-only kind, an unknown kind, or a question whose asker named no kind. */
+export function humanOnlyAsk(kind, stated = true) {
+  return !stated || !OPEN_KINDS.includes(String(kind))
+}
+/**
+ * The plain-text card `watch` (and the run's console) prints for one open ask: the one line (id, plan, kind, who
+ * answers, the question), the options with the recommended one first and marked, and the exact answer command.
+ */
+export function askCard(ask, run) {
+  const options = Array.isArray(ask?.options) ? ask.options : []
+  const rec = Number(ask?.recommendation)
+  const numbered = options.map((o, i) => ({ n: i + 1, o }))
+  const ordered = [...numbered.filter((x) => x.n === rec), ...numbered.filter((x) => x.n !== rec)]
+  const cmd = `node scripts/orch-state.mjs answer --run ${run} --id ${ask.id}`
+  return [
+    `ASK ${ask.id} · plan ${ask.plan} · ${ask.kind} · ${ask.humanOnly ? 'only the Human answers' : 'the Human or the advisor answers'}: ${ask.question}`,
+    ...ordered.map((x) => `  ${x.n}. ${x.o}${x.n === rec ? '  (recommended)' : ''}`),
+    ...(ordered.length ? [`  answer: ${cmd} --choice ${ordered[0].n}`] : []),
+    `  ${ordered.length ? 'or:    ' : 'answer:'} ${cmd} --text "<your answer>"`,
+  ]
 }
 
 // ---- UI environment (orch-preflight.mjs --ui) ----------------------------------------------------------------------
