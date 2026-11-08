@@ -88,3 +88,59 @@ test('scope-check --diff: a renamed test file still counts as a changed test fil
   assert.equal(r.status, 1)
   assert.match(r.stdout, /SCOPE: test-out tools\/test\/old\.test\.mjs/)
 })
+
+// Plan 101: the test file next to a scoped file needs no scope line of its own.
+const { removedLinesByFile } = await import(pathToFileURL(join(kit, 'scripts', 'lib', 'plan-scope.mjs')).href)
+const pm = (g) => picomatch(g, { dot: true })
+
+test('101 (a) a sibling test of a scoped file is allowed', () => {
+  assert.deepEqual(testFilesOutOfScope(['src/app/x.component.spec.ts'], ['src/app/x.component.ts'], pm), [])
+})
+
+test('101 (b) a glob covering the source file covers its sibling test', () => {
+  assert.deepEqual(testFilesOutOfScope(['src/app/feature/y.service.spec.ts'], ['src/app/feature/**'], pm), [])
+  assert.deepEqual(testFilesOutOfScope(['pkg/a_test.go', 'src/app/feature/z_spec.rb'], ['pkg/a.go', 'src/app/feature/z.rb'], pm), [])
+})
+
+test('101 (c) a test that is not next to a scoped file is still refused', () => {
+  assert.deepEqual(testFilesOutOfScope(['src/app/other.component.spec.ts', 'e2e/x.spec.ts'], ['src/app/x.component.ts'], pm), ['src/app/other.component.spec.ts', 'e2e/x.spec.ts'])
+})
+
+test('101 (d) same folder only; a __tests__ folder directly beneath counts as the same folder', () => {
+  assert.deepEqual(testFilesOutOfScope(['src/app/sub/x.component.spec.ts'], ['src/app/x.component.ts'], pm), ['src/app/sub/x.component.spec.ts'])
+  assert.deepEqual(testFilesOutOfScope(['src/app/__tests__/x.component.spec.ts'], ['src/app/x.component.ts'], pm), [])
+  assert.deepEqual(testFilesOutOfScope(['src/app/__tests__/deep/x.component.spec.ts'], ['src/app/x.component.ts'], pm), ['src/app/__tests__/deep/x.component.spec.ts'])
+})
+
+test('101 (e) a sibling test whose diff removes an assertion is refused; added lines are fine', () => {
+  const diff = ['diff --git a/src/a.spec.ts b/src/a.spec.ts', '--- a/src/a.spec.ts', '+++ b/src/a.spec.ts', '@@ -4,2 +4,1 @@', '-  expect(a).toBe(1)', '-  const x = 1', '+  const y = 2', ''].join('\n')
+  const removed = removedLinesByFile(diff)
+  assert.deepEqual(removed['src/a.spec.ts'].map((r) => r.line), [4, 5])
+  assert.deepEqual(testFilesOutOfScope(['src/a.spec.ts'], ['src/a.ts'], pm, removed), ['src/a.spec.ts'])
+  const addOnly = removedLinesByFile(['--- a/src/a.spec.ts', '+++ b/src/a.spec.ts', '@@ -4,0 +5,1 @@', '+  expect(b).toBe(2)', ''].join('\n'))
+  assert.deepEqual(testFilesOutOfScope(['src/a.spec.ts'], ['src/a.ts'], pm, addOnly), [])
+  for (const text of [" it('x', () => {", " test('x'", "describe('x'", '  assertEqual(a, b)']) {
+    assert.deepEqual(testFilesOutOfScope(['src/a.spec.ts'], ['src/a.ts'], pm, { 'src/a.spec.ts': [{ line: 1, text }] }), ['src/a.spec.ts'], text)
+  }
+})
+
+test('101 scope-check --diff names the weakened sibling test', () => {
+  git('switch', '-q', 'main')
+  mkdirSync(join(dir, 'src'), { recursive: true })
+  writeFileSync(join(dir, 'plans', '001-gate.plan.md'), plan(['src/a.ts']))
+  writeFileSync(join(dir, 'src', 'a.spec.ts'), 'expect(a).toBe(1)\nconst k = 1\n')
+  git('add', '-A')
+  git('commit', '-q', '-m', 'sibling base')
+  git('switch', '-q', '-c', 'feat/001-sib')
+  writeFileSync(join(dir, 'src', 'a.ts'), 'export const a = 1\n')
+  writeFileSync(join(dir, 'src', 'a.spec.ts'), 'const k = 1\nconst z = 2\n')
+  git('add', '-A')
+  git('commit', '-q', '-m', 'weaken')
+  const r = spawnSync('node', ['scripts/scope-check.mjs', '--diff=main', '--plan=plans/001-gate.plan.md'], { cwd: dir, encoding: 'utf8' })
+  assert.equal(r.status, 1, r.stdout + r.stderr)
+  assert.match(r.stderr, /sibling test weakened: src\/a\.spec\.ts:1 — name the test in the scope to change its assertions/, r.stdout)
+  writeFileSync(join(dir, 'src', 'a.spec.ts'), 'expect(a).toBe(1)\nconst k = 1\nconst z = 2\n')
+  git('commit', '-q', '-am', 'only add')
+  const ok = spawnSync('node', ['scripts/scope-check.mjs', '--diff=main', '--plan=plans/001-gate.plan.md'], { cwd: dir, encoding: 'utf8' })
+  assert.equal(ok.status, 0, ok.stdout + ok.stderr)
+})

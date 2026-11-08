@@ -67,7 +67,7 @@ import { resolve, dirname, join, relative } from 'path'
 import { fileURLToPath } from 'url'
 import { createRequire } from 'module'
 import { findOpenPlan } from './lib/plan-paths.mjs'
-import { extractScopeGlobs, testFilesOutOfScope } from './lib/plan-scope.mjs'
+import { extractScopeGlobs, testFilesOutOfScope, removedLinesByFile } from './lib/plan-scope.mjs'
 import { scopeTestsLint } from './lib/scope-tests-lint.mjs'
 import { planNumber, planTitle, mergeSubjectRe } from './lib/plan-deps.mjs'
 import { uiItems } from './lib/done-when.mjs'
@@ -1209,7 +1209,8 @@ const commands = {
     const sensitiveFiles = files.filter((f) => tests.some((re) => re.test(f)))
     // A diff that adds auth or permission code to a file whose path does not say so: its added lines name it.
     // A diff git could not give in full (an error, or output cut off) counts as sensitive: fail closed.
-    const added = addedCodeFiles(git(root, 'diff', '-U0', '--no-color', `origin/${runBranch(run)}...${head}`), SENSITIVE_CODE_RE, sensitiveFiles)
+    const zeroDiff = git(root, 'diff', '-U0', '--no-color', `origin/${runBranch(run)}...${head}`)
+    const added = addedCodeFiles(zeroDiff, SENSITIVE_CODE_RE, sensitiveFiles)
     const codeFiles = added.files
     const unread = added.failed || d.truncated
     const sensitive = sensitiveFiles.length > 0 || codeFiles.length > 0 || unread
@@ -1220,7 +1221,7 @@ const commands = {
     const onBase = git(root, 'show', `origin/${runBranch(run)}:${rel}`)
     const planText = onBase.status === 0 ? onBase.out : (existsSync(join(root, rel)) ? readFileSync(join(root, rel), 'utf8') : '')
     const scopeGlobs = extractScopeGlobs(planText) ?? []
-    const testsOutOfScope = testFilesOutOfScope(files.filter((f) => f !== rel && !f.startsWith('.claude/sessions/')), scopeGlobs, (g) => picomatch(g, { dot: true }))
+    const testsOutOfScope = testFilesOutOfScope(files.filter((f) => f !== rel && !f.startsWith('.claude/sessions/')), scopeGlobs, (g) => picomatch(g, { dot: true }), removedLinesByFile(zeroDiff.out))
     // --no-notes: the checkers' copy of the plan (the same run-branch text, without ## Execution Notes), written next to
     // the status file just before the checkers read it.
     const reviewPath = args['no-notes'] !== undefined && planText ? writeReviewCopy(run, nnn, planText) : null

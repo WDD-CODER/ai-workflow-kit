@@ -53,7 +53,7 @@ import { resolve, dirname, join, relative, isAbsolute } from 'path'
 import { fileURLToPath } from 'url'
 import picomatch from 'picomatch'
 import { activePlanPath, branchPlanPath } from './lib/slot.mjs'
-import { extractScopeGlobs, testFilesOutOfScope, testLocationReason } from './lib/plan-scope.mjs'
+import { extractScopeGlobs, testRefusals, removedLinesByFile, isSiblingTest } from './lib/plan-scope.mjs'
 import { listOpenPlans, OPEN_PLAN_DIRS } from './lib/plan-paths.mjs'
 import { parseDependsOn, parseProsePrerequisites } from './lib/plan-deps.mjs'
 import { doneWhenTagProblems } from './lib/done-when.mjs'
@@ -153,7 +153,9 @@ function buildMatcher(planPath) {
   ]
 
   const allowed = [...alwaysAllowed, ...scopeGlobs]
-  const isMatch = picomatch(allowed, { dot: true })
+  const inScope = picomatch(allowed, { dot: true })
+  // A test file next to a file the scope covers is in scope; the test-file gate still checks it.
+  const isMatch = (f) => inScope(f) || isSiblingTest(f, scopeGlobs, (g) => picomatch(g, { dot: true }))
   return { isMatch, planText, scopeGlobs }
 }
 
@@ -203,7 +205,8 @@ function cmdDiff(args) {
   // own scope block must not approve its own test edits. A plan not on the base falls back to the working copy.
   const onBase = git(['show', `${args.diff}:${planPath}`])
   const baseGlobs = (onBase && extractScopeGlobs(onBase)) || scopeGlobs
-  const testOut = testFilesOutOfScope(files.filter(f => !out.includes(f)), baseGlobs, (g) => picomatch(g, { dot: true }))
+  const removed = removedLinesByFile(git(['diff', '-U0', '--no-color', '--no-renames', `${args.diff}...HEAD`]))
+  const testOut = testRefusals(files.filter(f => !out.includes(f)), baseGlobs, (g) => picomatch(g, { dot: true }), removed)
 
   if (!out.length && !testOut.length) {
     console.log('SCOPE: ok')
@@ -214,9 +217,9 @@ function cmdDiff(args) {
     for (const f of out) console.log(`  ${f}${isUpstream(f) ? ' (upstream-owned: ownership.upstreamPaths)' : ''}`)
   }
   // The reason goes to stderr: ship-prep reads every stdout line as a path.
-  for (const f of testOut) {
+  for (const { file: f, reason } of testOut) {
     console.log(`SCOPE: test-out ${f}`)
-    console.error(`SCOPE_CHECK: ${testLocationReason(f)}`)
+    console.error(`SCOPE_CHECK: ${reason}`)
   }
   process.exit(1)
 }

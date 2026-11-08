@@ -33,7 +33,7 @@ import { spawnSync } from 'node:child_process'
 import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
-import { extractScopeGlobs, testFilesOutOfScope, testLocationReason } from './lib/plan-scope.mjs'
+import { extractScopeGlobs, testRefusals, removedLinesByFile, isTestPath } from './lib/plan-scope.mjs'
 import { readAgent, claudeArgs, runAgent, parseResult, passedModel } from './lib/claude-run.mjs'
 import { isSensitive } from './ship-prep.mjs'
 import { gateCommands, runGate, scopeCheck, scopeMarker } from './lib/plan-gate.mjs'
@@ -387,9 +387,11 @@ function lintPlan(nnn, path, runBranch, { statuses = null, opts = null, runPlans
   // plan branch already changed.
   const created = files.filter((f) => !existsSync(join(ROOT, f)) && !missing.includes(f))
   const onBranch = !stale && git(ROOT, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`).status === 0 ? git(ROOT, 'diff', '--name-only', '--no-renames', `${base}...${branch}`).out.split('\n').filter(Boolean) : []
-  const outOfScope = testsOutOfScope(text, [...new Set([...created, ...onBranch])].filter((f) => f !== path && !f.startsWith('.claude/sessions/')))
-  for (const f of outOfScope) problems.push(`test file gate: ${testLocationReason(f)}`)
-  lines.push(`test files: ${outOfScope.length ? `outside the scope ${outOfScope.join(', ')}` : 'ok'}`)
+  const removed = onBranch.length ? removedLinesByFile(git(ROOT, 'diff', '-U0', '--no-color', '--no-renames', `${base}...${branch}`).out) : {}
+  const gateFiles = [...new Set([...created, ...onBranch, ...plannedTestPaths(text)])].filter((f) => f !== path && !f.startsWith('.claude/sessions/'))
+  const outOfScope = testsOutOfScope(text, gateFiles, removed)
+  for (const r of outOfScope) problems.push(`test file gate: ${r.reason}${r.reason.startsWith('sibling test weakened') ? '' : `; add this line to the scope block: ${r.file}`}`)
+  lines.push(`test files: ${outOfScope.length ? `outside the scope ${outOfScope.map((r) => r.file).join(', ')}` : 'ok'}`)
   const checks = gateCommands({ prepare: PREPARE, pm: PM, ...COMMANDS, kitRoot: ROOT, manifest: existsSync(join(ROOT, 'scripts', 'kit-manifest-check.mjs')) && existsSync(join(ROOT, 'docs', 'workflow-kit', 'manifest.json')), scope: { base: `origin/${runBranch}`, plan: path }, extra: extra.filter((c) => !missing.some((f) => checkFilesOf(c).includes(f))) })
   return { nnn, path, title: (/^#\s+(.*)$/m.exec(text)?.[1] ?? '').trim(), branch, lines, problems, notes, dropped, checks, start: startTier(text), reviewerMode: opt.reviewerMode, ready: problems.length === 0 }
 }
@@ -409,9 +411,30 @@ export function isScopeEscalation(result) {
  * The gate's test-file check (lib/plan-scope.mjs testFilesOutOfScope, the function `orch-state.mjs diff` runs) on the
  * files a plan will change: the test files no scope line naming a test location lists.
  */
-export function testsOutOfScope(planText, files) {
+export function testsOutOfScope(planText, files, removed) {
   const picomatch = createRequire(import.meta.url)('picomatch')
-  return testFilesOutOfScope(files, extractScopeGlobs(String(planText).replace(/\r\n/g, '\n')) ?? [], (g) => picomatch(g, { dot: true }))
+  return testRefusals(files, extractScopeGlobs(String(planText).replace(/\r\n/g, '\n')) ?? [], (g) => picomatch(g, { dot: true }), removed)
+}
+
+/**
+ * The test paths a plan's sub-tasks and Done-when items name (a path ending in a file extension that isTestPath):
+ * readiness checks each against the scope, so a missing scope line is found before any builder runs.
+ */
+export function plannedTestPaths(planText) {
+  const out = new Set()
+  let inSection = false
+  for (const line of String(planText).replace(/\r\n/g, '\n').split('\n')) {
+    if (/^#{1,6}\s/.test(line)) {
+      inSection = DONE_WHEN_SECTION_RE.test(line) || /^##\s+Atomic Sub-tasks/i.test(line)
+      continue
+    }
+    if (!inSection) continue
+    for (const raw of line.split(/[\s`,;()]+/)) {
+      const t = raw.replace(/^[.'"]+(?=[\w@])/, '').replace(/[.:'"]+$/, '')
+      if (/^[\w@.\-/]+\.[A-Za-z0-9]+$/.test(t) && !/\*/.test(t) && isTestPath(t)) out.add(t)
+    }
+  }
+  return [...out]
 }
 /**
  * A plan branch (local or on origin) an earlier run left that is not built on `base`: neither holds the other, so the

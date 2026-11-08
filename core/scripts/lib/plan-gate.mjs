@@ -22,7 +22,7 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, appendFileSync } fr
 import { join, dirname, isAbsolute } from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
-import { extractScopeGlobs } from './plan-scope.mjs'
+import { extractScopeGlobs, isSiblingTest } from './plan-scope.mjs'
 
 /** The gate line of the trusted scope check (run in this process from the main folder's scripts, never the branch's). */
 export const scopeMarker = (base, plan) => `scope-check (kit copy) --diff=${base} --plan=${plan}`
@@ -41,7 +41,9 @@ export function scopeCheck({ folder, base, planText, planPath, hotspots = [], up
   const globs = extractScopeGlobs(planText ?? '')
   if (!globs) return { exit: 1, out: `SCOPE_CHECK: ${planPath} has no readable scope under "## Read-Write Scope"` }
   const slash = (p) => (p.endsWith('/') ? `${p}**` : p)
-  const isMatch = picomatch([planPath, '.claude/sessions/**', '.worktree-*', 'docs/brain/**', ...hotspots.filter(Boolean).map(slash), ...GENERATED, ...globs], { dot: true })
+  const inScope = picomatch([planPath, '.claude/sessions/**', '.worktree-*', 'docs/brain/**', ...hotspots.filter(Boolean).map(slash), ...GENERATED, ...globs], { dot: true })
+  // A test file next to a file the scope covers is in scope; the test-file gate (orch-state diff) still checks it.
+  const isMatch = (f) => inScope(f) || isSiblingTest(f, globs, (g) => picomatch(g, { dot: true }))
   const isUpstream = upstream.length ? picomatch(upstream.map(slash), { dot: true }) : () => false
   const lines = (...a) => String(spawnSync('git', a, { cwd: folder, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).stdout ?? '').split('\n').map((l) => l.trim()).filter(Boolean)
   const files = [...new Set([
