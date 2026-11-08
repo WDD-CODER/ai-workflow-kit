@@ -52,15 +52,9 @@ const PREPARE = {{orchestrator.prepare|json}}
 const CI_MIRROR = {{orchestrator.ciMirror|json}}
 const MERGE_CHECKS_MODE = {{orchestrator.mergeChecks|json}}
 const GATE_TIMEOUT_MIN = Number({{orchestrator.gateTimeoutMin|json}}) || 15
-/**
- * orchestrator.builderIdleMin: a whole number of minutes from 1 to 120, else 15. A builder has no wall-clock limit; it is
- * stopped only after this many minutes in which no file in its folder changed (lib/claude-run.mjs spawnClaude).
- */
-export function builderIdleMin(v) {
-  const n = Number(v)
-  return v !== null && v !== '' && Number.isInteger(n) && n >= 1 && n <= 120 ? n : 15
-}
-const BUILDER_IDLE_MIN = builderIdleMin({{orchestrator.builderIdleMin|json}})
+// A builder has no wall-clock limit: it is stopped only after this many minutes in which no file in its folder changed
+// (lib/claude-run.mjs spawnClaude). A fixed value, not a setting (the orchestrator settings are capped in size-budget.json).
+export const BUILDER_IDLE_MIN = 15
 // RUN_PLANS_BUILDER_IDLE_MS and RUN_PLANS_BUILDER_POLL_MS (tests only) replace them, like RUN_PLANS_CLAUDE replaces claude.
 const BUILDER_IDLE_MS = Number(process.env.RUN_PLANS_BUILDER_IDLE_MS) > 0 ? Number(process.env.RUN_PLANS_BUILDER_IDLE_MS) : BUILDER_IDLE_MIN * 60_000
 const BUILDER_POLL_MS = Number(process.env.RUN_PLANS_BUILDER_POLL_MS) > 0 ? Number(process.env.RUN_PLANS_BUILDER_POLL_MS) : 30_000
@@ -625,7 +619,7 @@ async function main() {
       const call = builderCall({ agent: builderAgent, tier: ctx.tier, reason: ctx.tierReason, settings: guardSettings })
       const prompt = builderPrompt({ RUN, RUN_BRANCH, ctx, l, LESSONS })
       say(`RUN_PLANS: plan ${nnn} ${stage} (${call.model}, tier ${call.tier}: ${call.reason}, round ${ctx.round})`)
-      // No wall clock for a builder: only the idle limit (orchestrator.builderIdleMin) on its folder's file changes.
+      // No wall clock for a builder: only the idle limit (BUILDER_IDLE_MIN) on its folder's file changes.
       const b = await modelCall(nnn, stage, () => runAgent({ ...call.opts, cwd: wt, prompt, timeoutMs: 0, idleMs: BUILDER_IDLE_MS, watchDir: wt, pollMs: BUILDER_POLL_MS, bin: o.claude }), { model: call.model, tier: call.tier })
       let result = null
       try {

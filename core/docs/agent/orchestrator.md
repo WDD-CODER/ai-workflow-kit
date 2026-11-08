@@ -36,7 +36,6 @@ now are ignored by install and sync with a `NOTE orchestrator: <key> removed` li
 | `minFreeDiskGb` | `{{orchestrator.minFreeDiskGb}}` | Free disk the environment check asks for, before the run and before a retry |
 | `onPark` | `{{orchestrator.onPark}}` | What a parked plan stops: `dependents` = only the later plans that depend on it or share its files (each is `skipped` with the reason), `all` = every later plan |
 | `gateTimeoutMin` | `{{orchestrator.gateTimeoutMin}}` | Minutes one gate command (and one `prepare` script) may run |
-| `builderIdleMin` | `{{orchestrator.builderIdleMin}}` | A builder has no wall-clock limit: it is stopped only after this many minutes in which no file in its folder changed (`node_modules` and `.git` left out; 1–120, else 15). A builder stopped idle parks the plan with its work kept on `park/<run>-<NNN>` |
 | `staleMin` | `{{orchestrator.staleMin}}` | Minutes without a `status.json` update after which `orch-state.mjs watch` prints `STUCK` |
 | `mergeChecks` | `{{orchestrator.mergeChecks}}` | What the merge step runs on the merged tree: `build` = the project build plus the plan's scope check, `full` = the plan's whole check list on every merge |
 | `ciMirror` | `{{orchestrator.ciMirror|json}}` | CI commands (`npm run <script>`, `pnpm run <script>`, `node scripts/…` or `node tools/…`, no write flag) the final gate runs after the project checks and the kit manifest check. Install and sync print a `NOTE ci-mirror:` line for each CI command the final gate does not run; they never write the list |
@@ -89,7 +88,7 @@ two marked **model**.
      `handoff --reset-base` and one fresh judgment-tier builder; the same reason twice, or a failure after that,
      parks the plan (`orch-state.mjs park`: the work saved on `park/<run>-<NNN>`, the folder removed, and `feat/<NNN>`
      renamed to `park/<run>-<NNN>` here and on origin, so the next run cuts a fresh branch).
-   - **Parked at once, no further model call:** a builder stopped by `builderIdleMin` (its work is kept on
+   - **Parked at once, no further model call:** a builder stopped idle — no wall clock; 15 minutes with no file changed in its folder, `node_modules` and `.git` left out (its work is kept on
      `park/<run>-<NNN>`, never reset), and a builder `ESCALATE` about the scope (a file outside the Read-Write Scope,
      an `approved:` path) — `replan needed: …`: a judgment-tier builder cannot widen a plan's scope either. A park skips
      only what `onPark` names; the run goes on.
