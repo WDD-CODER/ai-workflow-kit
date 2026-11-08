@@ -112,4 +112,6 @@ None open. (Answered `go` on 2026-11-08: numbers 098/099; the public audit copy;
 
 ## Execution Notes
 - S1, S2 done before the run by the Planner session: merged in ee80ad8 (PR #119). The error review already existed (a table), so S2 added four rows to it. The builder does not redo them; the Done-when checks for S1 and S2 already pass.
+- 2026-11-08, the Human: keep the orchestrator settings at 15 — `orchestrator.useSlots` is still read, so the idle limit is a fixed 15 min in `run-plans.mjs` (`BUILDER_IDLE_MIN`, test override `RUN_PLANS_BUILDER_IDLE_MS`), not a `builderIdleMin` setting; the `builderIdleMin` lines above are superseded by this.
+- Built: the runner's builder (0376e3f, 06ce22b), finished by the Planner by hand (100c999); merged into `orch/run-095` (8a3d8a6), into main by PR #122 (4518804). `[human]` item open: needs a kit release and `kit-sync`.
 - 2026-11-08, the Human: no wall-clock limit for builders — an idle limit instead (`idle limit`). `feat/098-a-run-never-waits` (06ce22b) built `builderTimeoutMin` from the earlier text: replace it with `builderIdleMin` and its tests, keep the rest of that work.
