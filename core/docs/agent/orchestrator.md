@@ -41,7 +41,7 @@ now are ignored by install and sync with a `NOTE orchestrator: <key> removed` li
 | `ciMirror` | `{{orchestrator.ciMirror|json}}` | CI commands (`npm run <script>`, `pnpm run <script>`, `node scripts/…` or `node tools/…`, no write flag) the final gate runs after the project checks and the kit manifest check. Install and sync print a `NOTE ci-mirror:` line for each CI command the final gate does not run; they never write the list |
 | `prepare` | `{{orchestrator.prepare|json}}` | Files the gate generates before the tests: `{ "missing": "<path>", "script": "<npm script>", "in": "<folder, default .>" }`, run as `node scripts/orch-state.mjs prepare …` first in every plan gate and the final gate, only when the path is absent |
 | `useSlots` | `{{orchestrator.useSlots|json}}` | Whether a builder takes an idle `{{slots.nameFormat}}` slot before making its own folder |
-| `reviewerMode` | `{{orchestrator.reviewerMode}}` | What a reviewer STOP does: `advisory` = a run note, the plan still merges; `gate` = one fix round with the findings, then the plan parks. `--reviewer-mode` overrides it for one run |
+| `reviewerMode` | `{{orchestrator.reviewerMode}}` | What a reviewer STOP does: `advisory` = a run note, the plan still merges; `gate` = one fix round with the findings, then the plan parks (and a review that could not run parks). `advisory` applies only to a plan whose `## Execution Mode` says `Reviewer: advisory` (any other plan is reviewed as `gate`), and never to a diff that touches a sensitive path (ship-prep's check, `security.sensitivePaths` included): that diff is always `gate`. `--reviewer-mode` overrides it for one run, within the same two rules |
 | `reviewerModel` | `{{orchestrator.reviewerModel}}` | The model `.claude/agents/plan-reviewer.md` runs on (`--model`). Never Haiku: install and sync refuse it |
 | `rateLimitWaitMin` | `{{orchestrator.rateLimitWaitMin}}` | Minutes to wait after a rate or usage limit before that call runs once more; a second limit stops the run (`stopped: rate-limit`) |
 
@@ -97,8 +97,9 @@ now are ignored by install and sync with a `NOTE orchestrator: <key> removed` li
 Two calls per plan normally, five at worst. Every call is `claude -p --output-format json --system-prompt-file <agent
 body> --setting-sources local --strict-mcp-config --disable-slash-commands --no-session-persistence --model <model>
 --tools <agent tools> --allowedTools <…>`. The builder also gets `--settings` with only the main folder's `PreToolUse`
-guard hooks; a hook's deny wins over `--allowedTools`. The reviewer gets read tools and `git diff` / `git show` /
-`node --test` only, never a bare Bash, and is refused when the review folder holds a `.claude/settings.local.json`.
+guard hooks; a hook's deny wins over `--allowedTools`. With no such hooks the run refuses to start: a builder never runs
+unguarded. The reviewer gets its read tools and no Bash (its diff and the gate receipt come inline in the prompt), and
+is refused when the review folder holds a `.claude/settings.local.json`.
 `RUN_PLANS_CLAUDE` replaces `claude` (tests pass a fake).
 
 ## Running beside a Planner session

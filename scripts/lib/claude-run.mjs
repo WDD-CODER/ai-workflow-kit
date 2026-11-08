@@ -10,9 +10,9 @@
  * commands, no saved session — a call then loads a few thousand tokens of context instead of tens of thousands),
  * `--output-format json`, `--model` (none for "inherit"), `--system-prompt-file` with the agent's body, and `--tools`
  * from the agent's front matter; an agent without a write tool also gets `--disallowedTools` for the write tools.
- * Tools are pre-approved (`--allowedTools`) only when the caller asks (`allow`), and a read-only agent then gets narrow
- * Bash patterns, never a bare Bash; a writing agent gets a bare Bash only with a `settings` file (`--settings`: the
- * guard hooks, which run under -p and whose deny wins over --allowedTools). `trustCwdSettings: false` (the reviewer) refuses a folder that holds its own
+ * Tools are pre-approved (`--allowedTools`) only when the caller asks (`allow`), and a read-only agent then gets no
+ * Bash at all; a writing agent gets a bare Bash only with a `settings` file (`--settings`: the guard hooks, which run
+ * under -p and whose deny wins over --allowedTools) and is refused (a throw) without one. `trustCwdSettings: false` (the reviewer) refuses a folder that holds its own
  * `.claude/settings.local.json`, the one settings file `--setting-sources local` still reads.
  * `bin` is the claude command (RUN_PLANS_CLAUDE or "claude"); a `.mjs`/`.js` file is run with node (tests' fake).
  * On Windows `claude` is a .cmd shim: it runs through the shell with every argument quoted. Node built-ins only.
@@ -46,29 +46,30 @@ export function readAgent(agentFile) {
 export const canWrite = (agent) => Boolean(agent.tools?.some((t) => WRITE_TOOLS.includes(t)))
 
 /**
- * The Bash commands a read-only agent may run without a prompt (the reviewer's contract: diffs and one test file).
- * A read-only agent is never pre-approved a bare `Bash`.
+ * The Bash commands a read-only agent may run without a prompt: none. A prefix pattern cannot refuse an
+ * argument — `Bash(git diff:*)` still allows `git diff --output=<file>` (a write) and `--no-index` (any file outside
+ * the repo), `Bash(node --test:*)` runs any test file the diff under review brings — and the reviewer gets its diff
+ * and the gate receipt inline in the prompt, so it reads with Read/Grep/Glob only.
  */
-export const READ_ONLY_BASH = ['Bash(git diff:*)', 'Bash(git show:*)', 'Bash(node --test:*)']
-
-/** The Bash commands a writing agent may run without a prompt when no guard hooks watch the call (git, the checks). */
-export const BUILDER_BASH = ['Bash(git:*)', 'Bash(npm run:*)', 'Bash(pnpm run:*)', 'Bash(node:*)']
+export const READ_ONLY_BASH = []
 
 /**
- * What `--allowedTools` pre-approves for an agent. A writing agent (the builder) gets its own tools, with a bare Bash
- * only when `guarded` (a `--settings` file brings the project's PreToolUse guard hooks into the call), else
- * BUILDER_BASH; a read-only agent gets its read tools + READ_ONLY_BASH.
+ * What `--allowedTools` pre-approves for an agent. A writing agent (the builder) gets its own tools with a bare Bash,
+ * and only when `guarded` (a `--settings` file brings the project's PreToolUse guard hooks into the call): an
+ * unguarded writing agent throws, so a run never starts a builder no hook watches. A read-only agent gets its read
+ * tools and no Bash (READ_ONLY_BASH).
  */
 export function allowedTools(agent, { guarded = false } = {}) {
   const tools = agent.tools ?? []
-  const bash = canWrite(agent) ? (guarded ? ['Bash'] : BUILDER_BASH) : READ_ONLY_BASH
+  if (canWrite(agent) && !guarded) throw new Error(`${agent.name}: a writing agent is pre-approved its tools only with the guard hooks (--settings); refusing to start it unguarded`)
+  const bash = canWrite(agent) ? ['Bash'] : READ_ONLY_BASH
   return [...tools.filter((t) => t !== 'Bash'), ...(tools.includes('Bash') ? bash : [])]
 }
 
 /**
  * Arguments for `claude -p` (no model is called here). `allow` (off by default): the call may use tools without a
  * permission prompt — `--allowedTools` from allowedTools(): the whole list only for an agent that writes (run-plans'
- * builder), narrow Bash patterns for a read-only one. An agent without a write tool always gets `--disallowedTools`.
+ * builder, and only with `settings`), the read tools without Bash for a read-only one. An agent without a write tool always gets `--disallowedTools`.
  */
 export function claudeArgs({ agent, model, systemPromptFile, allow = false, settings = null }) {
   const args = ['-p', '--output-format', 'json', '--system-prompt-file', systemPromptFile, ...CONTEXT_FLAGS]
