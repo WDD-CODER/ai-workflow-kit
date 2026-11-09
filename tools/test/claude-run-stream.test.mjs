@@ -98,6 +98,10 @@ test('the builder line counts tools, keeps the last target and counts each messa
   assert.equal(again.tools, 2)
   assert.equal(toolTarget({ file_path: 'src/a.ts' }), 'src/a.ts')
   assert.equal(toolTarget({ pattern: 'foo' }), 'foo')
+  // A tool input is model text: terminal escapes and line breaks never reach the live file.
+  assert.equal(toolTarget({ file_path: 'a\u001b[2Jb\u009bc\nd' }), 'a [2Jb c d')
+  const evil = builderAfter(null, { type: 'assistant', message: { id: 'x', content: [{ type: 'tool_use', name: 'Ed\u001bit', input: {} }] } }, new Map(), 'T')
+  assert.equal(evil.lastTool, 'Ed it')
 })
 
 test('the live file writes a step change at once, throttles builder updates, and clears old lines on a new step', () => {

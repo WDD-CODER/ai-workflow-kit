@@ -13,11 +13,14 @@ import { join } from 'node:path'
 
 export const liveFile = (runDir, nnn) => join(runDir, `live-${nnn}.json`)
 
+/** One plain line: control characters (terminal escapes among them) and line breaks become spaces. */
+export const plainLine = (s) => String(s ?? '').replace(/[\u0000-\u001f\u007f-\u009f]+/g, ' ').replace(/\s+/g, ' ').trim()
+
 /** The tool's target for a one-line view: the file, else the command's start, else the pattern. */
 export function toolTarget(input) {
   if (!input || typeof input !== 'object') return ''
   const s = input.file_path ?? input.notebook_path ?? input.path ?? (typeof input.command === 'string' ? input.command : null) ?? input.pattern ?? input.url ?? ''
-  const one = String(s).replace(/\s+/g, ' ').trim()
+  const one = plainLine(s)
   return one.length > 60 ? `${one.slice(0, 59)}…` : one
 }
 
@@ -31,7 +34,7 @@ export function builderAfter(prev, ev, usageById, at = new Date().toISOString())
   for (const c of Array.isArray(ev.message.content) ? ev.message.content : []) {
     if (c?.type !== 'tool_use') continue
     b.tools += 1
-    b.lastTool = String(c.name ?? '')
+    b.lastTool = plainLine(c.name).slice(0, 40)
     b.lastTarget = toolTarget(c.input)
   }
   const u = ev.message.usage
@@ -99,7 +102,7 @@ export function createLive(runDir, { throttleMs = 2000, clock = Date.now } = {})
       patch(nnn, { step, stepAt: new Date(clock()).toISOString(), gate: null, builder: null }, { force: true })
     },
     gate(nnn, { command, index, total }) {
-      patch(nnn, { gate: { index, total, command: String(command).slice(0, 160), startedAt: new Date(clock()).toISOString() } }, { force: true })
+      patch(nnn, { gate: { index, total, command: plainLine(command).slice(0, 160), startedAt: new Date(clock()).toISOString() } }, { force: true })
     },
     builderEvent(nnn, ev) {
       const p = of(nnn)
