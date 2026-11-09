@@ -1,6 +1,6 @@
 # Plan 089 — /ship diet: one reviewer, no runner agent, eighty lines
 
-Status: draft
+Status: done — S1–S6 built and released in 3.0.0; the Human waived the last /ship check on 2026-11-09
 Depends-on: 088, 091
 Snapshot: fd212e119ef16c0b26ebfaf6b44f450fee26d8f5
 Revised: Human decision 4, 2026-11-07 — REGULAR Phase 2 keeps the checker pipeline by default (`review.ship = checkers`); the single reviewer is the other value, switched when plan 091 shows precision ≥ 0.28.
@@ -92,7 +92,7 @@ Read `ship.md` Phase 4 "On approval" steps 1–7 and list which steps the 80-lin
 - [x] S4: Put the learning step behind its own switch and add the single reviewer as a second review choice — `review.learn` off (default) | on gates grade, learn, brain capture; `review.ship` keeps `checkers` (default) and `light`, and gains `reviewer`; `tools/lib/kit.mjs` validates both keys; no migration (an existing `checkers` stays `checkers`) — kit.config.json, .kit/config.json, tools/lib/kit.mjs, core/.claude/commands/ship.md
 - [x] S5: Delete `ship-regular.md`; move the Commit-vs-PR judgment and "After opening a PR" into `standards-git.md` (≤ 20 lines); update workflow-map F3, model-routing's table (kit-runner's `/ship` row removed; the checkers' `/ship Phase 2` note stays), `review-it.md` keeps the checker pipeline but runs its commands through `ship-prep.mjs --gate` instead of `kit-runner` — core/docs/agent/ship-regular.md, core/docs/agent/standards-git.md, core/docs/agent/workflow-map.md, core/docs/agent/model-routing.md, core/.claude/commands/review-it.md
 - [x] S6: `tools/instruction-load.mjs`: sums the five files, prints the number, exits 1 above 600 — tools/instruction-load.mjs
-- [ ] T1: Resync, run every check, changelog, the two `[human]` ships — CHANGELOG.md
+- [-] T1: Resync, run every check, changelog, the two `[human]` ships — CHANGELOG.md
 
 ## Technical Considerations
 - Dependencies: 088's `plan-review.mjs` and `claude-run.mjs`; `ship-prep.mjs` (lane thresholds at lines 24–46 stay the source of truth).

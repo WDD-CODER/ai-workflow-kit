@@ -1,6 +1,6 @@
 # Plan 078 — A plan with UI cards carries a UI Spec the Human approves with the plan, before anything is built
 
-Status: draft
+Status: abandoned — parked under the freeze: new work with no failure shown today; re-plan after the freeze if still wanted; closed 2026-11-09
 Parked: 2026-11-05 — reliability freeze, revisit 2026-11-15
 Depends-on: 075
 Snapshot: b075db1e9c4876d4f210c95612df2e2a406a160a

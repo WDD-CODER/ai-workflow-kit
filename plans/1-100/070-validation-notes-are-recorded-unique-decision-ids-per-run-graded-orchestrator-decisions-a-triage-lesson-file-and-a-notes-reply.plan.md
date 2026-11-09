@@ -1,6 +1,6 @@
 # Plan 070 — Validation notes are recorded: unique decision ids per run, graded orchestrator decisions, a triage lesson file and a notes reply
 
-Status: draft
+Status: abandoned — parked under the freeze: new work with no failure shown today; re-plan after the freeze if still wanted; closed 2026-11-09
 Parked: 2026-11-05 — reliability freeze, revisit 2026-11-15
 Depends-on: 057, 065, 066, 069
 Snapshot: 5784d6d3de92d41b9b08de0161cf3c31a430a8b2

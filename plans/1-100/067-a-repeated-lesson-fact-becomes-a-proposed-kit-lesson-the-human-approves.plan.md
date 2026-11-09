@@ -1,6 +1,6 @@
 # Plan 067 — A repeated lesson fact becomes a proposed kit lesson the Human approves
 
-Status: draft
+Status: abandoned — parked under the freeze: new work with no failure shown today; re-plan after the freeze if still wanted; closed 2026-11-09
 Parked: 2026-11-05 — reliability freeze, revisit 2026-11-15
 Depends-on: 066
 Snapshot: 9909c12f1572d8e1e0a4aa133ab2b362c468c1ee

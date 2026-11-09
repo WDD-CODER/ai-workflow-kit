@@ -1,6 +1,6 @@
 # Plan 054 — A reported card failure is reproduced by one short test and fixed, with at most two fix attempts per card
 
-Status: draft
+Status: abandoned — parked under the freeze: new work with no failure shown today; re-plan after the freeze if still wanted; closed 2026-11-09
 Parked: 2026-11-05 — reliability freeze, revisit 2026-11-15
 Depends-on: 069
 Snapshot: 58be2737fde3c24035edc61c85c46798956a6bb0

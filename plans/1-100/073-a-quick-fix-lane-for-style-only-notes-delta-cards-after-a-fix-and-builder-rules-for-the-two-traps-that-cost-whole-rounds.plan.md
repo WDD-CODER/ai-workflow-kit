@@ -1,6 +1,6 @@
 # Plan 073 — A quick-fix lane for style-only notes, delta cards after a fix, and builder rules for the two traps that cost whole rounds
 
-Status: draft
+Status: abandoned — obsolete: it changes the orchestrator workflow and agents that kit 2.1.0 / plan 090 deleted (scripts/run-plans.mjs replaced them); re-plan against run-plans.mjs if still wanted; closed 2026-11-09
 Parked: 2026-11-05 — reliability freeze, revisit 2026-11-15
 Depends-on: 069, 070, 071, 072
 Snapshot: 5784d6d3de92d41b9b08de0161cf3c31a430a8b2

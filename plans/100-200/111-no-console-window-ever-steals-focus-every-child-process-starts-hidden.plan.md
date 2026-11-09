@@ -1,6 +1,6 @@
 # Plan 111 — No console window ever steals focus: every child process the kit starts is hidden
 
-Status: draft
+Status: closed — the part that mattered shipped in v3.0.1 (validation V1 passed); the helper sweep was dropped on 2026-11-09
 Parked: 2026-11-09 — the Human froze new work. v3.0.1 already hides the orchestrator run; the one part kept (S5: check the dev servers from slot-serve, give them the same hidden console only if a window shows) moves into the v3.0.2 fix release. The helper sweep (S1–S4, S6) is parked; reopen only if a window still shows in real use.
 Depends-on: none
 Snapshot: e282b67
@@ -66,13 +66,13 @@ the path to the scope block and retry.
 5. Anything that needs the Human's input in a console (a login, a prompt): expected none. If one exists, it gets `showWindow: true` with its `why`.
 
 ## Atomic Sub-tasks
-- [ ] S1: Write the failing scan test that lists every child-process call outside the helper — tools/test/no-console-window.test.mjs
-- [ ] S2: Add the shared helper and its unit test — always hidden, `showWindow` only with a reason — core/scripts/lib/proc.mjs, tools/test/proc.test.mjs
-- [ ] S3: Move every call in core/scripts to the helper, file by file, keeping options and return values — core/scripts/**
-- [ ] S4: Move every call in tools/ and packs/ scripts the same way — tools/**, packs/*/scripts/**
-- [ ] S5: Check the dev servers' detached start the way v3.0.1 fixed the run, and give them a hidden console only if a window still shows — core/scripts/lib/slot-procs.mjs
-- [ ] S6: Document the rule in one line where scripts are written, and add a gotcha entry — docs/project/**, docs/brain/gotchas.md
-- [ ] S7: Resync the installed copy, run every check, and release it — scripts/**, kit.json, CHANGELOG.md
+- [-] S1: Write the failing scan test that lists every child-process call outside the helper — tools/test/no-console-window.test.mjs
+- [-] S2: Add the shared helper and its unit test — always hidden, `showWindow` only with a reason — core/scripts/lib/proc.mjs, tools/test/proc.test.mjs
+- [-] S3: Move every call in core/scripts to the helper, file by file, keeping options and return values — core/scripts/**
+- [-] S4: Move every call in tools/ and packs/ scripts the same way — tools/**, packs/*/scripts/**
+- [-] S5: Check the dev servers' detached start the way v3.0.1 fixed the run, and give them a hidden console only if a window still shows — core/scripts/lib/slot-procs.mjs
+- [-] S6: Document the rule in one line where scripts are written, and add a gotcha entry — docs/project/**, docs/brain/gotchas.md
+- [-] S7: Resync the installed copy, run every check, and release it — scripts/**, kit.json, CHANGELOG.md
 
 ## Technical Considerations
 - `windowsHide` only sets how the child's window is shown (hidden). It does not change stdio, exit codes, environment, timeouts or kill behaviour, and it is ignored on macOS and Linux. Grandchildren of a hidden console child share its hidden console, so `pnpm` → `ng` stays hidden too.

@@ -1,6 +1,6 @@
 # Plan 108 — the plan gate runs each check once, `ciMirror` marks final-only commands, and the builder runs only its own tests
 
-Status: draft
+Status: abandoned — parked under the freeze: new work with no failure shown today; re-plan after the freeze if still wanted; closed 2026-11-09
 Parked: 2026-11-09 — the Human froze new work until the workflow runs clean on FoodVibe; reopen only when a validation case, a CI check or a real run fails on what this plan fixes.
 Depends-on: none
 Snapshot: bf79f22

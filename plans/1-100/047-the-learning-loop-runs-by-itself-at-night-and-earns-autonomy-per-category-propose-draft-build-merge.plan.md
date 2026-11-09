@@ -1,6 +1,6 @@
 # Plan 047 — The learning loop runs by itself at night and earns autonomy per category: propose → draft → build → merge
 
-Status: draft
+Status: abandoned — parked under the freeze: new work with no failure shown today; re-plan after the freeze if still wanted; closed 2026-11-09
 Parked: 2026-11-05 — reliability freeze, revisit 2026-11-15
 Depends-on: 046, 035
 Snapshot: a363b42

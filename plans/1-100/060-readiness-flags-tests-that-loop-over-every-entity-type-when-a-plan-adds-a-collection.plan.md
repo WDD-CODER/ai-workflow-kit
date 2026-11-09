@@ -1,6 +1,6 @@
 # Plan 060 — Readiness flags tests that loop over every entity type when a plan adds a collection; the plan template asks for them
 
-Status: draft
+Status: abandoned — obsolete: it changes the orchestrator workflow and agents that kit 2.1.0 / plan 090 deleted (scripts/run-plans.mjs replaced them); re-plan against run-plans.mjs if still wanted; closed 2026-11-09
 Depends-on: 063
 Snapshot: aac496e051072bad36314d3b24767d2f7fa37469
 Source: first orchestrator test run (test-512-422), findings F3 and D16

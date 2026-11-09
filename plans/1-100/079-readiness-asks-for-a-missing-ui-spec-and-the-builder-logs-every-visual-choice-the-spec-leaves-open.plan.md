@@ -1,6 +1,6 @@
 # Plan 079 — Readiness asks for a missing UI Spec, and the builder logs every visual choice the spec leaves open
 
-Status: draft
+Status: abandoned — obsolete: it changes the orchestrator workflow and agents that kit 2.1.0 / plan 090 deleted (scripts/run-plans.mjs replaced them); re-plan against run-plans.mjs if still wanted; closed 2026-11-09
 Parked: 2026-11-05 — reliability freeze, revisit 2026-11-15
 Depends-on: 078, 072
 Snapshot: b075db1e9c4876d4f210c95612df2e2a406a160a

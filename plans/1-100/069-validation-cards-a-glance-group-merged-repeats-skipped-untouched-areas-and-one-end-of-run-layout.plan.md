@@ -1,6 +1,6 @@
 # Plan 069 — Validation cards: a glance group, merged repeats, skipped untouched areas and one end-of-run layout
 
-Status: draft
+Status: abandoned — parked under the freeze: new work with no failure shown today; re-plan after the freeze if still wanted; closed 2026-11-09
 Parked: 2026-11-05 — reliability freeze, revisit 2026-11-15
 Depends-on: 049
 Snapshot: 2e00691cad9f286567c7ea8243c8c94675752161

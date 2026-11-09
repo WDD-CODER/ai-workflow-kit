@@ -1,6 +1,6 @@
 # Plan 072 — Design rules are enforced: a configured design-rules file the builder and rules checker read, and unplanned UI element types flagged
 
-Status: draft
+Status: abandoned — obsolete: it changes the orchestrator workflow and agents that kit 2.1.0 / plan 090 deleted (scripts/run-plans.mjs replaced them); re-plan against run-plans.mjs if still wanted; closed 2026-11-09
 Parked: 2026-11-05 — reliability freeze, revisit 2026-11-15
 Depends-on: 070, 071
 Snapshot: 5784d6d3de92d41b9b08de0161cf3c31a430a8b2

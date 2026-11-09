@@ -1,6 +1,6 @@
 # Plan 058 — Orchestrator preflight starts the main folder's servers itself, instead of stopping the run to ask the Human to start them
 
-Status: draft
+Status: done — built in PR #86; the Human waived the [human] checks on 2026-11-09
 Depends-on: none
 Snapshot: 24d6e2976aed2c0ed89adc239abf546d7ec8c98f
 
@@ -215,7 +215,7 @@ Every step names its own test location.
   - Scope: `core/docs/agent/orchestrator.md`, `core/docs/agent/workflow-map.md`, `core/docs/brain/gotchas/agent-workflow.md`
 - [x] R1: Render the kit's own installed copies, run every check and add the changelog entry — `node tools/sync.mjs --target . --apply`, `node tools/drift-check.mjs --target .`, build, lint, `npm test`, the full `tools/test` run, `node tools/orchestrator-e2e.mjs`
   - Scope: `scripts/**`, `.claude/**`, `docs/agent/**`, `docs/brain/**`, `.kit/install.json`, `CHANGELOG.md`
-- [ ] H1: [human] On the Human's PC, a real /orchestrate from the main folder with no dev server running starts it, and a plan with an [auto:main] item gets the backend on dev:local — keeps this plan open until the Human replies done
+- [-] H1: [human] On the Human's PC, a real /orchestrate from the main folder with no dev server running starts it, and a plan with an [auto:main] item gets the backend on dev:local — keeps this plan open until the Human replies done
 
 ## Technical Considerations
 - **Why start in the preflight and not in the workflow:** the preflight is the one place that already proves the environment

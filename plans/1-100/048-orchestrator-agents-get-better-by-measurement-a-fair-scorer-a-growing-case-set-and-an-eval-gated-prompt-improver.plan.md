@@ -1,6 +1,6 @@
 # Plan 048 — Orchestrator agents get better by measurement: a fair scorer, a growing case set, and an eval-gated prompt improver
 
-Status: draft
+Status: abandoned — parked under the freeze: new work with no failure shown today; re-plan after the freeze if still wanted; closed 2026-11-09
 Parked: 2026-11-05 — reliability freeze, revisit 2026-11-15
 Depends-on: 030, 035, 046, 049
 Snapshot: d2d9649a240864a8ff2e74f37a3efeed00701aea

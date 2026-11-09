@@ -1,6 +1,6 @@
 # Plan 057 — /ship learns from every Worker plan: every decision graded, seen defects become follow-ups, and REGULAR ships on a plan branch run the checker pipeline
 
-Status: draft
+Status: done — built in PR #85; the Human waived H1 on 2026-11-09 (plan 089 changed /ship since)
 Depends-on: none
 Snapshot: c497df8
 
@@ -183,7 +183,7 @@ None (scripts and instructions only).
   - Scope: `core/docs/brain/decisions/0015-ship-fast-picks-the-light-review-except-on-sensitive-paths.md`, `core/docs/brain/decisions/0007-ship-fast-decouples-approval-from-classification.md`
 - [x] R1: Render the kit's installed copies, prove them and add the changelog line — `tools/test/ship-review.test.mjs` reads the rendered `ship.md`, `ship-regular.md`, `review-it.md` for the G3/R2/R3/F1 commands, plus the `fast` → light review assertion (Goals); `node tools/sync.mjs --target . --apply`, then `node tools/drift-check.mjs --target .`, build, lint, `npm test`, the full `tools/test` suite, `node tools/orchestrator-e2e.mjs`; one CHANGELOG entry under Unreleased in product-agnostic words, no plan number — `scripts/**`, `.claude/**`, `docs/agent/**`, `docs/brain/decisions/**`, `.cursor/**`, `.kit/install.json`, `CHANGELOG.md`, `tools/test/ship-review.test.mjs`
   - Scope: `scripts/**`, `.claude/**`, `docs/agent/**`, `docs/brain/decisions/**`, `.cursor/**`, `.kit/install.json`, `CHANGELOG.md`, `tools/test/ship-review.test.mjs`
-- [ ] H1: [human] After the next kit release and a sync into FoodVibe, one real /ship on a Worker plan shows the checkers, the fact line and a seen follow-up that /plan lists — the 4 HOW TO VALIDATE cards; keeps this plan open until the Human replies done
+- [-] H1: [human] After the next kit release and a sync into FoodVibe, one real /ship on a Worker plan shows the checkers, the fact line and a seen follow-up that /plan lists — the 4 HOW TO VALIDATE cards; keeps this plan open until the Human replies done
 
 ## Technical Considerations
 - **Stable ids by tag (Human's choice, 2026-11-02).** The tag lives on the decision line itself, so ids survive new

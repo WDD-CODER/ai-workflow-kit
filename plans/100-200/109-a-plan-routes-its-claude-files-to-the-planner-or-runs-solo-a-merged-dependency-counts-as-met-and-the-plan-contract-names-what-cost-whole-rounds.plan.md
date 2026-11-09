@@ -1,6 +1,6 @@
 # Plan 109 — a plan routes its `.claude/` files to the Planner or runs solo, a merged dependency counts as met, and the plan contract names what cost whole rounds
 
-Status: draft
+Status: abandoned — parked under the freeze: new work with no failure shown today; re-plan after the freeze if still wanted; closed 2026-11-09
 Parked: 2026-11-09 — the Human froze new work until the workflow runs clean on FoodVibe; reopen only when a validation case, a CI check or a real run fails on what this plan fixes.
 Depends-on: none
 Snapshot: bf79f22

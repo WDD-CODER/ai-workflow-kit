@@ -1,6 +1,6 @@
 # Plan 056 — Orchestrator: a kit script is a main-folder check only when listed, and a removal decision must never be triaged away
 
-Status: draft
+Status: abandoned — obsolete: the main-try code it targets no longer exists (run-plans.mjs replaced the workflow); closed 2026-11-09
 Depends-on: none
 Snapshot: c497df8ad77fe934371a5debd884c1fc15a6d920
 

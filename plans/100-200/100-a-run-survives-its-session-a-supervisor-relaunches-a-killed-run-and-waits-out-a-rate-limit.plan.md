@@ -1,6 +1,6 @@
 # Plan 100 — A run survives its session: a supervisor relaunches a killed run and waits out a rate limit
 
-Status: draft
+Status: done — S7/S8 were finished by the plan-100 merge (PR #123) and 3.0.0–3.0.2
 Depends-on: none
 Snapshot: 99037d4
 Source: the stops audit of 16 FoodVibe runs (2026-10-27 → 2026-11-08, 36 stops), mapped in the chat session on 2026-11-08 (groups F and J). The Human took every recommendation on 2026-11-08. Reliability fix, allowed in the freeze; no new capability.
@@ -92,8 +92,8 @@ the path to the scope block and retry.
 - [x] S4: Add the supervisor that starts the run on its own and brings it back after a death or a rate limit — detached child, console log, relaunch rules — core/scripts/run-supervisor.mjs
 - [x] S5: Sweep what dead runs left before a run starts, and say what was kept — the existing sweep scripts, called from the supervisor; a sweep script changes only when Step 0 item 6 finds it removes a held folder or branch — core/scripts/run-supervisor.mjs, core/scripts/orphan-sweep.mjs, core/scripts/prune-merged-worktrees.sh
 - [x] S6: Fix the relaunch cap and the free-memory floor in code, with test-only overrides and no new setting — MAX_RELAUNCHES, MIN_FREE_MEM_GB — core/scripts/run-supervisor.mjs, tools/test/run-supervisor.test.mjs
-- [ ] S7: Make /orchestrate start the supervisor and return, with no relaunch of its own — and move install-check's orchestrate.md assertions to the supervisor line — core/.claude/commands/orchestrate.md, core/docs/agent/orchestrator.md, tools/install-check.mjs
-- [ ] S8: Resync the installed copies, run every check, add the changelog entry — CHANGELOG.md
+- [x] S7: Make /orchestrate start the supervisor and return, with no relaunch of its own — and move install-check's orchestrate.md assertions to the supervisor line — core/.claude/commands/orchestrate.md, core/docs/agent/orchestrator.md, tools/install-check.mjs
+- [x] S8: Resync the installed copies, run every check, add the changelog entry — CHANGELOG.md
 
 ## Technical Considerations
 - A relaunch with the same run name is safe: git is the ledger, merged plans are left out (`docs/agent/orchestrator.md`, State rules).

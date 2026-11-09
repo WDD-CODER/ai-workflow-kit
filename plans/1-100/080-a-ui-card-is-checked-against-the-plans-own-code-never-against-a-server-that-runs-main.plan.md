@@ -1,6 +1,6 @@
 # Plan 080 — A UI card is checked against the plan's own code, never against a server that runs main
 
-Status: draft
+Status: abandoned — obsolete: it changes the orchestrator workflow and agents that kit 2.1.0 / plan 090 deleted (scripts/run-plans.mjs replaced them); re-plan against run-plans.mjs if still wanted; closed 2026-11-09
 Parked: 2026-11-05 — reliability freeze, revisit 2026-11-15
 Depends-on: 075
 Snapshot: b075db1e9c4876d4f210c95612df2e2a406a160a

@@ -1,6 +1,6 @@
 # Plan 082 — A solo plan shipped with /ship sends its run record to the kit brain, like an orchestrator run
 
-Status: draft
+Status: abandoned — obsolete: /ship brain capture now sits behind review.learn (default off) since plan 089; closed 2026-11-09
 Parked: 2026-11-05 — reliability freeze, revisit 2026-11-15
 Depends-on: 075
 Snapshot: b075db1e9c4876d4f210c95612df2e2a406a160a
