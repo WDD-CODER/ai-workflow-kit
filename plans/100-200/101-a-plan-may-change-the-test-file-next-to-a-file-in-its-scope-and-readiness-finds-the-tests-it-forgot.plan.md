@@ -1,6 +1,6 @@
 # Plan 101 — A plan may change the test file next to a file in its scope, and readiness finds the tests it forgot
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: 99037d4
 Source: the stops audit of 16 FoodVibe runs, mapped on 2026-11-08 (group A: stops #13, 16, 19, 24, 25, 26, 27). The Human took every recommendation on 2026-11-08. Reliability fix, allowed in the freeze; no new capability.

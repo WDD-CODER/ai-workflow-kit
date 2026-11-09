@@ -1,6 +1,6 @@
 # Plan 104 — A run asks one plan at a time through one ask file, and no PR merges without the Human
 
-Status: draft
+Status: done
 Depends-on: 100, 102
 Snapshot: 99037d4
 Source: the stops audit of 16 FoodVibe runs, mapped on 2026-11-08 (the "tech" and "Human" rows, the questions the session asked, and PR #523). The Human took every recommendation on 2026-11-08. This plan prepares the place the advisor (decided 2026-11-01, built later) will answer. It adds no advisor. Reliability fix, allowed in the freeze.

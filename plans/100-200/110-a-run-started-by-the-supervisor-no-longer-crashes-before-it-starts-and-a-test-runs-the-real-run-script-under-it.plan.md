@@ -1,6 +1,6 @@
 # Plan 110 — A run started by the supervisor no longer crashes before it starts, and a test runs the real run script under it
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: da43c3c
 Source: plan 106's validation run, 2026-11-09 (case V1, fake mode, working tree at bf79f22): every run that `scripts/run-supervisor.mjs` starts crashes before its first step. Since v3.0.0 `/orchestrate` starts every run that way, so `/orchestrate` cannot run any plan on v3.0.0. Bug fix, allowed in the freeze; no new capability. The Human asked for this plan on 2026-11-09.

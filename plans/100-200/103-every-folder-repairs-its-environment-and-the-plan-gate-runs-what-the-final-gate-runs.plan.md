@@ -1,6 +1,6 @@
 # Plan 103 — Every folder repairs its environment, and the plan gate runs what the final gate runs
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: 99037d4
 Source: the stops audit of 16 FoodVibe runs, mapped on 2026-11-08 (groups C, D, I: stops #1, 3, 4, 7, 8, 10–12, 15–17, 22, 24, 28, 32, 35). The Human took every recommendation on 2026-11-08. Reliability fix, allowed in the freeze; no new capability.

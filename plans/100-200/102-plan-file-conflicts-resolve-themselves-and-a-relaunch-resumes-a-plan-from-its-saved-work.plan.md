@@ -1,6 +1,6 @@
 # Plan 102 — Plan-file conflicts resolve themselves, and a relaunch resumes a plan from its saved work
 
-Status: draft
+Status: done
 Depends-on: 100
 Snapshot: 99037d4
 Source: the stops audit of 16 FoodVibe runs, mapped on 2026-11-08 (groups B and H: stops #12, 14, 18, 21, 29). The Human took every recommendation on 2026-11-08. Reliability fix, allowed in the freeze; no new capability.

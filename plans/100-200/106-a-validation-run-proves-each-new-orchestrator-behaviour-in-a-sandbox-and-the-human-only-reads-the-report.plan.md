@@ -1,6 +1,6 @@
 # Plan 106 — A validation run proves each new orchestrator behaviour in a sandbox, and the Human only reads the report
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: 933f618
 Source: the Human, 2026-11-09, after release v3.0.0 (plans 100–104): "create dummy tests, dummy plans and dummy actions … run it through a prompt that will give it a goal to execute each and every one by itself and report exactly what happened … the Human only reads the results." Today the five `[human]` items of plans 100–104 can only be checked by hand on an installed project after a release.
