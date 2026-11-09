@@ -7,7 +7,7 @@ Source: the Human, 2026-11-09 (FoodVibe session, run-518): console windows keep 
 
 ## Problem Statement
 1. **Windows pop up and steal focus.** On Windows, a console program (`git`, `gh`, `pnpm`, `node`, `cmd`) started by a process that has no console of its own gets a new, visible console window. It opens, takes focus, and closes when the program ends. The Human loses their typing focus many times per run.
-2. **Why the kit's processes have no console.** The supervisor and the run start detached (`detachedOptions` in `core/scripts/run-supervisor.mjs`; `slot-procs.mjs` for dev servers). On Windows, Node's `detached: true` means no console at all. Every console child they start without `windowsHide: true` therefore gets its own visible window. Hooks run by Claude Code are in the same position.
+2. **Why the kit's processes have no console.** On Windows, Node's `detached: true` means no console at all, so every console child started without `windowsHide: true` gets its own visible window. **v3.0.1 already fixed the orchestrator run:** the supervisor starts `run-plans.mjs` not detached on Windows with `windowsHide: true` (`detachedOptions(fd, { console: true })` in `core/scripts/run-supervisor.mjs`), so the run has one hidden console that all its git and node calls share; the supervisor's own three `spawnSync` calls pass `windowsHide: true`. The Human watched the real-run test on 2026-11-09: no window flashed. Still open: the supervisor process itself is still detached (only its own hidden calls run there), dev servers from `slot-procs.mjs`, hooks run by Claude Code, and every other script that runs from a console-less parent.
 3. **Only a few calls hide today.** Of about 330 `spawn` / `spawnSync` / `exec*` calls outside tests (40 files in `core/scripts`, 26 in `tools`, 2 in `packs`), about 24 pass `windowsHide: true`: the supervisor's `detachedOptions`, the builder and reviewer (`lib/claude-run.mjs`), the gate (`lib/plan-gate.mjs`) and the dev servers (`lib/slot-procs.mjs`). Everything else, e.g. every `git` / `gh` call in `orch-state.mjs` (14), `decision-log.mjs` (14), `run-plans.mjs` (12), `take-plan.mjs` (10), `lib/orch-run.mjs` (10), opens a window when its parent has no console.
 4. **Nothing stops a new call from bringing it back.** No test or lint looks at child-process options.
 
@@ -18,7 +18,7 @@ Source: the Human, 2026-11-09 (FoodVibe session, run-518): console windows keep 
 - [auto] Every child-process call under `core/scripts/**`, `tools/**` and `packs/**/scripts/**` (tests excluded) goes through `lib/proc.mjs` (or, in `tools/` and `packs/`, a copy of the same few lines when they cannot import from `core/`). `node --test tools/test/no-console-window.test.mjs` passes: it scans those folders and fails on any direct `child_process` import or call outside `lib/proc.mjs`, naming the file and line; a `showWindow: true` without a `why` also fails.
 - [auto] Unit test for `lib/proc.mjs`: each wrapper passes `windowsHide: true` through, keeps every other option and the return value unchanged (stdout, status, signal, error), and `showWindow: true` drops it.
 - [auto] Output, exit codes, timeouts and the `taskkill /T` kill paths behave as before: the existing tests (`tools/test/*.test.mjs`, `npm test`, `npm run build`, `npm run lint`, `node tools/drift-check.mjs --target .`) pass unchanged.
-- [auto] Detached starts (supervisor, run, dev servers) keep `windowsHide: true`; Step 0 item 3's check is recorded under Execution Notes with the Node version, and a hidden launcher is added only if that check shows a window.
+- [auto] Detached starts (supervisor, dev servers) keep `windowsHide: true`, and the run keeps v3.0.1's hidden console (`detachedOptions` with `console: true`, not detached on Windows — `tools/test/run-supervisor.test.mjs` checks it); Step 0 item 3's check of the dev servers is recorded under Execution Notes with the Node version, and the same hidden-console start is used for them only if that check shows a window.
 - [human] On FoodVibe, after `kit-sync` of the release: run one `/orchestrate` plan and one `slot-serve` start while typing in another window; no console window appears and focus never moves (reply `ok`, or `failed:` with roughly when a window appeared).
 
 ## Execution Mode
@@ -60,7 +60,7 @@ the path to the scope block and retry.
 ## Step 0 — Reality Check
 1. List every child-process call outside tests: `grep -rnE "\b(spawn|spawnSync|execFile|execFileSync|execSync|exec)\(" core/scripts tools packs --include=*.mjs --include=*.js --include=*.cjs`, plus `child_process` imports. Note which already pass `windowsHide` (expected: `run-supervisor.mjs`, `lib/claude-run.mjs`, `lib/plan-gate.mjs`, `lib/slot-procs.mjs`).
 2. `scripts/**` is the kit's own installed copy of `core/scripts/**`: change `core/`, then resync the copy (as plan 110 did); never hand-edit `scripts/` alone.
-3. Detached + hidden on Windows: start a detached `node -e "require('child_process').execSync('git --version')"` with today's `detachedOptions` and one with the fix applied; record whether any window appears. Some Node versions on Windows still showed a window for a detached child even with `windowsHide: true`; if this one does, find the smallest launcher that stays hidden on this machine, test it the same way, and note the choice.
+3. Detached + hidden on Windows: the run's case is settled by v3.0.1 (a detached process has no console, so its children flash; the fix is not detached + `windowsHide`, which gives one hidden console the children share). Check the dev servers the same way: start one with `slot-procs.mjs` as it is and watch for windows while it serves and its tools run; if one shows, give it the same hidden-console start as the run. Do not change `detachedOptions` again.
 4. `shell: true` calls on Windows (`pnpm.cmd`, `npm.cmd`): `windowsHide` must reach `cmd.exe` too; the helper passes it on every call.
 5. Anything that needs the Human's input in a console (a login, a prompt): expected none. If one exists, it gets `showWindow: true` with its `why`.
 
@@ -69,7 +69,7 @@ the path to the scope block and retry.
 - [ ] S2: Add the shared helper and its unit test — always hidden, `showWindow` only with a reason — core/scripts/lib/proc.mjs, tools/test/proc.test.mjs
 - [ ] S3: Move every call in core/scripts to the helper, file by file, keeping options and return values — core/scripts/**
 - [ ] S4: Move every call in tools/ and packs/ scripts the same way — tools/**, packs/*/scripts/**
-- [ ] S5: Check detached starts on this machine's Node (Step 0 item 3) and add a hidden launcher only if a window still shows — core/scripts/run-supervisor.mjs, core/scripts/lib/slot-procs.mjs
+- [ ] S5: Check the dev servers' detached start the way v3.0.1 fixed the run, and give them a hidden console only if a window still shows — core/scripts/lib/slot-procs.mjs
 - [ ] S6: Document the rule in one line where scripts are written, and add a gotcha entry — docs/project/**, docs/brain/gotchas.md
 - [ ] S7: Resync the installed copy, run every check, and release it — scripts/**, kit.json, CHANGELOG.md
 
@@ -86,3 +86,4 @@ Changing what any script runs or prints; Claude Code's own hook runner; any mach
 None open.
 
 ## Execution Notes
+- 2026-11-09 Planner: v3.0.1 (plan 110, merge c6a627d) already hides the orchestrator run on Windows (see Problem Statement 2); Done-when, Step 0 item 3 and S5 now cover only what is left. The helper (S2–S4) and the scan test (S1) are unchanged: they keep the rest of the kit hidden and stop new calls from bringing windows back.
