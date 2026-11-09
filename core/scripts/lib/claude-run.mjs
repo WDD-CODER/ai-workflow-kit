@@ -8,7 +8,7 @@
  *
  * Every call passes the four context-saving flags (CONTEXT_FLAGS: no user or project settings, no MCP servers, no slash
  * commands, no saved session — a call then loads a few thousand tokens of context instead of tens of thousands),
- * `--output-format json`, `--model` (none for "inherit"), `--system-prompt-file` with the agent's body, and `--tools`
+ * `--output-format json` (`stream-json --verbose` with `stream`: one event per line, see runAgent), `--model` (none for "inherit"), `--system-prompt-file` with the agent's body, and `--tools`
  * from the agent's front matter; an agent without a write tool also gets `--disallowedTools` for the write tools.
  * Tools are pre-approved (`--allowedTools`) only when the caller asks (`allow`), and a read-only agent then gets no
  * Bash at all; a writing agent gets a bare Bash only with a `settings` file (`--settings`: the guard hooks, which run
@@ -71,8 +71,8 @@ export function allowedTools(agent, { guarded = false } = {}) {
  * permission prompt — `--allowedTools` from allowedTools(): the whole list only for an agent that writes (run-plans'
  * builder, and only with `settings`), the read tools without Bash for a read-only one. An agent without a write tool always gets `--disallowedTools`.
  */
-export function claudeArgs({ agent, model, systemPromptFile, allow = false, settings = null }) {
-  const args = ['-p', '--output-format', 'json', '--system-prompt-file', systemPromptFile, ...CONTEXT_FLAGS]
+export function claudeArgs({ agent, model, systemPromptFile, allow = false, settings = null, stream = false }) {
+  const args = ['-p', '--output-format', stream ? 'stream-json' : 'json', ...(stream ? ['--verbose'] : []), '--system-prompt-file', systemPromptFile, ...CONTEXT_FLAGS]
   // `--settings`: a kit-written file (outside the agent's folder) with the guard hooks; it is read whatever
   // --setting-sources says, and a hook's deny wins over --allowedTools.
   if (settings) args.push('--settings', settings)
@@ -159,8 +159,9 @@ export function newestChange(dir) {
  * `timeoutMs` is a wall-clock limit (0 = none). `idleMs` with `watchDir` is an idle limit instead: every `pollMs` the
  * newest file change under `watchDir` (and any output) counts as activity, and the call is stopped only after `idleMs`
  * with none (`idle: true`) — a call that keeps changing files is never stopped.
+ * `onLine(line)`: called with each whole stdout line as it arrives (a throw in it is ignored); stdout is still kept whole.
  */
-export function spawnClaude({ bin, args, cwd, input = '', timeoutMs = 600_000, idleMs = 0, watchDir = null, pollMs = 30_000, env = process.env }) {
+export function spawnClaude({ bin, args, cwd, input = '', timeoutMs = 600_000, idleMs = 0, watchDir = null, pollMs = 30_000, env = process.env, onLine = null }) {
   return new Promise((done) => {
     const script = /\.m?js$/i.test(bin) && existsSync(bin)
     const win = process.platform === 'win32' && !script
@@ -197,7 +198,18 @@ export function spawnClaude({ bin, args, cwd, input = '', timeoutMs = 600_000, i
       if (timer) clearTimeout(timer)
       if (watch) clearInterval(watch)
     }
-    child.stdout.on('data', (d) => { stdout += d; lastActive = Date.now() })
+    let partial = ''
+    const lines = (chunk, end = false) => {
+      if (!onLine) return
+      partial += chunk
+      const parts = partial.split(/\r?\n/)
+      partial = end ? '' : parts.pop()
+      for (const l of parts) {
+        if (!l.trim()) continue
+        try { onLine(l) } catch { /* a listener never breaks the call */ }
+      }
+    }
+    child.stdout.on('data', (d) => { stdout += d; lastActive = Date.now(); lines(String(d)) })
     child.stderr.on('data', (d) => { stderr += d; lastActive = Date.now() })
     child.on('error', (e) => {
       stop()
@@ -205,6 +217,7 @@ export function spawnClaude({ bin, args, cwd, input = '', timeoutMs = 600_000, i
     })
     child.on('close', (code) => {
       stop()
+      lines('', true)
       done({ stdout, stderr, code, timedOut, idle, error: null })
     })
     child.stdin.on('error', () => { /* the child closed stdin early */ })
@@ -217,8 +230,11 @@ export function spawnClaude({ bin, args, cwd, input = '', timeoutMs = 600_000, i
  * in. Returns { ok, text, usage, tokens, costUsd, exit, seconds, error, rateLimited, timedOut, argv }: `text` is the
  * agent's final reply (its JSON result inside), `ok` false on a non-zero exit, a timeout, an `is_error` answer or
  * unreadable output; `rateLimited` when the failure names a rate or usage limit.
+ * `stream: { onEvent }`: the call prints stream-json; `onEvent(event)` gets each parsed event in order, and the last
+ * `result` event is read exactly as the JSON mode's whole output. Streamed stdout holds tool results (file text), so
+ * a rate limit is then read only from the result's text, stderr, `api_error_status` and a `rejected` rate_limit_event.
  */
-export async function runAgent({ agent = null, agentFile = null, model = null, cwd, prompt, timeoutMs = 600_000, idleMs = 0, watchDir = null, pollMs = 30_000, bin = process.env.RUN_PLANS_CLAUDE || 'claude', allow = false, settings = null, trustCwdSettings = true, env = process.env }) {
+export async function runAgent({ agent = null, agentFile = null, model = null, cwd, prompt, timeoutMs = 600_000, idleMs = 0, watchDir = null, pollMs = 30_000, bin = process.env.RUN_PLANS_CLAUDE || 'claude', allow = false, settings = null, trustCwdSettings = true, env = process.env, stream = null }) {
   const a = agent ?? readAgent(agentFile)
   // An untrusted folder with its own local settings: refused before anything is spawned.
   const planted = trustCwdSettings ? null : untrustedSettings(cwd)
@@ -228,13 +244,26 @@ export async function runAgent({ agent = null, agentFile = null, model = null, c
   try {
     const systemPromptFile = join(tmp, 'system.md')
     writeFileSync(systemPromptFile, systemPromptOf(a))
-    const args = claudeArgs({ agent: a, model, systemPromptFile, allow, settings })
-    const r = await spawnClaude({ bin, args, cwd, input: prompt, timeoutMs, idleMs, watchDir, pollMs, env })
+    const args = claudeArgs({ agent: a, model, systemPromptFile, allow, settings, stream: Boolean(stream) })
+    let streamed = null
+    let limitRejected = false
+    const onLine = stream ? (line) => {
+      let ev
+      try { ev = JSON.parse(line) } catch { return }
+      if (!ev || typeof ev !== 'object') return
+      if (ev.type === 'result') streamed = ev
+      if (ev.type === 'rate_limit_event' && ev.rate_limit_info?.status === 'rejected') limitRejected = true
+      if (typeof stream.onEvent === 'function') stream.onEvent(ev)
+    } : null
+    const r = await spawnClaude({ bin, args, cwd, input: prompt, timeoutMs, idleMs, watchDir, pollMs, env, onLine })
     const seconds = Math.round((Date.now() - started) / 100) / 10
     let json = null
-    try {
-      json = JSON.parse(r.stdout)
-    } catch { /* not JSON: an error before the answer */ }
+    if (stream) json = streamed
+    else {
+      try {
+        json = JSON.parse(r.stdout)
+      } catch { /* not JSON: an error before the answer */ }
+    }
     const text = json && typeof json.result === 'string' ? json.result : ''
     const usage = json?.usage ?? null
     const base = { text, usage, tokens: tokensOf(usage), costUsd: Number(json?.total_cost_usd) || 0, exit: r.code, seconds, timedOut: r.timedOut || r.idle, idle: r.idle, argv: args, agent: a.name, model: model ?? a.model }
@@ -243,10 +272,11 @@ export async function runAgent({ agent = null, agentFile = null, model = null, c
     if (r.error) error = `claude could not start: ${r.error}`
     else if (r.idle) error = `claude idle for ${Math.round(idleMs / 60000)} min (no file changed in its folder)`
     else if (r.timedOut) error = `claude timed out after ${Math.round(timeoutMs / 60000)} min`
-    else if (r.code !== 0) error = `claude exited ${r.code}: ${tail(text || r.stderr || r.stdout)}`
-    else if (!json) error = `claude printed no JSON: ${tail(r.stdout || r.stderr)}`
+    else if (r.code !== 0) error = `claude exited ${r.code}: ${tail(text || r.stderr || (stream ? '' : r.stdout))}`
+    else if (!json) error = stream ? `claude printed no result event: ${tail(r.stderr)}` : `claude printed no JSON: ${tail(r.stdout || r.stderr)}`
     else if (json.is_error === true) error = `claude answered an error: ${tail(text || json.subtype)}`
-    const rateLimited = Boolean(error) && (RATE_LIMIT_RE.test(`${text}\n${r.stderr}\n${r.stdout}`) || Number(json?.api_error_status) === 429)
+    const said = stream ? `${text}\n${r.stderr}` : `${text}\n${r.stderr}\n${r.stdout}`
+    const rateLimited = Boolean(error) && (RATE_LIMIT_RE.test(said) || Number(json?.api_error_status) === 429 || limitRejected)
     return { ok: !error, error, rateLimited, ...base }
   } finally {
     try { rmSync(tmp, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 }) } catch { /* left in the OS temp folder */ }

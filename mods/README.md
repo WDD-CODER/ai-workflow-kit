@@ -4,7 +4,7 @@ Three Claude Code mods (capped at three: new features go into one of them) for t
 
 | Mod | What you get | Commands |
 | --- | --- | --- |
-| **fleet** | One registry of every live session across `wt-N` slots, with resume lines; a slot lock that stops a branch switch under another live session; port janitor; a status line with cache countdown, context %, 5h/7d limits with the time each window resets (and a notice in every session when the 5-hour window refreshes), ≈cost and git state; a handoff-and-restart button; a **Pull main** button (main: fast-forward; slot: merge `origin/main`, aborted on conflict); **quick replies** — a `[ ⏎ ]` button inline after each reply the answer marks on purpose (`text` ⏎; fleet adds a short rule to the system prompt), which fills the prompt box, unsent; nothing is guessed from wording; an **orchestrator run** chip with a % that opens one line per plan; phone push (optional) | `/fleet` `/ports` `/health` `/handoff` |
+| **fleet** | One registry of every live session across `wt-N` slots, with resume lines; a slot lock that stops a branch switch under another live session; port janitor; a status line with cache countdown, context %, 5h/7d limits with the time each window resets (and a notice in every session when the 5-hour window refreshes), ≈cost and git state; a handoff-and-restart button; a **Pull main** button (main: fast-forward; slot: merge `origin/main`, aborted on conflict); **quick replies** — a `[ ⏎ ]` button inline after each reply the answer marks on purpose (`text` ⏎; fleet adds a short rule to the system prompt), which fills the prompt box, unsent; nothing is guessed from wording; an **orchestrator run** chip with a % that opens a live panel per plan (steps, ticking clocks, the gate check running now, what the builder is doing); phone push (optional) | `/fleet` `/ports` `/health` `/handoff` |
 | **guards** | The shell guards in-process (no bash/python/node per edit): main-branch rule, plan Read-Write Scope, kit-owned files, new-plan similarity; hard deny on `git push --no-verify`; role line injected at start; an **Approve** button for the `approved: <path>` protocol | `/approve <path>` `/role` |
 | **ship-pilot** | The branch's PR, checks, mergeability and "behind main" as a band; `merge / later / open-pr-only` as buttons that send the literal reply to `/ship`'s gate; a plan progress bar from Atomic Sub-tasks; tick a sub-task from the phone | `/pr` `/merge` `/progress` `/check A3` |
 
@@ -88,7 +88,20 @@ Done when:
 
 The "now" step follows the model's own task list (TaskUpdate/TodoWrite). `/check A2` ticks that sub-task in the plan file (slot only, never `.claude/todo.md`); it rides the next commit. Done-when validation still goes through `done` / `/done` / `/ship Y`.
 
-**Orchestrator run** — while an `/orchestrate` run is live in this checkout, fleet's dock shows `run <name> NN%`. Press it (or `r`) for a panel under the dock with one line per plan, its stage in plain words and how long it has been there (`506 · checks (gate 506 · 20 s ago) · 3 min`), what the current agent is doing (from the workflow's `journal.jsonl`), and the run's `orch-state.mjs watch` line last. A `STUCK: …` line turns the chip and the panel to the warning colour. The % counts each plan by its stage (building ¼ · checks ½ · reviewers ¾ · merging 0.9 · merged or parked 1). Fleet only reads `.claude/orchestrator-runs/*/status.json` and the journal and runs the `watch` command: no model call, nothing written to the run. It refreshes at each answer's end and every 30 s while a run is live (also for 10 min after a Workflow call, so a run that is just starting shows up); no timer runs otherwise.
+**Orchestrator run** — while an `/orchestrate` run is live in this checkout, fleet's dock shows `run <name> NN%`. Press it (or `r`) for a panel under the dock:
+
+```
+run run-519 · 63% · 14:02 · 1.1M tokens
+  529 ✓ merged ✓   build 2:39 · gate 3:43 · review 0:08 · merge 0:41   710k tokens
+  531 ▶ building   build ▶1:12 · gate · review · merge   sonnet · round 0 · 315k tokens
+      now: Edit server/mcp/mongo.ts · 23 tools · 210k tokens · 3 s ago
+  532 ▶ checks   build 2:10 · gate ▶2:00 · review · merge   round 0
+      gate 4/16: pnpm run test:ci · 0:42
+  533 · waiting
+RUNNING
+```
+
+The run line has the elapsed time and every call's tokens. Each plan has a step bar (each finished step's time, a clock on the running one), the model, round and tokens; at the gate, the check running now (`n/N`); while building, the builder's last tool and file, its tool count and tokens so far. The clocks tick every second while the panel is open. The run's `orch-state.mjs watch` line comes last; a `STUCK: …` line turns the chip and the panel to the warning colour. The % counts each plan by its stage (building ¼ · checks ½, rising with the checks done · reviewers ¾ · merging 0.9 · merged or parked 1). Fleet only reads `.claude/orchestrator-runs/<run>/status.json`, `calls.csv` and `live-*.json` (written by `run-plans.mjs`, `docs/agent/orchestrator.md` "Live view") and runs the `watch` command at most every 30 s: no model call, nothing written to the run. It re-reads every 5 s while a run is live, also for 10 min after a Bash call that starts `run-supervisor.mjs` or `run-plans.mjs` (what `/orchestrate` does), so a starting run shows up without a new message; no timer runs otherwise.
 
 **Ports** — `/ports` lists the main and slot ports (base + 0…3) with who listens; stop this slot with `node scripts/slot-stop.mjs` as before.
 

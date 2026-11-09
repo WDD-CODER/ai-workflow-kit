@@ -811,7 +811,7 @@ export const register: Register = (on, rawOptions) => {
     const rs = await readRuns($)
     const runChip = runChips(ui, $, rs, 'run-chip', 'r')
     const runRow = runChips(ui, $, rs, 'run-row')
-    const panel = rs.panelOpen && rs.list.length ? runPanel(ui, rs) : null
+    const panel = rs.panelOpen && rs.list.length ? runPanel(ui, rs, now) : null
     const mine = (entry: unknown) => (panel ? [entry, panel] : entry)
     if (e.props.isWorking || dismissed || !(cold || hot)) return drawDock(ui, mine(dockEntry(ui, 'fleet', false, [...calm, pull, ...runChip], [...calm, ...runRow])), below)
     const why = [

@@ -170,9 +170,10 @@ function excludeReceipt(folder) {
 
 /**
  * Run the commands in order in `folder`. Every command runs (a failure does not stop the next one), so the receipt and
- * a fix round see every failing check at once. `onResult(result)` is called after each command (the caller's calls.csv).
+ * a fix round see every failing check at once. `onResult(result)` is called after each command (the caller's calls.csv);
+ * `onStart({ command, index, total })` before each one (index from 1; a retry keeps its index), for a live view.
  */
-export async function runGate({ folder, commands, timeoutMin = 15, receipt = true, onResult = null, env = process.env, builtins = {}, beforeRetry = null }) {
+export async function runGate({ folder, commands, timeoutMin = 15, receipt = true, onResult = null, onStart = null, env = process.env, builtins = {}, beforeRetry = null }) {
   const results = []
   const flaky = []
   const timeoutMs = Math.max(1, Number(timeoutMin) || 15) * 60_000
@@ -183,7 +184,10 @@ export async function runGate({ folder, commands, timeoutMin = 15, receipt = tru
     const b = await builtins[command]()
     return { exit: b.exit, seconds: Math.round((Date.now() - started) / 100) / 10, out: b.out, timedOut: false, startError: false }
   }
-  for (const command of commands) {
+  for (const [i, command] of commands.entries()) {
+    if (onStart) {
+      try { onStart({ command, index: i + 1, total: commands.length }) } catch { /* a live view never breaks the gate */ }
+    }
     let r = await run(command)
     let status = statusOf(r)
     let seconds = r.seconds
