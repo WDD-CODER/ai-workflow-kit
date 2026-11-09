@@ -35,9 +35,7 @@
       "Bash(rm -rf /*)",
       "Bash(rm -rf ~*)",
       "Bash(rm -rf .git*)",
-      "Bash(gh pr merge*)",
-      "Bash(git push origin main*)",
-      "Bash(git push * main*)"
+      "Bash(gh pr merge*)"
     ]
   },
   "hooks": {
