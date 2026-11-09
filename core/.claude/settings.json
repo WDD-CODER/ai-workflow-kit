@@ -34,7 +34,10 @@
       "Bash(git clean -d*)",
       "Bash(rm -rf /*)",
       "Bash(rm -rf ~*)",
-      "Bash(rm -rf .git*)"
+      "Bash(rm -rf .git*)",
+      "Bash(gh pr merge*)",
+      "Bash(git push origin main*)",
+      "Bash(git push * main*)"
     ]
   },
   "hooks": {

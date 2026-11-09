@@ -52,11 +52,22 @@ Common fields: `role` (the agent name), `model`, `effort`, optional `decisions` 
 
 | Role | Required fields | `pass` computed from |
 | --- | --- | --- |
-| `orch-builder` | `status: built\|blocked\|ESCALATE`, `branch`, `summary`, `evidence[]` (non-empty when built), `blocker` (when not built) | — |
+| `orch-builder` | `status: built\|blocked\|ESCALATE`, `branch`, `summary`, `evidence[]` (non-empty when built), `blocker` (when not built), optional `ask` (below) | — |
 | `orch-check-plan`, `-bugs`, `-rules`, `orch-security` | `problems[]`: `{id, file, line, rule, reasoning, severity}` | no `blocker` / `major` problem |
 | `plan-reviewer` | the finder fields above plus `verdict: PASS\|STOP` | `verdict` and `pass`: STOP when any problem is `blocker` / `major` |
 | `orch-verify` | `verdicts[]`: `{id, verdict: keep\|refuted, confidence: 0–100, refutation?, severity}` (`refutation` when refuted) | no kept `blocker` / `major` with confidence ≥ 80 |
 | `orch-ui` | `cards[]`: `{card, status: pass\|fail\|plan-drift, screenshots[]}` | every card `pass` |
+
+### The builder's question (`ask`)
+
+A builder result that is `ESCALATE` or `blocked` may carry the question the run asks for it:
+`"ask": { "kind": "<kind>", "question": "<one sentence>", "options": ["<option>", …], "recommendation": <1-based n> }`.
+A `blocker` that starts `ESCALATE: <kind> …` names the kind too (`ESCALATE: db-write <command>`). Kinds only the Human
+answers: `data`, `privacy`, `product`, `design`, `production`, `spend`, `decision-stale`, `db-write`. Kinds the Human or
+the advisor answers: `scope`, `technical`, `environment`, `review`. A question with no kind (or another word) is
+Human-only. For `scope`, an option `approved: <path>, <path>` adds those paths to the plan's scope when chosen; an option
+that starts `park:` leaves the plan parked. The run writes the ask file and, once answered, resumes the plan with the
+answer as `ANSWER` in the task (`docs/agent/orchestrator.md` "Asks").
 
 `plan-reviewer` is the single reviewer of `run-plans.mjs`: one agent reads the plan's criteria, the diff and the gate
 receipt, and returns the finder schema with a `verdict`. It replaces the checker pipeline in `/ship` only when
