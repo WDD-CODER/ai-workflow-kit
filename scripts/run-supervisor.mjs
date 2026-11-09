@@ -103,9 +103,14 @@ export function classify(before, after, exit) {
   return { kind: 'died', reason: `process died (exit ${exit})` }
 }
 
-/** The spawn options of a detached child: its own process group, no window, stdout and stderr to an append-mode fd. */
-export function detachedOptions(fd, { cwd, env = process.env } = {}) {
-  return { cwd, env, detached: true, windowsHide: true, stdio: ['ignore', fd, fd] }
+/**
+ * The spawn options of a child that outlives its parent, stdout and stderr to an append-mode fd. `console: true` (the
+ * run itself): on Windows not detached, so it gets its own hidden console that every git and node call it makes shares —
+ * a detached Windows process has no console, and then each console program it starts opens a window of its own. A
+ * Windows child is not ended with its parent, so the run still outlives the supervisor. Elsewhere: its own process group.
+ */
+export function detachedOptions(fd, { cwd, env = process.env, console: own = false, platform = process.platform } = {}) {
+  return { cwd, env, detached: !(own && platform === 'win32'), windowsHide: true, stdio: ['ignore', fd, fd] }
 }
 
 /** Starts the supervisor detached and returns its pid; the caller can exit at once. */
@@ -136,7 +141,7 @@ function runChild({ root, runPlans, runArgs }) {
     const log = consoleLogPath(root, valueOf(runArgs, 'run'))
     mkdirSync(dirname(log), { recursive: true })
     const fd = openSync(log, 'a')
-    const child = spawn(process.execPath, [runPlans, ...runArgs], detachedOptions(fd, { cwd: root, env: { ...process.env, RUN_SUPERVISOR_LOG: '1' } }))
+    const child = spawn(process.execPath, [runPlans, ...runArgs], detachedOptions(fd, { cwd: root, env: { ...process.env, RUN_SUPERVISOR_LOG: '1' }, console: true }))
     closeSync(fd)
     child.on('error', (e) => done({ exit: `spawn error: ${e.message}`, pid: null }))
     child.on('exit', (code, signal) => done({ exit: code ?? signal ?? 'unknown', pid: child.pid }))
@@ -145,7 +150,7 @@ function runChild({ root, runPlans, runArgs }) {
 
 /** `orch-state.mjs stop --reason <reason>`: the stop is appended to status.json stops[] and the slots go back. */
 function stopRun(root, run, reason) {
-  const r = spawnSync(process.execPath, [join(root, 'scripts', 'orch-state.mjs'), 'stop', '--run', run, '--reason', reason], { cwd: root, encoding: 'utf8' })
+  const r = spawnSync(process.execPath, [join(root, 'scripts', 'orch-state.mjs'), 'stop', '--run', run, '--reason', reason], { cwd: root, encoding: 'utf8', windowsHide: true })
   return r.status === 0
 }
 
@@ -242,7 +247,7 @@ function handoffTexts(root) {
 }
 
 const gitIn = (cwd, ...a) => {
-  const r = spawnSync('git', a, { cwd, encoding: 'utf8' })
+  const r = spawnSync('git', a, { cwd, encoding: 'utf8', windowsHide: true })
   return { status: r.status ?? 1, out: String(r.stdout ?? '').trim(), err: String(r.stderr ?? '').trim() }
 }
 
@@ -259,7 +264,7 @@ export function sweepLeftovers({ root = ROOT } = {}) {
   for (const [script, args] of [['orphan-sweep.mjs', ['--quiet']], ['free-merged-slots.mjs', ['--no-fetch']]]) {
     const p = join(root, 'scripts', script)
     if (!existsSync(p)) continue
-    const r = spawnSync(process.execPath, [p, ...args], { cwd: root, encoding: 'utf8', timeout: 5 * 60_000 })
+    const r = spawnSync(process.execPath, [p, ...args], { cwd: root, encoding: 'utf8', timeout: 5 * 60_000, windowsHide: true })
     for (const l of `${r.stdout ?? ''}`.split('\n').map((x) => x.trim()).filter(Boolean)) lines.push(`${script}: ${l}`)
     if (r.status !== 0) lines.push(`${script}: exit ${r.status} — ${String(r.stderr ?? '').trim().split('\n').pop() || 'no output'}`)
   }

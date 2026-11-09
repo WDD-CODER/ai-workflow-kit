@@ -3,7 +3,7 @@
     "version": "3.0.0"
   },
   "source": "local:.",
-  "commit": "53862baedb8548c89fed9f7f32af4f4eae0728b0",
+  "commit": "e282b679ff27f450fd281a102be2ea89c5940f7a",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -870,7 +870,7 @@
       "source": "core/scripts/prune-old-sessions.sh"
     },
     "scripts/run-plans.mjs": {
-      "sha256": "b19fb8caff41b71e17bc1da2632fbe7c503c8ae08819c1501b02db3d6fd17035",
+      "sha256": "f87c2bc4b74549acbd7c6f996d7e632f7c94894420b45e191ce9198912d10aa3",
       "kind": "managed",
       "source": "core/scripts/run-plans.mjs"
     },
@@ -880,7 +880,7 @@
       "source": "core/scripts/run-python.sh"
     },
     "scripts/run-supervisor.mjs": {
-      "sha256": "e980c9d7fdf51a0cde9e77d3584596cc24c80401b1bd68826266f212bd1ed334",
+      "sha256": "b889c8fb9353829e59e82bc0218de96aa6b09819d56de4bf5801336862baab4a",
       "kind": "managed",
       "source": "core/scripts/run-supervisor.mjs"
     },

@@ -699,8 +699,8 @@ async function main() {
   if (!o.dryRun) {
     // Under scripts/run-supervisor.mjs the run's stdout already goes to the console log (appended): one writer.
     CONSOLE_LOG = process.env.RUN_SUPERVISOR_LOG === '1' ? null : consoleLogPath(ROOT, RUN)
+    // The console log's folder; under the supervisor CONSOLE_LOG is null and the supervisor writes that file.
     mkdirSync(dirname(consoleLogPath(ROOT, RUN)), { recursive: true })
-    mkdirSync(dirname(CONSOLE_LOG), { recursive: true })
     say(`RUN_PLANS: launch ${nowIso()} · ${process.argv.slice(2).join(' ')}`)
   }
   const agentsDir = join(ROOT, '.claude', 'agents')

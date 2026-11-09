@@ -216,6 +216,12 @@ test('the limits are fixed in code with test-only overrides, and the scaffold ha
 
 test('the supervisor starts detached (own process group, windowsHide, stdio appended to <run>.console.log); the launcher exits while it runs on', async () => {
   assert.deepEqual(sup.detachedOptions(9, { cwd: 'x', env: { A: '1' } }), { cwd: 'x', env: { A: '1' }, detached: true, windowsHide: true, stdio: ['ignore', 9, 9] })
+  // The run itself (console: true): on Windows a hidden console of its own, shared by every git and node call it makes
+  // (a detached Windows process has none, and each console program it starts opens a window); elsewhere detached.
+  assert.equal(sup.detachedOptions(9, { console: true, platform: 'win32' }).detached, false)
+  assert.equal(sup.detachedOptions(9, { console: true, platform: 'win32' }).windowsHide, true)
+  assert.equal(sup.detachedOptions(9, { console: true, platform: 'linux' }).detached, true)
+  assert.match(readFileSync(join(kit, 'core', 'scripts', 'run-supervisor.mjs'), 'utf8'), /RUN_SUPERVISOR_LOG: '1' \}, console: true \}/)
   const p = project()
   try {
     mkdirSync(join(p.dir, '.claude', 'orchestrator-runs'), { recursive: true })
@@ -298,5 +304,28 @@ test('the leftover sweep: a merged dead builder folder is removed; park/…, a h
     for (const n of ['002', '003', '004', '005', '006']) assert.ok(existsSync(f(n === '006' ? 'live' : 'old', n)), `${n} kept`)
   } finally {
     rmSync(parent, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+  }
+})
+
+// Plan 110: the supervisor's child is the real installed run-plans.mjs, not a fake (v3.0.0 crashed it at start).
+test('the supervisor runs the real run-plans.mjs to a merged plan: finished, one launch, no crash line', async () => {
+  const { makeProject, toyPlan } = await import('./lib/run-plans-fixture.mjs')
+  const p = makeProject({ kit, name: 'sup-real' })
+  try {
+    p.addPlans({ 451: toyPlan(451) })
+    const env = { ...p.env }
+    delete env.RUN_SUPERVISOR_RUN_PLANS
+    const r = spawnSync(process.execPath, [join(p.proj, 'scripts', 'run-supervisor.mjs'), '--supervise', '--run', 'sup', '--plans', '451'], { cwd: p.proj, env, encoding: 'utf8', timeout: 240_000 })
+    const runs = join(p.proj, '.claude', 'orchestrator-runs')
+    const log = existsSync(join(runs, 'sup.console.log')) ? readFileSync(join(runs, 'sup.console.log'), 'utf8') : ''
+    assert.doesNotMatch(log, /RUN_PLANS: crashed/, log.split('\n').slice(-6).join('\n'))
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`.trim().split('\n').slice(-4).join('\n'))
+    const st = JSON.parse(readFileSync(join(runs, 'sup', 'status.json'), 'utf8'))
+    assert.equal(st.phase, 'finished')
+    assert.equal(st.plans['451'].state, 'merged')
+    const sup = JSON.parse(readFileSync(join(runs, 'sup', 'supervisor.json'), 'utf8'))
+    assert.deepEqual(sup.launches.map((l) => l.kind), ['finished'])
+  } finally {
+    p.cleanup()
   }
 })

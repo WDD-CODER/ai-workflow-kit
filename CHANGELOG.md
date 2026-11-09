@@ -9,6 +9,14 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-11-09
+
+Patch: no project action. Sync it before the next `/orchestrate` — on 3.0.0 every run crashed at start.
+
+### Fixed
+- **A run started by the supervisor no longer crashes before it starts.** On 3.0.0 `scripts/run-plans.mjs` called `dirname()` on a null console-log path whenever `scripts/run-supervisor.mjs` started it (which `/orchestrate` always does), so every run ended at once with `TypeError [ERR_INVALID_ARG_TYPE]` and the supervisor read it as refused. A new test in `tools/test/run-supervisor.test.mjs` runs the real `run-plans.mjs` under the supervisor to a merged plan.
+- **A supervised run no longer flashes a console window for each command on Windows.** The supervisor starts the run with a hidden console of its own (not detached on Windows), and every `git` and `node` call the run makes shares it; before, each one opened and closed a window and took the focus. Elsewhere the run still starts in its own process group.
+
 ## [3.0.0] - 2026-11-09
 
 Major: three project actions, all listed below with **Project action:** — keep the kit's guard hooks in

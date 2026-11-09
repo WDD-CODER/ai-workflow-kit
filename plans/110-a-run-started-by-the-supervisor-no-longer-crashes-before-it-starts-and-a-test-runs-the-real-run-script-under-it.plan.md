@@ -44,6 +44,8 @@ tools/test/lib/run-plans-fixture.mjs
 kit.json
 CHANGELOG.md
 docs/brain/error-review.md
+core/scripts/run-supervisor.mjs
+scripts/run-supervisor.mjs
 ```
 
 ## Read Scope
@@ -66,9 +68,10 @@ the path to the scope block and retry.
 4. Plan 106's fixture changes (`kitRef`, `files`, `env` options) are on `feat/106-validation-run`, not on `main`: use only what `main` has.
 
 ## Atomic Sub-tasks
-- [ ] S1: Write the failing test that runs the real run script under the supervisor to a merged plan — tools/test/run-supervisor.test.mjs
-- [ ] S2: Stop the run script from crashing when the supervisor owns its console log — guard the folder call on CONSOLE_LOG — core/scripts/run-plans.mjs
-- [ ] S3: Resync the installed copy, run every check, and release it as v3.0.1 — kit.json, CHANGELOG.md
+- [x] S1: Write the failing test that runs the real run script under the supervisor to a merged plan — tools/test/run-supervisor.test.mjs
+- [x] S2: Stop the run script from crashing when the supervisor owns its console log — guard the folder call on CONSOLE_LOG — core/scripts/run-plans.mjs
+- [x] S2b: Give the supervised run one hidden console so no window flashes for each command on Windows — not detached on Windows, windowsHide on the supervisor's own calls — core/scripts/run-supervisor.mjs
+- [x] S3: Resync the installed copy, run every check, and release it as v3.0.1 — kit.json, CHANGELOG.md
 
 ## Technical Considerations
 - The fix is one guard; the test is the larger part, and the one that matters: it is the first kit test that runs the real `run-plans.mjs` as the supervisor's child.
@@ -81,3 +84,7 @@ Plan 106 (the validation tool); FoodVibe's bugs 5 and 6 from runs 536/540 (a hal
 None open.
 
 ## Execution Notes
+- 2026-11-09 Builder: the new test failed on today's code with the crash (`RUN_PLANS: crashed — TypeError … run-plans.mjs:703`); with the guard, `node --test tools/test/run-supervisor.test.mjs` → pass 11, fail 0.
+- 2026-11-09 Human (`approved: core/scripts/run-supervisor.mjs`, `approved: scripts/run-supervisor.mjs`): the first real-run test flashed a console window per command (the run was a detached, console-less process on Windows). S2b gives the run one hidden console; the Human watched the next test runs: "no window flashed! its fixet".
+- Kit tool tests (node --test over tools/test): 570 of 572 pass; the 2 fails were time limits under load (guards.test.mjs "under 2000 ms", run-plans-ask.test.mjs at 120 s), neither runs the supervisor; both files alone → pass 42, fail 0.
+- Evidence: npm run build → exit 0; npm run lint → exit 0; npm test → exit 0; drift-check → KIT_DRIFT: ok, exit 0.
