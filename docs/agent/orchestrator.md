@@ -110,12 +110,31 @@ two marked **model**.
      under 10 characters of reason.
    - **A failure**: one fix round on the same tier with the findings; a second failure with a new reason gets
      `handoff --reset-base` and one fresh judgment-tier builder; the same reason twice, or a failure after that,
-     parks the plan (`orch-state.mjs park`: the work saved on `park/<run>-<NNN>`, the folder removed, and `feat/<NNN>`
-     renamed to `park/<run>-<NNN>` here and on origin, so the next run cuts a fresh branch).
-   - **Parked at once, no further model call:** a builder stopped idle — no wall clock; 15 minutes with no file changed in its folder, `node_modules` and `.git` left out (its work is kept on
-     `park/<run>-<NNN>`, never reset), and a builder `ESCALATE` about the scope (a file outside the Read-Write Scope,
-     an `approved:` path) — `replan needed: …`: a judgment-tier builder cannot widen a plan's scope either. A park skips
-     only what `onPark` names; the run goes on.
+     asks (below). A park or an ask runs `orch-state.mjs park`: the work saved on `park/<run>-<NNN>`, the folder
+     removed, and `feat/<NNN>` renamed to `park/<run>-<NNN>` here and on origin.
+   - **Parked at once, no further model call:** a builder stopped idle — no wall clock; 15 minutes with no file changed
+     in its folder, `node_modules` and `.git` left out (its work is kept on `park/<run>-<NNN>`, never reset), a refused
+     review, a pin failure, an environment failure, a worktree that cannot be made. A park skips only what `onPark`
+     names; the run goes on.
+   - **Asks.** Every question a run raises is one file, `.claude/orchestrator-runs/<run>/asks/<NNN>-<n>.json`:
+     `{ id, plan, kind, question, options[], recommendation, humanOnly, context }` (the recommended option is stored
+     first; `context` holds the stop's reason, the goal line, the files, the failing check's tail and the builder's
+     proposal). The asks: a builder `ESCALATE` about the scope (no judgment-tier builder: it cannot widen a scope), a
+     `db-write`, a judgment-tier `planChange` or `ESCALATE`, any `ESCALATE` that names its kind, the same reason twice,
+     the fix rounds used up (kind `technical`, the park recommended), and an enforced review that could not run after
+     one retry (kind `review`). A build-tier `ESCALATE` with no kind still gets the judgment builder. `humanOnly` is
+     true for `data`, `privacy`, `product`, `design`, `production`, `spend` (the two hard limits), `decision-stale`,
+     `db-write` and for a question with no kind; false for `scope`, `technical`, `environment` and `review`. The plan's
+     state is `asking`; it blocks exactly what a park would, but those plans are held, not skipped, and the rest of
+     the run goes on. `watch` prints each open ask as a card with its answer command. When every other plan has ended,
+     the run polls the answers every 30 s, each ask for up to `ASK_WAIT_MIN` (180, fixed in `run-plans.mjs`), while
+     `watch` still says `RUNNING`. `node scripts/orch-state.mjs answer --run <run> --id <id> --choice <n>` (or
+     `--text "<answer>"`) writes `<id>.answer.json` with `by: human`; a `park:` option parks; a `scope` answer that
+     names paths adds them to the plan's scope on the run branch first; any other answer resumes the plan in the same
+     run through the resume rule above (its saved work, its round and tier, the hand-off), with the answer as
+     `ANSWER` in the builder's prompt, and then the plans it held. An answer file with `by: advisor` on a `humanOnly`
+     ask is refused with a run note and the ask stays open. An unanswered ask parks its plan with its question in the
+     run notes; a plan asks at most 3 times in one run.
 4. **Final gate** on the run branch (`prepare`, the project checks, the manifest check, `ciMirror`). Every one of
    those commands is also in each plan's own gate (the manifest check reads the plan's folder), so the final gate finds
    nothing a plan's gate did not. When it still fails on a command whose output names a file that exactly one merged
@@ -213,7 +232,17 @@ is refused when the review folder holds a `.claude/settings.local.json`.
   causes, escalations, the final gate's result). A lesson line names a fact the code produced, or there is no line.
 - Every count in a message comes from `status.json` or an anchored git command run in the same turn.
 - A database write the plan does not list is answered in the builder's worktree with `ESCALATE: db-write <command>`;
-  the run parks that plan with an `ask:` decision.
+  the run asks the Human (kind `db-write`, Human-only) and only that plan waits.
+
+## Merges
+
+- Merging a plan into `orch/<run>` is the run's own step and is never asked, including a
+  dependent plan that starts after the plan it depends on is merged into `orch/<run>`. The
+  run calls git from the script, never through the Bash tool, so no permission rule touches it.
+- The merge of `orch/<run>` into `main` is the Human's: `permissions.ask` in
+  `.claude/settings.json` holds `Bash(gh pr merge*)`, `Bash(git push origin main*)` and `Bash(git push * main*)`, so
+  Claude Code asks the Human before any of them, in every permission mode.
+- No plan's Execution Mode may pre-approve that merge.
 
 ## Never
 

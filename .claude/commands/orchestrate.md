@@ -29,14 +29,19 @@ the supervisor runs the run outside this session, so closing the session does no
 running, a second one starts only with 4 GB of free memory (`node scripts/run-supervisor.mjs --free-mem`).
 Print the watch line (one line per plan: state, round, tier and model, minutes in it, last `calls.csv` row; the run's
 own log is `.claude/orchestrator-runs/<run>.console.log`, appended):
-`cd "<main folder>"; node scripts/orch-state.mjs watch --run <run>`. To learn when it ends, start this wait as a
-background shell command and go to 4 when it exits:
-`until ! node scripts/orch-state.mjs watch --run <run> | grep -q '^RUNNING'; do sleep 60; done`.
+`cd "<main folder>"; node scripts/orch-state.mjs watch --run <run>`. To learn when it ends or asks, start this wait as
+a background shell command (one `-e 'ASK <id> '` per card already printed; none yet: `-e '^$'`):
+`until ! node scripts/orch-state.mjs watch --run <run> | grep -q '^RUNNING' || node scripts/orch-state.mjs watch --run <run> | grep '^ASK ' | grep -qv -e '^$'; do sleep 60; done`.
+When it exits while the run is still RUNNING, print the new card (3) and start the wait again; else go to 4.
 
 ## 3. Deaths and rate limits
 
 The supervisor relaunches a run that died (up to 3 times, with 4 GB of free memory) and a run stopped by a rate
 limit (after the reset). This session never relaunches a run itself and never sends the Human to a terminal for it.
+A question stops only its own plan: print every `ASK` card `watch` shows as soon as it appears, without waiting for the
+run's end; the Human answers with the card's line (`node scripts/orch-state.mjs answer --run <run> --id <id> --choice <n>`).
+Never ask the Human a question the card marks "the Human or the advisor answers" when its recommendation answers it,
+unless the Human asked to be asked.
 
 ## 4. The result
 

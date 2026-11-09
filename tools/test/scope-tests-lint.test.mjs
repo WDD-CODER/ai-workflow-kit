@@ -99,7 +99,9 @@ before(() => {
   writeFileSync(join(dir, '.gitignore'), 'node_modules\n')
   // 001: scope names code only. 002: the same plus a test line.
   writeFileSync(join(dir, 'plans', '001-gate.plan.md'), plan(['src/**']))
-  writeFileSync(join(dir, 'plans', '002-ok.plan.md'), plan(['src/**', 'src/a.test.ts']).replace('Plan 001', 'Plan 002'))
+  // The changed test lives in a test folder under the code glob: a test beside a scoped file (src/a.test.ts) needs no
+  // line since the sibling-test rule, so only a test elsewhere (src/e2e/) shows the gate block.
+  writeFileSync(join(dir, 'plans', '002-ok.plan.md'), plan(['src/**', 'src/e2e/a.spec.ts']).replace('Plan 001', 'Plan 002'))
   git(dir, 'init', '-q', '-b', 'main')
   git(dir, 'add', '-A')
   git(dir, 'commit', '-q', '-m', 'base')
@@ -110,7 +112,8 @@ before(() => {
     git(dir, 'switch', '-q', '-c', b, 'main')
     mkdirSync(join(dir, 'src'), { recursive: true })
     writeFileSync(join(dir, 'src', 'a.ts'), 'export {}\n')
-    writeFileSync(join(dir, 'src', 'a.test.ts'), 'export {}\n')
+    mkdirSync(join(dir, 'src', 'e2e'), { recursive: true })
+    writeFileSync(join(dir, 'src', 'e2e', 'a.spec.ts'), 'export {}\n')
     git(dir, 'add', '-A')
     git(dir, 'commit', '-q', '-m', `edit ${b}`)
     git(dir, 'push', '-q', 'origin', b)
@@ -129,11 +132,11 @@ test('real scripts: a plan the lint warns about is the plan the gate blocks', ()
   const gate = script('scope-check.mjs', '--diff=main', '--plan=plans/001-gate.plan.md')
   git(dir, 'switch', '-q', 'main')
   assert.equal(gate.status, 1, gate.stdout + gate.stderr)
-  assert.match(gate.stdout, /SCOPE: test-out src\/a\.test\.ts/)
+  assert.match(gate.stdout, /SCOPE: test-out src\/e2e\/a\.spec\.ts/)
 
   const d = orchDiff('001')
   assert.equal(d.json.ok, true, JSON.stringify(d.json))
-  assert.deepEqual(d.json.testsOutOfScope, ['src/a.test.ts'])
+  assert.deepEqual(d.json.testsOutOfScope, ['src/e2e/a.spec.ts'])
 })
 
 test('real scripts: a plan the lint accepts passes the gate', () => {

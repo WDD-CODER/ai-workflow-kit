@@ -15,8 +15,11 @@
  *
  * Per plan: builder → gate → review → merge. A failed gate or an enforced review STOP gets one fix round on the same
  * tier with the findings; a second failure with a new reason gets `handoff --reset-base` and one fresh judgment-tier
- * builder (INV-1); the same reason twice, or a failure after that, parks the plan (orchestrator.maxFixRounds counts
- * those rounds, default 2). A park skips only the later plans that depend on it or share its files
+ * builder (INV-1); the same reason twice, or a failure after that, asks (orchestrator.maxFixRounds counts those rounds,
+ * default 2). An ask — those, a builder's question, a review that could not run twice — is one file
+ * (.claude/orchestrator-runs/<run>/asks/<NNN>-<n>.json): only its plan waits, and what it blocks is held; once the rest
+ * ended the run polls for answers (ASK_WAIT_MIN), resumes an answered plan, and parks an unanswered one. A park skips
+ * only the later plans that depend on it or share its files
  * (orchestrator.onPark "dependents"); the run goes on. A call that hits a rate or usage limit pauses the run
  * (env-paused), waits orchestrator.rateLimitWaitMin minutes and retries once; a second hit stops the run with
  * `stopped: rate-limit`, and scripts/run-supervisor.mjs relaunches it after the reset.
@@ -28,7 +31,7 @@
  * calls.csv (one row per model call and per gate command). Last line: `RUN_PLANS_JSON {…}`.
  * Exit 0 = every plan merged, 2 = some parked or skipped, 1 = refused before the start (nothing was built).
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync, rmSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync, rmSync, readdirSync, renameSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -39,8 +42,8 @@ import { isSensitive } from './ship-prep.mjs'
 import { gateCommands, runGate, scopeCheck, scopeMarker } from './lib/plan-gate.mjs'
 import { review, blocking, problemLine } from './lib/plan-review.mjs'
 import { mergePlan, orchState } from './lib/plan-merge.mjs'
-import { runOrder, unitsOf, afterPark } from './lib/run-order.mjs'
-import { planBranch, planBranchProblem, runNameProblem, startTier } from './lib/orch-run.mjs'
+import { runOrder, unitsOf, afterPark, blockedBy } from './lib/run-order.mjs'
+import { planBranch, planBranchProblem, runNameProblem, startTier, humanOnlyAsk, ASK_KINDS, askCard, ASK_ID_RE } from './lib/orch-run.mjs'
 import { ensureEnv, failingTree, depFolders, retryGit } from './lib/orch-folders.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -60,6 +63,14 @@ export const BUILDER_IDLE_MIN = 15
 // RUN_PLANS_BUILDER_IDLE_MS and RUN_PLANS_BUILDER_POLL_MS (tests only) replace them, like RUN_PLANS_CLAUDE replaces claude.
 const BUILDER_IDLE_MS = Number(process.env.RUN_PLANS_BUILDER_IDLE_MS) > 0 ? Number(process.env.RUN_PLANS_BUILDER_IDLE_MS) : BUILDER_IDLE_MIN * 60_000
 const BUILDER_POLL_MS = Number(process.env.RUN_PLANS_BUILDER_POLL_MS) > 0 ? Number(process.env.RUN_PLANS_BUILDER_POLL_MS) : 30_000
+// A plan that asks waits, once every other plan of the run has ended, this many minutes for its answer (polled every
+// 30 s); then it parks with its question in the report. Fixed like BUILDER_IDLE_MIN, not a setting.
+export const ASK_WAIT_MIN = 180
+// RUN_PLANS_ASK_WAIT_MS and RUN_PLANS_ASK_POLL_MS (tests only) replace them.
+const ASK_WAIT_MS = Number(process.env.RUN_PLANS_ASK_WAIT_MS) > 0 ? Number(process.env.RUN_PLANS_ASK_WAIT_MS) : ASK_WAIT_MIN * 60_000
+const ASK_POLL_MS = Number(process.env.RUN_PLANS_ASK_POLL_MS) > 0 ? Number(process.env.RUN_PLANS_ASK_POLL_MS) : 30_000
+// A plan asks at most this many times in one run; the next question parks it (an answer loop never runs forever).
+const ASK_MAX = 3
 const MAIN = '{{git.mainBranch}}'
 // One plan at a time unless --concurrency 2 is given (goal decision: more builders on one machine made specs time
 // out); orchestrator.concurrency stays the workflow's setting.
@@ -478,6 +489,98 @@ export function isScopeEscalation(result) {
   return /\bapproved:\s*\S|outside (?:of )?(?:the |its |this plan's |the plan's )?(?:read-write )?scope|scope extended|SCOPE_GUARD|not in (?:the |its )?(?:read-write )?scope/i.test(text)
 }
 
+// ---- asks (docs/agent/orchestrator.md "Asks") -------------------------------------------------------------------
+const PARK_OPTION = 'park: leave the plan parked for the Human to replan'
+/**
+ * The question in a builder's result: its kind (`ask.kind`, else an `ESCALATE: <kind>` blocker), the question, the
+ * options and the recommendation (1-based). No kind stated: a scope escalation is kind `scope`, anything else
+ * `unstated`, and both are Human-only. null for a result that is neither ESCALATE nor blocked.
+ */
+export function builderAsk(result) {
+  if (!result || !['ESCALATE', 'blocked'].includes(String(result.status ?? ''))) return null
+  const a = result.ask && typeof result.ask === 'object' ? result.ask : {}
+  const blocker = String(result.blocker ?? '').trim()
+  const pre = /^ESCALATE:\s*([a-z-]+)\b/i.exec(blocker)
+  const named = String(a.kind ?? (pre ? pre[1] : '')).toLowerCase()
+  const stated = ASK_KINDS.includes(named)
+  const kind = stated ? named : isScopeEscalation(result) ? 'scope' : 'unstated'
+  const options = (Array.isArray(a.options) ? a.options : []).filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim().slice(0, 300)).slice(0, 6)
+  const rec = Number(a.recommendation)
+  return {
+    kind, stated, humanOnly: humanOnlyAsk(kind, stated), question: String(a.question ?? '').trim().slice(0, 600) || blocker.slice(0, 600) || 'the builder stopped without a question',
+    options, recommendation: Number.isInteger(rec) && rec >= 1 && rec <= options.length ? rec : null,
+  }
+}
+/**
+ * The ask a file holds: the recommended option first (number 1) and a `park:` option always there. `recommendation`
+ * is the 1-based number in `options`, else the kind's default: the park for the run's own code, the first option else.
+ */
+export function askOptions({ kind, options = [], recommendation = null, paths = [] }) {
+  let opts = [...options]
+  if (!opts.length && kind === 'scope' && paths.length) opts.push(`approved: ${paths.join(', ')}`)
+  if (!opts.length && kind === 'review') opts.push('review again: the gate and the review run again on the saved commits')
+  if (kind === 'technical' && !options.length) opts.push('retry: a fresh judgment-tier builder with the hand-off and this answer')
+  if (!opts.some((o) => /^park:/i.test(o))) opts.push(PARK_OPTION)
+  const park = opts.find((o) => /^park:/i.test(o))
+  const rec = recommendation ? opts[recommendation - 1] : kind === 'technical' ? park : options.length || ['scope', 'review'].includes(kind) ? opts[0] : park
+  opts = [rec, ...opts.filter((o) => o !== rec)]
+  return { options: opts, recommendation: 1 }
+}
+/** The project paths an answer text names (`approved: a, b` or bare paths): a token with a `/` or a file extension. */
+export function scopePaths(text) {
+  return [...new Set(String(text ?? '').split(/[\s,;`'"()]+/).map((t) => t.replace(/[.:]+$/, '')).filter((t) => !/^[a-z]+:/i.test(t) && !t.includes('..') && /^[\w@.\-*]+(?:\/[\w@.\-*]+)+$|^[\w@\-]+\.[A-Za-z0-9]{1,8}$/.test(t)))]
+}
+/** The plan text with `paths` added at the end of its ```scope block (a path already there is left out): { text, added }. */
+export function withScopeLines(planText, paths) {
+  const lines = String(planText).split('\n')
+  const at = lines.findIndex((l) => /^```scope\s*$/.test(l.trim()))
+  const end = at < 0 ? -1 : lines.findIndex((l, i) => i > at && /^```\s*$/.test(l.trim()))
+  if (end < 0) return { text: planText, added: [] }
+  const have = new Set(lines.slice(at + 1, end).map((l) => l.trim()))
+  const added = paths.filter((x) => !have.has(x))
+  lines.splice(end, 0, ...added)
+  return { text: lines.join('\n'), added }
+}
+/** The plan's goal line: the first line under `## Goals` (or the title). */
+function goalLine(planText) {
+  const lines = String(planText).replace(/\r\n/g, '\n').split('\n')
+  const at = lines.findIndex((l) => /^##\s+Goals?\b/i.test(l))
+  return (at >= 0 ? lines.slice(at + 1).find((l) => l.trim() && !/^#/.test(l)) : lines.find((l) => /^#\s/.test(l)))?.trim().slice(0, 300) ?? ''
+}
+/** Writes asks/<NNN>-<n>.json in the run's folder (n: the plan's next ask) and returns the ask. */
+export function writeAsk(runDir, { nnn, kind, humanOnly, question, options, recommendation, context }) {
+  const dir = join(runDir, 'asks')
+  mkdirSync(dir, { recursive: true })
+  const n = 1 + Math.max(0, ...asksOf(runDir, nnn).map((id) => Number(id.split('-')[1])))
+  const ask = { id: `${nnn}-${n}`, plan: nnn, kind, question, options, recommendation, humanOnly, context }
+  writeFileSync(join(dir, `${ask.id}.json`), `${JSON.stringify(ask, null, 2)}\n`)
+  return ask
+}
+/** The ask ids of one plan in a run's folder. */
+function asksOf(runDir, nnn) {
+  const dir = join(runDir, 'asks')
+  return existsSync(dir) ? readdirSync(dir).map((f) => f.replace(/\.json$/, '')).filter((id) => ASK_ID_RE.test(id) && id.startsWith(`${nnn}-`)) : []
+}
+/**
+ * The answer to an ask: null (none yet), { refused, by } (moved aside to <id>.refused-<time>.json: an answer not by the
+ * Human on a Human-only ask, or an unreadable file — the ask stays open), or { by, choice, option, text }.
+ */
+export function readAnswer(runDir, ask) {
+  const file = join(runDir, 'asks', `${ask.id}.answer.json`)
+  if (!existsSync(file)) return null
+  let a = null
+  try {
+    a = JSON.parse(readFileSync(file, 'utf8'))
+  } catch { /* unreadable: refused below */ }
+  const by = ['human', 'advisor'].includes(a?.by) ? a.by : null
+  const answer = String(a?.option ?? a?.text ?? '').trim()
+  if (!by || !answer || (ask.humanOnly && by !== 'human')) {
+    renameSync(file, join(runDir, 'asks', `${ask.id}.refused-${Date.now()}.json`))
+    return { refused: true, by: by ?? 'unknown', why: !by || !answer ? 'the answer file has no by: human|advisor or no answer' : `only the Human answers a ${ask.kind} question` }
+  }
+  return { by, choice: a.choice ?? null, option: a.option ?? null, text: a.text ?? null, answer: answer.slice(0, 2000) }
+}
+
 /**
  * The gate's test-file check (lib/plan-scope.mjs testFilesOutOfScope, the function `orch-state.mjs diff` runs) on the
  * files a plan will change: the test files no scope line naming a test location lists.
@@ -537,8 +640,10 @@ export const OUTSIDE_STOP_RE = /process died|timed out|builder stopped|environme
  * holds commits the run branch does not. 'built': the next step is the gate on those commits; 'park': a plan branch is
  * cut from the park branch; null: start from round 0 as before.
  */
-export function resumeKind({ prev, hasPark, hasBuilt }) {
+export function resumeKind({ prev, hasPark, hasBuilt, answered = false }) {
   if (!prev || prev.state === 'merged' || prev.state === 'skipped') return null
+  // An answered ask: the plan continues from the work its ask saved, whatever stop raised the question.
+  if (answered) return hasPark ? 'park' : null
   const reason = `${prev.reason ?? ''} ${prev.park?.reason ?? ''}`
   if (OWN_CODE_STOP_RE.test(reason)) return null
   const stopped = prev.state === 'parked' && OUTSIDE_STOP_RE.test(reason)
@@ -548,7 +653,7 @@ export function resumeKind({ prev, hasPark, hasBuilt }) {
 }
 
 /** The resume of a plan this run already knew (a relaunch under the same run name): { kind, prev, parkBranch } or null. */
-function resumeOf({ root, run, runBranch, nnn, branch }) {
+function resumeOf({ root, run, runBranch, nnn, branch, answered = false }) {
   let prev = null
   try {
     prev = JSON.parse(readFileSync(join(root, '.claude', 'orchestrator-runs', run, 'status.json'), 'utf8')).plans?.[nnn] ?? null
@@ -562,7 +667,7 @@ function resumeOf({ root, run, runBranch, nnn, branch }) {
   // This run's own plan branch (its status.json holds the plan): cut from this run branch, which may have moved on since
   // (merges, the report), so it need not contain the run branch's tip — it holds commits the run branch does not.
   const hasBuilt = Boolean(feat && has(base) && git(root, 'merge-base', base, feat).status === 0 && Number(git(root, 'rev-list', '--count', `${base}..${feat}`).out) > 0)
-  const kind = resumeKind({ prev, hasPark: has(`refs/remotes/origin/${parkBranch}`), hasBuilt })
+  const kind = resumeKind({ prev, hasPark: has(`refs/remotes/origin/${parkBranch}`), hasBuilt, answered })
   return kind ? { kind, prev, parkBranch } : null
 }
 
@@ -721,6 +826,21 @@ async function main() {
     return p
   }
 
+  /** The plan's ask when status.json still says it is asking (a relaunch of the same run), else null. */
+  const pendingAsk = (nnn) => {
+    let prev = null
+    try {
+      prev = JSON.parse(readFileSync(join(runDir, 'status.json'), 'utf8')).plans?.[nnn] ?? null
+    } catch { /* no status */ }
+    if (prev?.state !== 'asking') return null
+    const id = asksOf(runDir, nnn).sort((a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1])).at(-1)
+    try {
+      return id ? JSON.parse(readFileSync(join(runDir, 'asks', `${id}.json`), 'utf8')) : null
+    } catch {
+      return null
+    }
+  }
+
   /** One model call with the rate-limit pause: { r } or throws RunStop on a second limit. */
   const modelCall = async (nnn, stage, fn, { model: planned = null, tier = null } = {}) => {
     for (let attempt = 1; ; attempt++) {
@@ -743,11 +863,16 @@ async function main() {
     }
   }
 
-  const runPlan = async (nnn, { finalFix = null } = {}) => {
+  const runPlan = async (nnn, { answer = null, finalFix = null } = {}) => {
     const l = lint[nnn]
-    // A relaunch continues a plan that stopped for a reason that was not its own code: from the saved work. (Not a
-    // final-gate fix round: that one starts from the merged plan's branch.)
-    const resume = finalFix ? null : resumeOf({ root: ROOT, run: RUN, runBranch: RUN_BRANCH, nnn, branch: l.branch })
+    // A relaunch finds the plan still waiting on its ask: it waits again, nothing is built.
+    if (!answer && !finalFix) {
+      const waiting = pendingAsk(nnn)
+      if (waiting) return { nnn, state: 'asking', ask: waiting, reason: String(waiting.context?.reason ?? '') }
+    }
+    // A relaunch continues a plan that stopped for a reason that was not its own code (or an answered ask): from the
+    // saved work. Not a final-gate fix round: that one starts from the merged plan's branch.
+    const resume = finalFix ? null : resumeOf({ root: ROOT, run: RUN, runBranch: RUN_BRANCH, nnn, branch: l.branch, answered: Boolean(answer) })
     const info = state('plan-info', { run: RUN, plan: nnn, 'with-worktree': 'yes', 'from-branch': resume?.kind === 'park' ? resume.parkBranch : undefined })
     if (!info.ok) return { nnn, state: 'parked', reason: `plan-info: ${info.error}` }
     const ctx = { nnn, info, wt: info.wt, tier: l.start.tier, tierReason: l.start.reason, round: 0, escalated: false, findings: [], lastWhy: null, mode: 'first' }
@@ -772,9 +897,14 @@ async function main() {
       ctx.mode = resume.kind === 'park' ? 'resume' : 'first'
       ctx.skipBuild = resume.kind === 'built'
     }
+    if (answer) {
+      ctx.answer = { id: answer.ask.id, kind: answer.ask.kind, question: answer.ask.question, answer: answer.answer, by: answer.by }
+      // "review again": the saved commits go back through the gate and the review, no builder.
+      if (resume?.kind === 'park' && /^review again:/i.test(answer.answer)) ctx.skipBuild = true
+    }
     // The plan file the builder starts from (the run branch's commit that last changed it): a later change is recorded.
     let planStart = null
-    const park = (reason, { teardown = true } = {}) => {
+    const park = (reason, { teardown = true, quiet = false } = {}) => {
       setPlan(nnn, { state: 'parked', round: ctx.round, tier: ctx.tier, reason: String(reason).slice(0, 380) })
       // The park runs the folder's own scripts (the save, the teardown): they need their packages.
       if (teardown && ctx.wt?.ok && ctx.wt.path) ensureIn(ctx.wt.path, { nnn })
@@ -784,8 +914,27 @@ async function main() {
         if (saved) note(`parked: ${String(saved.what ?? '').slice(0, 200)}`, nnn)
         else if (!s.ok) note(`park teardown not done: ${String(s.error ?? '').slice(0, 300)}`, nnn)
       }
-      say(`RUN_PLANS: plan ${nnn} parked — ${reason}`)
+      if (!quiet) say(`RUN_PLANS: plan ${nnn} parked — ${reason}`)
       return { nnn, state: 'parked', reason, round: ctx.round }
+    }
+    /**
+     * A question only this plan waits on: the park's teardown (the work saved on park/<run>-<NNN>, the folder freed),
+     * then one ask file and the state `asking`; the run goes on with the rest. `q` is builderAsk()'s shape or the
+     * run's own { kind, question, options? }.
+     */
+    const ask = (reason, q, extra = {}) => {
+      if (asksOf(runDir, nnn).length >= ASK_MAX) return park(`${reason} (asked ${ASK_MAX} times in this run)`)
+      const files = info?.branch ? git(ROOT, 'diff', '--name-only', `origin/${RUN_BRANCH}...${info.branch}`).out.split('\n').filter(Boolean).slice(0, 30) : []
+      park(reason, { quiet: true })
+      const stated = q.stated !== false
+      const o = askOptions({ kind: q.kind, options: q.options ?? [], recommendation: q.recommendation ?? null, paths: q.kind === 'scope' ? scopePaths(`${q.question} ${reason}`) : [] })
+      const context = { reason: String(reason).slice(0, 600), at: nowIso(), goal: goalLine(readFileSync(join(ROOT, l.path), 'utf8')), files, ...extra }
+      const a = writeAsk(runDir, { nnn, kind: q.kind, humanOnly: q.humanOnly ?? humanOnlyAsk(q.kind, stated), question: q.question, ...o, context })
+      setPlan(nnn, { state: 'asking', round: ctx.round, tier: ctx.tier, reason: `asking ${a.id}: ${reason}`.slice(0, 380) })
+      note(`ask ${a.id} (${a.kind}, ${a.humanOnly ? 'only the Human answers' : 'the Human or the advisor answers'}): ${a.question}`, nnn)
+      say(`RUN_PLANS: plan ${nnn} asks ${a.id} — it waits; the run goes on with the plans it does not block`)
+      for (const line of askCard(a, RUN)) say(line)
+      return { nnn, state: 'asking', ask: a, reason, round: ctx.round }
     }
     if (!ctx.wt?.ok) {
       if (ctx.wt?.envFailure) {
@@ -834,11 +983,16 @@ async function main() {
       // An idle stop parks with the work kept: the park saves it to park/<run>-<NNN> (never a reset to the base, never a
       // second builder on the same problem).
       if (!b.ok && b.timedOut) return park(`builder stopped: ${b.error} — the work is kept on park/${RUN}-${nnn}`)
-      // A scope problem only a plan edit fixes: parked at once, no judgment-tier builder (it cannot widen the scope either).
-      if (b.ok && isScopeEscalation(result)) return park(`replan needed: ${String(result.blocker ?? result.planChange?.why ?? '').slice(0, 300) || 'a file outside the scope'}`)
+      // A question in the builder's result is an ask: a scope problem only a plan edit fixes (no
+      // judgment-tier builder: it cannot widen the scope either), a db-write, a plan that cannot hold, any ESCALATE that
+      // names its kind, and a judgment-tier ESCALATE. A build-tier ESCALATE with no kind still gets the judgment builder.
+      const q = b.ok ? builderAsk(result) : null
+      const proposal = result?.planChange?.why ? { proposal: String(result.planChange.why).slice(0, 600) } : {}
+      if (q && isScopeEscalation(result)) return ask(`replan needed: ${String(result.blocker ?? result.planChange?.why ?? '').slice(0, 300) || 'a file outside the scope'}`, q, proposal)
       if (!b.ok) failure = { why: `builder: ${b.error}`, escalate: true }
-      else if (result && ctx.tier === 'judgment' && result.planChange?.needed === true) return park(`replan needed: ${String(result.planChange.why ?? '').slice(0, 240) || '(no reason given)'}`)
-      else if (result && /^ESCALATE: db-write/i.test(String(result.blocker ?? ''))) return park(`ask: ${result.blocker}`)
+      else if (result && ctx.tier === 'judgment' && result.planChange?.needed === true) return ask(`replan needed: ${String(result.planChange.why ?? '').slice(0, 240) || '(no reason given)'}`, q ?? { kind: 'unstated', stated: false, question: String(result.planChange.why ?? 'the plan cannot hold as written') }, proposal)
+      else if (q && q.kind === 'db-write') return ask(`ask: ${result.blocker}`, q, proposal)
+      else if (q && (q.stated || (result.status === 'ESCALATE' && ctx.tier === 'judgment'))) return ask(`ESCALATE ${q.kind}: ${String(result.blocker ?? '').slice(0, 300)}`, q, proposal)
       else if (result && result.status && result.status !== 'built') failure = { why: `builder ${result.status}: ${String(result.blocker ?? '').slice(0, 300)}`, escalate: true }
       if (!failure) failure = landBranch(wt, info.branch, RUN_BRANCH)
       let checkedHead = null
@@ -905,12 +1059,18 @@ async function main() {
           const findings = diff.testsOutOfScope.map((f, i) => ({ id: `scope-${i + 1}`, severity: 'blocker', file: f, line: 1, rule: 'no scope line names a test location', reasoning: `${f} is a test file no line of the plan's Read-Write Scope names; revert it or ask the Human for approved: ${f}` }))
           failure = { why: `scope: ${diff.testsOutOfScope.join(', ')}`, fingerprint: `scope: ${diff.testsOutOfScope.join(',')}`, findings }
         } else {
-          const r = await reviewStep({ nnn, RUN, RUN_BRANCH, branch: info.branch, checkedHead, reviewPath: diff.reviewPath, receipt, reviewerAgent, REVIEW_MODEL, bin: o.claude, modelCall, mode: l.reviewerMode ?? o.reviewerMode })
+          const reviewOnce = () => reviewStep({ nnn, RUN, RUN_BRANCH, branch: info.branch, checkedHead, reviewPath: diff.reviewPath, receipt, reviewerAgent, REVIEW_MODEL, bin: o.claude, modelCall, mode: l.reviewerMode ?? o.reviewerMode })
+          let r = await reviewOnce()
+          // An enforced review that could not run gets one retry, then it is a question (kind review).
+          if (r.error && !r.refused && r.mode === 'gate') {
+            note(`review could not run: ${String(r.error).slice(0, 200)} — one retry`, nnn)
+            r = await reviewOnce()
+          }
           if (r.note) note(r.note, nnn)
           if (r.error) {
             // A branch that brings its own local settings into the review is parked in either mode.
             if (r.refused) return park(`review ${r.error}`)
-            if (r.mode === 'gate') return park(`review could not run: ${r.error}`)
+            if (r.mode === 'gate') return ask(`review could not run: ${r.error}`, { kind: 'review', question: `The review of plan ${nnn} could not run twice (${String(r.error).slice(0, 200)}). Run it again, or leave the plan parked?` }, { check: 'review', tail: String(r.error).slice(0, 600) })
             note(`review could not run (advisory, not enforced): ${r.error}`, nnn)
           } else if (r.enforced) {
             const kept = blocking(r.problems)
@@ -941,9 +1101,11 @@ async function main() {
       // ---- a failure: a fix round, the judgment builder, or a park ----
       const why = String(failure.fingerprint ?? failure.why).trim().slice(0, 240)
       setPlan(nnn, { round: ctx.round, 'round-cause': `round ${ctx.round + 1}: ${String(failure.why).slice(0, 280)}` })
-      if (why === ctx.lastWhy) return park(`same reason twice: ${String(failure.why).slice(0, 300)}`)
+      // The run's own technical questions: the park is recommended, a retry is the other option.
+      const evidence = { check: String(failure.check ?? failure.why).slice(0, 200), tail: String(failure.tail ?? failure.why).split(/\r?\n/).slice(-20).join('\n').slice(0, 2000), ...(result?.planChange?.why ? { proposal: String(result.planChange.why).slice(0, 600) } : {}) }
+      if (why === ctx.lastWhy) return ask(`same reason twice: ${String(failure.why).slice(0, 300)}`, { kind: 'technical', question: `Plan ${nnn} failed twice for the same reason (${String(failure.why).slice(0, 200)}). Leave it parked, or retry it?` }, evidence)
       ctx.lastWhy = why
-      if (ctx.escalated || ctx.round + 1 > MAX_FIX_ROUNDS) return park(`${failure.why} (fix rounds used: ${ctx.round} of ${MAX_FIX_ROUNDS}) — needs the Human`)
+      if (ctx.escalated || ctx.round + 1 > MAX_FIX_ROUNDS) return ask(`${failure.why} (fix rounds used: ${ctx.round} of ${MAX_FIX_ROUNDS}) — needs the Human`, { kind: 'technical', question: `Plan ${nnn} used its fix rounds (${ctx.round} of ${MAX_FIX_ROUNDS}) and still fails: ${String(failure.why).slice(0, 200)}. Leave it parked, or retry it?` }, evidence)
       ctx.round += 1
       ctx.findings = failure.findings ?? []
       if (failure.escalate || ctx.round >= 2) {
@@ -987,6 +1149,117 @@ async function main() {
     skip(a.blocked)
     waves = a.waves
   }
+  // ---- asks: an asking plan blocks exactly what a park would, but holds those plans instead of skipping them ----
+  const asking = new Map() // nnn → { ask, reason, deadline }
+  const held = new Map() // nnn → Map(root → the skip reason should the root park)
+  const rank = (n) => all.indexOf(n)
+  const hold = (nnn, root, reason) => {
+    if (!held.has(nnn)) held.set(nnn, new Map())
+    held.get(nnn).set(root, reason)
+    setPlan(nnn, { state: 'queued', reason: `waits on the answer to ask ${asking.get(root)?.ask.id ?? `of plan ${root}`}` })
+  }
+  /** A root ended: parked → the plans it held are skipped; merged → the ones it alone held are returned to run. */
+  const release = (root, merged) => {
+    const freed = []
+    for (const [n, by] of [...held]) {
+      if (!by.has(root)) continue
+      if (!merged) {
+        held.delete(n)
+        skip(new Map([[n, by.get(root)]]))
+        continue
+      }
+      by.delete(root)
+      if (!by.size) {
+        held.delete(n)
+        freed.push(n)
+      }
+    }
+    return freed.sort((a, b) => rank(a) - rank(b))
+  }
+  /** A plan's result: asking waits, held waits on its root, anything else is an outcome (and ends what it held). */
+  const settle = async (x) => {
+    if (x.state === 'asking') return void asking.set(x.nnn, { ask: x.ask, reason: x.reason, deadline: null })
+    if (x.state === 'held') return hold(x.nnn, x.by, x.reason)
+    outcomes.push(x)
+    if (x.state === 'parked') parkedRoots.push(x.nnn)
+    if (x.state !== 'parked' && x.state !== 'merged') return
+    for (const n of release(x.nnn, x.state === 'merged')) await runFreed(n)
+  }
+  const runOne = async (nnn, opts) => {
+    let res
+    try {
+      res = await runPlan(nnn, opts)
+    } catch (e) {
+      const why = e instanceof RunStop ? `stopped: ${e.message}` : `the plan stopped with an error: ${String(e?.message ?? e).slice(0, 300)}`
+      setPlan(nnn, { state: 'parked', reason: why.slice(0, 380) })
+      res = { nnn, state: 'parked', reason: why }
+    }
+    state('release', { run: RUN, plan: nnn })
+    return res
+  }
+  /** A plan its root's merge freed: a park or another ask may still block it. */
+  const runFreed = async (nnn) => {
+    for (const root of parkedRoots) {
+      const why = blockedBy([root], [nnn], order.edges ?? []).get(nnn)
+      if (why) return skip(new Map([[nnn, why]]))
+    }
+    for (const root of asking.keys()) {
+      const why = blockedBy([root], [nnn], order.edges ?? []).get(nnn)
+      if (why) return hold(nnn, root, why)
+    }
+    if (stopReason) return skip(new Map([[nnn, `not started: ${stopReason}`]]))
+    await settle(await runOne(nnn))
+  }
+  /** An ask that ends without a resume: the plan parks with its question in the run notes (and so the report). */
+  const endAsk = async (nnn, a, how) => {
+    const reason = `${a.reason} — ask ${a.ask.id} ${how}`
+    setPlan(nnn, { state: 'parked', reason: reason.slice(0, 380) })
+    note(`ask ${a.ask.id} ${how} — plan ${nnn} parked; the question was: ${a.ask.question}`, nnn)
+    say(`RUN_PLANS: plan ${nnn} parked — ${reason}`)
+    await settle({ nnn, state: 'parked', reason, ask: a.ask.id })
+  }
+  /** One answer: a park option parks; a scope answer that names paths adds them to the plan's scope first; else resume. */
+  const answered = async (nnn, a, ans) => {
+    note(`ask ${a.ask.id} answered by the ${ans.by}: ${ans.answer}`.slice(0, 400), nnn)
+    say(`RUN_PLANS: plan ${nnn} — ask ${a.ask.id} answered by the ${ans.by}: ${ans.answer}`)
+    if (/^park:/i.test(ans.answer)) return endAsk(nnn, a, `answered: park (by the ${ans.by})`)
+    const paths = a.ask.kind === 'scope' ? scopePaths(ans.answer) : []
+    if (paths.length) {
+      const s = await serial(() => extendScope({ mergeFolder, runBranch: RUN_BRANCH, planPath: lint[nnn].path, paths, id: a.ask.id, run: RUN, nnn }))
+      if (!s.ok) return endAsk(nnn, a, `answered, but the scope could not be extended: ${s.error}`)
+      if (s.added.length) note(`scope of plan ${nnn} extended on ${RUN_BRANCH} by the answer to ${a.ask.id}: ${s.added.join(', ')}`, nnn)
+    }
+    await settle(await runOne(nnn, { answer: { ...ans, ask: a.ask } }))
+  }
+  /** Once every other plan has ended: poll the answers every ASK_POLL_MS, each ask for up to ASK_WAIT_MS. */
+  const waitForAnswers = async () => {
+    if (asking.size) say(`RUN_PLANS: waiting for ${asking.size} answer(s), up to ${ASK_WAIT_MIN} min each — node scripts/orch-state.mjs watch --run ${RUN} prints them`)
+    while (asking.size && !stopReason) {
+      let moved = false
+      for (const [nnn, a] of [...asking]) {
+        a.deadline ??= Date.now() + ASK_WAIT_MS
+        const ans = readAnswer(runDir, a.ask)
+        if (ans?.refused) note(`ask ${a.ask.id}: an answer by the ${ans.by} was refused: ${ans.why}; the ask stays open`, nnn)
+        if (!ans || ans.refused) continue
+        asking.delete(nnn)
+        await answered(nnn, a, ans)
+        moved = true
+        break
+      }
+      if (moved) continue
+      for (const [nnn, a] of [...asking]) {
+        if (Date.now() < a.deadline) continue
+        asking.delete(nnn)
+        await endAsk(nnn, a, `not answered in ${Math.round(ASK_WAIT_MS / 60000)} min`)
+      }
+      if (asking.size) await sleep(ASK_POLL_MS)
+    }
+    for (const [nnn, a] of [...asking]) {
+      asking.delete(nnn)
+      await endAsk(nnn, a, `not answered: the run stopped (${stopReason})`)
+    }
+  }
+
   let finalGate = null
   try {
     for (let w = 0; w < waves.length; w++) {
@@ -1002,41 +1275,55 @@ async function main() {
           const [unit, i] = queue.shift()
           const out = []
           for (const nnn of unit) {
-            const before = out.find((x) => x.state === 'parked')
+            const before = out.find((x) => x.state === 'parked' || x.state === 'asking' || x.state === 'held')
             if (before) {
-              setPlan(nnn, { state: 'skipped', reason: `shares files with parked ${before.nnn}` })
-              out.push({ nnn, state: 'skipped', reason: `shares files with parked ${before.nnn}` })
+              const root = before.state === 'held' ? before.by : before.nnn
+              // After an asking plan (or one it holds) the rest of its lock group waits on the same answer.
+              if (before.state !== 'parked') out.push({ nnn, state: 'held', by: root, reason: `shares files with parked ${root}` })
+              else {
+                setPlan(nnn, { state: 'skipped', reason: `shares files with parked ${before.nnn}` })
+                out.push({ nnn, state: 'skipped', reason: `shares files with parked ${before.nnn}` })
+              }
               continue
             }
-            try {
-              out.push(await runPlan(nnn))
-            } catch (e) {
-              const why = e instanceof RunStop ? `stopped: ${e.message}` : `the plan stopped with an error: ${String(e?.message ?? e).slice(0, 300)}`
-              setPlan(nnn, { state: 'parked', reason: why.slice(0, 380) })
-              out.push({ nnn, state: 'parked', reason: why })
-            }
-            state('release', { run: RUN, plan: nnn })
+            out.push(await runOne(nnn))
           }
           done[i] = out
         }
       }))
       const flat = done.flat().filter(Boolean)
-      outcomes.push(...flat)
+      for (const x of flat) {
+        if (['asking', 'held'].includes(x.state)) await settle(x)
+        else outcomes.push(x)
+      }
       const parked = flat.filter((x) => x.state === 'parked').map((x) => x.nnn)
+      const askedNow = flat.filter((x) => x.state === 'asking').map((x) => x.nnn)
       const later = waves.slice(w + 1)
       if (stopReason) {
         skip(new Map(later.flat().map((p) => [p, `not started: ${stopReason}`])))
         break
       }
+      // Every park is a root, also when no later wave is left: a plan an ask holds is checked against it when freed.
+      if (parked.length) parkedRoots.push(...parked)
       if (parked.length && later.flat().length) {
-        parkedRoots.push(...parked)
         const a = afterPark({ parked: parkedRoots, laterWaves: later, edges: order.edges, onPark: ON_PARK, why: `wave ${w + 1} parked ${parked.join(', ')}` })
         skip(a.blocked)
         for (let k = 0; k < later.length; k++) waves[w + 1 + k] = a.waves[k]
         const goOn = a.waves.flat().length
         note(`wave ${w + 1} parked ${parked.join(', ')} — skipped ${[...a.blocked.keys()].join(', ') || 'none'}; ${goOn} later plan(s) go on`)
       }
+      // An asking plan holds what a park would skip; the rest of the later waves go on.
+      for (const root of askedNow) {
+        const rest = waves.slice(w + 1)
+        if (!rest.flat().length) break
+        const a = afterPark({ parked: [root], laterWaves: rest, edges: order.edges, onPark: ON_PARK, why: `plan ${root} asks ${asking.get(root)?.ask.id}` })
+        for (const [n, why] of a.blocked) hold(n, root, why)
+        for (let k = 0; k < rest.length; k++) waves[w + 1 + k] = a.waves[k]
+        if (a.blocked.size) note(`plan ${root} asks ${asking.get(root)?.ask.id} — ${[...a.blocked.keys()].join(', ')} wait on the answer; the rest go on`)
+      }
     }
+    // ---- the answers: once every other plan has ended ----
+    await waitForAnswers()
     // ---- the final gate on the run branch ----
     const merged = outcomes.filter((x) => x.state === 'merged')
     const finalChecks = [...new Set([...gateCommands({ prepare: PREPARE, pm: PM, ...COMMANDS, manifest: init.kitManifest === true }), ...(Array.isArray(CI_MIRROR) ? CI_MIRROR : []).filter((c) => !checkProblem(c, init.npmScripts ?? null)).map((c) => String(c).trim())])]
@@ -1141,6 +1428,26 @@ function mergeChecksOf(checks) {
   return build ? [build] : []
 }
 
+/**
+ * A scope answer's paths, added to the plan's ```scope block on the run branch before the plan resumes: one commit in
+ * the merge folder, pushed (the gate reads the scope from the run branch; plan-info merges it into the plan branch).
+ */
+function extendScope({ mergeFolder, runBranch, planPath, paths, id, run, nnn }) {
+  git(mergeFolder, 'fetch', '--quiet', 'origin')
+  const ff = git(mergeFolder, 'merge', '--quiet', '--ff-only', `origin/${runBranch}`)
+  if (ff.status !== 0) return { ok: false, error: `the merge folder does not fast-forward to origin/${runBranch}: ${lastLine(ff.err)}` }
+  const file = join(mergeFolder, planPath)
+  if (!existsSync(file)) return { ok: false, error: `${planPath} is not on ${runBranch}` }
+  const { text, added } = withScopeLines(readFileSync(file, 'utf8'), paths)
+  if (!added.length) return { ok: true, added }
+  writeFileSync(file, text)
+  for (const step of [['add', '--', planPath], ['commit', '--quiet', '-m', `plan(${nnn}): scope + ${added.join(', ')} — the answer to ask ${id} of run ${run}`], ['push', '--quiet', 'origin', `HEAD:refs/heads/${runBranch}`]]) {
+    const r = git(mergeFolder, ...step)
+    if (r.status !== 0) return { ok: false, error: `git ${step[0]}: ${lastLine(r.err || r.out)}` }
+  }
+  return { ok: true, added }
+}
+
 /** After the builder: no uncommitted file, at least one commit beyond the run branch, and the branch on origin. */
 function landBranch(wt, branch, runBranch) {
   const dirty = git(wt, 'status', '--porcelain').out.split('\n').filter((l) => l && !/^\?\? \.worktree-/.test(l) && !l.endsWith('.claude/gate-receipt.json'))
@@ -1160,7 +1467,9 @@ export function builderPrompt({ RUN, RUN_BRANCH, ctx, l, LESSONS }) {
     task({
       PLAN: l.path, BRANCH: ctx.info.branch, WORKTREE: ctx.wt.path, RUN_BRANCH, MODE: ctx.mode, TIER: ctx.tier, ROUND: ctx.round, CHECKS: l.checks,
       FINDINGS: ctx.mode === 'fix' && ctx.findings.length ? ctx.findings : undefined, HANDOFF: ctx.mode === 'handoff' || ctx.mode === 'resume' ? ctx.handoff : undefined, LESSONS,
+      ANSWER: ctx.answer ?? undefined,
     }),
+    ctx.answer ? `Your plan's question ${ctx.answer.id} was answered by the ${ctx.answer.by}: follow ANSWER.answer. It settles the stop that raised the question; the plan, its scope and the hard limits still hold.` : '',
     `HARD LIMITS (the Human's; an open choice that would break one is a blocker, not a default): ${HARD_LIMITS.join(' ')}`,
     `Push with git push -u origin ${ctx.info.branch} — never a bare git push (the branch tracks its own remote branch, never the run branch).`,
     ctx.mode === 'fix' ? 'Fix exactly the FINDINGS, rerun the checks, commit and push your branch.' : '',

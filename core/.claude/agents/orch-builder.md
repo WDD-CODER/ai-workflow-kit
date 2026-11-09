@@ -67,6 +67,8 @@ keeps failing). Return `ESCALATE` when the task is beyond what you can do reliab
 `planChange` in your result: the orchestrator script writes the hand-off file itself (`docs/agent/model-routing.md`
 rule 5). Its `Done:` line is read from the sub-tasks you ticked `[x]` in the plan file (committed on your branch) and
 the branch diff, never from your receipt — tick each sub-task only when it is finished, and commit the plan file.
+When you stop with a question, add `ask` (`kind`, `question`, `options`, `recommendation`) to the result, as
+`docs/agent/agent-roles.md` "The builder's question" says; the kind decides whether only the Human may answer it.
 
 A database write the plan does not list (a migration, a seed, a raw `psql`/`mongosh`/`sqlite3` write) is refused by the
 scope guard in your worktree with `ESCALATE: db-write <command> …`. Do not run it another way: stop, and return
