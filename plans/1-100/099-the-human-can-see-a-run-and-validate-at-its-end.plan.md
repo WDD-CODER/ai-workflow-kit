@@ -1,6 +1,6 @@
 # Plan 099 — The Human can see a run and validate at its end
 
-Status: draft
+Status: done
 Depends-on: 098
 Snapshot: 78cf1cec50085b1fd7b7dba3fd4ce9101cceabb4
 Source: the first real orchestrator runs on an installed project, audited 2026-11-08 (`docs/brain/first-run-audit-2026-11-08.md`, Parts 3 and 4). The Human's brief of 2026-11-08, with the Planner's review answered `go`. Reliability fix, allowed in the freeze; no new capability.
@@ -92,14 +92,14 @@ the path to the scope block and retry.
 5. `lib/orch-run.mjs` `freeGb`: the 4 GB check uses it; say in `orchestrate.md` which command prints it.
 
 ## Atomic Sub-tasks
-- [ ] S1: Write the failing tests first for the console log, the model per call, watch, the pool and the grade folder — cases (a)–(d) and the grade test — tools/test/run-plans.test.mjs, tools/test/orchestrator.test.mjs, tools/test/decision-log.test.mjs
-- [ ] S2: Make the run keep its own log that a relaunch adds to instead of erasing — <run>.console.log, append — core/scripts/run-plans.mjs
-- [ ] S3: Record which model every call ran on, so the status file says it — plans.NNN.models — core/scripts/run-plans.mjs
-- [ ] S4: Let watch show each plan's stage, round, model, elapsed time and last call — per-plan lines before ORCH_JSON — core/scripts/orch-state.mjs, core/scripts/lib/orch-run.mjs
-- [ ] S5: Give builders their own folders so the Human's slots stay free — pool of orchestrator.concurrency, useSlots false — core/scripts/orch-state.mjs, kit.config.json
-- [ ] S6: Keep decision grades off main by writing them where the run branch is — grade refuses a main folder — core/scripts/decision-log.mjs
-- [ ] S7: End a run with working pages and the cards, without being asked — serve, check URLs, print cards, 4 GB rule for a second run — core/.claude/commands/orchestrate.md, core/docs/agent/orchestrator.md
-- [ ] S8: Resync the installed copies, run every check, add the changelog entry — CHANGELOG.md
+- [x] S1: Write the failing tests first for the console log, the model per call, watch, the pool and the grade folder — cases (a)–(d) and the grade test — tools/test/run-plans.test.mjs, tools/test/orchestrator.test.mjs, tools/test/decision-log.test.mjs
+- [x] S2: Make the run keep its own log that a relaunch adds to instead of erasing — <run>.console.log, append — core/scripts/run-plans.mjs
+- [x] S3: Record which model every call ran on, so the status file says it — plans.NNN.models — core/scripts/run-plans.mjs
+- [x] S4: Let watch show each plan's stage, round, model, elapsed time and last call — per-plan lines before ORCH_JSON — core/scripts/orch-state.mjs, core/scripts/lib/orch-run.mjs
+- [x] S5: Give builders their own folders so the Human's slots stay free — pool of orchestrator.concurrency, useSlots false — core/scripts/orch-state.mjs, kit.config.json
+- [x] S6: Keep decision grades off main by writing them where the run branch is — grade refuses a main folder — core/scripts/decision-log.mjs
+- [x] S7: End a run with working pages and the cards, without being asked — serve, check URLs, print cards, 4 GB rule for a second run — core/.claude/commands/orchestrate.md, core/docs/agent/orchestrator.md
+- [x] S8: Resync the installed copies, run every check, add the changelog entry — CHANGELOG.md
 
 ## Technical Considerations
 - The console log is appended per line as the run prints, so a killed run keeps everything up to the kill.
@@ -113,3 +113,4 @@ Streaming tokens during a call; the builder's live output; the four leftovers in
 None open. (Answered `go` on 2026-11-08: the builder pool's size is `orchestrator.concurrency`, 2 by default; the fallback is logged first in `docs/brain/error-review.md`.)
 
 ## Execution Notes
+- 2026-11-09 Planner: closed at the Human's request ("plan-close on them"). Built by the Planner and merged into main (4518804, run run-095), so every sub-task is ticked; the `[human]` item is still open and was not validated.

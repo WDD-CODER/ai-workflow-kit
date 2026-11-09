@@ -1,6 +1,6 @@
 # Plan 095 — Reviewer gates sensitive diffs; the unguarded reviewer and builder lose their Bash prefixes
 
-Status: draft
+Status: done
 Depends-on: 088, 097
 Snapshot: 130e979d769df5d0cae061e410b348a9aa980084
 Source: automated security review of an installed project's PR (kit v2.1.0 sync), 2026-11-07; the project could not fix it (kit-owned files). Narrowed by the Planner on 2026-11-08 after plan 097 merged. Reliability and security fix, allowed in the freeze; no new capability.

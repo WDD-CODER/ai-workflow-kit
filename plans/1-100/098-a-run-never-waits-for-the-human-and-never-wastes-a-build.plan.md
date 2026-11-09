@@ -1,6 +1,6 @@
 # Plan 098 — A run never waits for the Human and never wastes a build
 
-Status: draft
+Status: done
 Depends-on: 095
 Snapshot: 78cf1cec50085b1fd7b7dba3fd4ce9101cceabb4
 Source: the first real orchestrator runs on an installed project (kit v2.1.0), audited 2026-11-08 (`docs/brain/first-run-audit-2026-11-08.md`, added by S1). The Human's brief of 2026-11-08, with the Planner's review answered `go`. Reliability fix, allowed in the freeze; no new capability.
@@ -89,15 +89,15 @@ the path to the scope block and retry.
 ## Atomic Sub-tasks
 - [x] S1: Put the first-run audit in the brain as the record these fixes come from — copy the cleaned public copy as it is — docs/brain/first-run-audit-2026-11-08.md
 - [x] S2: Add to the error review the four leftovers that stay a line, not a fix — the per-plan manifest check runs the main folder's tree, not the plan's; the app's e2e base URL is hard-coded instead of read from the environment; decision-review.md names an `/orchestrate` step 5 that does not exist; a replan reason says "on the run branch" while plans live on main — docs/brain/error-review.md
-- [ ] S3: Write the failing tests first for the timeout, the scope park, the dropped check, the dry run and the reviewer default — cases (a)–(e) — tools/test/run-plans.test.mjs
-- [ ] S4: Write the failing test that a park renames the plan branch so the next run starts clean — tools/test/orchestrator-park-branch.test.mjs
-- [ ] S5: Stop a builder only when it has gone idle, never while it is still working, and keep its work — no wall clock, builderIdleMin 15 on the folder's file changes, an idle stop parks without escalating — core/scripts/lib/claude-run.mjs, core/scripts/run-plans.mjs, kit.config.json
-- [ ] S6: Park a scope problem at once instead of paying a stronger model that cannot fix it — ESCALATE on scope or approved: path → park "replan needed" — core/scripts/run-plans.mjs
-- [ ] S7: Make the dry run refuse what the real run would refuse — the gate's test-file check, a stale feat branch, a check the runner cannot run — core/scripts/run-plans.mjs
-- [ ] S8: Rename a parked plan's branch so nobody has to delete it — feat/NNN → park/run-NNN on park — core/scripts/orch-state.mjs
-- [ ] S9: Make the reviewer's STOP park by default — reviewerMode "gate" — kit.config.json, core/docs/agent/orchestrator.md
-- [ ] S10: Start the run as soon as the dry run says yes, and relaunch it once if it is killed — no reply-start step, watch line with cd — core/.claude/commands/orchestrate.md, core/docs/agent/orchestrator.md
-- [ ] S11: Resync the installed copies, run every check, add the changelog entry — CHANGELOG.md
+- [x] S3: Write the failing tests first for the timeout, the scope park, the dropped check, the dry run and the reviewer default — cases (a)–(e) — tools/test/run-plans.test.mjs
+- [x] S4: Write the failing test that a park renames the plan branch so the next run starts clean — tools/test/orchestrator-park-branch.test.mjs
+- [x] S5: Stop a builder only when it has gone idle, never while it is still working, and keep its work — no wall clock, builderIdleMin 15 on the folder's file changes, an idle stop parks without escalating — core/scripts/lib/claude-run.mjs, core/scripts/run-plans.mjs, kit.config.json
+- [x] S6: Park a scope problem at once instead of paying a stronger model that cannot fix it — ESCALATE on scope or approved: path → park "replan needed" — core/scripts/run-plans.mjs
+- [x] S7: Make the dry run refuse what the real run would refuse — the gate's test-file check, a stale feat branch, a check the runner cannot run — core/scripts/run-plans.mjs
+- [x] S8: Rename a parked plan's branch so nobody has to delete it — feat/NNN → park/run-NNN on park — core/scripts/orch-state.mjs
+- [x] S9: Make the reviewer's STOP park by default — reviewerMode "gate" — kit.config.json, core/docs/agent/orchestrator.md
+- [x] S10: Start the run as soon as the dry run says yes, and relaunch it once if it is killed — no reply-start step, watch line with cd — core/.claude/commands/orchestrate.md, core/docs/agent/orchestrator.md
+- [x] S11: Resync the installed copies, run every check, add the changelog entry — CHANGELOG.md
 
 ## Technical Considerations
 - A scope ESCALATE that parks still keeps the builder's work on `park/<run>-<NNN>` (the existing `park-save`), so a replan can start from it.
@@ -115,3 +115,4 @@ None open. (Answered `go` on 2026-11-08: numbers 098/099; the public audit copy;
 - 2026-11-08, the Human: keep the orchestrator settings at 15 — `orchestrator.useSlots` is still read, so the idle limit is a fixed 15 min in `run-plans.mjs` (`BUILDER_IDLE_MIN`, test override `RUN_PLANS_BUILDER_IDLE_MS`), not a `builderIdleMin` setting; the `builderIdleMin` lines above are superseded by this.
 - Built: the runner's builder (0376e3f, 06ce22b), finished by the Planner by hand (100c999); merged into `orch/run-095` (8a3d8a6), into main by PR #122 (4518804). `[human]` item open: needs a kit release and `kit-sync`.
 - 2026-11-08, the Human: no wall-clock limit for builders — an idle limit instead (`idle limit`). `feat/098-a-run-never-waits` (06ce22b) built `builderTimeoutMin` from the earlier text: replace it with `builderIdleMin` and its tests, keep the rest of that work.
+- 2026-11-09 Planner: closed at the Human's request ("plan-close on them"). Every sub-task is ticked because the work is merged into main (4518804); the `[human]` item (kit release + `kit-sync` on the installed project) is still open and was not validated.
