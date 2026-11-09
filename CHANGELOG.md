@@ -9,6 +9,15 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+## [3.0.2] - 2026-11-09
+
+Patch: no project action. Three fixes found by real runs and by the new validation run.
+
+### Fixed
+- **A builder writes the test beside a scoped file instead of asking.** The gate already allowed it (3.0.0), but the builder's instructions did not say so, so a real builder stopped with `ESCALATE: scope` on `x.spec.ts` next to a scoped `x.ts` (`.claude/agents/orch-builder.md`).
+- **A leftover builder folder no longer parks its plan.** On Windows `git worktree remove` can fail on `node_modules` ("Directory not empty") and leave a folder that is no longer a worktree; the next run parked the plan with "is on (no branch)". Now a park deletes what git left, and a run that finds such a folder removes it (or renames it aside) and makes a fresh one.
+- **A relaunch runs a final gate that was cut off.** A run stopped during its final gate, with every plan merged, said "nothing to build" on relaunch and never finished. Now it runs the final gate only and finishes (the dry run says `WOULD START: yes — the final gate only`).
+
 ### Added
 - **Kit only: the orchestrator's behaviours are proved in a sandbox.** `node tools/validate-orchestrator.mjs` stages five cases (a run that survives its session, a sibling test, a plan file edited mid-run, missing packages in the merge folder, a question that stops only its plan) in throwaway projects and decides PASS or FAIL from the run's own files, quoted in one report. Fake mode runs in CI (`kit-tests`); `--mode real` uses Sonnet under a token cap; `--kit-ref v2.1.0` is the negative control. `/validate-run` runs it and prints the report (`docs/agent/kit-validation.md`). Nothing is rendered into a project.
 
