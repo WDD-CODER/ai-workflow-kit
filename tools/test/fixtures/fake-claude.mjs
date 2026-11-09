@@ -3,13 +3,16 @@
 // and the next step for that plan and role from the scenario file (FAKE_CLAUDE_SCENARIO: { "<NNN>": { builder: [step…],
 // reviewer: [step…] } }). Every call is logged as one JSON line in FAKE_CLAUDE_LOG: { role, plan, argv, cwd, start, end }.
 //   builder step: { gate: "pass"|"fail", text?: "<failing output>", rateLimit?: true, sleepMs?: n, decisions?: [...],
-//                   extraFile?: "<path outside the scope>", tamper?: true (rewrites scripts/scope-check.mjs to pass) }
-//     → writes src/<NNN>.txt and gate/<NNN>.txt (the fixture's test script fails while one holds "fail"), commits, pushes
+//                   extraFile?: "<path outside the scope>", tamper?: true (rewrites scripts/scope-check.mjs to pass),
+//                   editFiles?: { "<path>": "<whole new text>" }, appendFiles?: { "<path>": "<text added at the end>" },
+//                   escalate?: { kind, question, options?, recommendation? } (after the commit, answers ESCALATE with that ask) }
+//     → writes src/<NNN>.txt and gate/<NNN>.txt (the fixture's test script fails while one holds "fail"), then the
+//       editFiles and appendFiles, commits, pushes
 //   reviewer step: { verdict: "PASS"|"STOP", moveBranch?: true, rateLimit?: true }
 //     → moveBranch pushes one more commit to the plan branch on origin (the branch moved after its checks)
 // No step left: the builder passes, the reviewer says PASS.
 import { readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
 import { spawnSync } from 'node:child_process'
 
 const argv = process.argv.slice(2)
@@ -57,10 +60,23 @@ async function main() {
     if (step.extraFile) writeFileSync(step.extraFile, `${plan}\n`)
     // tamper: the branch's own scope checker is rewritten to always pass (the gate must not run that copy)
     if (step.tamper) writeFileSync(join('scripts', 'scope-check.mjs'), "console.log('SCOPE: ok'); process.exit(0)\n")
-    git('add', '--', `src/${plan}.txt`, `gate/${plan}.txt`, ...(step.extraFile ? [step.extraFile] : []), ...(step.tamper ? ['scripts/scope-check.mjs'] : []))
+    // editFiles / appendFiles: the change a validation case's task asks for (a named file, a plan-file note)
+    const edits = Object.entries(step.editFiles ?? {})
+    const appends = Object.entries(step.appendFiles ?? {})
+    for (const [f, text] of edits) {
+      mkdirSync(dirname(f), { recursive: true })
+      writeFileSync(f, text)
+    }
+    for (const [f, text] of appends) appendFileSync(f, text)
+    git('add', '--', `src/${plan}.txt`, `gate/${plan}.txt`, ...(step.extraFile ? [step.extraFile] : []), ...(step.tamper ? ['scripts/scope-check.mjs'] : []), ...edits.map(([f]) => f), ...appends.map(([f]) => f))
     git('commit', '-q', '-m', `toy ${plan} round ${prior}`)
     git('push', '-q', '-u', 'origin', branch)
-    log()
+    log(step.escalate ? { escalate: step.escalate.kind } : {})
+    if (step.escalate) {
+      const e = step.escalate
+      answer({ role: 'orch-builder', model, effort: 'medium', status: 'ESCALATE', branch, headSha: git('rev-parse', 'HEAD'), summary: 'toy question', blocker: `ESCALATE: ${e.kind} — ${e.question}`, ask: { kind: e.kind, question: e.question, options: e.options ?? [], recommendation: e.recommendation ?? null }, evidence: [], done: [], notDone: ['T1'], checksRun: [], decisions: [] })
+      return
+    }
     answer({ role: 'orch-builder', model, effort: 'medium', status: 'built', branch, headSha: git('rev-parse', 'HEAD'), summary: 'toy', evidence: ['toy'], done: ['T1'], notDone: [], checksRun: [], decisions: step.decisions ?? [] }, undefined, step.reportModel)
     return
   }

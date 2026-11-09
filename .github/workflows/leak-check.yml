@@ -70,6 +70,10 @@ jobs:
         run: npm ci --prefix scripts
       - name: Every kit tool test (node --test tools/test)
         run: node --test "tools/test/*.test.mjs"
+      # The orchestrator's behaviours of plans 100–104, each staged in a sandbox with the fake builder; any FAIL fails
+      # the job (docs/agent/kit-validation.md).
+      - name: Orchestrator validation, fake mode (tools/validate-orchestrator.mjs)
+        run: node tools/validate-orchestrator.mjs --mode fake
 
   e2e:
     # A fresh project taken through plan -> take-plan -> ship -> merge -> close-out (tools/e2e-check.mjs).

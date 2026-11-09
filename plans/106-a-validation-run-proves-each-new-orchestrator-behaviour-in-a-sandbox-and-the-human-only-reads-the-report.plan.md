@@ -88,15 +88,15 @@ the path to the scope block and retry.
 7. A sandbox kit from `--kit-ref v2.1.0` has no `run-supervisor.mjs`. V1 then reports FAIL with `no scripts/run-supervisor.mjs in the installed kit`, which is the expected negative result, not a tool error.
 
 ## Atomic Sub-tasks
-- [ ] S1: Write the failing tests first for the case runner: timeout is FAIL, cleanup, one row per case, case filter — tools/test/validate-orchestrator.test.mjs
-- [ ] S2: Teach the fake builder to edit a named file and to ask a question — editFiles and escalate steps — tools/test/fixtures/fake-claude.mjs
-- [ ] S3: Let a sandbox install the kit from a tag and carry extra files and a lockfile — kitRef, files options — tools/test/lib/run-plans-fixture.mjs
-- [ ] S4: Add the case runner and the report writer, PASS or FAIL decided only from the sandbox's files — tools/validate-orchestrator.mjs, tools/lib/validate/run.mjs, tools/lib/validate/report.mjs
-- [ ] S5: Add the five cases, each staging its situation itself and quoting its evidence — tools/lib/validate/cases/v1-session.mjs … v5-ask.mjs
-- [ ] S6: Add real mode with a token cap and a dry run that calls no model — tools/validate-orchestrator.mjs
-- [ ] S7: Add the kit-only command that runs the tool and prints the report as it is — .claude/commands/validate-run.md
-- [ ] S8: Run fake mode in CI and describe the tool and its cases — .github/workflows/leak-check.yml, docs/agent/kit-validation.md, CHANGELOG.md
-- [ ] S9: Prove it: fake mode PASS, the v2.1.0 control FAIL, then one real-mode run with its report committed — docs/validation/<date>-fake.md, docs/validation/<date>-v2.1.0-control.md, docs/validation/<date>-real.md
+- [x] S1: Write the failing tests first for the case runner: timeout is FAIL, cleanup, one row per case, case filter — tools/test/validate-orchestrator.test.mjs
+- [x] S2: Teach the fake builder to edit a named file and to ask a question — editFiles and escalate steps — tools/test/fixtures/fake-claude.mjs
+- [x] S3: Let a sandbox install the kit from a tag and carry extra files and a lockfile — kitRef, files options — tools/test/lib/run-plans-fixture.mjs
+- [x] S4: Add the case runner and the report writer, PASS or FAIL decided only from the sandbox's files — tools/validate-orchestrator.mjs, tools/lib/validate/run.mjs, tools/lib/validate/report.mjs
+- [x] S5: Add the five cases, each staging its situation itself and quoting its evidence — tools/lib/validate/cases/v1-session.mjs … v5-ask.mjs
+- [x] S6: Add real mode with a token cap and a dry run that calls no model — tools/validate-orchestrator.mjs
+- [x] S7: Add the kit-only command that runs the tool and prints the report as it is — .claude/commands/validate-run.md
+- [x] S8: Run fake mode in CI and describe the tool and its cases — .github/workflows/leak-check.yml, docs/agent/kit-validation.md, CHANGELOG.md
+- [x] S9: Prove it: fake mode PASS, the v2.1.0 control FAIL, then one real-mode run with its report committed — docs/validation/<date>-fake.md, docs/validation/<date>-v2.1.0-control.md, docs/validation/<date>-real.md
 
 ## Technical Considerations
 - **Honesty is built in.** A verdict comes only from files: `status.json`, the run notes, `calls.csv`, `git log`/`git show` of the sandbox's run branch, and the console log. The report quotes them. No model reads them or writes a verdict. The negative control (v2.1.0) shows that each case can fail.
@@ -112,3 +112,9 @@ FoodVibe or any installed project; GitHub (the sandbox origin is a local bare re
 None open. (The Human, 2026-11-09: the Human only reads the results; validation runs without the Human.)
 
 ## Execution Notes
+- 2026-11-09 Builder: the first fake run found a shipped bug — V1 FAIL, every supervised run crashed at start (run-plans.mjs l.703, `dirname(null)`). Per Out of Scope it was not fixed here: plan 110 fixed it (v3.0.1, merge c6a627d); this branch was then rebased on it and V1 passes.
+- Step 0 item 4: no state marks the moment between the merge folder's creation and `ensure(false)`. V4 uses two plans instead (B depends on A): A's merge installs the merge folder, and `node_modules` is deleted while B builds, so B's merge must install it again.
+- Each dummy plan's [auto] check is `node scripts/check-<NNN>.mjs` (the dry run allows only npm scripts, `node tools/…`, `node scripts/…` and `node --test`), comparing exact file contents.
+- V5 sets `RUN_PLANS_ASK_WAIT_MS` to 10 min in its sandbox (the fixture's default is 1 ms, which parks an ask at once).
+- Evidence: validate-orchestrator.test.mjs → pass 6; fake mode → VALIDATION: PASS 5 of 5 (docs/validation/2026-11-09-fake.md); `--kit-ref v2.1.0` → VALIDATION: FAIL 5 of 5, each for its own reason (docs/validation/2026-11-09-v2.1.0-control.md); npm run build/lint/test → exit 0; size-budget test → pass 6; drift-check → KIT_DRIFT ok; leak-check → ok.
+- Real mode (once, Sonnet, 576,861 of 3,000,000 input tokens): VALIDATION: FAIL 1 of 5 — V1, V3, V4, V5 PASS; V2 FAIL: the real builder asked (ESCALATE scope) instead of writing the sibling test, because `orch-builder.md` does not state the sibling-test rule the gate allows. A finding, recorded in docs/brain/error-review.md; its fix is a new plan (docs/validation/2026-11-09-real.md).

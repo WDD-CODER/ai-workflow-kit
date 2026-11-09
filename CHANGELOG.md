@@ -9,6 +9,9 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Added
+- **Kit only: the orchestrator's behaviours are proved in a sandbox.** `node tools/validate-orchestrator.mjs` stages five cases (a run that survives its session, a sibling test, a plan file edited mid-run, missing packages in the merge folder, a question that stops only its plan) in throwaway projects and decides PASS or FAIL from the run's own files, quoted in one report. Fake mode runs in CI (`kit-tests`); `--mode real` uses Sonnet under a token cap; `--kit-ref v2.1.0` is the negative control. `/validate-run` runs it and prints the report (`docs/agent/kit-validation.md`). Nothing is rendered into a project.
+
 ## [3.0.1] - 2026-11-09
 
 Patch: no project action. Sync it before the next `/orchestrate` — on 3.0.0 every run crashed at start.
