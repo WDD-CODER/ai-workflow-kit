@@ -60,6 +60,7 @@ core/docs/agent/agent-roles.md
 docs/agent/agent-roles.md
 tools/test/run-plans-ask.test.mjs
 tools/test/orchestrator.test.mjs
+tools/test/lib/run-plans-fixture.mjs
 CHANGELOG.md
 docs/brain/error-review.md
 ```
