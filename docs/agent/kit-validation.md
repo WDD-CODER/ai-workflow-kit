@@ -42,7 +42,7 @@ file contents, so a real builder cannot pass a case by doing something else.
 
 ## The negative control
 
-`--kit-ref v2.1.0` installs the kit as it was before plans 100–104. Every case must FAIL there, with evidence that
+`--kit-ref v2.1.0` installs the kit as it was before these five behaviours shipped (v3.0.0). Every case must FAIL there, with evidence that
 shows why. A case that passes on v2.1.0 does not test its behaviour and must be rewritten.
 
 ## A FAIL
