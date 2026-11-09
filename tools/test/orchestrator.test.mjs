@@ -405,12 +405,13 @@ const ruleMatches = (rule, command) => {
   const m = /^Bash\((.*)\)$/.exec(rule)
   return Boolean(m) && new RegExp(`^${m[1].split('*').map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`).test(command)
 }
-test('104 S7: no permissions.ask rule matches the run\'s own merge or push of the run branch; the three rules catch a PR merge and a push to main', () => {
-  const rules = ['Bash(gh pr merge*)', 'Bash(git push origin main*)', 'Bash(git push * main*)']
-  for (const c of ['git merge --no-ff --quiet origin/feat/104-a-run-asks-one', 'git push origin orch/run-100', 'git push --quiet origin orch/main-fix', 'git push -u origin feat/104-a-run-asks-one', 'git push --quiet origin HEAD:refs/heads/orch/run-100']) {
+// The Human, 2026-11-09: the ask covers a PR merge only; a push to main (the Planner's plan pushes) is not asked.
+test('104 S7: no permissions.ask rule matches the run\'s own merge or push, nor a plan push to main; the rule catches a PR merge', () => {
+  const rules = ['Bash(gh pr merge*)']
+  for (const c of ['git merge --no-ff --quiet origin/feat/104-a-run-asks-one', 'git push origin orch/run-100', 'git push --quiet origin orch/main-fix', 'git push -u origin feat/104-a-run-asks-one', 'git push --quiet origin HEAD:refs/heads/orch/run-100', 'git push origin main']) {
     assert.ok(!rules.some((r) => ruleMatches(r, c)), c)
   }
-  for (const c of ['gh pr merge 523 --squash', 'git push origin main', 'git push --force-with-lease origin main']) assert.ok(rules.some((r) => ruleMatches(r, c)), c)
+  for (const c of ['gh pr merge 523 --squash', 'gh pr merge 123']) assert.ok(rules.some((r) => ruleMatches(r, c)), c)
 })
 const askRules = (() => {
   try {
@@ -419,9 +420,9 @@ const askRules = (() => {
     return []
   }
 })()
-test('104 S7: core/.claude/settings.json asks the Human before gh pr merge and a push to main, and never before the run\'s own steps', { todo: askRules.includes('Bash(gh pr merge*)') ? false : 'the settings.json half of S7 is written by the Planner' }, () => {
-  for (const r of ['Bash(gh pr merge*)', 'Bash(git push origin main*)', 'Bash(git push * main*)']) assert.ok(askRules.includes(r), r)
-  for (const c of ['git merge --no-ff --quiet origin/feat/104-a', 'git push origin orch/run-100']) assert.ok(!askRules.some((r) => ruleMatches(r, c)), c)
+test('104 S7: core/.claude/settings.json asks the Human before gh pr merge, and never before the run\'s own steps or a plan push', () => {
+  assert.ok(askRules.includes('Bash(gh pr merge*)'))
+  for (const c of ['git merge --no-ff --quiet origin/feat/104-a', 'git push origin orch/run-100', 'git push origin main']) assert.ok(!askRules.some((r) => ruleMatches(r, c)), c)
 })
 
 test('orchestrator.* config: staleMin is validated; the retired keys are ignored with a NOTE', async () => {
