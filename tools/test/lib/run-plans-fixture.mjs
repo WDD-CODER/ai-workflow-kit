@@ -12,7 +12,7 @@
 // folders and the merge folder find it without an install; scripts/package.json is not committed (no install runs).
 import { writeFileSync, readFileSync, mkdtempSync, mkdirSync, rmSync, existsSync, realpathSync, cpSync, appendFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join, resolve, dirname } from 'node:path'
 import { spawnSync, spawn } from 'node:child_process'
 
 export const FAKE = (kit) => join(kit, 'tools', 'test', 'fixtures', 'fake-claude.mjs')
@@ -52,7 +52,16 @@ export function toyPlan(nnn, { deps = 'none', question = null, title = `Toy ${nn
 }
 export const toyFile = (nnn, title = `Toy ${nnn}`) => `plans/${nnn}-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.plan.md`
 
-export function makeProject({ kit, name = 'rp-app', depsFrom = null, config = {} }) {
+/**
+ * Options beyond the kit folder (tools/validate-orchestrator.mjs uses them):
+ *   kitRef   install the kit from that tag of `kit` (a detached `git worktree add` under the sandbox, removed by cleanup)
+ *   files    { "<path>": "<text>" } committed with the install (a toy app, a local package)
+ *   scripts  package.json scripts merged over build/lint/test
+ *   env      extra environment for every command (a null value removes the variable, e.g. RUN_PLANS_CLAUDE for real models)
+ *   models   kit.config.json models (default { judgment: 'opus' })
+ *   setup    (proj, sh) => void, run after the files are written and before the first commit (e.g. npm install for a lockfile)
+ */
+export function makeProject({ kit, name = 'rp-app', depsFrom = null, config = {}, kitRef = null, files = {}, scripts = {}, env: extraEnv = {}, models = { judgment: 'opus' }, setup = null }) {
   const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'kit-rp-')))
   const proj = join(root, name)
   const origin = join(root, 'origin.git')
@@ -67,6 +76,10 @@ export function makeProject({ kit, name = 'rp-app', depsFrom = null, config = {}
     RUN_PLANS_ASK_WAIT_MS: '1', RUN_PLANS_ASK_POLL_MS: '50',
   }
   for (const k of ['ORCH_FREE_GB', 'ORCH_UI_LOGIN_URL', 'ORCH_UI_API_URL', 'DB_PORT']) delete env[k]
+  for (const [k, v] of Object.entries(extraEnv)) {
+    if (v === null) delete env[k]
+    else env[k] = String(v)
+  }
   const sh = (cmd, args, cwd = proj) => {
     const r = spawnSync(cmd, args, { cwd, env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
     return { status: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}`, stdout: String(r.stdout ?? '') }
@@ -81,7 +94,13 @@ export function makeProject({ kit, name = 'rp-app', depsFrom = null, config = {}
   git(proj, 'config', 'user.name', 'kit-rp')
   git(proj, 'config', 'user.email', 'kit-rp@example.invalid')
   git(proj, 'config', 'core.autocrlf', 'false')
-  writeFileSync(join(proj, 'package.json'), `${JSON.stringify({ name, private: true, scripts: { build: 'node -e ""', lint: 'node -e ""', test: 'node gate-check.mjs' } }, null, 2)}\n`)
+  // kitRef: the kit as that tag held it (a validation run's negative control), installed from its own folder.
+  let installFrom = kit
+  if (kitRef) {
+    installFrom = join(root, `kit-${kitRef.replace(/[^\w.-]+/g, '-')}`)
+    must(git(kit, 'worktree', 'add', '-q', '--detach', installFrom, kitRef), `check out the kit at ${kitRef}`)
+  }
+  writeFileSync(join(proj, 'package.json'), `${JSON.stringify({ name, private: true, scripts: { build: 'node -e ""', lint: 'node -e ""', test: 'node gate-check.mjs', ...scripts } }, null, 2)}\n`)
   // The project's tests: fail while a gate/<NNN>.txt says "fail" (its next lines are the failing output).
   writeFileSync(join(proj, 'gate-check.mjs'), [
     "import { readdirSync, readFileSync, existsSync } from 'node:fs'",
@@ -93,10 +112,10 @@ export function makeProject({ kit, name = 'rp-app', depsFrom = null, config = {}
   writeFileSync(join(proj, 'kit.config.json'), `${JSON.stringify({
     project: { name, repoName: name }, stack: { packs: [] },
     commands: { build: 'build', lint: 'lint', test: 'test' }, hooks: { shellPath: 'bash' },
-    models: { judgment: 'opus' },
+    models,
     orchestrator: { minFreeDiskGb: 0, useSlots: false, rateLimitWaitMin: 0, ...config },
   }, null, 2)}\n`)
-  must(sh(process.execPath, [join(kit, 'tools', 'install.mjs'), '--target', proj, '--source', kit]), 'install the kit')
+  must(sh(process.execPath, [join(installFrom, 'tools', 'install.mjs'), '--target', proj, '--source', installFrom]), 'install the kit')
   const deps = [depsFrom, join(kit, 'scripts', 'node_modules')].find((d) => d && existsSync(join(d, 'picomatch')))
   if (!deps) throw new Error('no scripts/node_modules with picomatch to copy (run npm install inside scripts/)')
   cpSync(deps, join(proj, 'scripts', 'node_modules'), { recursive: true })
@@ -108,6 +127,11 @@ export function makeProject({ kit, name = 'rp-app', depsFrom = null, config = {}
   mkdirSync(join(proj, 'plans'), { recursive: true })
   mkdirSync(join(proj, 'gate'), { recursive: true })
   writeFileSync(join(proj, 'gate', '000.txt'), 'pass\n')
+  for (const [f, text] of Object.entries(files)) {
+    mkdirSync(dirname(join(proj, f)), { recursive: true })
+    writeFileSync(join(proj, f), text)
+  }
+  if (setup) setup(proj, sh)
   must(git(proj, 'add', '-A'), 'git add')
   must(git(proj, 'commit', '-q', '-m', 'chore: install the kit'), 'first commit')
   must(git(proj, 'remote', 'add', 'origin', origin), 'remote')
@@ -156,6 +180,10 @@ export function makeProject({ kit, name = 'rp-app', depsFrom = null, config = {}
       return JSON.parse(readFileSync(join(proj, '.claude', 'orchestrator-runs', run, 'status.json'), 'utf8'))
     },
     cleanup() {
+      if (installFrom !== kit) {
+        git(kit, 'worktree', 'remove', '--force', installFrom)
+        git(kit, 'worktree', 'prune')
+      }
       rmSync(root, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 })
     },
   }
