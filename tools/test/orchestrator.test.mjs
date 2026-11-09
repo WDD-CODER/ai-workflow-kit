@@ -364,6 +364,67 @@ test('orch-state.mjs watch: reads status.json only, STUCK exits 1, the rest 0', 
   }
 })
 
+test('104 watch prints each open ask as one card: the question, the options with the recommendation first, the answer command', () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'orch-ask-')))
+  try {
+    cpSync(join(root, 'scripts'), join(dir, 'scripts'), { recursive: true, dereference: true })
+    const runs = join(dir, '.claude', 'orchestrator-runs', 'w')
+    mkdirSync(join(runs, 'asks'), { recursive: true })
+    writeFileSync(join(runs, 'status.json'), `${JSON.stringify({ run: 'w', phase: 'running', updatedAt: new Date().toISOString(), plans: { '001': { nnn: '001', state: 'asking' }, '002': { nnn: '002', state: 'parked' }, '003': { nnn: '003', state: 'asking' } }, notes: [] })}\n`)
+    const ask = (id, plan, extra) => writeFileSync(join(runs, 'asks', `${id}.json`), JSON.stringify({ id, plan, question: `Question of ${id}?`, context: {}, ...extra }))
+    ask('001-1', '001', { kind: 'scope', humanOnly: false, options: ['park: leave it', 'approved: src/x.txt'], recommendation: 2 })
+    ask('002-1', '002', { kind: 'technical', humanOnly: false, options: ['park: x'], recommendation: 1 })
+    ask('003-1', '003', { kind: 'db-write', humanOnly: true, options: [], recommendation: null })
+    ask('003-2', '003', { kind: 'data', humanOnly: true, options: ['a'], recommendation: 1 })
+    writeFileSync(join(runs, 'asks', '003-2.answer.json'), JSON.stringify({ id: '003-2', by: 'human', text: 'x' }))
+    const r = spawnSync(process.execPath, [join(dir, 'scripts', 'orch-state.mjs'), 'watch', '--run=w'], { cwd: dir, encoding: 'utf8' })
+    assert.equal(r.status, 0, r.stdout)
+    assert.match(r.stdout, /^RUNNING$/m)
+    const card = r.stdout.split(/\r?\n/)
+    const at = card.indexOf('ASK 001-1 · plan 001 · scope · the Human or the advisor answers: Question of 001-1?')
+    assert.ok(at > 0, r.stdout)
+    assert.deepEqual(card.slice(at + 1, at + 5), [
+      '  2. approved: src/x.txt  (recommended)',
+      '  1. park: leave it',
+      '  answer: node scripts/orch-state.mjs answer --run w --id 001-1 --choice 2',
+      '  or:     node scripts/orch-state.mjs answer --run w --id 001-1 --text "<your answer>"',
+    ])
+    assert.ok(card.includes('ASK 003-1 · plan 003 · db-write · only the Human answers: Question of 003-1?'), r.stdout)
+    assert.ok(card.includes('  answer: node scripts/orch-state.mjs answer --run w --id 003-1 --text "<your answer>"'), r.stdout)
+    assert.doesNotMatch(r.stdout, /ASK 002-1/, 'the plan is no longer asking')
+    assert.doesNotMatch(r.stdout, /ASK 003-2/, 'answered')
+    const json = JSON.parse(card.find((l) => l.startsWith('ORCH_JSON ')).slice('ORCH_JSON '.length))
+    assert.deepEqual(json.asks.map((a) => a.id), ['001-1', '003-1'])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+// Claude Code's rule match for a Bash(<pattern>) rule: `*` is any text, the rest literal, the whole command.
+const ruleMatches = (rule, command) => {
+  const m = /^Bash\((.*)\)$/.exec(rule)
+  return Boolean(m) && new RegExp(`^${m[1].split('*').map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`).test(command)
+}
+// The Human, 2026-11-09: the ask covers a PR merge only; a push to main (the Planner's plan pushes) is not asked.
+test('104 S7: no permissions.ask rule matches the run\'s own merge or push, nor a plan push to main; the rule catches a PR merge', () => {
+  const rules = ['Bash(gh pr merge*)']
+  for (const c of ['git merge --no-ff --quiet origin/feat/104-a-run-asks-one', 'git push origin orch/run-100', 'git push --quiet origin orch/main-fix', 'git push -u origin feat/104-a-run-asks-one', 'git push --quiet origin HEAD:refs/heads/orch/run-100', 'git push origin main']) {
+    assert.ok(!rules.some((r) => ruleMatches(r, c)), c)
+  }
+  for (const c of ['gh pr merge 523 --squash', 'gh pr merge 123']) assert.ok(rules.some((r) => ruleMatches(r, c)), c)
+})
+const askRules = (() => {
+  try {
+    return JSON.parse(readFileSync(join(kit, 'core', '.claude', 'settings.json'), 'utf8')).permissions?.ask ?? []
+  } catch {
+    return []
+  }
+})()
+test('104 S7: core/.claude/settings.json asks the Human before gh pr merge, and never before the run\'s own steps or a plan push', () => {
+  assert.ok(askRules.includes('Bash(gh pr merge*)'))
+  for (const c of ['git merge --no-ff --quiet origin/feat/104-a', 'git push origin orch/run-100', 'git push origin main']) assert.ok(!askRules.some((r) => ruleMatches(r, c)), c)
+})
+
 test('orchestrator.* config: staleMin is validated; the retired keys are ignored with a NOTE', async () => {
   assert.deepEqual(orchestratorProblems({ 'orchestrator.staleMin': 10 }), [])
   for (const v of [0, 241, 1.5, '10']) assert.match(orchestratorProblems({ 'orchestrator.staleMin': v }).join(), /staleMin is .* whole number of minutes from 1 to 240/)
@@ -1334,4 +1395,34 @@ test('final gate: a relaunch that never reaches its final gate does not inherit 
     assert.ok(!/Final gate:/.test(rep), rep)
     assert.deepEqual(lib.lessonFacts(JSON.parse(readFileSync(f, 'utf8'))).filter((x) => /final gate/.test(x.text)), [])
   } finally { p.clean(); rmSync(mf, { recursive: true, force: true }) }
+})
+
+// Plan 100: a stop is added to the run's history, never written over (run-517: attempt 1's cause was lost).
+test('orch-state stop appends { at, reason, attempt } to stops[]; stopReason stays the latest; the report lists every stop', () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'orch-stops-')))
+  try {
+    cpSync(join(root, 'scripts'), join(dir, 'scripts'), { recursive: true })
+    spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: dir })
+    const run = (...a) => spawnSync(process.execPath, [join(dir, 'scripts', 'orch-state.mjs'), ...a], { cwd: dir, encoding: 'utf8' })
+    const statusDir = join(dir, '.claude', 'orchestrator-runs', 'r1')
+    mkdirSync(statusDir, { recursive: true })
+    const f = join(statusDir, 'status.json')
+    writeFileSync(f, JSON.stringify({ run: 'r1', phase: 'running', attempts: 1, plans: {}, notes: [] }))
+    const a = run('stop', '--run=r1', '--reason=process died (exit 7)')
+    assert.equal(a.status, 0, a.stdout + a.stderr)
+    // The next attempt starts (init sets running, drops stopReason) and stops for another reason.
+    const st = JSON.parse(readFileSync(f, 'utf8'))
+    writeFileSync(f, JSON.stringify({ ...st, phase: 'running', attempts: 2, stopReason: undefined }))
+    assert.equal(run('stop', '--run=r1', '--reason=rate-limit: 429').status, 0)
+    const s = JSON.parse(readFileSync(f, 'utf8'))
+    assert.deepEqual(s.stops.map((x) => [x.attempt, x.reason]), [[1, 'process died (exit 7)'], [2, 'rate-limit: 429']])
+    assert.ok(s.stops.every((x) => !Number.isNaN(Date.parse(x.at))))
+    assert.equal(s.stopReason, 'rate-limit: 429', 'stopReason is the latest for older readers')
+    const report = lib.formatReport({ status: s, merged: [], mainShaNow: 'a', finishedAt: 'T1', runBranch: 'orch/r1', mainBranch: 'main' })
+    assert.match(report, /## Stops/)
+    assert.match(report, /- attempt 1 · .* · process died \(exit 7\)/)
+    assert.match(report, /- attempt 2 · .* · rate-limit: 429/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })

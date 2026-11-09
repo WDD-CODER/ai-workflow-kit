@@ -91,14 +91,14 @@ the path to the scope block and retry.
 5. Plan 098 S7 (the dry run runs the gate's test-file check, `run-plans.mjs` `testsOutOfScope` l.412): the readiness check of this plan extends that call, not a copy of it.
 
 ## Atomic Sub-tasks
-- [ ] S1: Write the failing tests first for siblings, globs, non-siblings, the same-folder rule and a weakened test — cases (a)–(e) — tools/test/scope-tests-gate.test.mjs
-- [ ] S2: Write the failing test that readiness names the scope line a plan's own test path needs — tools/test/run-plans.test.mjs
-- [ ] S3: Let the test next to a scoped file through, and refuse it when an assertion is removed — sibling rule, weakened-test reason — core/scripts/lib/plan-scope.mjs
-- [ ] S4: Give every caller the diff it needs for the weakened-test check — core/scripts/lib/plan-gate.mjs, core/scripts/orch-state.mjs, core/scripts/scope-check.mjs
-- [ ] S5: Flag before the build the test locations a plan names but its scope doesn't cover — core/scripts/run-plans.mjs
-- [ ] S5b: Make the reviewer stop a test made easier to pass, with an eval case of a loosened matcher and one of a skipped test — core/.claude/agents/plan-reviewer.md, docs/agent-evals/cases/**
-- [ ] S6: Tell the planner and the docs the new rule — core/.claude/commands/plan.md (no added line), core/.claude/references/prd-template.md, core/.claude/skills/save-plan/SKILL.md, core/docs/agent/orchestrator.md
-- [ ] S7: Resync the installed copies, run every check, add the changelog entry — CHANGELOG.md
+- [x] S1: Write the failing tests first for siblings, globs, non-siblings, the same-folder rule and a weakened test — cases (a)–(e) — tools/test/scope-tests-gate.test.mjs
+- [x] S2: Write the failing test that readiness names the scope line a plan's own test path needs — tools/test/run-plans.test.mjs
+- [x] S3: Let the test next to a scoped file through, and refuse it when an assertion is removed — sibling rule, weakened-test reason — core/scripts/lib/plan-scope.mjs
+- [x] S4: Give every caller the diff it needs for the weakened-test check — core/scripts/lib/plan-gate.mjs, core/scripts/orch-state.mjs, core/scripts/scope-check.mjs
+- [x] S5: Flag before the build the test locations a plan names but its scope doesn't cover — core/scripts/run-plans.mjs
+- [x] S5b: Make the reviewer stop a test made easier to pass, with an eval case of a loosened matcher and one of a skipped test — core/.claude/agents/plan-reviewer.md, docs/agent-evals/cases/**
+- [x] S6: Tell the planner and the docs the new rule — core/.claude/commands/plan.md (no added line), core/.claude/references/prd-template.md, core/.claude/skills/save-plan/SKILL.md, core/docs/agent/orchestrator.md
+- [x] S7: Resync the installed copies, run every check, add the changelog entry — CHANGELOG.md
 
 ## Technical Considerations
 - The weakened-test check is line-based on the diff (removed lines only); a renamed assertion shows as a removed line and is refused. The fix is a scope line, which the plan's author decides.
@@ -113,3 +113,7 @@ None open. (The Human took the recommendation on 2026-11-08: only test files nex
 
 ## Execution Notes
 - 2026-11-08 Planner: Depends-on no longer names 098 — it is merged into main (4518804); its open [human] item does not gate this code, and the run would otherwise rebuild it.
+- 2026-11-08 Planner: the `.claude/` part is already done by hand on this branch, because an unattended builder is refused every edit under `.claude/` ("sensitive file"): the S5b reviewer rule in `core/.claude/agents/plan-reviewer.md`, and the S6 wording in `core/.claude/commands/plan.md`, `core/.claude/references/prd-template.md` and `core/.claude/skills/save-plan/SKILL.md` (sources and installed copies). The builder does not edit any `.claude/` file; it builds the rest (S1–S5, the S5b eval cases under `docs/agent-evals/cases/`, the `docs/agent/orchestrator.md` part of S6, S7).
+- 2026-11-08 Builder: a sibling test also counts as in scope for the plain scope check (scope-check.mjs buildMatcher, lib/plan-gate.mjs scopeCheck); without it `SCOPE: out` fired before the test-file gate. Both files are already in the scope block.
+- Evidence: scope-tests-gate test -> exit 0, pass 10; run-plans test -> exit 0; npm run build/lint/test -> exit 0; drift-check -> exit 0; eval-cases test -> exit 0.
+- Reviewer eval cases: docs/agent-evals/cases/plan-reviewer/planted-loosened-matcher and planted-skipped-test.

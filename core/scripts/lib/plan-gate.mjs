@@ -22,7 +22,7 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, appendFileSync } fr
 import { join, dirname, isAbsolute } from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
-import { extractScopeGlobs } from './plan-scope.mjs'
+import { extractScopeGlobs, isSiblingTest } from './plan-scope.mjs'
 
 /** The gate line of the trusted scope check (run in this process from the main folder's scripts, never the branch's). */
 export const scopeMarker = (base, plan) => `scope-check (kit copy) --diff=${base} --plan=${plan}`
@@ -41,7 +41,9 @@ export function scopeCheck({ folder, base, planText, planPath, hotspots = [], up
   const globs = extractScopeGlobs(planText ?? '')
   if (!globs) return { exit: 1, out: `SCOPE_CHECK: ${planPath} has no readable scope under "## Read-Write Scope"` }
   const slash = (p) => (p.endsWith('/') ? `${p}**` : p)
-  const isMatch = picomatch([planPath, '.claude/sessions/**', '.worktree-*', 'docs/brain/**', ...hotspots.filter(Boolean).map(slash), ...GENERATED, ...globs], { dot: true })
+  const inScope = picomatch([planPath, '.claude/sessions/**', '.worktree-*', 'docs/brain/**', ...hotspots.filter(Boolean).map(slash), ...GENERATED, ...globs], { dot: true })
+  // A test file next to a file the scope covers is in scope; the test-file gate (orch-state diff) still checks it.
+  const isMatch = (f) => inScope(f) || isSiblingTest(f, globs, (g) => picomatch(g, { dot: true }))
   const isUpstream = upstream.length ? picomatch(upstream.map(slash), { dot: true }) : () => false
   const lines = (...a) => String(spawnSync('git', a, { cwd: folder, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).stdout ?? '').split('\n').map((l) => l.trim()).filter(Boolean)
   const files = [...new Set([
@@ -55,7 +57,7 @@ export function scopeCheck({ folder, base, planText, planPath, hotspots = [], up
 }
 
 /** Output that names an environment problem, not a code problem. */
-export const ENV_FAIL_RE = /\b(EBUSY|EPERM|EACCES|ENOSPC|EADDRINUSE|ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|EMFILE)\b|socket hang up|getaddrinfo/
+export const ENV_FAIL_RE = /\b(EBUSY|EPERM|EACCES|ENOSPC|EADDRINUSE|ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|EMFILE)\b|socket hang up|getaddrinfo|is not recognized as an internal or external command|command not found/
 export const RECEIPT_REL = '.claude/gate-receipt.json'
 export const TAIL_LINES = 50
 
@@ -73,7 +75,7 @@ export function words(cmd) {
  * npm script names (testCi wins over test); `manifest` adds the kit manifest check; `scope` = { plan, base } adds the
  * plan's scope check against the run branch; `extra` = the plan's own [auto] commands (already allowed).
  */
-export function gateCommands({ prepare = [], pm = 'npm', build = '', lint = '', test = '', testCi = '', manifest = false, kitRoot = null, scope = null, extra = [] } = {}) {
+export function gateCommands({ prepare = [], pm = 'npm', build = '', lint = '', test = '', testCi = '', manifest = false, kitRoot = null, scope = null, ciMirror = [], extra = [] } = {}) {
   const run = (s) => (typeof s === 'string' && s !== '' ? `${pm} run ${s}` : null)
   const prep = (Array.isArray(prepare) ? prepare : [])
     .filter((p) => p && typeof p.missing === 'string' && typeof p.script === 'string')
@@ -83,8 +85,10 @@ export function gateCommands({ prepare = [], pm = 'npm', build = '', lint = '', 
     run(build), run(lint), run(testCi || test),
     // The policy checks come from the main folder's scripts (kitRoot), never from the branch under test: a builder that
     // edits its own copy cannot pass them. The manifest check reads the folder it runs in.
-    manifest ? (kitRoot ? `node "${String(kitRoot).replace(/\\/g, '/')}/scripts/kit-manifest-check.mjs"` : 'node scripts/kit-manifest-check.mjs') : null,
+    manifest ? (kitRoot ? `node "${String(kitRoot).replace(/\\/g, '/')}/scripts/kit-manifest-check.mjs" --root .` : 'node scripts/kit-manifest-check.mjs') : null,
     scope ? scopeMarker(scope.base, scope.plan) : null,
+    // What the run's final gate also runs (orchestrator.ciMirror): a plan's gate fails on it before the merge, not after.
+    ...(Array.isArray(ciMirror) ? ciMirror : []),
     ...extra,
   ].filter(Boolean).map((c) => String(c).trim())
   return [...new Set(list)]
@@ -168,7 +172,7 @@ function excludeReceipt(folder) {
  * Run the commands in order in `folder`. Every command runs (a failure does not stop the next one), so the receipt and
  * a fix round see every failing check at once. `onResult(result)` is called after each command (the caller's calls.csv).
  */
-export async function runGate({ folder, commands, timeoutMin = 15, receipt = true, onResult = null, env = process.env, builtins = {} }) {
+export async function runGate({ folder, commands, timeoutMin = 15, receipt = true, onResult = null, env = process.env, builtins = {}, beforeRetry = null }) {
   const results = []
   const flaky = []
   const timeoutMs = Math.max(1, Number(timeoutMin) || 15) * 60_000
@@ -184,6 +188,8 @@ export async function runGate({ folder, commands, timeoutMin = 15, receipt = tru
     let status = statusOf(r)
     let seconds = r.seconds
     if (status === 'env-fail') {
+      // beforeRetry(command, result): the caller repairs the environment (ensure-env), so the retry is not the same failing command.
+      if (beforeRetry) await beforeRetry(command, r)
       const again = await run(command)
       seconds += again.seconds
       const st = statusOf(again)

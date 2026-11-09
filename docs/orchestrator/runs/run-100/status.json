@@ -1,0 +1,581 @@
+{
+  "run": "run-100",
+  "branch": "orch/run-100",
+  "base": "main",
+  "startedAt": "2026-11-08T18:21:01.292Z",
+  "mainShaAtStart": "ceaf4efa8e5fd2b0570318d24b02fa92c345b03d",
+  "plans": {
+    "100": {
+      "nnn": "100",
+      "title": "A run survives its session: a supervisor relaunches a killed run and waits out a rate limit",
+      "branch": "feat/100-a-run-survives-its",
+      "state": "merged",
+      "round": 1,
+      "tier": "judgment",
+      "models": {
+        "builder": {
+          "model": "sonnet",
+          "tier": "build",
+          "at": "2026-11-08T18:21:07.056Z"
+        },
+        "judgment builder": {
+          "model": "opus",
+          "tier": "judgment",
+          "at": "2026-11-08T18:29:15.162Z"
+        }
+      },
+      "humanItems": [
+        "On the installed project (Windows), start a run with `/orchestrate`, then close that Claude Code session: the run goes on (`watch` keeps showing progress) and ends with its report (reply `ok`)."
+      ],
+      "history": [
+        {
+          "at": "2026-11-08T18:21:06.876Z",
+          "state": "building",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T18:21:07.057Z",
+          "state": "building",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T18:29:10.801Z",
+          "state": "building",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T18:29:15.046Z",
+          "state": "fixing",
+          "round": 1
+        },
+        {
+          "at": "2026-11-08T18:29:15.163Z",
+          "state": "fixing",
+          "round": 1
+        },
+        {
+          "at": "2026-11-08T18:49:40.268Z",
+          "state": "fixing",
+          "round": 1
+        },
+        {
+          "at": "2026-11-08T18:49:40.398Z",
+          "state": "parked",
+          "round": 1
+        }
+      ],
+      "tiers": [
+        "build",
+        "judgment"
+      ],
+      "freeDiskGb": 18.7,
+      "roundCauses": [
+        "round 1: builder blocked: Writes to core/.claude/commands/orchestrate.md are refused by a 'sensitive file' permission. Write, Edit and cp all failed. Until that file changes, the orchestrate.md test in run-supervisor.test.mjs and tools/install-check.mjs fail.",
+        "round 2: builder blocked: Writing core/.claude/commands/orchestrate.md is refused, both with Edit and with `cp` from a scratch file (\"Claude requested permissions to edit … which is a sensitive file\"). So `node tools/install-check.mjs` exits 1 (2 orchestrate.md assertions) and `node --tes"
+      ],
+      "calls": [
+        {
+          "stage": "builder",
+          "model": "sonnet",
+          "seconds": 483.5,
+          "tokens": {
+            "input": 3515971,
+            "output": 46992
+          },
+          "exit": 0
+        },
+        {
+          "stage": "judgment builder",
+          "model": "opus",
+          "seconds": 1224.7,
+          "tokens": {
+            "input": 5944569,
+            "output": 64747
+          },
+          "exit": 0
+        }
+      ],
+      "escalations": [
+        {
+          "step": "round 1",
+          "check": "builder blocked: Writes to core/.claude/commands/orchestrate.md are refused by a 'sensitive file' permission. Write, Edit and cp all failed. Until that file changes, the orchestrate.md test in run-sup"
+        }
+      ],
+      "replan": "no — The plan holds as written. The file is in scope, but this environment will not let the builder write it.",
+      "resetToBase": "b94afb45b34e86c92579c690b56a93048cff2bc0",
+      "resetFrom": "63deddc273c70b6d31e70c905c44e5ec97979c16",
+      "reason": "builder blocked: Writing core/.claude/commands/orchestrate.md is refused, both with Edit and with `cp` from a scratch file (\"Claude requested permissions to edit … which is a sensitive file\"). So `node tools/install-check.mjs` exits 1 (2 orchestrate.md assertions) and `node --test tools/test/run-supervisor.test.mjs` (fix rounds used: 1 of 2) — needs the Human",
+      "park": {
+        "at": "2026-11-08T18:49:43.802Z",
+        "reason": "builder blocked: Writing core/.claude/commands/orchestrate.md is refused, both with Edit and with `cp` from a scratch file (\"Claude requested permissions to edit … which is a sensitive file\"). So `node tools/install-check.mjs` exits 1 (2 orchestrate.md assertions) and `node --test tools/test/run-supervisor.test.mjs` (fix rounds used: 1 of 2) — needs the Human"
+      },
+      "parkBranch": "park/run-100-100",
+      "sha": "ee369a1081e9768fd368c3bea54496fdda418ebf"
+    },
+    "101": {
+      "nnn": "101",
+      "title": "A plan may change the test file next to a file in its scope, and readiness finds the tests it forgot",
+      "branch": "feat/101-a-plan-may-change",
+      "state": "parked",
+      "round": 0,
+      "tier": "build",
+      "models": {},
+      "humanItems": [
+        "On the installed project, a run of a plan that lists only a component file, whose fix needs its `.spec.ts`, merges without a park (reply `ok`)."
+      ],
+      "history": [
+        {
+          "at": "2026-11-08T18:49:50.990Z",
+          "state": "skipped",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T19:02:27.809Z",
+          "state": "building",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T19:02:27.954Z",
+          "state": "building",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T19:18:06.556Z",
+          "state": "building",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T19:18:11.734Z",
+          "state": "fixing",
+          "round": 1
+        },
+        {
+          "at": "2026-11-08T19:18:11.860Z",
+          "state": "fixing",
+          "round": 1
+        },
+        {
+          "at": "2026-11-08T19:18:54.953Z",
+          "state": "fixing",
+          "round": 1
+        },
+        {
+          "at": "2026-11-08T19:18:55.079Z",
+          "state": "parked",
+          "round": 1
+        },
+        {
+          "at": "2026-11-08T19:38:15.333Z",
+          "state": "parked",
+          "round": 0
+        }
+      ],
+      "earlier": [
+        {
+          "nnn": "101",
+          "round": 0,
+          "models": {},
+          "state": "skipped",
+          "reason": "shares files with parked 100",
+          "freeDiskGb": 18.7
+        },
+        {
+          "nnn": "101",
+          "title": "A plan may change the test file next to a file in its scope, and readiness finds the tests it forgot",
+          "branch": "feat/101-a-plan-may-change",
+          "state": "parked",
+          "round": 1,
+          "tier": "judgment",
+          "models": {
+            "builder": {
+              "model": "sonnet",
+              "tier": "build",
+              "at": "2026-11-08T19:02:27.952Z"
+            },
+            "judgment builder": {
+              "model": "opus",
+              "tier": "judgment",
+              "at": "2026-11-08T19:18:11.859Z"
+            }
+          },
+          "tiers": [
+            "build",
+            "judgment"
+          ],
+          "freeDiskGb": 18.3,
+          "roundCauses": [
+            "round 1: builder ESCALATE: Edit on core/.claude/agents/plan-reviewer.md and core/.claude/commands/plan.md returned 'Claude requested permissions to edit … which is a sensitive file' (twice). S5b and S6 need those files. I did not work around the refusal.",
+            "round 2: builder ESCALATE: Edit on core/.claude/agents/plan-reviewer.md returned 'Claude requested permissions to edit ... which is a sensitive file' (the same refusal the first builder got twice). S5b needs that file and S6 needs core/.claude/commands/plan.md, both in the plan's scope. I"
+          ],
+          "calls": [
+            {
+              "stage": "builder",
+              "model": "sonnet",
+              "seconds": 938.3,
+              "tokens": {
+                "input": 1615754,
+                "output": 26842
+              },
+              "exit": 0
+            },
+            {
+              "stage": "judgment builder",
+              "model": "opus",
+              "seconds": 42.8,
+              "tokens": {
+                "input": 119061,
+                "output": 2886
+              },
+              "exit": 0
+            }
+          ],
+          "escalations": [
+            {
+              "step": "round 1",
+              "check": "builder ESCALATE: Edit on core/.claude/agents/plan-reviewer.md and core/.claude/commands/plan.md returned 'Claude requested permissions to edit … which is a sensitive file' (twice). S5b and S6 need th"
+            }
+          ],
+          "replan": "no — The plan holds as written. The files are in the scope block, but this session cannot write under core/.claude/**. The Human must grant the permission or apply the edits.",
+          "resetToBase": "ee369a1081e9768fd368c3bea54496fdda418ebf",
+          "resetFrom": "c564320b28337aa2cfaeee911a05d1387172b28c",
+          "reason": "builder ESCALATE: Edit on core/.claude/agents/plan-reviewer.md returned 'Claude requested permissions to edit ... which is a sensitive file' (the same refusal the first builder got twice). S5b needs that file and S6 needs core/.claude/commands/plan.md, both in the plan's scope. I did not work around the refusal. (fix rounds used: 1 of 2) — needs the Human",
+          "park": {
+            "at": "2026-11-08T19:18:57.183Z",
+            "reason": "builder ESCALATE: Edit on core/.claude/agents/plan-reviewer.md returned 'Claude requested permissions to edit ... which is a sensitive file' (the same refusal the first builder got twice). S5b needs that file and S6 needs core/.claude/commands/plan.md, both in the plan's scope. I did not work around the refusal. (fix rounds used: 1 of 2) — needs the Human"
+          },
+          "parkBranch": "park/run-100-101"
+        }
+      ],
+      "tiers": [
+        "build"
+      ],
+      "reason": "worktree: git worktree add C:\\coding projects\\Cursor\\ai-workflow-kit-orch-run-100-101: fatal: 'feat/101-a-plan-may-change' is already used by worktree at 'C:/coding projects/Cursor/ai-workflow-kit-fix-100'",
+      "freeDiskGb": 18.3
+    },
+    "102": {
+      "nnn": "102",
+      "round": 0,
+      "models": {},
+      "state": "skipped",
+      "reason": "shares files with parked 101",
+      "freeDiskGb": 18.3,
+      "history": [
+        {
+          "at": "2026-11-08T18:49:51.278Z",
+          "state": "skipped",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T19:19:03.562Z",
+          "state": "skipped",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T19:38:15.961Z",
+          "state": "skipped",
+          "round": 0
+        }
+      ]
+    },
+    "103": {
+      "nnn": "103",
+      "round": 0,
+      "models": {},
+      "state": "skipped",
+      "reason": "shares files with parked 101",
+      "freeDiskGb": 18.3,
+      "history": [
+        {
+          "at": "2026-11-08T18:49:51.132Z",
+          "state": "skipped",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T19:19:03.686Z",
+          "state": "skipped",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T19:38:16.331Z",
+          "state": "skipped",
+          "round": 0
+        }
+      ]
+    },
+    "104": {
+      "nnn": "104",
+      "round": 0,
+      "models": {},
+      "state": "skipped",
+      "reason": "shares files with parked 101",
+      "freeDiskGb": 18.3,
+      "history": [
+        {
+          "at": "2026-11-08T18:49:51.456Z",
+          "state": "skipped",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T19:19:03.817Z",
+          "state": "skipped",
+          "round": 0
+        },
+        {
+          "at": "2026-11-08T19:38:16.707Z",
+          "state": "skipped",
+          "round": 0
+        }
+      ]
+    }
+  },
+  "notes": [
+    {
+      "at": "2026-11-08T18:29:10.675Z",
+      "plan": "100",
+      "text": "builder left undone (round 0): S7: core/.claude/commands/orchestrate.md still has the old run_in_background and relaunch steps. core/docs/agent/orchestrator.md and tools/install-check.mjs are changed.; S8: resync after the command changes, then npm run build, lint, test, install-check, size-budget, drift-check and scope-check. On"
+    },
+    {
+      "at": "2026-11-08T18:29:14.923Z",
+      "plan": "100",
+      "text": "escalated to a fresh judgment-tier builder (round 1): builder blocked: Writes to core/.claude/commands/orchestrate.md are refused by a 'sensitive file' permission. Write, Edit and cp all failed. Until that file changes, the orchestrate.md test in run-supervisor.test.mjs and tools/install-check.mjs fail."
+    },
+    {
+      "at": "2026-11-08T18:49:40.107Z",
+      "plan": "100",
+      "text": "builder left undone (round 1): S7 (part): core/.claude/commands/orchestrate.md is unchanged because this session refuses writes under .claude/. The doc and install-check parts of S7 are done. The exact new text is in the plan's Execution Notes: step 2 runs `node scripts/run-supervisor.mjs --run <run> --plans <NNN,NNN>` (prints SU"
+    },
+    {
+      "at": "2026-11-08T18:49:50.625Z",
+      "plan": "100",
+      "text": "parked: nothing to save (nothing uncommitted)"
+    },
+    {
+      "at": "2026-11-08T18:49:51.644Z",
+      "text": "wave 1 parked 100 — skipped 102, 104; 0 later plan(s) go on"
+    },
+    {
+      "at": "2026-11-08T19:18:06.420Z",
+      "plan": "101",
+      "text": "builder left undone (round 0): S5b: the blocking rule in core/.claude/agents/plan-reviewer.md (Edit refused as a sensitive file); S6: reword core/.claude/commands/plan.md l.68–70 without adding a line; same rewording in core/.claude/references/prd-template.md l.32–33 and core/.claude/skills/save-plan/SKILL.md l.32 (Edit refused);"
+    },
+    {
+      "at": "2026-11-08T19:18:11.607Z",
+      "plan": "101",
+      "text": "escalated to a fresh judgment-tier builder (round 1): builder ESCALATE: Edit on core/.claude/agents/plan-reviewer.md and core/.claude/commands/plan.md returned 'Claude requested permissions to edit … which is a sensitive file' (twice). S5b and S6 need those files. I did not work around the refusal."
+    },
+    {
+      "at": "2026-11-08T19:18:54.831Z",
+      "plan": "101",
+      "text": "builder left undone (round 1): S1-S5: not redone. The first attempt is in c564320 (git show c564320). They are only worth redoing once S5b and S6 can be written.; S5b: core/.claude/agents/plan-reviewer.md cannot be edited in this session (sensitive-file permission); S6: core/.claude/commands/plan.md (and very likely the other cor"
+    },
+    {
+      "at": "2026-11-08T19:19:03.273Z",
+      "plan": "101",
+      "text": "parked: nothing to save (nothing uncommitted)"
+    },
+    {
+      "at": "2026-11-08T19:19:03.941Z",
+      "text": "wave 1 parked 101 — skipped 104; 0 later plan(s) go on"
+    },
+    {
+      "at": "2026-11-08T19:38:17.079Z",
+      "text": "wave 1 parked 101 — skipped 104; 0 later plan(s) go on"
+    }
+  ],
+  "attempts": 3,
+  "phase": "finished",
+  "freeDiskGb": 18.3,
+  "updatedAt": "2026-11-08T19:53:34.894Z",
+  "decisions": [
+    {
+      "id": "D1",
+      "plan": "100",
+      "type": "behaviour",
+      "text": "behaviour: the supervisor reads a reset time in the machine's local time and ignores any zone name in the message, so a limit that names another zone may wait too long or too short — reverse: parse the zone in resetWaitMs",
+      "alsoFrom": [],
+      "attempt": 1,
+      "verdict": "none",
+      "kind": "-",
+      "confidence": null,
+      "rec": "",
+      "why": ""
+    },
+    {
+      "id": "D2",
+      "plan": "100",
+      "type": "behaviour",
+      "text": "behaviour: the sweep does not run prune-merged-worktrees.sh. sweepFolders() in run-supervisor.mjs does its own checks on the orch-merge and orch-<run>-<NNN> folders, and the sweep scripts are unchanged — reverse: call the script from the supervisor's main()",
+      "alsoFrom": [],
+      "attempt": 1,
+      "verdict": "none",
+      "kind": "-",
+      "confidence": null,
+      "rec": "",
+      "why": ""
+    },
+    {
+      "id": "D3",
+      "plan": "100",
+      "type": "behaviour",
+      "text": "behaviour: a run counts as live when its supervisor pid is alive or its status.json says running and was touched within 15 minutes; orphan-sweep.mjs is skipped while any run is live — reverse: change liveRuns()",
+      "alsoFrom": [],
+      "attempt": 1,
+      "verdict": "none",
+      "kind": "-",
+      "confidence": null,
+      "rec": "",
+      "why": ""
+    },
+    {
+      "id": "D4",
+      "plan": "100",
+      "type": "behaviour",
+      "text": "behaviour: a stopped run (a stop other than a rate limit) is not relaunched, and a child that dies before writing status.json counts as a death — reverse: edit supervise()",
+      "alsoFrom": [],
+      "attempt": 1,
+      "verdict": "none",
+      "kind": "-",
+      "confidence": null,
+      "rec": "",
+      "why": ""
+    },
+    {
+      "id": "D5",
+      "plan": "100",
+      "type": "seen",
+      "text": "seen: core/.claude/commands/orchestrate.md — writes are refused as a sensitive file in this environment, which blocks S7",
+      "alsoFrom": [],
+      "attempt": 1,
+      "verdict": "none",
+      "kind": "-",
+      "confidence": null,
+      "rec": "",
+      "why": ""
+    },
+    {
+      "id": "D6",
+      "plan": "100",
+      "type": "behaviour",
+      "text": "behaviour: a launch of run-plans.mjs that never reaches init (a refusal, or a crash before it) ends the supervisor and is not relaunched — reverse: in classify(), treat kind 'refused' like 'died'",
+      "alsoFrom": [],
+      "attempt": 1,
+      "verdict": "none",
+      "kind": "-",
+      "confidence": null,
+      "rec": "",
+      "why": ""
+    },
+    {
+      "id": "D7",
+      "plan": "100",
+      "type": "behaviour",
+      "text": "behaviour: the sweep calls orphan-sweep.mjs and free-merged-slots.mjs --no-fetch but not prune-merged-worktrees.sh, because that script works on .claude/worktrees (session worktrees, not run leftovers) and its --confirm uses --force/rm -rf — reverse: add ['prune-merged-worktrees.sh'] (via bash) to the list in sweepLeftovers()",
+      "alsoFrom": [],
+      "attempt": 1,
+      "verdict": "none",
+      "kind": "-",
+      "confidence": null,
+      "rec": "",
+      "why": ""
+    },
+    {
+      "id": "D8",
+      "plan": "100",
+      "type": "behaviour",
+      "text": "behaviour: a run folder that git does not list as a worktree is kept with the line 'remove it by hand', never deleted with a recursive delete — reverse: in sweepLeftovers(), remove it instead of keep(...)",
+      "alsoFrom": [],
+      "attempt": 1,
+      "verdict": "none",
+      "kind": "-",
+      "confidence": null,
+      "rec": "",
+      "why": ""
+    },
+    {
+      "id": "D9",
+      "plan": "100",
+      "type": "behaviour",
+      "text": "behaviour: when the rate-limit message names a reset time, the wait is that time plus one minute; when the next wait would push the total past 6 hours, the supervisor stops the run ('supervisor gave up: the rate-limit waits would pass 6 hours …') rather than relaunching early — reverse: clamp waitMs to what is left of the 6 hours instead of giving up",
+      "alsoFrom": [],
+      "attempt": 1,
+      "verdict": "none",
+      "kind": "-",
+      "confidence": null,
+      "rec": "",
+      "why": ""
+    },
+    {
+      "id": "D10",
+      "plan": "100",
+      "type": "removes",
+      "text": "removes: /orchestrate's own 'relaunch once after a harness kill' step and the hand relaunch after a rate limit (the supervisor now does both; this takes effect only once the blocked orchestrate.md edit lands) — reverse: restore steps 3 and 4 of core/.claude/commands/orchestrate.md from b94afb4",
+      "alsoFrom": [],
+      "attempt": 1,
+      "verdict": "none",
+      "kind": "-",
+      "confidence": null,
+      "rec": "",
+      "why": ""
+    },
+    {
+      "id": "D11",
+      "plan": "101",
+      "type": "behaviour",
+      "text": "behaviour: I put the eval cases in a new folder docs/agent-evals/cases/plan-reviewer/ and left the role list in tools/test/eval-cases.test.mjs unchanged, because that file is outside the scope. Nothing runs these two cases until a harness names the role — reverse: add 'plan-reviewer' to ROLES there.",
+      "alsoFrom": [],
+      "attempt": 2,
+      "verdict": "none",
+      "kind": "-",
+      "confidence": null,
+      "rec": "",
+      "why": ""
+    },
+    {
+      "id": "D12",
+      "plan": "101",
+      "type": "behaviour",
+      "text": "behaviour: the weakened-test check reads the old line number of the removed assertion for the <file>:<line> in its reason — reverse: use the new numbering in removedLinesByFile()",
+      "alsoFrom": [],
+      "attempt": 2,
+      "verdict": "none",
+      "kind": "-",
+      "confidence": null,
+      "rec": "",
+      "why": ""
+    },
+    {
+      "id": "D13",
+      "plan": "101",
+      "type": "behaviour",
+      "text": "behaviour: plannedTestPaths() reads only the Atomic Sub-tasks section and the top-level '- [auto|ui|human]' Done-when lines. It skips tokens that are globs, URLs or start with a dot — reverse: widen the scan in plannedTestPaths()",
+      "alsoFrom": [],
+      "attempt": 2,
+      "verdict": "none",
+      "kind": "-",
+      "confidence": null,
+      "rec": "",
+      "why": ""
+    },
+    {
+      "id": "D14",
+      "plan": "101",
+      "type": "seen",
+      "text": "seen: tools/test/eval-cases.test.mjs:17 — the ROLES list does not include plan-reviewer, so its eval cases are never schema-checked",
+      "alsoFrom": [],
+      "attempt": 2,
+      "verdict": "none",
+      "kind": "-",
+      "confidence": null,
+      "rec": "",
+      "why": ""
+    }
+  ],
+  "finishedAt": "2026-11-08T19:53:34.892Z",
+  "finalGate": {
+    "ok": true,
+    "command": null,
+    "at": "2026-11-08T19:53:34.893Z",
+    "attempt": 1,
+    "blamed": []
+  }
+}

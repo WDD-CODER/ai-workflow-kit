@@ -17,6 +17,9 @@
  *                `slot-serve.mjs --main --servers be --db <local|remote>` starts it (commands.devLocal / devRemote);
  *                SKIP when no plan needs it
  *   git identity user.name and user.email are set
+ *   git longpaths on Windows, core.longpaths is true in the main folder's repository config (set to true when it is not:
+ *                `OK git longpaths (set to true)`; a failed set is `FAIL git longpaths: run git config core.longpaths true in
+ *                <main folder>`); `SKIP git longpaths: not Windows` elsewhere (ORCH_PLATFORM replaces the platform, tests only)
  *   remote       origin/<main branch> is known (a fetch has run)
  *   main folder  on the main branch with no uncommitted tracked file (a run never writes it; plans are committed first)
  *   settings     the /orchestrate command, run-plans.mjs, the builder and reviewer agents and the state script are installed
@@ -31,7 +34,7 @@
  *   leftovers    a --plans plan's feat/NNN-* branch the run branch (else main) does not contain, any park/* branch, and
  *                an occupied slot or builder folder of an earlier run: a WARN `leftover: …` line each
  * --plan-checks runs only the plan checks (with --plans). The JSON line carries parkPlans { NNN: reason } and warnings.
- * --env-only runs disk, database and packages only (the retry check after an environment failure; pass --run too so
+ * --env-only runs disk, database, packages, the gate warning, the probes and git longpaths only (the retry check after an environment failure; pass --run too so
  * the merge folder's packages are checked).
  *   probe        --probe "<command>" (repeatable): the precondition of a gate command that ended env-fail, derived from
  *                the command text and never by running it — `node <file>` → the file exists in the root folder
@@ -281,6 +284,17 @@ function identity() {
   const email = git('config', 'user.email').out
   if (!name || !email) return bad('git identity', 'set git config user.name and user.email (every agent commit needs them)')
   ok('git identity')
+}
+
+// Windows stops git at 260 characters: a run folder or a review folder with a deep path fails with "Could not reset
+// index file". core.longpaths in the repository config (shared by every run folder of the repository) is the fix; it is
+// set here when it is not true. ORCH_PLATFORM replaces process.platform, for tests only.
+function longpaths() {
+  if ((process.env.ORCH_PLATFORM || process.platform) !== 'win32') return skip('git longpaths', 'not Windows')
+  if (git('config', '--get', 'core.longpaths').out === 'true') return ok('git longpaths')
+  const set = git('config', 'core.longpaths', 'true')
+  if (set.status !== 0) return bad('git longpaths', `run git config core.longpaths true in ${root.replace(/\\/g, '/')}`)
+  ok('git longpaths (set to true)')
 }
 
 function remote() {
@@ -587,6 +601,7 @@ else {
   packages()
   gate()
   probes()
+  longpaths()
 }
 if (!envOnly && !uiOnly && !planOnly) {
   await devServer()

@@ -15,11 +15,14 @@
  *
  * Per plan: builder → gate → review → merge. A failed gate or an enforced review STOP gets one fix round on the same
  * tier with the findings; a second failure with a new reason gets `handoff --reset-base` and one fresh judgment-tier
- * builder (INV-1); the same reason twice, or a failure after that, parks the plan (orchestrator.maxFixRounds counts
- * those rounds, default 2). A park skips only the later plans that depend on it or share its files
+ * builder (INV-1); the same reason twice, or a failure after that, asks (orchestrator.maxFixRounds counts those rounds,
+ * default 2). An ask — those, a builder's question, a review that could not run twice — is one file
+ * (.claude/orchestrator-runs/<run>/asks/<NNN>-<n>.json): only its plan waits, and what it blocks is held; once the rest
+ * ended the run polls for answers (ASK_WAIT_MIN), resumes an answered plan, and parks an unanswered one. A park skips
+ * only the later plans that depend on it or share its files
  * (orchestrator.onPark "dependents"); the run goes on. A call that hits a rate or usage limit pauses the run
  * (env-paused), waits orchestrator.rateLimitWaitMin minutes and retries once; a second hit stops the run with
- * `stopped: rate-limit` for the Human to relaunch after the reset.
+ * `stopped: rate-limit`, and scripts/run-supervisor.mjs relaunches it after the reset.
  *
  * --dry-run prints the waves, each plan's readiness lint, the preflight result and the commands the run would run, and
  * calls no model (nothing is created). --concurrency 2 runs two plans of one wave at once (default 1). --reviewer-mode
@@ -28,19 +31,20 @@
  * calls.csv (one row per model call and per gate command). Last line: `RUN_PLANS_JSON {…}`.
  * Exit 0 = every plan merged, 2 = some parked or skipped, 1 = refused before the start (nothing was built).
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync, rmSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync, rmSync, readdirSync, renameSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
-import { extractScopeGlobs, testFilesOutOfScope, testLocationReason } from './lib/plan-scope.mjs'
+import { extractScopeGlobs, testRefusals, removedLinesByFile, isTestPath } from './lib/plan-scope.mjs'
 import { readAgent, claudeArgs, runAgent, parseResult, passedModel } from './lib/claude-run.mjs'
 import { isSensitive } from './ship-prep.mjs'
 import { gateCommands, runGate, scopeCheck, scopeMarker } from './lib/plan-gate.mjs'
 import { review, blocking, problemLine } from './lib/plan-review.mjs'
 import { mergePlan, orchState } from './lib/plan-merge.mjs'
-import { runOrder, unitsOf, afterPark } from './lib/run-order.mjs'
-import { planBranch, planBranchProblem, runNameProblem, startTier } from './lib/orch-run.mjs'
+import { runOrder, unitsOf, afterPark, blockedBy } from './lib/run-order.mjs'
+import { planBranch, planBranchProblem, runNameProblem, startTier, humanOnlyAsk, ASK_KINDS, askCard, ASK_ID_RE } from './lib/orch-run.mjs'
+import { ensureEnv, failingTree, depFolders, retryGit } from './lib/orch-folders.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
@@ -50,6 +54,7 @@ const PM = "npm" === 'pnpm' ? 'pnpm' : 'npm'
 const COMMANDS = { build: "build", lint: "lint", test: "test", testCi: "" }
 const PREPARE = []
 const CI_MIRROR = ["node tools/pack-check.mjs","node tools/drift-check.mjs --target .","node tools/install-check.mjs","node tools/workflow-link-check.mjs","node tools/e2e-check.mjs","node tools/acceptance-check.mjs --e2e"]
+const SERVER_ROOT = ''
 const MERGE_CHECKS_MODE = "build"
 const GATE_TIMEOUT_MIN = Number(45) || 15
 // A builder has no wall-clock limit: it is stopped only after this many minutes in which no file in its folder changed
@@ -58,6 +63,14 @@ export const BUILDER_IDLE_MIN = 15
 // RUN_PLANS_BUILDER_IDLE_MS and RUN_PLANS_BUILDER_POLL_MS (tests only) replace them, like RUN_PLANS_CLAUDE replaces claude.
 const BUILDER_IDLE_MS = Number(process.env.RUN_PLANS_BUILDER_IDLE_MS) > 0 ? Number(process.env.RUN_PLANS_BUILDER_IDLE_MS) : BUILDER_IDLE_MIN * 60_000
 const BUILDER_POLL_MS = Number(process.env.RUN_PLANS_BUILDER_POLL_MS) > 0 ? Number(process.env.RUN_PLANS_BUILDER_POLL_MS) : 30_000
+// A plan that asks waits, once every other plan of the run has ended, this many minutes for its answer (polled every
+// 30 s); then it parks with its question in the report. Fixed like BUILDER_IDLE_MIN, not a setting.
+export const ASK_WAIT_MIN = 180
+// RUN_PLANS_ASK_WAIT_MS and RUN_PLANS_ASK_POLL_MS (tests only) replace them.
+const ASK_WAIT_MS = Number(process.env.RUN_PLANS_ASK_WAIT_MS) > 0 ? Number(process.env.RUN_PLANS_ASK_WAIT_MS) : ASK_WAIT_MIN * 60_000
+const ASK_POLL_MS = Number(process.env.RUN_PLANS_ASK_POLL_MS) > 0 ? Number(process.env.RUN_PLANS_ASK_POLL_MS) : 30_000
+// A plan asks at most this many times in one run; the next question parks it (an answer loop never runs forever).
+const ASK_MAX = 3
 const MAIN = 'main'
 // One plan at a time unless --concurrency 2 is given (goal decision: more builders on one machine made specs time
 // out); orchestrator.concurrency stays the workflow's setting.
@@ -133,6 +146,70 @@ export function autoCommands(planText) {
   }
   return out
 }
+/** The open [auto] and [ui] Done-when items (not [auto:main], not ticked): [{ tag, text }], text without the tag. */
+export function openDoneWhenItems(planText) {
+  const out = []
+  let inSection = false
+  for (const line of String(planText).replace(/\r\n/g, '\n').split('\n')) {
+    if (/^#{1,6}\s/.test(line)) {
+      inSection = DONE_WHEN_SECTION_RE.test(line)
+      continue
+    }
+    if (!inSection) continue
+    const m = /^\s*[-*]\s+(?:\[( |x|X)\]\s+)?\[(auto|ui)\]\s*(.*)$/.exec(line)
+    if (m && !/x/i.test(m[1] ?? '')) out.push({ tag: m[2], text: collapse(m[3]) })
+  }
+  return out
+}
+/**
+ * The open [auto]/[ui] Done-when items a builder's `notDone` list names (its entries are free text): an entry names an
+ * item when it holds the item's backticked command or its opening words, is a long part of it, or shares most of its
+ * words with it. Returns [{ item, reason }] — `reason` is the entry that named it.
+ */
+export function undoneItems(planText, notDone) {
+  const entries = (Array.isArray(notDone) ? notDone : []).filter((x) => typeof x === 'string').map(collapse).filter(Boolean)
+  const found = []
+  for (const item of openDoneWhenItems(planText)) {
+    const low = item.text.toLowerCase()
+    const cmds = [...item.text.matchAll(/`([^`]+)`/g)].map((m) => collapse(m[1]).toLowerCase())
+    const entry = entries.find((e) => {
+      const el = e.toLowerCase()
+      if (cmds.some((c) => c.length > 6 && el.includes(c))) return true
+      if (low.length >= 20 && el.includes(low.slice(0, 40))) return true
+      // Only a named item counts: its command, its opening words, or the whole note inside it — never shared words.
+      return el.length >= 20 && low.includes(el)
+    })
+    if (entry) found.push({ item: `[${item.tag}] ${item.text}`.slice(0, 200), reason: entry })
+  }
+  return found
+}
+/** The main folder's servers a reason names: 'fe' (a dev server, the frontend), 'be' (a backend, a database, an API) or null. */
+export function serversNamed(reason) {
+  const t = String(reason ?? '')
+  if (/\b(backend|back-end|database|mongo\w*|api)\b/i.test(t)) return 'be'
+  return /\b(dev server|frontend|front-end)\b/i.test(t) ? 'fe' : null
+}
+/**
+ * The merged plan a final-gate failure belongs to: `merged` is { nnn: [files the plan changed] }. A plan is blamed when
+ * the failing command's output names a file that exactly one merged plan changed, and no other plan owns such a file.
+ * Returns the plan number, or null (nothing named, a shared file, or two plans).
+ */
+export function blameFinalGate({ output, merged }) {
+  const text = String(output ?? '').replace(/\\/g, '/')
+  const owners = new Set()
+  const files = new Set(Object.values(merged ?? {}).flat())
+  for (const f of files) {
+    if (!text.includes(f)) continue
+    const who = Object.keys(merged).filter((n) => merged[n].includes(f))
+    if (who.length === 1) owners.add(who[0])
+  }
+  return owners.size === 1 ? [...owners][0] : null
+}
+/** orchestrator.ciMirror as the plan gate runs it: allowed commands only, the trusted manifest check left to its own entry. */
+export function ciMirrorChecks(list, scripts = null, { manifest = false } = {}) {
+  return (Array.isArray(list) ? list : []).filter((c) => !checkProblem(c, scripts)).map((c) => String(c).trim()).filter((c) => !(manifest && /kit-manifest-check/.test(c)))
+}
+
 /** Every `Q:` of `## Critical Questions` with its number and answer ('' when none): [{ n, question, answer }]. */
 export function criticalQuestions(planText) {
   const lines = String(planText).replace(/\r\n/g, '\n').split('\n')
@@ -265,10 +342,13 @@ const say = (line) => {
 const b64 = (s) => Buffer.from(String(s), 'utf8').toString('base64')
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const lastLine = (s) => String(s ?? '').split('\n').map((l) => l.trim()).filter(Boolean).pop() ?? ''
-const git = (cwd, ...a) => {
-  const r = spawnSync('git', a, { cwd, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })
-  return { status: r.status ?? 1, out: String(r.stdout ?? '').trim(), err: String(r.stderr ?? '').trim() }
-}
+// git fetch and git push retry on a transient error (incorrect old value, cannot lock ref, a network error): 3 runs, 5 s apart.
+const git = (cwd, ...a) => retryGit(cwd, a, {
+  exec: (c, args) => {
+    const r = spawnSync('git', args, { cwd: c, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })
+    return { status: r.status ?? 1, out: String(r.stdout ?? '').trim(), err: String(r.stderr ?? '').trim() }
+  },
+})
 const node = (script, args, cwd = ROOT, timeoutMs = 10 * 60_000) => {
   const r = spawnSync(process.execPath, [join(ROOT, 'scripts', script), ...args], { cwd, encoding: 'utf8', timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 })
   return { status: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}`, stdout: String(r.stdout ?? '') }
@@ -382,15 +462,19 @@ function lintPlan(nnn, path, runBranch, { statuses = null, opts = null, runPlans
   // The plan branch an earlier run left: one not built on this run's base would be reused and fail at once.
   const base = git(ROOT, 'rev-parse', '--verify', '--quiet', `refs/remotes/origin/${runBranch}`).status === 0 ? `origin/${runBranch}` : `origin/${MAIN}`
   const stale = staleBranchProblem({ root: ROOT, branch, base, run: runBranch.slice(RUN_PREFIX.length), nnn })
-  if (stale) problems.push(stale)
+  // Not a refusal: the run renames it to park/stale-<NNN> at the plan's start and cuts a fresh branch (orch-state plan-info).
+  if (stale) lines.push(stale)
   // The gate's test-file check, on what the builder will change: a check file the plan creates, and what an existing
   // plan branch already changed.
   const created = files.filter((f) => !existsSync(join(ROOT, f)) && !missing.includes(f))
   const onBranch = !stale && git(ROOT, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`).status === 0 ? git(ROOT, 'diff', '--name-only', '--no-renames', `${base}...${branch}`).out.split('\n').filter(Boolean) : []
-  const outOfScope = testsOutOfScope(text, [...new Set([...created, ...onBranch])].filter((f) => f !== path && !f.startsWith('.claude/sessions/')))
-  for (const f of outOfScope) problems.push(`test file gate: ${testLocationReason(f)}`)
-  lines.push(`test files: ${outOfScope.length ? `outside the scope ${outOfScope.join(', ')}` : 'ok'}`)
-  const checks = gateCommands({ prepare: PREPARE, pm: PM, ...COMMANDS, kitRoot: ROOT, manifest: existsSync(join(ROOT, 'scripts', 'kit-manifest-check.mjs')) && existsSync(join(ROOT, 'docs', 'workflow-kit', 'manifest.json')), scope: { base: `origin/${runBranch}`, plan: path }, extra: extra.filter((c) => !missing.some((f) => checkFilesOf(c).includes(f))) })
+  const removed = onBranch.length ? removedLinesByFile(git(ROOT, 'diff', '-U0', '--no-color', '--no-renames', `${base}...${branch}`).out) : {}
+  const gateFiles = [...new Set([...created, ...onBranch, ...plannedTestPaths(text)])].filter((f) => f !== path && !f.startsWith('.claude/sessions/'))
+  const outOfScope = testsOutOfScope(text, gateFiles, removed)
+  for (const r of outOfScope) problems.push(`test file gate: ${r.reason}${r.reason.startsWith('sibling test weakened') ? '' : `; add this line to the scope block: ${r.file}`}`)
+  lines.push(`test files: ${outOfScope.length ? `outside the scope ${outOfScope.map((r) => r.file).join(', ')}` : 'ok'}`)
+  const hasManifest = existsSync(join(ROOT, 'scripts', 'kit-manifest-check.mjs')) && existsSync(join(ROOT, 'docs', 'workflow-kit', 'manifest.json'))
+  const checks = gateCommands({ prepare: PREPARE, pm: PM, ...COMMANDS, kitRoot: ROOT, manifest: hasManifest, ciMirror: ciMirrorChecks(CI_MIRROR, Object.keys(npmScripts()), { manifest: hasManifest }), scope: { base: `origin/${runBranch}`, plan: path }, extra: extra.filter((c) => !missing.some((f) => checkFilesOf(c).includes(f))) })
   return { nnn, path, title: (/^#\s+(.*)$/m.exec(text)?.[1] ?? '').trim(), branch, lines, problems, notes, dropped, checks, start: startTier(text), reviewerMode: opt.reviewerMode, ready: problems.length === 0 }
 }
 
@@ -405,17 +489,131 @@ export function isScopeEscalation(result) {
   return /\bapproved:\s*\S|outside (?:of )?(?:the |its |this plan's |the plan's )?(?:read-write )?scope|scope extended|SCOPE_GUARD|not in (?:the |its )?(?:read-write )?scope/i.test(text)
 }
 
+// ---- asks (docs/agent/orchestrator.md "Asks") -------------------------------------------------------------------
+const PARK_OPTION = 'park: leave the plan parked for the Human to replan'
+/**
+ * The question in a builder's result: its kind (`ask.kind`, else an `ESCALATE: <kind>` blocker), the question, the
+ * options and the recommendation (1-based). No kind stated: a scope escalation is kind `scope`, anything else
+ * `unstated`, and both are Human-only. null for a result that is neither ESCALATE nor blocked.
+ */
+export function builderAsk(result) {
+  if (!result || !['ESCALATE', 'blocked'].includes(String(result.status ?? ''))) return null
+  const a = result.ask && typeof result.ask === 'object' ? result.ask : {}
+  const blocker = String(result.blocker ?? '').trim()
+  const pre = /^ESCALATE:\s*([a-z-]+)\b/i.exec(blocker)
+  const named = String(a.kind ?? (pre ? pre[1] : '')).toLowerCase()
+  const stated = ASK_KINDS.includes(named)
+  const kind = stated ? named : isScopeEscalation(result) ? 'scope' : 'unstated'
+  const options = (Array.isArray(a.options) ? a.options : []).filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim().slice(0, 300)).slice(0, 6)
+  const rec = Number(a.recommendation)
+  return {
+    kind, stated, humanOnly: humanOnlyAsk(kind, stated), question: String(a.question ?? '').trim().slice(0, 600) || blocker.slice(0, 600) || 'the builder stopped without a question',
+    options, recommendation: Number.isInteger(rec) && rec >= 1 && rec <= options.length ? rec : null,
+  }
+}
+/**
+ * The ask a file holds: the recommended option first (number 1) and a `park:` option always there. `recommendation`
+ * is the 1-based number in `options`, else the kind's default: the park for the run's own code, the first option else.
+ */
+export function askOptions({ kind, options = [], recommendation = null, paths = [] }) {
+  let opts = [...options]
+  if (!opts.length && kind === 'scope' && paths.length) opts.push(`approved: ${paths.join(', ')}`)
+  if (!opts.length && kind === 'review') opts.push('review again: the gate and the review run again on the saved commits')
+  if (kind === 'technical' && !options.length) opts.push('retry: a fresh judgment-tier builder with the hand-off and this answer')
+  if (!opts.some((o) => /^park:/i.test(o))) opts.push(PARK_OPTION)
+  const park = opts.find((o) => /^park:/i.test(o))
+  const rec = recommendation ? opts[recommendation - 1] : kind === 'technical' ? park : options.length || ['scope', 'review'].includes(kind) ? opts[0] : park
+  opts = [rec, ...opts.filter((o) => o !== rec)]
+  return { options: opts, recommendation: 1 }
+}
+/** The project paths an answer text names (`approved: a, b` or bare paths): a token with a `/` or a file extension. */
+export function scopePaths(text) {
+  return [...new Set(String(text ?? '').split(/[\s,;`'"()]+/).map((t) => t.replace(/[.:]+$/, '')).filter((t) => !/^[a-z]+:/i.test(t) && !t.includes('..') && /^[\w@.\-*]+(?:\/[\w@.\-*]+)+$|^[\w@\-]+\.[A-Za-z0-9]{1,8}$/.test(t)))]
+}
+/** The plan text with `paths` added at the end of its ```scope block (a path already there is left out): { text, added }. */
+export function withScopeLines(planText, paths) {
+  const lines = String(planText).split('\n')
+  const at = lines.findIndex((l) => /^```scope\s*$/.test(l.trim()))
+  const end = at < 0 ? -1 : lines.findIndex((l, i) => i > at && /^```\s*$/.test(l.trim()))
+  if (end < 0) return { text: planText, added: [] }
+  const have = new Set(lines.slice(at + 1, end).map((l) => l.trim()))
+  const added = paths.filter((x) => !have.has(x))
+  lines.splice(end, 0, ...added)
+  return { text: lines.join('\n'), added }
+}
+/** The plan's goal line: the first line under `## Goals` (or the title). */
+function goalLine(planText) {
+  const lines = String(planText).replace(/\r\n/g, '\n').split('\n')
+  const at = lines.findIndex((l) => /^##\s+Goals?\b/i.test(l))
+  return (at >= 0 ? lines.slice(at + 1).find((l) => l.trim() && !/^#/.test(l)) : lines.find((l) => /^#\s/.test(l)))?.trim().slice(0, 300) ?? ''
+}
+/** Writes asks/<NNN>-<n>.json in the run's folder (n: the plan's next ask) and returns the ask. */
+export function writeAsk(runDir, { nnn, kind, humanOnly, question, options, recommendation, context }) {
+  const dir = join(runDir, 'asks')
+  mkdirSync(dir, { recursive: true })
+  const n = 1 + Math.max(0, ...asksOf(runDir, nnn).map((id) => Number(id.split('-')[1])))
+  const ask = { id: `${nnn}-${n}`, plan: nnn, kind, question, options, recommendation, humanOnly, context }
+  writeFileSync(join(dir, `${ask.id}.json`), `${JSON.stringify(ask, null, 2)}\n`)
+  return ask
+}
+/** The ask ids of one plan in a run's folder. */
+function asksOf(runDir, nnn) {
+  const dir = join(runDir, 'asks')
+  return existsSync(dir) ? readdirSync(dir).map((f) => f.replace(/\.json$/, '')).filter((id) => ASK_ID_RE.test(id) && id.startsWith(`${nnn}-`)) : []
+}
+/**
+ * The answer to an ask: null (none yet), { refused, by } (moved aside to <id>.refused-<time>.json: an answer not by the
+ * Human on a Human-only ask, or an unreadable file — the ask stays open), or { by, choice, option, text }.
+ */
+export function readAnswer(runDir, ask) {
+  const file = join(runDir, 'asks', `${ask.id}.answer.json`)
+  if (!existsSync(file)) return null
+  let a = null
+  try {
+    a = JSON.parse(readFileSync(file, 'utf8'))
+  } catch { /* unreadable: refused below */ }
+  const by = ['human', 'advisor'].includes(a?.by) ? a.by : null
+  const answer = String(a?.option ?? a?.text ?? '').trim()
+  if (!by || !answer || (ask.humanOnly && by !== 'human')) {
+    renameSync(file, join(runDir, 'asks', `${ask.id}.refused-${Date.now()}.json`))
+    return { refused: true, by: by ?? 'unknown', why: !by || !answer ? 'the answer file has no by: human|advisor or no answer' : `only the Human answers a ${ask.kind} question` }
+  }
+  return { by, choice: a.choice ?? null, option: a.option ?? null, text: a.text ?? null, answer: answer.slice(0, 2000) }
+}
+
 /**
  * The gate's test-file check (lib/plan-scope.mjs testFilesOutOfScope, the function `orch-state.mjs diff` runs) on the
  * files a plan will change: the test files no scope line naming a test location lists.
  */
-export function testsOutOfScope(planText, files) {
+export function testsOutOfScope(planText, files, removed) {
   const picomatch = createRequire(import.meta.url)('picomatch')
-  return testFilesOutOfScope(files, extractScopeGlobs(String(planText).replace(/\r\n/g, '\n')) ?? [], (g) => picomatch(g, { dot: true }))
+  return testRefusals(files, extractScopeGlobs(String(planText).replace(/\r\n/g, '\n')) ?? [], (g) => picomatch(g, { dot: true }), removed)
+}
+
+/**
+ * The test paths a plan's sub-tasks and Done-when items name (a path ending in a file extension that isTestPath):
+ * readiness checks each against the scope, so a missing scope line is found before any builder runs.
+ */
+export function plannedTestPaths(planText) {
+  const out = new Set()
+  let inSection = false
+  for (const line of String(planText).replace(/\r\n/g, '\n').split('\n')) {
+    if (/^#{1,6}\s/.test(line)) {
+      inSection = DONE_WHEN_SECTION_RE.test(line) || /^##\s+Atomic Sub-tasks/i.test(line)
+      continue
+    }
+    if (!inSection) continue
+    for (const raw of line.split(/[\s`,;()]+/)) {
+      const t = raw.replace(/^[.'"]+(?=[\w@])/, '').replace(/[.:'"]+$/, '')
+      if (/^[\w@.\-/]+\.[A-Za-z0-9]+$/.test(t) && !/\*/.test(t) && isTestPath(t)) out.add(t)
+    }
+  }
+  return [...out]
 }
 /**
- * A plan branch (local or on origin) an earlier run left that is not built on `base`: neither holds the other, so the
- * run would reuse it and stop at once. A relaunch of the same run (its status.json holds the plan) is not stale.
+ * A plan branch (local or on origin) an earlier run left that is not built on `base`: neither holds the other. The run
+ * renames it to park/stale-<NNN> at the plan's start and cuts a fresh one (the line returned says WILL RENAME). A
+ * relaunch of the same run (its status.json holds the plan) is not stale.
  */
 export function staleBranchProblem({ root, branch, base, run, nnn }) {
   const statusFile = join(root, '.claude', 'orchestrator-runs', run, 'status.json')
@@ -426,9 +624,51 @@ export function staleBranchProblem({ root, branch, base, run, nnn }) {
   for (const ref of [`refs/heads/${branch}`, `refs/remotes/origin/${branch}`]) {
     if (git(root, 'rev-parse', '--verify', '--quiet', ref).status !== 0) continue
     if (anc(base, ref) || anc(ref, base)) continue
-    return `stale branch ${ref.replace(/^refs\/(heads|remotes)\//, '')}: an earlier run left it and it is not built on ${base} — rename it (node scripts/orch-state.mjs park-branch --run ${run} --plan ${nnn}) before the run`
+    return `WILL RENAME ${ref.replace(/^refs\/(heads|remotes)\//, '')} → park/stale-${nnn}: an earlier run left it and it is not built on ${base}; a fresh ${branch} is cut at the plan's start`
   }
   return null
+}
+
+/** A stop that was the plan's own code: never resumed this way (it stays parked, as today). */
+export const OWN_CODE_STOP_RE = /same reason twice|fix rounds used|replan needed|needs the Human/i
+/** A stop that was not the plan's code: a death, a time limit, the environment, a rate limit, an answered question. */
+export const OUTSIDE_STOP_RE = /process died|timed out|builder stopped|environment|rate[- ]limit|answered/i
+
+/**
+ * Does a relaunch continue this plan from its saved commits? `prev` is the plan's record in the run's status.json (the
+ * stopped attempt), `hasPark` a park/<run>-<NNN> branch on origin, `hasBuilt` a feat/<NNN> based on the run branch that
+ * holds commits the run branch does not. 'built': the next step is the gate on those commits; 'park': a plan branch is
+ * cut from the park branch; null: start from round 0 as before.
+ */
+export function resumeKind({ prev, hasPark, hasBuilt, answered = false }) {
+  if (!prev || prev.state === 'merged' || prev.state === 'skipped') return null
+  // An answered ask: the plan continues from the work its ask saved, whatever stop raised the question.
+  if (answered) return hasPark ? 'park' : null
+  const reason = `${prev.reason ?? ''} ${prev.park?.reason ?? ''}`
+  if (OWN_CODE_STOP_RE.test(reason)) return null
+  const stopped = prev.state === 'parked' && OUTSIDE_STOP_RE.test(reason)
+  if (hasBuilt && (stopped || ['gate', 'checking', 'merging'].includes(prev.state))) return 'built'
+  if (stopped && hasPark) return 'park'
+  return null
+}
+
+/** The resume of a plan this run already knew (a relaunch under the same run name): { kind, prev, parkBranch } or null. */
+function resumeOf({ root, run, runBranch, nnn, branch, answered = false }) {
+  let prev = null
+  try {
+    prev = JSON.parse(readFileSync(join(root, '.claude', 'orchestrator-runs', run, 'status.json'), 'utf8')).plans?.[nnn] ?? null
+  } catch { /* no status: a new run */ }
+  if (!prev) return null
+  git(root, 'fetch', '--quiet', 'origin')
+  const parkBranch = `park/${run}-${nnn}`
+  const has = (ref) => git(root, 'rev-parse', '--verify', '--quiet', ref).status === 0
+  const base = `origin/${runBranch}`
+  const feat = [`refs/heads/${branch}`, `refs/remotes/origin/${branch}`].find(has)
+  // This run's own plan branch (its status.json holds the plan): cut from this run branch, which may have moved on since
+  // (merges, the report), so it need not contain the run branch's tip — it holds commits the run branch does not.
+  const hasBuilt = Boolean(feat && has(base) && git(root, 'merge-base', base, feat).status === 0 && Number(git(root, 'rev-list', '--count', `${base}..${feat}`).out) > 0)
+  const kind = resumeKind({ prev, hasPark: has(`refs/remotes/origin/${parkBranch}`), hasBuilt, answered })
+  return kind ? { kind, prev, parkBranch } : null
 }
 
 /**
@@ -457,7 +697,9 @@ async function main() {
   const RUN = o.run
   const RUN_BRANCH = `${RUN_PREFIX}${RUN}`
   if (!o.dryRun) {
-    CONSOLE_LOG = consoleLogPath(ROOT, RUN)
+    // Under scripts/run-supervisor.mjs the run's stdout already goes to the console log (appended): one writer.
+    CONSOLE_LOG = process.env.RUN_SUPERVISOR_LOG === '1' ? null : consoleLogPath(ROOT, RUN)
+    mkdirSync(dirname(consoleLogPath(ROOT, RUN)), { recursive: true })
     mkdirSync(dirname(CONSOLE_LOG), { recursive: true })
     say(`RUN_PLANS: launch ${nowIso()} · ${process.argv.slice(2).join(' ')}`)
   }
@@ -552,6 +794,26 @@ async function main() {
     return r
   }
   const note = (text, nnn) => state('note', { run: RUN, plan: nnn, text: String(text).slice(0, 400) })
+  // ensure-env: the packages a folder needs before code runs there (lib/orch-folders.mjs ensureEnv). `clean` (after an
+  // environment failure) reinstalls the failing tree from scratch, at most once per folder and tree.
+  const cleaned = new Set()
+  const ensureIn = (folder, { nnn = null, clean = false, out = '' } = {}) => {
+    let only = null
+    let reinstall = clean
+    const tree = clean ? failingTree(out, depFolders(folder, SERVER_ROOT)) : null
+    // Not a package failure (network, port, database): no tree is deleted, only the plain ensure runs before the retry.
+    if (clean && tree === null) reinstall = false
+    else if (clean) {
+      const key = `${folder}|${tree}`
+      reinstall = !cleaned.has(key)
+      cleaned.add(key)
+      only = [tree]
+    }
+    const r = ensureEnv({ folder, serverRoot: SERVER_ROOT, pm: PM, clean: reinstall, only })
+    for (const line of r.lines.filter((x) => !/nothing installed/.test(x))) say(`RUN_PLANS: ${nnn ? `plan ${nnn}: ` : ''}${line}`)
+    if (r.installed.length) note(`the folder ${folder.replace(/\\/g, '/').split('/').pop()} was ${reinstall ? 'reinstalled' : 'installed'} (${r.installed.map((f) => (f === '.' ? 'root' : f)).join(', ')})`, nnn ?? undefined)
+    return r
+  }
   const decisions = []
   const priorTop = Math.max(0, ...(init.priorDecisions ?? []).map((d) => Number(String(d.id).slice(1)) || 0))
   // The heartbeat: a builder may work for many minutes; `watch` must still read RUNNING.
@@ -562,6 +824,21 @@ async function main() {
     const p = mergeChain.then(fn, fn)
     mergeChain = p.then(() => undefined, () => undefined)
     return p
+  }
+
+  /** The plan's ask when status.json still says it is asking (a relaunch of the same run), else null. */
+  const pendingAsk = (nnn) => {
+    let prev = null
+    try {
+      prev = JSON.parse(readFileSync(join(runDir, 'status.json'), 'utf8')).plans?.[nnn] ?? null
+    } catch { /* no status */ }
+    if (prev?.state !== 'asking') return null
+    const id = asksOf(runDir, nnn).sort((a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1])).at(-1)
+    try {
+      return id ? JSON.parse(readFileSync(join(runDir, 'asks', `${id}.json`), 'utf8')) : null
+    } catch {
+      return null
+    }
   }
 
   /** One model call with the rate-limit pause: { r } or throws RunStop on a second limit. */
@@ -586,21 +863,78 @@ async function main() {
     }
   }
 
-  const runPlan = async (nnn) => {
+  const runPlan = async (nnn, { answer = null, finalFix = null } = {}) => {
     const l = lint[nnn]
-    const info = state('plan-info', { run: RUN, plan: nnn, 'with-worktree': 'yes' })
+    // A relaunch finds the plan still waiting on its ask: it waits again, nothing is built.
+    if (!answer && !finalFix) {
+      const waiting = pendingAsk(nnn)
+      if (waiting) return { nnn, state: 'asking', ask: waiting, reason: String(waiting.context?.reason ?? '') }
+    }
+    // A relaunch continues a plan that stopped for a reason that was not its own code (or an answered ask): from the
+    // saved work. Not a final-gate fix round: that one starts from the merged plan's branch.
+    const resume = finalFix ? null : resumeOf({ root: ROOT, run: RUN, runBranch: RUN_BRANCH, nnn, branch: l.branch, answered: Boolean(answer) })
+    const info = state('plan-info', { run: RUN, plan: nnn, 'with-worktree': 'yes', 'from-branch': resume?.kind === 'park' ? resume.parkBranch : undefined })
     if (!info.ok) return { nnn, state: 'parked', reason: `plan-info: ${info.error}` }
     const ctx = { nnn, info, wt: info.wt, tier: l.start.tier, tierReason: l.start.reason, round: 0, escalated: false, findings: [], lastWhy: null, mode: 'first' }
-    const park = (reason, { teardown = true } = {}) => {
+    if (finalFix) {
+      // The final gate's fix round: the plan's own tier, the next round of its maxFixRounds, the findings of the failing check.
+      ctx.round = finalFix.round
+      ctx.tier = finalFix.tier
+      ctx.tierReason = 'final gate fix round, on the tier the plan merged on'
+      ctx.escalated = finalFix.tier === 'judgment'
+      ctx.findings = finalFix.findings
+      ctx.lastWhy = null
+      ctx.mode = 'fix'
+    }
+    if (resume) {
+      // The round counter and the tier continue where the stopped attempt left them.
+      ctx.round = Number(resume.prev.round) || 0
+      if (resume.prev.tier === 'judgment') {
+        ctx.tier = 'judgment'
+        ctx.tierReason = 'resumed on the tier the stopped attempt ran on'
+        ctx.escalated = ctx.round > 0
+      }
+      ctx.mode = resume.kind === 'park' ? 'resume' : 'first'
+      ctx.skipBuild = resume.kind === 'built'
+    }
+    if (answer) {
+      ctx.answer = { id: answer.ask.id, kind: answer.ask.kind, question: answer.ask.question, answer: answer.answer, by: answer.by }
+      // "review again": the saved commits go back through the gate and the review, no builder.
+      if (resume?.kind === 'park' && /^review again:/i.test(answer.answer)) ctx.skipBuild = true
+    }
+    // The plan file the builder starts from (the run branch's commit that last changed it): a later change is recorded.
+    let planStart = null
+    const park = (reason, { teardown = true, quiet = false } = {}) => {
       setPlan(nnn, { state: 'parked', round: ctx.round, tier: ctx.tier, reason: String(reason).slice(0, 380) })
+      // The park runs the folder's own scripts (the save, the teardown): they need their packages.
+      if (teardown && ctx.wt?.ok && ctx.wt.path) ensureIn(ctx.wt.path, { nnn })
       if (teardown && ctx.wt?.ok) {
         const s = state('park', { run: RUN, plan: nnn, 'reason-b64': b64(String(reason).slice(0, 2000)) })
         const saved = (s.steps ?? []).find((x) => x?.step === 'save')
         if (saved) note(`parked: ${String(saved.what ?? '').slice(0, 200)}`, nnn)
         else if (!s.ok) note(`park teardown not done: ${String(s.error ?? '').slice(0, 300)}`, nnn)
       }
-      say(`RUN_PLANS: plan ${nnn} parked — ${reason}`)
+      if (!quiet) say(`RUN_PLANS: plan ${nnn} parked — ${reason}`)
       return { nnn, state: 'parked', reason, round: ctx.round }
+    }
+    /**
+     * A question only this plan waits on: the park's teardown (the work saved on park/<run>-<NNN>, the folder freed),
+     * then one ask file and the state `asking`; the run goes on with the rest. `q` is builderAsk()'s shape or the
+     * run's own { kind, question, options? }.
+     */
+    const ask = (reason, q, extra = {}) => {
+      if (asksOf(runDir, nnn).length >= ASK_MAX) return park(`${reason} (asked ${ASK_MAX} times in this run)`)
+      const files = info?.branch ? git(ROOT, 'diff', '--name-only', `origin/${RUN_BRANCH}...${info.branch}`).out.split('\n').filter(Boolean).slice(0, 30) : []
+      park(reason, { quiet: true })
+      const stated = q.stated !== false
+      const o = askOptions({ kind: q.kind, options: q.options ?? [], recommendation: q.recommendation ?? null, paths: q.kind === 'scope' ? scopePaths(`${q.question} ${reason}`) : [] })
+      const context = { reason: String(reason).slice(0, 600), at: nowIso(), goal: goalLine(readFileSync(join(ROOT, l.path), 'utf8')), files, ...extra }
+      const a = writeAsk(runDir, { nnn, kind: q.kind, humanOnly: q.humanOnly ?? humanOnlyAsk(q.kind, stated), question: q.question, ...o, context })
+      setPlan(nnn, { state: 'asking', round: ctx.round, tier: ctx.tier, reason: `asking ${a.id}: ${reason}`.slice(0, 380) })
+      note(`ask ${a.id} (${a.kind}, ${a.humanOnly ? 'only the Human answers' : 'the Human or the advisor answers'}): ${a.question}`, nnn)
+      say(`RUN_PLANS: plan ${nnn} asks ${a.id} — it waits; the run goes on with the plans it does not block`)
+      for (const line of askCard(a, RUN)) say(line)
+      return { nnn, state: 'asking', ask: a, reason, round: ctx.round }
     }
     if (!ctx.wt?.ok) {
       if (ctx.wt?.envFailure) {
@@ -610,32 +944,55 @@ async function main() {
       if (!ctx.wt?.ok) return park(`worktree: ${ctx.wt?.error ?? 'no folder'}`, { teardown: false })
     }
     const wt = ctx.wt.path
+    planStart = git(ROOT, 'log', '-1', '--format=%H', `origin/${RUN_BRANCH}`, '--', l.path).out || null
+    if (resume) {
+      const rel = `.claude/sessions/orch-${RUN}/handoff-${nnn}.md`
+      if (existsSync(join(ROOT, rel))) ctx.handoff = rel
+      else {
+        const h = state('handoff', { run: RUN, plan: nnn, step: `resumed after: ${String(resume.prev.reason ?? '').slice(0, 150)}`, tried: `${resume.prev.tier ?? 'build'} builder, round ${ctx.round}`, replan: 'no' })
+        if (h.ok) ctx.handoff = h.path
+      }
+      note(resume.kind === 'park' ? `resumed from ${resume.parkBranch}: round ${ctx.round}, tier ${ctx.tier}, after: ${String(resume.prev.reason ?? '').slice(0, 160)}` : `resumed from the built ${info.branch}: the gate runs on its existing commits (round ${ctx.round}, tier ${ctx.tier})`, nnn)
+    }
     if (ctx.tier === 'judgment') note(`starts on the judgment tier: ${ctx.tierReason}`, nnn)
     for (;;) {
       if (stopReason) return park(`stopped: ${stopReason}`, { teardown: false })
       // ---- builder ----
-      const stage = ctx.mode === 'first' ? 'builder' : ctx.mode === 'handoff' ? 'judgment builder' : 'builder fix'
-      setPlan(nnn, { state: ctx.round ? 'fixing' : 'building', round: ctx.round, tier: ctx.tier })
-      const call = builderCall({ agent: builderAgent, tier: ctx.tier, reason: ctx.tierReason, settings: guardSettings })
-      const prompt = builderPrompt({ RUN, RUN_BRANCH, ctx, l, LESSONS })
-      say(`RUN_PLANS: plan ${nnn} ${stage} (${call.model}, tier ${call.tier}: ${call.reason}, round ${ctx.round})`)
-      // No wall clock for a builder: only the idle limit (BUILDER_IDLE_MIN) on its folder's file changes.
-      const b = await modelCall(nnn, stage, () => runAgent({ ...call.opts, cwd: wt, prompt, timeoutMs: 0, idleMs: BUILDER_IDLE_MS, watchDir: wt, pollMs: BUILDER_POLL_MS, bin: o.claude }), { model: call.model, tier: call.tier })
+      const stage = ctx.mode === 'first' || ctx.mode === 'resume' ? 'builder' : ctx.mode === 'handoff' ? 'judgment builder' : 'builder fix'
+      let b = { ok: true, text: '' }
       let result = null
-      try {
-        result = b.ok ? parseResult(b.text) : null
-      } catch { /* an unreadable receipt: the gate decides */ }
-      for (const d of (Array.isArray(result?.decisions) ? result.decisions : []).filter((x) => typeof x === 'string' && /^(behaviour|seen|removes):/i.test(x.trim()))) decisions.push({ plan: nnn, text: d.trim().slice(0, 380) })
-      if (Array.isArray(result?.notDone) && result.notDone.length) note(`builder left undone (round ${ctx.round}): ${result.notDone.slice(0, 5).join('; ').slice(0, 300)}`, nnn)
+      ensureIn(wt, { nnn })
+      if (ctx.skipBuild) {
+        // The run died after the build: the branch has its commits, so the next step is the gate on them, no new builder.
+        ctx.skipBuild = false
+        say(`RUN_PLANS: plan ${nnn} resumes at the gate on the existing commits of ${info.branch} (round ${ctx.round})`)
+      } else {
+        setPlan(nnn, { state: ctx.round ? 'fixing' : 'building', round: ctx.round, tier: ctx.tier })
+        const call = builderCall({ agent: builderAgent, tier: ctx.tier, reason: ctx.tierReason, settings: guardSettings })
+        const prompt = builderPrompt({ RUN, RUN_BRANCH, ctx, l, LESSONS })
+        say(`RUN_PLANS: plan ${nnn} ${stage} (${call.model}, tier ${call.tier}: ${call.reason}, round ${ctx.round})`)
+        // No wall clock for a builder: only the idle limit (BUILDER_IDLE_MIN) on its folder's file changes.
+        b = await modelCall(nnn, stage, () => runAgent({ ...call.opts, cwd: wt, prompt, timeoutMs: 0, idleMs: BUILDER_IDLE_MS, watchDir: wt, pollMs: BUILDER_POLL_MS, bin: o.claude }), { model: call.model, tier: call.tier })
+        try {
+          result = b.ok ? parseResult(b.text) : null
+        } catch { /* an unreadable receipt: the gate decides */ }
+        for (const d of (Array.isArray(result?.decisions) ? result.decisions : []).filter((x) => typeof x === 'string' && /^(behaviour|seen|removes):/i.test(x.trim()))) decisions.push({ plan: nnn, text: d.trim().slice(0, 380) })
+        if (Array.isArray(result?.notDone) && result.notDone.length) note(`builder left undone (round ${ctx.round}): ${result.notDone.slice(0, 5).join('; ').slice(0, 300)}`, nnn)
+      }
       let failure = null
       // An idle stop parks with the work kept: the park saves it to park/<run>-<NNN> (never a reset to the base, never a
       // second builder on the same problem).
       if (!b.ok && b.timedOut) return park(`builder stopped: ${b.error} — the work is kept on park/${RUN}-${nnn}`)
-      // A scope problem only a plan edit fixes: parked at once, no judgment-tier builder (it cannot widen the scope either).
-      if (b.ok && isScopeEscalation(result)) return park(`replan needed: ${String(result.blocker ?? result.planChange?.why ?? '').slice(0, 300) || 'a file outside the scope'}`)
+      // A question in the builder's result is an ask: a scope problem only a plan edit fixes (no
+      // judgment-tier builder: it cannot widen the scope either), a db-write, a plan that cannot hold, any ESCALATE that
+      // names its kind, and a judgment-tier ESCALATE. A build-tier ESCALATE with no kind still gets the judgment builder.
+      const q = b.ok ? builderAsk(result) : null
+      const proposal = result?.planChange?.why ? { proposal: String(result.planChange.why).slice(0, 600) } : {}
+      if (q && isScopeEscalation(result)) return ask(`replan needed: ${String(result.blocker ?? result.planChange?.why ?? '').slice(0, 300) || 'a file outside the scope'}`, q, proposal)
       if (!b.ok) failure = { why: `builder: ${b.error}`, escalate: true }
-      else if (result && ctx.tier === 'judgment' && result.planChange?.needed === true) return park(`replan needed: ${String(result.planChange.why ?? '').slice(0, 240) || '(no reason given)'}`)
-      else if (result && /^ESCALATE: db-write/i.test(String(result.blocker ?? ''))) return park(`ask: ${result.blocker}`)
+      else if (result && ctx.tier === 'judgment' && result.planChange?.needed === true) return ask(`replan needed: ${String(result.planChange.why ?? '').slice(0, 240) || '(no reason given)'}`, q ?? { kind: 'unstated', stated: false, question: String(result.planChange.why ?? 'the plan cannot hold as written') }, proposal)
+      else if (q && q.kind === 'db-write') return ask(`ask: ${result.blocker}`, q, proposal)
+      else if (q && (q.stated || (result.status === 'ESCALATE' && ctx.tier === 'judgment'))) return ask(`ESCALATE ${q.kind}: ${String(result.blocker ?? '').slice(0, 300)}`, q, proposal)
       else if (result && result.status && result.status !== 'built') failure = { why: `builder ${result.status}: ${String(result.blocker ?? '').slice(0, 300)}`, escalate: true }
       if (!failure) failure = landBranch(wt, info.branch, RUN_BRANCH)
       let checkedHead = null
@@ -649,13 +1006,37 @@ async function main() {
         const onBase = git(ROOT, 'show', `${base}:${l.path}`)
         const planText = onBase.status === 0 ? onBase.out : readFileSync(join(ROOT, l.path), 'utf8')
         const builtins = { [scopeMarker(base, l.path)]: () => scopeCheck({ folder: wt, base, planText, planPath: l.path, hotspots: HOTSPOTS, upstream: UPSTREAM }) }
-        let g = await runGate({ folder: wt, commands: l.checks, timeoutMin: GATE_TIMEOUT_MIN, onResult, builtins })
+        // A promised [auto]/[ui] Done-when item the builder reports as not done never reaches the merge.
+        const left = result ? undoneItems(planText, result.notDone) : []
+        if (left.length) {
+          const first = left[0]
+          const servers = serversNamed(first.reason)
+          let started = ''
+          if (servers) {
+            // The reason names a backend, database or dev server: the main folder's servers are started the way the
+            // preflight starts them (scripts/slot-serve.mjs --main), then the fix round runs.
+            const s = node('slot-serve.mjs', ['--main', '--servers', servers, '--db', o.db])
+            started = s.status === 0 ? `; the main folder's ${servers === 'be' ? 'backend' : 'dev server'} was started` : `; starting the main folder's ${servers === 'be' ? 'backend' : 'dev server'} failed (${lastLine(s.out)})`
+            note(`${first.item.slice(0, 120)}: ${started.slice(2)}`, nnn)
+          }
+          const why = `Done-when item left undone: ${first.item}`
+          failure = { why, fingerprint: `${why} :: ${first.reason}`.slice(0, 240), check: 'done-when', tail: `${first.reason}${started}`,
+            findings: left.map((x, i) => ({ id: `undone-${i + 1}`, file: x.item.slice(0, 80), line: 1, rule: 'Done-when item left undone', reasoning: `You reported it not done: ${x.reason}.${started} Do it, run its check, and report it done.`, severity: 'blocker' })) }
+        } else {
+        ensureIn(wt, { nnn })
+        // A check that ends with an environment failure repairs the environment (a clean reinstall of the failing tree)
+        // before its one retry, instead of running the same command again.
+        const beforeRetry = (command, r) => {
+          ensureIn(wt, { nnn, clean: true, out: r?.out })
+        }
+        let g = await runGate({ folder: wt, commands: l.checks, timeoutMin: GATE_TIMEOUT_MIN, onResult, builtins, beforeRetry })
         if (g.status === 'env') {
           setPlan(nnn, { state: 'env-paused', round: ctx.round, reason: `gate env-fail: ${g.failed.join(', ')}` })
           const env = node('orch-preflight.mjs', ['--env-only', '--run', RUN, '--probe-dir', wt, ...g.failed.flatMap((c) => ['--probe', c])])
           if (env.status !== 0) return park(`environment: ${(orchJson(env.out)?.problems ?? [lastLine(env.out)]).join('; ')}`)
           note(`environment failure (gate env-fail: ${g.failed.join(', ')}); the environment check passed, the gate runs once more without a fix round`, nnn)
-          g = await runGate({ folder: wt, commands: l.checks, timeoutMin: GATE_TIMEOUT_MIN, onResult, builtins })
+          ensureIn(wt, { nnn })
+          g = await runGate({ folder: wt, commands: l.checks, timeoutMin: GATE_TIMEOUT_MIN, onResult, builtins, beforeRetry })
           if (g.status === 'env') return park(`environment, again after one retry: gate env-fail: ${g.failed.join(', ')}`)
         }
         for (const c of g.flaky) state('flake', { run: RUN, plan: nnn, command: c, round: ctx.round, via: 'rerun', where: 'gate', sha: g.head ?? undefined })
@@ -666,6 +1047,7 @@ async function main() {
           failure = { why, fingerprint: `${why} :: ${lastLine(bad[0]?.tail)}`, check: bad[0]?.command, tail: bad[0]?.tail,
             findings: bad.map((x, i) => ({ id: `gate-${i + 1}`, file: x.command, line: 1, rule: 'check fails', reasoning: String(x.tail ?? '').split('\n').slice(-20).join('\n'), severity: 'blocker' })) }
         } else checkedHead = g.head
+        }
       }
       // ---- review ----
       if (!failure) {
@@ -677,12 +1059,18 @@ async function main() {
           const findings = diff.testsOutOfScope.map((f, i) => ({ id: `scope-${i + 1}`, severity: 'blocker', file: f, line: 1, rule: 'no scope line names a test location', reasoning: `${f} is a test file no line of the plan's Read-Write Scope names; revert it or ask the Human for approved: ${f}` }))
           failure = { why: `scope: ${diff.testsOutOfScope.join(', ')}`, fingerprint: `scope: ${diff.testsOutOfScope.join(',')}`, findings }
         } else {
-          const r = await reviewStep({ nnn, RUN, RUN_BRANCH, branch: info.branch, checkedHead, reviewPath: diff.reviewPath, receipt, reviewerAgent, REVIEW_MODEL, bin: o.claude, modelCall, mode: l.reviewerMode ?? o.reviewerMode })
+          const reviewOnce = () => reviewStep({ nnn, RUN, RUN_BRANCH, branch: info.branch, checkedHead, reviewPath: diff.reviewPath, receipt, reviewerAgent, REVIEW_MODEL, bin: o.claude, modelCall, mode: l.reviewerMode ?? o.reviewerMode })
+          let r = await reviewOnce()
+          // An enforced review that could not run gets one retry, then it is a question (kind review).
+          if (r.error && !r.refused && r.mode === 'gate') {
+            note(`review could not run: ${String(r.error).slice(0, 200)} — one retry`, nnn)
+            r = await reviewOnce()
+          }
           if (r.note) note(r.note, nnn)
           if (r.error) {
             // A branch that brings its own local settings into the review is parked in either mode.
             if (r.refused) return park(`review ${r.error}`)
-            if (r.mode === 'gate') return park(`review could not run: ${r.error}`)
+            if (r.mode === 'gate') return ask(`review could not run: ${r.error}`, { kind: 'review', question: `The review of plan ${nnn} could not run twice (${String(r.error).slice(0, 200)}). Run it again, or leave the plan parked?` }, { check: 'review', tail: String(r.error).slice(0, 600) })
             note(`review could not run (advisory, not enforced): ${r.error}`, nnn)
           } else if (r.enforced) {
             const kept = blocking(r.problems)
@@ -694,11 +1082,17 @@ async function main() {
       // ---- merge ----
       if (!failure) {
         setPlan(nnn, { state: 'merging', round: ctx.round, 'checked-head': checkedHead })
-        const m = await serial(() => mergePlan({ root: ROOT, run: RUN, nnn, branch: info.branch, runBranch: RUN_BRANCH, mergeFolder, checks: mergeChecksOf(l.checks), timeoutMin: GATE_TIMEOUT_MIN, onResult: (row) => csvRow(nnn, `merge check: ${row.command}`, '-', row.seconds, 0, 0, row.exit) }))
+        const m = await serial(() => mergePlan({ root: ROOT, run: RUN, nnn, branch: info.branch, runBranch: RUN_BRANCH, mergeFolder, checks: mergeChecksOf(l.checks), timeoutMin: GATE_TIMEOUT_MIN, plan: { path: l.path, startCommit: planStart }, ensure: (clean, command, r) => ensureIn(mergeFolder, { nnn, clean, out: r?.out }), onResult: (row) => csvRow(nnn, `merge check: ${row.command}`, '-', row.seconds, 0, 0, row.exit) }))
         if (m.merged) {
+          // The records, written from git by the merge step: the plan-file conflicts it resolved, and a plan changed during the run.
+          for (const f of m.planFiles ?? []) note(`merge: ${f} conflicted — the run branch's copy was taken`, nnn)
+          if (m.planChange) {
+            const c = m.planChange.commits[0]
+            state('plan-changed', { run: RUN, plan: nnn, commit: c.sha, author: c.author, subject: c.subject, 'diff-b64': b64(m.planChange.diff), ...(m.planChange.warnings.length ? { 'warning-b64': b64(m.planChange.warnings.join('\n')) } : {}) })
+          }
           setPlan(nnn, { state: 'merged', round: ctx.round, tier: ctx.tier, sha: m.sha })
           say(`RUN_PLANS: plan ${nnn} merged into ${RUN_BRANCH} (${m.sha.slice(0, 7)})`)
-          return { nnn, state: 'merged', sha: m.sha, round: ctx.round }
+          return { nnn, state: 'merged', sha: m.sha, round: ctx.round, tier: ctx.tier }
         }
         if (m.pin) return park(m.why)
         if (m.env) return park(`environment: ${m.why}`)
@@ -707,9 +1101,11 @@ async function main() {
       // ---- a failure: a fix round, the judgment builder, or a park ----
       const why = String(failure.fingerprint ?? failure.why).trim().slice(0, 240)
       setPlan(nnn, { round: ctx.round, 'round-cause': `round ${ctx.round + 1}: ${String(failure.why).slice(0, 280)}` })
-      if (why === ctx.lastWhy) return park(`same reason twice: ${String(failure.why).slice(0, 300)}`)
+      // The run's own technical questions: the park is recommended, a retry is the other option.
+      const evidence = { check: String(failure.check ?? failure.why).slice(0, 200), tail: String(failure.tail ?? failure.why).split(/\r?\n/).slice(-20).join('\n').slice(0, 2000), ...(result?.planChange?.why ? { proposal: String(result.planChange.why).slice(0, 600) } : {}) }
+      if (why === ctx.lastWhy) return ask(`same reason twice: ${String(failure.why).slice(0, 300)}`, { kind: 'technical', question: `Plan ${nnn} failed twice for the same reason (${String(failure.why).slice(0, 200)}). Leave it parked, or retry it?` }, evidence)
       ctx.lastWhy = why
-      if (ctx.escalated || ctx.round + 1 > MAX_FIX_ROUNDS) return park(`${failure.why} (fix rounds used: ${ctx.round} of ${MAX_FIX_ROUNDS}) — needs the Human`)
+      if (ctx.escalated || ctx.round + 1 > MAX_FIX_ROUNDS) return ask(`${failure.why} (fix rounds used: ${ctx.round} of ${MAX_FIX_ROUNDS}) — needs the Human`, { kind: 'technical', question: `Plan ${nnn} used its fix rounds (${ctx.round} of ${MAX_FIX_ROUNDS}) and still fails: ${String(failure.why).slice(0, 200)}. Leave it parked, or retry it?` }, evidence)
       ctx.round += 1
       ctx.findings = failure.findings ?? []
       if (failure.escalate || ctx.round >= 2) {
@@ -753,6 +1149,117 @@ async function main() {
     skip(a.blocked)
     waves = a.waves
   }
+  // ---- asks: an asking plan blocks exactly what a park would, but holds those plans instead of skipping them ----
+  const asking = new Map() // nnn → { ask, reason, deadline }
+  const held = new Map() // nnn → Map(root → the skip reason should the root park)
+  const rank = (n) => all.indexOf(n)
+  const hold = (nnn, root, reason) => {
+    if (!held.has(nnn)) held.set(nnn, new Map())
+    held.get(nnn).set(root, reason)
+    setPlan(nnn, { state: 'queued', reason: `waits on the answer to ask ${asking.get(root)?.ask.id ?? `of plan ${root}`}` })
+  }
+  /** A root ended: parked → the plans it held are skipped; merged → the ones it alone held are returned to run. */
+  const release = (root, merged) => {
+    const freed = []
+    for (const [n, by] of [...held]) {
+      if (!by.has(root)) continue
+      if (!merged) {
+        held.delete(n)
+        skip(new Map([[n, by.get(root)]]))
+        continue
+      }
+      by.delete(root)
+      if (!by.size) {
+        held.delete(n)
+        freed.push(n)
+      }
+    }
+    return freed.sort((a, b) => rank(a) - rank(b))
+  }
+  /** A plan's result: asking waits, held waits on its root, anything else is an outcome (and ends what it held). */
+  const settle = async (x) => {
+    if (x.state === 'asking') return void asking.set(x.nnn, { ask: x.ask, reason: x.reason, deadline: null })
+    if (x.state === 'held') return hold(x.nnn, x.by, x.reason)
+    outcomes.push(x)
+    if (x.state === 'parked') parkedRoots.push(x.nnn)
+    if (x.state !== 'parked' && x.state !== 'merged') return
+    for (const n of release(x.nnn, x.state === 'merged')) await runFreed(n)
+  }
+  const runOne = async (nnn, opts) => {
+    let res
+    try {
+      res = await runPlan(nnn, opts)
+    } catch (e) {
+      const why = e instanceof RunStop ? `stopped: ${e.message}` : `the plan stopped with an error: ${String(e?.message ?? e).slice(0, 300)}`
+      setPlan(nnn, { state: 'parked', reason: why.slice(0, 380) })
+      res = { nnn, state: 'parked', reason: why }
+    }
+    state('release', { run: RUN, plan: nnn })
+    return res
+  }
+  /** A plan its root's merge freed: a park or another ask may still block it. */
+  const runFreed = async (nnn) => {
+    for (const root of parkedRoots) {
+      const why = blockedBy([root], [nnn], order.edges ?? []).get(nnn)
+      if (why) return skip(new Map([[nnn, why]]))
+    }
+    for (const root of asking.keys()) {
+      const why = blockedBy([root], [nnn], order.edges ?? []).get(nnn)
+      if (why) return hold(nnn, root, why)
+    }
+    if (stopReason) return skip(new Map([[nnn, `not started: ${stopReason}`]]))
+    await settle(await runOne(nnn))
+  }
+  /** An ask that ends without a resume: the plan parks with its question in the run notes (and so the report). */
+  const endAsk = async (nnn, a, how) => {
+    const reason = `${a.reason} — ask ${a.ask.id} ${how}`
+    setPlan(nnn, { state: 'parked', reason: reason.slice(0, 380) })
+    note(`ask ${a.ask.id} ${how} — plan ${nnn} parked; the question was: ${a.ask.question}`, nnn)
+    say(`RUN_PLANS: plan ${nnn} parked — ${reason}`)
+    await settle({ nnn, state: 'parked', reason, ask: a.ask.id })
+  }
+  /** One answer: a park option parks; a scope answer that names paths adds them to the plan's scope first; else resume. */
+  const answered = async (nnn, a, ans) => {
+    note(`ask ${a.ask.id} answered by the ${ans.by}: ${ans.answer}`.slice(0, 400), nnn)
+    say(`RUN_PLANS: plan ${nnn} — ask ${a.ask.id} answered by the ${ans.by}: ${ans.answer}`)
+    if (/^park:/i.test(ans.answer)) return endAsk(nnn, a, `answered: park (by the ${ans.by})`)
+    const paths = a.ask.kind === 'scope' ? scopePaths(ans.answer) : []
+    if (paths.length) {
+      const s = await serial(() => extendScope({ mergeFolder, runBranch: RUN_BRANCH, planPath: lint[nnn].path, paths, id: a.ask.id, run: RUN, nnn }))
+      if (!s.ok) return endAsk(nnn, a, `answered, but the scope could not be extended: ${s.error}`)
+      if (s.added.length) note(`scope of plan ${nnn} extended on ${RUN_BRANCH} by the answer to ${a.ask.id}: ${s.added.join(', ')}`, nnn)
+    }
+    await settle(await runOne(nnn, { answer: { ...ans, ask: a.ask } }))
+  }
+  /** Once every other plan has ended: poll the answers every ASK_POLL_MS, each ask for up to ASK_WAIT_MS. */
+  const waitForAnswers = async () => {
+    if (asking.size) say(`RUN_PLANS: waiting for ${asking.size} answer(s), up to ${ASK_WAIT_MIN} min each — node scripts/orch-state.mjs watch --run ${RUN} prints them`)
+    while (asking.size && !stopReason) {
+      let moved = false
+      for (const [nnn, a] of [...asking]) {
+        a.deadline ??= Date.now() + ASK_WAIT_MS
+        const ans = readAnswer(runDir, a.ask)
+        if (ans?.refused) note(`ask ${a.ask.id}: an answer by the ${ans.by} was refused: ${ans.why}; the ask stays open`, nnn)
+        if (!ans || ans.refused) continue
+        asking.delete(nnn)
+        await answered(nnn, a, ans)
+        moved = true
+        break
+      }
+      if (moved) continue
+      for (const [nnn, a] of [...asking]) {
+        if (Date.now() < a.deadline) continue
+        asking.delete(nnn)
+        await endAsk(nnn, a, `not answered in ${Math.round(ASK_WAIT_MS / 60000)} min`)
+      }
+      if (asking.size) await sleep(ASK_POLL_MS)
+    }
+    for (const [nnn, a] of [...asking]) {
+      asking.delete(nnn)
+      await endAsk(nnn, a, `not answered: the run stopped (${stopReason})`)
+    }
+  }
+
   let finalGate = null
   try {
     for (let w = 0; w < waves.length; w++) {
@@ -768,51 +1275,108 @@ async function main() {
           const [unit, i] = queue.shift()
           const out = []
           for (const nnn of unit) {
-            const before = out.find((x) => x.state === 'parked')
+            const before = out.find((x) => x.state === 'parked' || x.state === 'asking' || x.state === 'held')
             if (before) {
-              setPlan(nnn, { state: 'skipped', reason: `shares files with parked ${before.nnn}` })
-              out.push({ nnn, state: 'skipped', reason: `shares files with parked ${before.nnn}` })
+              const root = before.state === 'held' ? before.by : before.nnn
+              // After an asking plan (or one it holds) the rest of its lock group waits on the same answer.
+              if (before.state !== 'parked') out.push({ nnn, state: 'held', by: root, reason: `shares files with parked ${root}` })
+              else {
+                setPlan(nnn, { state: 'skipped', reason: `shares files with parked ${before.nnn}` })
+                out.push({ nnn, state: 'skipped', reason: `shares files with parked ${before.nnn}` })
+              }
               continue
             }
-            try {
-              out.push(await runPlan(nnn))
-            } catch (e) {
-              const why = e instanceof RunStop ? `stopped: ${e.message}` : `the plan stopped with an error: ${String(e?.message ?? e).slice(0, 300)}`
-              setPlan(nnn, { state: 'parked', reason: why.slice(0, 380) })
-              out.push({ nnn, state: 'parked', reason: why })
-            }
-            state('release', { run: RUN, plan: nnn })
+            out.push(await runOne(nnn))
           }
           done[i] = out
         }
       }))
       const flat = done.flat().filter(Boolean)
-      outcomes.push(...flat)
+      for (const x of flat) {
+        if (['asking', 'held'].includes(x.state)) await settle(x)
+        else outcomes.push(x)
+      }
       const parked = flat.filter((x) => x.state === 'parked').map((x) => x.nnn)
+      const askedNow = flat.filter((x) => x.state === 'asking').map((x) => x.nnn)
       const later = waves.slice(w + 1)
       if (stopReason) {
         skip(new Map(later.flat().map((p) => [p, `not started: ${stopReason}`])))
         break
       }
+      // Every park is a root, also when no later wave is left: a plan an ask holds is checked against it when freed.
+      if (parked.length) parkedRoots.push(...parked)
       if (parked.length && later.flat().length) {
-        parkedRoots.push(...parked)
         const a = afterPark({ parked: parkedRoots, laterWaves: later, edges: order.edges, onPark: ON_PARK, why: `wave ${w + 1} parked ${parked.join(', ')}` })
         skip(a.blocked)
         for (let k = 0; k < later.length; k++) waves[w + 1 + k] = a.waves[k]
         const goOn = a.waves.flat().length
         note(`wave ${w + 1} parked ${parked.join(', ')} — skipped ${[...a.blocked.keys()].join(', ') || 'none'}; ${goOn} later plan(s) go on`)
       }
+      // An asking plan holds what a park would skip; the rest of the later waves go on.
+      for (const root of askedNow) {
+        const rest = waves.slice(w + 1)
+        if (!rest.flat().length) break
+        const a = afterPark({ parked: [root], laterWaves: rest, edges: order.edges, onPark: ON_PARK, why: `plan ${root} asks ${asking.get(root)?.ask.id}` })
+        for (const [n, why] of a.blocked) hold(n, root, why)
+        for (let k = 0; k < rest.length; k++) waves[w + 1 + k] = a.waves[k]
+        if (a.blocked.size) note(`plan ${root} asks ${asking.get(root)?.ask.id} — ${[...a.blocked.keys()].join(', ')} wait on the answer; the rest go on`)
+      }
     }
+    // ---- the answers: once every other plan has ended ----
+    await waitForAnswers()
     // ---- the final gate on the run branch ----
     const merged = outcomes.filter((x) => x.state === 'merged')
     const finalChecks = [...new Set([...gateCommands({ prepare: PREPARE, pm: PM, ...COMMANDS, manifest: init.kitManifest === true }), ...(Array.isArray(CI_MIRROR) ? CI_MIRROR : []).filter((c) => !checkProblem(c, init.npmScripts ?? null)).map((c) => String(c).trim())])]
     if ((merged.length || order.skipped.length) && finalChecks.length && !stopReason) {
-      say(`RUN_PLANS: final gate on ${RUN_BRANCH} (${finalChecks.length} command(s))`)
-      git(mergeFolder, 'fetch', '--quiet', 'origin')
-      git(mergeFolder, 'merge', '--quiet', '--ff-only', `origin/${RUN_BRANCH}`)
-      const g = await runGate({ folder: mergeFolder, commands: finalChecks, timeoutMin: GATE_TIMEOUT_MIN, receipt: false, onResult: (row) => csvRow('final', `final gate: ${row.command}`, '-', row.seconds, 0, 0, row.exit) })
-      const bad = g.results.find((x) => x.status !== 'pass')
-      finalGate = g.status === 'pass' ? { ok: true } : { ok: false, command: bad?.command ?? '', tail: bad?.tail ?? '' }
+      const runFinal = async () => {
+        say(`RUN_PLANS: final gate on ${RUN_BRANCH} (${finalChecks.length} command(s))`)
+        git(mergeFolder, 'fetch', '--quiet', 'origin')
+        git(mergeFolder, 'merge', '--quiet', '--ff-only', `origin/${RUN_BRANCH}`)
+        ensureIn(mergeFolder)
+        const g = await runGate({ folder: mergeFolder, commands: finalChecks, timeoutMin: GATE_TIMEOUT_MIN, receipt: false, onResult: (row) => csvRow('final', `final gate: ${row.command}`, '-', row.seconds, 0, 0, row.exit), beforeRetry: (command, r) => { ensureIn(mergeFolder, { clean: true, out: r?.out }) } })
+        const bad = g.results.find((x) => x.status !== 'pass')
+        return g.status === 'pass' ? { ok: true } : { ok: false, command: bad?.command ?? '', tail: bad?.tail ?? '' }
+      }
+      finalGate = await runFinal()
+      // A failing command whose output names a file that exactly one merged plan changed: that plan gets one fix round in
+      // its own folder (its tier, counted against maxFixRounds), a re-merge and a second final gate.
+      if (!finalGate.ok) {
+        const changed = Object.fromEntries(merged.filter((x) => x.sha).map((x) => [x.nnn, git(mergeFolder, 'diff', '--name-only', '--no-renames', `${x.sha}^1`, x.sha).out.split('\n').map((f) => f.trim()).filter(Boolean)]))
+        const blamed = blameFinalGate({ output: `${finalGate.command}\n${finalGate.tail}`, merged: changed })
+        const prior = blamed ? merged.find((x) => x.nnn === blamed) : null
+        if (blamed && prior && (Number(prior.round) || 0) + 1 <= MAX_FIX_ROUNDS) {
+          finalGate.blamed = blamed
+          note(`final gate failed on ${finalGate.command}: plan ${blamed} gets one fix round`, blamed)
+          say(`RUN_PLANS: final gate failed on ${finalGate.command} — plan ${blamed} changed the file it names; one fix round for plan ${blamed}`)
+          const why = `final gate: ${finalGate.command}`
+          const findings = [{ id: 'final-1', file: finalGate.command, line: 1, rule: 'the final gate fails on the run branch', reasoning: `${String(finalGate.tail).split('\n').slice(-20).join('\n')}\nThe run branch (with the other merged plans) fails this check on a file your plan changed: merge origin/${RUN_BRANCH} into your branch, fix it, rerun the checks.`, severity: 'blocker' }]
+          let out
+          try {
+            out = await runPlan(blamed, { finalFix: { round: (Number(prior.round) || 0) + 1, tier: prior.tier === 'judgment' ? 'judgment' : 'build', findings, why } })
+          } catch (e) {
+            out = { nnn: blamed, state: 'parked', reason: e instanceof RunStop ? `stopped: ${e.message}` : String(e?.message ?? e).slice(0, 300) }
+          }
+          // The answers were already waited for: a question the fix round raises parks the plan with its question, as an
+          // unanswered ask does, and the run stops on the final gate as before.
+          if (out.state === 'asking' || out.state === 'held') {
+            const id = out.ask?.id ?? 'of the fix round'
+            const reason = `${out.reason ?? 'a question'} — ask ${id} not answered: the final gate's fix round ends the run`
+            setPlan(blamed, { state: 'parked', reason: reason.slice(0, 380) })
+            note(`ask ${id} raised in the final gate's fix round — plan ${blamed} parked; the question was: ${out.ask?.question ?? '(none)'}`, blamed)
+            say(`RUN_PLANS: plan ${blamed} parked — ${reason}`)
+            out = { nnn: blamed, state: 'parked', reason, ...(out.ask?.id ? { ask: out.ask.id } : {}) }
+          }
+          state('release', { run: RUN, plan: blamed })
+          const at = outcomes.findIndex((x) => x.nnn === blamed && x.state === 'merged')
+          if (at >= 0) outcomes.splice(at, 1)
+          outcomes.push(out)
+          if (out.state === 'merged') {
+            const blamedAt = finalGate.blamed
+            finalGate = await runFinal()
+            if (!finalGate.ok) finalGate.blamed = blamedAt
+          }
+        }
+      }
       if (!finalGate.ok) {
         stopReason = `final gate failed: ${finalGate.command} — ${String(finalGate.tail).split('\n').slice(-3).join(' / ')}`.slice(0, 380)
         state('stop', { run: RUN, reason: stopReason })
@@ -874,6 +1438,26 @@ function mergeChecksOf(checks) {
   return build ? [build] : []
 }
 
+/**
+ * A scope answer's paths, added to the plan's ```scope block on the run branch before the plan resumes: one commit in
+ * the merge folder, pushed (the gate reads the scope from the run branch; plan-info merges it into the plan branch).
+ */
+function extendScope({ mergeFolder, runBranch, planPath, paths, id, run, nnn }) {
+  git(mergeFolder, 'fetch', '--quiet', 'origin')
+  const ff = git(mergeFolder, 'merge', '--quiet', '--ff-only', `origin/${runBranch}`)
+  if (ff.status !== 0) return { ok: false, error: `the merge folder does not fast-forward to origin/${runBranch}: ${lastLine(ff.err)}` }
+  const file = join(mergeFolder, planPath)
+  if (!existsSync(file)) return { ok: false, error: `${planPath} is not on ${runBranch}` }
+  const { text, added } = withScopeLines(readFileSync(file, 'utf8'), paths)
+  if (!added.length) return { ok: true, added }
+  writeFileSync(file, text)
+  for (const step of [['add', '--', planPath], ['commit', '--quiet', '-m', `plan(${nnn}): scope + ${added.join(', ')} — the answer to ask ${id} of run ${run}`], ['push', '--quiet', 'origin', `HEAD:refs/heads/${runBranch}`]]) {
+    const r = git(mergeFolder, ...step)
+    if (r.status !== 0) return { ok: false, error: `git ${step[0]}: ${lastLine(r.err || r.out)}` }
+  }
+  return { ok: true, added }
+}
+
 /** After the builder: no uncommitted file, at least one commit beyond the run branch, and the branch on origin. */
 function landBranch(wt, branch, runBranch) {
   const dirty = git(wt, 'status', '--porcelain').out.split('\n').filter((l) => l && !/^\?\? \.worktree-/.test(l) && !l.endsWith('.claude/gate-receipt.json'))
@@ -892,12 +1476,15 @@ export function builderPrompt({ RUN, RUN_BRANCH, ctx, l, LESSONS }) {
     `Build plan ${ctx.nnn} of orchestrator run ${RUN} (mode: ${ctx.mode}). Follow your instructions (.claude/agents/orch-builder.md) and docs/agent/agent-roles.md.`,
     task({
       PLAN: l.path, BRANCH: ctx.info.branch, WORKTREE: ctx.wt.path, RUN_BRANCH, MODE: ctx.mode, TIER: ctx.tier, ROUND: ctx.round, CHECKS: l.checks,
-      FINDINGS: ctx.mode === 'fix' && ctx.findings.length ? ctx.findings : undefined, HANDOFF: ctx.mode === 'handoff' ? ctx.handoff : undefined, LESSONS,
+      FINDINGS: ctx.mode === 'fix' && ctx.findings.length ? ctx.findings : undefined, HANDOFF: ctx.mode === 'handoff' || ctx.mode === 'resume' ? ctx.handoff : undefined, LESSONS,
+      ANSWER: ctx.answer ?? undefined,
     }),
+    ctx.answer ? `Your plan's question ${ctx.answer.id} was answered by the ${ctx.answer.by}: follow ANSWER.answer. It settles the stop that raised the question; the plan, its scope and the hard limits still hold.` : '',
     `HARD LIMITS (the Human's; an open choice that would break one is a blocker, not a default): ${HARD_LIMITS.join(' ')}`,
     `Push with git push -u origin ${ctx.info.branch} — never a bare git push (the branch tracks its own remote branch, never the run branch).`,
     ctx.mode === 'fix' ? 'Fix exactly the FINDINGS, rerun the checks, commit and push your branch.' : '',
     ctx.mode === 'handoff' ? 'You are a fresh builder: the folder is back at the plan branch\'s base. Read the HANDOFF file and the plan, rerun the failing check first, and re-implement the plan from the base.' : '',
+    ctx.mode === 'resume' ? 'You continue an attempt that stopped (not for its own code): the branch holds its saved commits and the packages are installed. Read the HANDOFF file and git diff against the run branch, tick the plan\'s sub-tasks they finish, and continue from there.' : '',
     ctx.mode === 'first' && ctx.wt.resumed ? `The branch already has ${ctx.wt.resumed} commit(s) from an earlier attempt, and the packages are installed: read git diff against the run branch, tick the plan's sub-tasks they finish, and continue from there.` : '',
     'Return only your JSON result.',
   ].filter(Boolean).join('\n\n')

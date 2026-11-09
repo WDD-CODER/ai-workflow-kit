@@ -3,3 +3,5 @@ Facts from earlier runs of the builder role in this project, written by scripts 
 - 2026-11-03 run-065: fix round caused by: a gate check failed (a check command)
 - 2026-11-03 run-065: parked: environment
 - 2026-11-08 run-095: parked: same reason twice
+- 2026-11-08 run-100: parked: needs the Human
+- 2026-11-08 run-100: parked: worktree

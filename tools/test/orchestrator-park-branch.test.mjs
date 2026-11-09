@@ -142,3 +142,42 @@ test('park-save: uncommitted work goes to park/<run>-<NNN> on origin, the slot i
     drop(t.bare)
   }
 })
+
+test('102: at plan start a stale feat/<NNN> (neither it nor the run base holds the other) is renamed to park/stale-<NNN> and a fresh one is cut; a branch based on the run branch is reused', () => {
+  const t = setup()
+  try {
+    // a feat/001-x an earlier run left: cut from an older main with a commit of its own, then main moved on
+    sh(t.dir, 'switch', '-q', '-c', 'feat/001-x')
+    writeFileSync(join(t.dir, 'old.txt'), 'old run\n')
+    sh(t.dir, 'add', 'old.txt')
+    sh(t.dir, 'commit', '-q', '-m', 'an earlier run')
+    sh(t.dir, 'push', '-q', 'origin', 'feat/001-x')
+    const oldHead = sh(t.dir, 'rev-parse', 'HEAD')
+    sh(t.dir, 'switch', '-q', 'main')
+    writeFileSync(join(t.dir, 'b.txt'), 'main moved\n')
+    sh(t.dir, 'add', 'b.txt')
+    sh(t.dir, 'commit', '-q', '-m', 'main moved')
+    sh(t.dir, 'push', '-q', 'origin', 'main')
+    assert.equal(t.state('init', '--run=s2').ok, true)
+    const info = t.state('plan-info', '--run=s2', '--plan=001', '--with-worktree=yes')
+    assert.equal(info.ok, true, JSON.stringify(info))
+    assert.equal(info.wt?.ok, true, JSON.stringify(info))
+    // the old branch is kept under the park name, local nothing and origin the commit; a fresh feat/001-x is cut from the run branch
+    assert.equal(sh(t.bare, 'rev-parse', 'park/stale-001'), oldHead)
+    assert.equal(remoteHead(t.bare, 'feat/001-x'), '', 'the stale branch is gone from origin')
+    assert.equal(sh(t.dir, 'rev-parse', 'feat/001-x'), sh(t.dir, 'rev-parse', 'origin/orch/s2'))
+    assert.equal(info.wt.resumed, undefined)
+    assert.equal(existsSync(join(info.wt.path, 'old.txt')), false)
+    // the run note names both branches
+    const st = JSON.parse(readFileSync(join(t.dir, '.claude', 'orchestrator-runs', 's2', 'status.json'), 'utf8'))
+    assert.ok(st.notes.some((n) => /feat\/001-x/.test(n.text) && /park\/stale-001/.test(n.text)), JSON.stringify(st.notes))
+    // a relaunch of the same run keeps the branch it made (its status holds the plan); nothing is renamed again
+    const again = t.state('plan-info', '--run=s2', '--plan=001', '--with-worktree=yes')
+    assert.equal(again.wt?.ok, true, JSON.stringify(again))
+    assert.equal(st.notes.filter((n) => /park\/stale-001/.test(n.text)).length, 1)
+    assert.equal(remoteHead(t.bare, 'park/stale-001'), oldHead)
+  } finally {
+    drop(t.parent)
+    drop(t.bare)
+  }
+})
