@@ -7,6 +7,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, cpSync, rmSync, existsSync, read
 import { spawnSync } from 'child_process'
 import { tmpdir } from 'os'
 import { fileURLToPath, pathToFileURL } from 'url'
+import { makeProject, toyPlan } from './lib/run-plans-fixture.mjs'
 
 const kit = resolve(fileURLToPath(new URL('../..', import.meta.url)))
 const root = process.env.ORCH_ROOT ? resolve(process.env.ORCH_ROOT) : kit
@@ -291,5 +292,64 @@ test('103 (h) git longpaths: repaired, already true, not Windows, and a failed s
     assert.equal(json(out).ok, false)
   } finally {
     drop(dir)
+  }
+})
+
+// ---- (f) end to end: each plan passes its own gate, the final gate on the run branch fails on one plan's file ---------
+// scripts/final-check.mjs (the project's ciMirror) passes in a plan's folder and fails only in the run's merge folder
+// (the final gate), so it stands for a check only the whole run branch breaks. Its output names one plan's file, so
+// exactly one merged plan is blamed. Pair 801/802: it fails while src/801.txt holds a single round; the blamed plan's
+// fix round adds a second round line, the re-merge passes the second final gate. Pair 811/812: it fails whatever the
+// rounds, so the second final gate fails too and the run stops.
+const FINAL_CHECK = [
+  "import { existsSync, readFileSync } from 'node:fs'",
+  "const inRunBranch = /-orch-merge-/.test(process.cwd().replace(/\\\\/g, '/'))",
+  "const lines = (f) => readFileSync(f, 'utf8').trim().split('\\n').length",
+  "if (inRunBranch && existsSync('src/801.txt') && existsSync('src/802.txt') && lines('src/801.txt') < 2) { console.error('final-check: src/801.txt holds one round only'); process.exit(1) }",
+  "if (inRunBranch && existsSync('src/811.txt') && existsSync('src/812.txt')) { console.error('final-check: src/811.txt is not accepted'); process.exit(1) }",
+  '',
+].join('\n')
+
+function finalFixProject() {
+  const p = makeProject({ kit: root, config: { ciMirror: ['node scripts/final-check.mjs'] } })
+  writeFileSync(join(p.proj, 'scripts', 'final-check.mjs'), FINAL_CHECK)
+  for (const a of [['add', '--', 'scripts/final-check.mjs'], ['commit', '-q', '-m', 'final check'], ['push', '-q', 'origin', 'HEAD:main']]) {
+    const r = p.git(p.proj, ...a)
+    assert.equal(r.status, 0, `git ${a.join(' ')}: ${r.err ?? r.out}`)
+  }
+  p.addPlans({ 801: toyPlan(801), 802: toyPlan(802), 811: toyPlan(811), 812: toyPlan(812) })
+  return p
+}
+
+test('103 (f) a final-gate failure that names one merged plan\'s file gives that plan one fix round, a re-merge and a second final gate that passes', () => {
+  const p = finalFixProject()
+  try {
+    const r = p.runPlans(['--run', 'ff', '--plans', '801,802'])
+    assert.equal(r.status, 0, r.out)
+    assert.equal(r.json?.finalGate?.ok, true, r.out)
+    assert.match(r.out, /final gate failed on node scripts\/final-check\.mjs — plan 801 changed the file it names; one fix round for plan 801/)
+    const s = p.status('ff')
+    for (const n of ['801', '802']) assert.equal(s.plans[n].state, 'merged', `${n}: ${r.out}`)
+    const builds = (n) => r.calls.filter((c) => c.role === 'builder' && c.plan === n)
+    assert.equal(builds('801').length, 2, 'the blamed plan was built once more (its fix round)')
+    assert.equal(builds('802').length, 1, 'the other plan was not rebuilt')
+    assert.equal(builds('801')[1].findings, true, 'the fix round carries the final gate\'s findings')
+    assert.equal(p.git(p.proj, 'show', 'origin/orch/ff:src/801.txt').out.trim().split('\n').length, 2, 'the fixed plan was merged again')
+  } finally {
+    p.cleanup()
+  }
+})
+
+test('103 (f) a second final-gate failure after the fix round stops the run, and finalGate.blamed names the plan', () => {
+  const p = finalFixProject()
+  try {
+    const r = p.runPlans(['--run', 'ff2', '--plans', '811,812'])
+    assert.notEqual(r.status, 0, r.out)
+    assert.equal(r.json?.finalGate?.ok, false, r.out)
+    assert.equal(r.json?.finalGate?.blamed, '811', r.out)
+    assert.match(String(r.json?.stopReason ?? ''), /^final gate failed: node scripts\/final-check\.mjs/)
+    assert.equal(r.calls.filter((c) => c.role === 'builder' && c.plan === '811').length, 2, 'one fix round, not two')
+  } finally {
+    p.cleanup()
   }
 })
