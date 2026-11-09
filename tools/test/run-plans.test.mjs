@@ -452,8 +452,12 @@ test('the argv of every call: the flags, the tier\'s model, the builder in its o
   const b = main.calls.find((c) => c.plan === '451' && c.role === 'builder')
   const r = main.calls.find((c) => c.plan === '451' && c.role === 'reviewer')
   for (const call of [b, r]) {
-    for (const f of ['-p', '--output-format', 'json', '--setting-sources', 'local', '--strict-mcp-config', '--disable-slash-commands', '--no-session-persistence', '--system-prompt-file']) assert.ok(call.argv.includes(f), `${call.role}: ${f}`)
+    for (const f of ['-p', '--output-format', '--setting-sources', 'local', '--strict-mcp-config', '--disable-slash-commands', '--no-session-persistence', '--system-prompt-file']) assert.ok(call.argv.includes(f), `${call.role}: ${f}`)
   }
+  // The builder streams (the live view); the reviewer answers in one JSON.
+  assert.equal(b.argv[b.argv.indexOf('--output-format') + 1], 'stream-json')
+  assert.ok(b.argv.includes('--verbose'))
+  assert.equal(r.argv[r.argv.indexOf('--output-format') + 1], 'json')
   assert.equal(b.argv[b.argv.indexOf('--model') + 1], 'sonnet')
   assert.equal(b.argv[b.argv.indexOf('--tools') + 1], 'Read,Edit,Write,Bash,Grep,Glob')
   assert.equal(basename(b.cwd), 'rp-app-orch-main-451')

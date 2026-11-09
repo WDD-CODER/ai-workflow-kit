@@ -132,35 +132,35 @@ the path to the scope block and retry.
    - how `$.fs.read` handles a file another process is renaming over (a half-read must fall back, never throw out of a hook).
 
 ## Atomic Sub-tasks
-- [ ] A1: Make the run chip start watching when `/orchestrate` starts a run. In `registerRunProgress`, also arm on a `Bash` tool call whose command names `run-supervisor.mjs` or `run-plans.mjs`. Delete the `Workflow` trigger and the journal code (`findWorkflow`, `agentNow`, `openAgent`, `journalNamesRun`). Files: mods/fleet/hooks/run-progress.tsx, mods/fleet/tests/run-progress.test.ts
-- [ ] B1: Make the gate report the check it is starting. Add `onStart({ command, index, total })` to `runGate`, called before each command; the retry reuses the same index. Files: core/scripts/lib/plan-gate.mjs
-- [ ] B2: Add a small live-file writer, `writeLive(runDir, nnn, patch)`. It merges the patch into `live-<NNN>.json`, writes a temp file and renames it over, and writes at most once per 2 s per plan, except a step change, which writes at once. It never throws. Files: core/scripts/lib/run-live.mjs
-- [ ] B3: Wire the live file into the run.
+- [x] A1: Make the run chip start watching when `/orchestrate` starts a run. In `registerRunProgress`, also arm on a `Bash` tool call whose command names `run-supervisor.mjs` or `run-plans.mjs`. Delete the `Workflow` trigger and the journal code (`findWorkflow`, `agentNow`, `openAgent`, `journalNamesRun`). Files: mods/fleet/hooks/run-progress.tsx, mods/fleet/tests/run-progress.test.ts
+- [x] B1: Make the gate report the check it is starting. Add `onStart({ command, index, total })` to `runGate`, called before each command; the retry reuses the same index. Files: core/scripts/lib/plan-gate.mjs
+- [x] B2: Add a small live-file writer, `createLive(runDir)` (patch, step, gate, builderEvent, flush). It merges the patch into `live-<NNN>.json`, writes a temp file and renames it over, and writes at most once per 2 s per plan, except a step change, which writes at once. It never throws. Files: core/scripts/lib/run-live.mjs
+- [x] B3: Wire the live file into the run.
   - The plan gate's and the final gate's `onStart` write `gate`.
   - Each `setPlan` state change writes `step` and `stepAt`, and clears `gate` and `builder` when the step changes.
   - Files: core/scripts/run-plans.mjs
-- [ ] C1: Let the builder call stream. Add an optional `stream: { onEvent }` to `runAgent`:
+- [x] C1: Let the builder call stream. Add an optional `stream: { onEvent }` to `runAgent`:
   - `claudeArgs` swaps `--output-format json` for `--output-format stream-json --verbose`;
   - `spawnClaude` splits stdout into lines and calls `onEvent` with each parsed event, ignoring lines that do not parse;
   - the final `result` event becomes the `json` the existing code reads;
   - `rateLimited` reads only the result event's text, stderr and `api_error_status`.
 
   Without `stream`, nothing changes. Files: core/scripts/lib/claude-run.mjs
-- [ ] C2: Make the builder call stream into the run folder. Each event line is appended to `builder-<NNN>.events.jsonl`. For each assistant event, count the `tool_use` items, keep the last tool name and its target (`file_path`, else the first 60 characters of `command`, else `pattern`), and add up `usage` input and output tokens. Write them as `builder` through `writeLive`. Files: core/scripts/run-plans.mjs
-- [ ] C3: Teach the fake `claude` to stream. When its argv has `stream-json`, it prints two `tool_use` assistant events, then the `result` event, instead of the single JSON. Write the stream and live-file tests. Files: tools/test/fixtures/fake-claude.mjs, tools/test/fixtures/claude-p-stream.jsonl, tools/test/run-plans-live.test.mjs, tools/test/claude-run-stream.test.mjs, tools/test/lib/run-plans-fixture.mjs
-- [ ] A2: Show it in the panel.
+- [x] C2: Make the builder call stream into the run folder. Each event line is appended to `builder-<NNN>.events.jsonl`. For each assistant event, count the `tool_use` items, keep the last tool name and its target (`file_path`, else the first 60 characters of `command`, else `pattern`), and add up `usage` input and output tokens. Write them as `builder` through `writeLive`. Files: core/scripts/run-plans.mjs
+- [x] C3: Teach the fake `claude` to stream. When its argv has `stream-json`, it prints two `tool_use` assistant events, then the `result` event, instead of the single JSON. Write the stream and live-file tests. Files: tools/test/fixtures/fake-claude.mjs, tools/test/fixtures/claude-p-stream.jsonl, tools/test/run-plans-live.test.mjs, tools/test/claude-run-stream.test.mjs, tools/test/lib/run-plans-fixture.mjs
+- [x] A2: Show it in the panel.
   - Read `calls.csv` and `live-<NNN>.json` next to `status.json`; skip a file over 1 MiB.
   - Per plan, show the step bar from `history` (build covers building and fixing; gate; review covers checking; merge covers merging), each finished step's time, the model, the round and the tokens.
   - Show a gate line while `gate` is set and a "now:" line while `builder` is set.
   - The run line shows the total elapsed time and the total tokens.
   - Re-read the disk every 5 s while a run is live (30 s before). Redraw the clocks every second only while the panel is open, from the stored times and with no disk read.
   - Files: mods/fleet/hooks/run-progress.tsx, mods/fleet/types/index.d.ts, mods/fleet/hooks/register.tsx, mods/fleet/tests/run-progress.test.ts
-- [ ] D1: Document it.
+- [x] D1: Document it.
   - Describe the live file and the events log in orchestrator.md (what is in them, that they stay local under `.claude/orchestrator-runs/`, and that nothing reads them back into a run).
   - Update the panel paragraph in mods/README.md.
   - Add the new reads (`calls.csv`, `live-*.json`) to the fleet section of mods/SECURITY.md.
   - Files: core/docs/agent/orchestrator.md, mods/README.md, mods/SECURITY.md
-- [ ] R1: Resync the installed copies (`node tools/sync.mjs --target . --apply`) and run every check above. Then:
+- [x] R1: Resync the installed copies (`node tools/sync.mjs --target . --apply`) and run every check above. Then:
   - one error-review row for the chip that never armed;
   - the CHANGELOG `## [3.1.0]` section;
   - `kit.json` 3.1.0 and fleet `plugin.json` 0.6.0;
@@ -191,3 +191,17 @@ the path to the scope block and retry.
 None open. The Human chose A+B+C on 2026-11-09.
 
 ## Execution Notes
+- 2026-11-09 Step 0: one real `claude -p --output-format stream-json --verbose` call (haiku, one Read). The `result` event is not the last line (a `system` `ui_status` event follows it). Every stream also holds a `rate_limit_event` (`status: "allowed"`), which today's rate-limit check over all of stdout would read as a limit. So: the last `result` event is the answer, and a rate limit is the result's text, stderr, `api_error_status` 429 or a `rejected` rate_limit_event. Trimmed copy: `tools/test/fixtures/claude-p-stream.jsonl`.
+- Live-file test: the builder's live line is cleared when the plan moves on to the gate, so a gate-time snapshot cannot see it. The run test replays the run's own `builder-<NNN>.events.jsonl` through `builderAfter`, and `claude-run-stream.test.mjs` tests the throttled writer directly.
+- Dry run: it now prints the builder argv with `--output-format stream-json --verbose`, so it still matches the real call (the existing "dry run prints the builder call the real run makes" test).
+- Human ("Ok" to the offered `approved: tools/test/run-plans.test.mjs`): the "argv of every call" test pinned the builder's `json`; it now checks `stream-json --verbose` for the builder and `json` for the reviewer.
+- Evidence:
+  - `node --test tools/test/claude-run-stream.test.mjs` → pass 6, fail 0.
+  - `node --test tools/test/run-plans-live.test.mjs` → pass 1.
+  - `node --test tools/test/run-plans.test.mjs` → pass 47, fail 0.
+  - `node --test tools/test/run-plans-ask.test.mjs` → pass 5 alone. Under the full load it hit its 120 s limit, the known time limit from plan 110.
+  - `claude plugin test mods/fleet` → 49 pass, 0 fail; `claude plugin validate mods/fleet` → passed.
+  - `npm run build`, `npm run lint`, `npm test` → exit 0; drift-check → KIT_DRIFT: ok; mods leak-check → ok.
+  - Every kit tool test (`node --test "tools/test/*.test.mjs"`) → tests 588, pass 588, fail 0.
+  - `node tools/validate-orchestrator.mjs --mode fake` → VALIDATION: PASS, 5 of 5.
+  - `node tools/validate-orchestrator.mjs --mode real` → VALIDATION: PASS, 5 of 5; 563,635 input tokens of the 3,000,000 cap. Real Sonnet builders ran with `stream-json`; every case's plan merged.
