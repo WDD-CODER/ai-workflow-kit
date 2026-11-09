@@ -3,7 +3,7 @@
     "version": "2.1.0"
   },
   "source": "local:.",
-  "commit": "79de4c068e202c1cc86ec17c1ac536c7110e796d",
+  "commit": "bd7dc6a6d2a1595785b844829ae4ec3bcfcd5e40",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -195,7 +195,7 @@
       "source": "core/.claude/references/prd-template.md"
     },
     ".claude/settings.json": {
-      "sha256": "e1bab3771c069193ebefc9845e0dfe4b53d7bc33f90b4430707b36f990497f0a",
+      "sha256": "81d27c934e7999c461978c27d291cd1ccf36da8c526d69307513cd795c4dde9c",
       "kind": "managed",
       "source": "core/.claude/settings.json"
     },
@@ -375,7 +375,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "0db01715c98e5e29c97cc601b7a7aea270694fdf89f0d062040f693a1da3de9f",
+      "sha256": "c7f8367c2ba745a649a41c9e65ad6358c89fe08c3dfd2a1cbb7c1dbe667f6944",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },

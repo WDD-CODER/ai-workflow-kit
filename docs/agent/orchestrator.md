@@ -240,8 +240,9 @@ is refused when the review folder holds a `.claude/settings.local.json`.
   dependent plan that starts after the plan it depends on is merged into `orch/<run>`. The
   run calls git from the script, never through the Bash tool, so no permission rule touches it.
 - The merge of `orch/<run>` into `main` is the Human's: `permissions.ask` in
-  `.claude/settings.json` holds `Bash(gh pr merge*)`, `Bash(git push origin main*)` and `Bash(git push * main*)`, so
-  Claude Code asks the Human before any of them, in every permission mode.
+  `.claude/settings.json` holds `Bash(gh pr merge*)`, so Claude Code asks the Human before any PR merge, in every
+  permission mode. A push to `main` is not asked (the Planner pushes plan files there); `branch-guard.sh`
+  and the pre-push hook limit what a push may carry.
 - No plan's Execution Mode may pre-approve that merge.
 
 ## Never
