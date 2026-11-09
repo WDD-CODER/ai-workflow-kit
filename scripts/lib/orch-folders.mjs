@@ -4,7 +4,8 @@
  * scripts/orch-state.mjs (`worktree`, `release`); every function takes its folders and commands as arguments, so tests
  * can run them in a scratch repository.
  */
-import { existsSync, writeFileSync, unlinkSync, realpathSync } from 'fs'
+import { existsSync, writeFileSync, unlinkSync, realpathSync, readFileSync, mkdirSync, rmSync } from 'fs'
+import { createHash } from 'crypto'
 import { spawnSync } from 'child_process'
 import { join } from 'path'
 
@@ -64,6 +65,119 @@ export function ensureDeps({ mainRoot, dst, serverRoot = '', pm = 'npm' }) {
   }
   const ok = !existsSync(join(dst, 'scripts', 'package.json')) || existsSync(join(dst, 'scripts', 'node_modules', 'picomatch'))
   return { ok, lines }
+}
+
+// ---- ensure-env: the one function every step calls before it runs code in a folder --------------------------------------
+
+/** The marker of a tree's last install (the files scripts/lib/slot-procs.mjs writes under .claude/). */
+const markerOf = (f) => (f === '.' ? '.last-npm-install-hash' : `.last-npm-install-hash-${f === 'scripts' ? 'scripts' : 'server'}`)
+const lockHashOf = (path) => createHash('sha256').update(readFileSync(path)).digest('hex')
+
+/**
+ * Makes sure `folder` has its packages before code runs there: an install with the lockfile in the root, in the backend
+ * (`serverRoot`, when it has a package.json) and in scripts/. A tree is skipped when node_modules is there and its
+ * lockfile's hash equals the marker `.claude/.last-npm-install-hash*`. `clean` reinstalls from scratch (node_modules
+ * removed first), only the trees in `only` (the failing tree of an environment failure; default every tree).
+ * `runner(cwd, cmd, args)` is injectable for tests. Returns { ok, lines, installed: [tree…] }; ok is false when an
+ * install failed.
+ */
+export function ensureEnv({ folder, serverRoot = '', pm = 'npm', clean = false, only = null, runner = run, remove = (p) => rmSync(p, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }) }) {
+  const lines = []
+  const installed = []
+  let ok = true
+  for (const f of depFolders(folder, serverRoot)) {
+    if (only && !only.includes(f)) continue
+    const to = join(folder, f)
+    const fpm = f === 'scripts' ? 'npm' : pm
+    const lock = join(to, lockFile(fpm))
+    const hasLock = existsSync(lock)
+    if (!hasLock && f !== 'scripts') {
+      lines.push(`ensure-env: no ${lockFile(fpm)} in ${f}: nothing installed`)
+      continue
+    }
+    const marker = join(folder, '.claude', markerOf(f))
+    const hash = hasLock ? lockHashOf(lock) : null
+    let seen = null
+    try {
+      seen = existsSync(marker) ? readFileSync(marker, 'utf8').trim() : null
+    } catch { /* no marker */ }
+    const there = existsSync(join(to, 'node_modules'))
+    if (!clean && there && (!hasLock || hash === seen)) continue
+    // A failed remove or install is reported (ok: false), never thrown: a throw here would escape the gate or the merge
+    // before it undoes its work.
+    if (clean && there) {
+      try {
+        // The marker goes first: a tree half-deleted by a failed remove is then reinstalled by the next ensure-env.
+        rmSync(marker, { force: true })
+        remove(join(to, 'node_modules'))
+      } catch (e) {
+        ok = false
+        lines.push(`ensure-env: could not remove ${f === '.' ? 'root' : f} node_modules: ${String(e?.message ?? e).split('\n')[0]}`)
+        continue
+      }
+    }
+    const [cmd, a] = hasLock ? installCommand(fpm) : ['npm', ['install', '--no-audit', '--no-fund', '--no-package-lock']]
+    let r
+    try {
+      r = runner(to, cmd, a)
+    } catch (e) {
+      r = { status: 1, out: '', err: String(e?.message ?? e) }
+    }
+    if (r.status === 0) {
+      installed.push(f)
+      lines.push(`ensure-env: ${clean ? 'reinstalled' : 'installed'} the ${f === '.' ? 'root' : f} packages (${cmd} ${a[0]})`)
+      if (hash) {
+        try {
+          mkdirSync(join(folder, '.claude'), { recursive: true })
+          writeFileSync(marker, `${hash}\n`)
+        } catch { /* the next call installs again */ }
+      }
+    } else {
+      ok = false
+      lines.push(`ensure-env: install in ${f} failed: ${(r.err || r.out).split('\n').pop()}`)
+    }
+  }
+  return { ok, lines, installed }
+}
+
+/** Output that says packages are missing or broken (the only environment failure a clean reinstall can repair). */
+export const PACKAGE_FAIL_RE = /Cannot find (?:module|package)|ERR_MODULE_NOT_FOUND|MODULE_NOT_FOUND|is not recognized as an internal or external command|command not found/
+
+/**
+ * Which tree an environment failure's output names — or null when no line says packages are missing (a network, port
+ * or database failure, even with node_modules in its stack trace: no tree is deleted). Only the lines that say so are
+ * read: the backend or scripts/ when such a line shows its path, else the root.
+ */
+export function failingTree(out, folders) {
+  const lines = String(out ?? '').replace(/\\/g, '/').split('\n').filter((l) => PACKAGE_FAIL_RE.test(l))
+  if (!lines.length) return null
+  const text = lines.join('\n')
+  return folders.filter((f) => f !== '.').find((f) => text.includes(`${f}/`)) ?? '.'
+}
+
+// ---- retried git calls ------------------------------------------------------------------------------------------------
+
+/** A git failure that is gone the next time: a lock or ref race, or the network. */
+export const TRANSIENT_GIT_RE = /incorrect old value|cannot lock ref|unable to access|could not resolve host|connection (?:reset|timed out|refused)|early eof|remote end hung up|network is unreachable|operation timed out/i
+
+/** Sleeps `ms` without a promise (the synchronous callers of git). */
+export const sleepSync = (ms) => {
+  if (ms > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
+/**
+ * `git fetch` and `git push` retried: up to `tries` runs, `delayMs` apart, only while the error is transient
+ * (TRANSIENT_GIT_RE). Any other command, or any other error, is answered by its first run. `exec(cwd, args)` and
+ * `sleep(ms)` are injectable for tests. Returns the last { status, out, err }.
+ */
+export function retryGit(cwd, args, { exec = (c, a) => git(c, ...a), sleep = sleepSync, tries = 3, delayMs = 5000 } = {}) {
+  const retryable = args[0] === 'fetch' || args[0] === 'push'
+  let r = exec(cwd, args)
+  for (let i = 1; retryable && r.status !== 0 && i < tries && TRANSIENT_GIT_RE.test(`${r.err}\n${r.out}`); i++) {
+    sleep(delayMs)
+    r = exec(cwd, args)
+  }
+  return r
 }
 
 // The slot's own runtime files (.worktree-root, -port, -plan) are not work, even where a project did not exclude them.

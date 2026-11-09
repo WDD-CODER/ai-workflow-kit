@@ -135,7 +135,30 @@ two marked **model**.
      `ANSWER` in the builder's prompt, and then the plans it held. An answer file with `by: advisor` on a `humanOnly`
      ask is refused with a run note and the ask stays open. An unanswered ask parks its plan with its question in the
      run notes; a plan asks at most 3 times in one run.
-4. **Final gate** on the run branch (`prepare`, the project checks, the manifest check, `ciMirror`).
+4. **Final gate** on the run branch (`prepare`, the project checks, the manifest check, `ciMirror`). Every one of
+   those commands is also in each plan's own gate (the manifest check reads the plan's folder), so the final gate finds
+   nothing a plan's gate did not. When it still fails on a command whose output names a file that exactly one merged
+   plan changed, that plan gets **one fix round** in its folder (its own tier, counted against `maxFixRounds`), a
+   re-merge and a second final gate; `finalGate.blamed` in the run's JSON names the plan. A second failure, a failure
+   that names no single plan or a plan with no round left stops the run as before.
+
+**ensure-env, retries and undone items** (code, no model):
+
+- **ensure-env** (`lib/orch-folders.mjs`): before the builder, the gate, the merge checks, the final gate and a park, the
+  folder gets its packages: an install with the lockfile in the root, in the backend folder (`paths.serverRoot`) and in
+  `scripts/`. A tree whose lockfile hash equals its `.claude/.last-npm-install-hash*` marker and that has `node_modules` is
+  skipped. A gate or merge check that ends with an environment failure (a busy file, a port, a network error, `'ng' is not
+  recognized`) runs ensure-env with a clean reinstall of the failing tree (at most once per folder and tree) before its one
+  retry, instead of the same command again; the run note says the folder was installed or reinstalled.
+- **State and git calls:** an `orch-state` call with no readable `ORCH_JSON` is asked again up to 3 times, 2 s apart, for a
+  read command and for `set`, `touch`, `diff`, `plan-info`, `merge-ready` and `note` with an id; any other command fails as
+  before. `git fetch` and `git push` in the run's helpers retry up to 3 times, 5 s apart, on `incorrect old value`,
+  `cannot lock ref` or a network error; a failed park still saves the work to `park/<run>-<NNN>`.
+- **Long Windows paths:** the preflight's `git longpaths` check sets `core.longpaths true` in the repository config when it
+  is not (`OK git longpaths (set to true)`), or prints the exact command when that fails.
+- **Undone items:** a builder result whose `notDone` names an open `[auto]` or `[ui]` Done-when item fails the gate with
+  `Done-when item left undone: <item>` and takes a fix round. When the reason names a backend, database or dev server,
+  the main folder's servers are started (`scripts/slot-serve.mjs --main`) first.
 5. **Report.** The builders' `behaviour:` / `seen:` / `removes:` decisions go in one `decisions` call; `finish`
    writes the report. Exit 0 = every plan merged, 2 = some parked or skipped. `calls.csv` in the run's folder has one
    row per model call and gate command; its `model` is the value passed after `--model` on that call.

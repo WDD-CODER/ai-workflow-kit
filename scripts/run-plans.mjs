@@ -44,6 +44,7 @@ import { review, blocking, problemLine } from './lib/plan-review.mjs'
 import { mergePlan, orchState } from './lib/plan-merge.mjs'
 import { runOrder, unitsOf, afterPark, blockedBy } from './lib/run-order.mjs'
 import { planBranch, planBranchProblem, runNameProblem, startTier, humanOnlyAsk, ASK_KINDS, askCard, ASK_ID_RE } from './lib/orch-run.mjs'
+import { ensureEnv, failingTree, depFolders, retryGit } from './lib/orch-folders.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
@@ -53,6 +54,7 @@ const PM = "npm" === 'pnpm' ? 'pnpm' : 'npm'
 const COMMANDS = { build: "build", lint: "lint", test: "test", testCi: "" }
 const PREPARE = []
 const CI_MIRROR = ["node tools/pack-check.mjs","node tools/drift-check.mjs --target .","node tools/install-check.mjs","node tools/workflow-link-check.mjs","node tools/e2e-check.mjs","node tools/acceptance-check.mjs --e2e"]
+const SERVER_ROOT = ''
 const MERGE_CHECKS_MODE = "build"
 const GATE_TIMEOUT_MIN = Number(45) || 15
 // A builder has no wall-clock limit: it is stopped only after this many minutes in which no file in its folder changed
@@ -144,6 +146,70 @@ export function autoCommands(planText) {
   }
   return out
 }
+/** The open [auto] and [ui] Done-when items (not [auto:main], not ticked): [{ tag, text }], text without the tag. */
+export function openDoneWhenItems(planText) {
+  const out = []
+  let inSection = false
+  for (const line of String(planText).replace(/\r\n/g, '\n').split('\n')) {
+    if (/^#{1,6}\s/.test(line)) {
+      inSection = DONE_WHEN_SECTION_RE.test(line)
+      continue
+    }
+    if (!inSection) continue
+    const m = /^\s*[-*]\s+(?:\[( |x|X)\]\s+)?\[(auto|ui)\]\s*(.*)$/.exec(line)
+    if (m && !/x/i.test(m[1] ?? '')) out.push({ tag: m[2], text: collapse(m[3]) })
+  }
+  return out
+}
+/**
+ * The open [auto]/[ui] Done-when items a builder's `notDone` list names (its entries are free text): an entry names an
+ * item when it holds the item's backticked command or its opening words, is a long part of it, or shares most of its
+ * words with it. Returns [{ item, reason }] — `reason` is the entry that named it.
+ */
+export function undoneItems(planText, notDone) {
+  const entries = (Array.isArray(notDone) ? notDone : []).filter((x) => typeof x === 'string').map(collapse).filter(Boolean)
+  const found = []
+  for (const item of openDoneWhenItems(planText)) {
+    const low = item.text.toLowerCase()
+    const cmds = [...item.text.matchAll(/`([^`]+)`/g)].map((m) => collapse(m[1]).toLowerCase())
+    const entry = entries.find((e) => {
+      const el = e.toLowerCase()
+      if (cmds.some((c) => c.length > 6 && el.includes(c))) return true
+      if (low.length >= 20 && el.includes(low.slice(0, 40))) return true
+      // Only a named item counts: its command, its opening words, or the whole note inside it — never shared words.
+      return el.length >= 20 && low.includes(el)
+    })
+    if (entry) found.push({ item: `[${item.tag}] ${item.text}`.slice(0, 200), reason: entry })
+  }
+  return found
+}
+/** The main folder's servers a reason names: 'fe' (a dev server, the frontend), 'be' (a backend, a database, an API) or null. */
+export function serversNamed(reason) {
+  const t = String(reason ?? '')
+  if (/\b(backend|back-end|database|mongo\w*|api)\b/i.test(t)) return 'be'
+  return /\b(dev server|frontend|front-end)\b/i.test(t) ? 'fe' : null
+}
+/**
+ * The merged plan a final-gate failure belongs to: `merged` is { nnn: [files the plan changed] }. A plan is blamed when
+ * the failing command's output names a file that exactly one merged plan changed, and no other plan owns such a file.
+ * Returns the plan number, or null (nothing named, a shared file, or two plans).
+ */
+export function blameFinalGate({ output, merged }) {
+  const text = String(output ?? '').replace(/\\/g, '/')
+  const owners = new Set()
+  const files = new Set(Object.values(merged ?? {}).flat())
+  for (const f of files) {
+    if (!text.includes(f)) continue
+    const who = Object.keys(merged).filter((n) => merged[n].includes(f))
+    if (who.length === 1) owners.add(who[0])
+  }
+  return owners.size === 1 ? [...owners][0] : null
+}
+/** orchestrator.ciMirror as the plan gate runs it: allowed commands only, the trusted manifest check left to its own entry. */
+export function ciMirrorChecks(list, scripts = null, { manifest = false } = {}) {
+  return (Array.isArray(list) ? list : []).filter((c) => !checkProblem(c, scripts)).map((c) => String(c).trim()).filter((c) => !(manifest && /kit-manifest-check/.test(c)))
+}
+
 /** Every `Q:` of `## Critical Questions` with its number and answer ('' when none): [{ n, question, answer }]. */
 export function criticalQuestions(planText) {
   const lines = String(planText).replace(/\r\n/g, '\n').split('\n')
@@ -276,10 +342,13 @@ const say = (line) => {
 const b64 = (s) => Buffer.from(String(s), 'utf8').toString('base64')
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const lastLine = (s) => String(s ?? '').split('\n').map((l) => l.trim()).filter(Boolean).pop() ?? ''
-const git = (cwd, ...a) => {
-  const r = spawnSync('git', a, { cwd, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })
-  return { status: r.status ?? 1, out: String(r.stdout ?? '').trim(), err: String(r.stderr ?? '').trim() }
-}
+// git fetch and git push retry on a transient error (incorrect old value, cannot lock ref, a network error): 3 runs, 5 s apart.
+const git = (cwd, ...a) => retryGit(cwd, a, {
+  exec: (c, args) => {
+    const r = spawnSync('git', args, { cwd: c, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })
+    return { status: r.status ?? 1, out: String(r.stdout ?? '').trim(), err: String(r.stderr ?? '').trim() }
+  },
+})
 const node = (script, args, cwd = ROOT, timeoutMs = 10 * 60_000) => {
   const r = spawnSync(process.execPath, [join(ROOT, 'scripts', script), ...args], { cwd, encoding: 'utf8', timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 })
   return { status: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}`, stdout: String(r.stdout ?? '') }
@@ -404,7 +473,8 @@ function lintPlan(nnn, path, runBranch, { statuses = null, opts = null, runPlans
   const outOfScope = testsOutOfScope(text, gateFiles, removed)
   for (const r of outOfScope) problems.push(`test file gate: ${r.reason}${r.reason.startsWith('sibling test weakened') ? '' : `; add this line to the scope block: ${r.file}`}`)
   lines.push(`test files: ${outOfScope.length ? `outside the scope ${outOfScope.map((r) => r.file).join(', ')}` : 'ok'}`)
-  const checks = gateCommands({ prepare: PREPARE, pm: PM, ...COMMANDS, kitRoot: ROOT, manifest: existsSync(join(ROOT, 'scripts', 'kit-manifest-check.mjs')) && existsSync(join(ROOT, 'docs', 'workflow-kit', 'manifest.json')), scope: { base: `origin/${runBranch}`, plan: path }, extra: extra.filter((c) => !missing.some((f) => checkFilesOf(c).includes(f))) })
+  const hasManifest = existsSync(join(ROOT, 'scripts', 'kit-manifest-check.mjs')) && existsSync(join(ROOT, 'docs', 'workflow-kit', 'manifest.json'))
+  const checks = gateCommands({ prepare: PREPARE, pm: PM, ...COMMANDS, kitRoot: ROOT, manifest: hasManifest, ciMirror: ciMirrorChecks(CI_MIRROR, Object.keys(npmScripts()), { manifest: hasManifest }), scope: { base: `origin/${runBranch}`, plan: path }, extra: extra.filter((c) => !missing.some((f) => checkFilesOf(c).includes(f))) })
   return { nnn, path, title: (/^#\s+(.*)$/m.exec(text)?.[1] ?? '').trim(), branch, lines, problems, notes, dropped, checks, start: startTier(text), reviewerMode: opt.reviewerMode, ready: problems.length === 0 }
 }
 
@@ -724,6 +794,26 @@ async function main() {
     return r
   }
   const note = (text, nnn) => state('note', { run: RUN, plan: nnn, text: String(text).slice(0, 400) })
+  // ensure-env: the packages a folder needs before code runs there (lib/orch-folders.mjs ensureEnv). `clean` (after an
+  // environment failure) reinstalls the failing tree from scratch, at most once per folder and tree.
+  const cleaned = new Set()
+  const ensureIn = (folder, { nnn = null, clean = false, out = '' } = {}) => {
+    let only = null
+    let reinstall = clean
+    const tree = clean ? failingTree(out, depFolders(folder, SERVER_ROOT)) : null
+    // Not a package failure (network, port, database): no tree is deleted, only the plain ensure runs before the retry.
+    if (clean && tree === null) reinstall = false
+    else if (clean) {
+      const key = `${folder}|${tree}`
+      reinstall = !cleaned.has(key)
+      cleaned.add(key)
+      only = [tree]
+    }
+    const r = ensureEnv({ folder, serverRoot: SERVER_ROOT, pm: PM, clean: reinstall, only })
+    for (const line of r.lines.filter((x) => !/nothing installed/.test(x))) say(`RUN_PLANS: ${nnn ? `plan ${nnn}: ` : ''}${line}`)
+    if (r.installed.length) note(`the folder ${folder.replace(/\\/g, '/').split('/').pop()} was ${reinstall ? 'reinstalled' : 'installed'} (${r.installed.map((f) => (f === '.' ? 'root' : f)).join(', ')})`, nnn ?? undefined)
+    return r
+  }
   const decisions = []
   const priorTop = Math.max(0, ...(init.priorDecisions ?? []).map((d) => Number(String(d.id).slice(1)) || 0))
   // The heartbeat: a builder may work for many minutes; `watch` must still read RUNNING.
@@ -773,18 +863,29 @@ async function main() {
     }
   }
 
-  const runPlan = async (nnn, { answer = null } = {}) => {
+  const runPlan = async (nnn, { answer = null, finalFix = null } = {}) => {
     const l = lint[nnn]
     // A relaunch finds the plan still waiting on its ask: it waits again, nothing is built.
-    if (!answer) {
+    if (!answer && !finalFix) {
       const waiting = pendingAsk(nnn)
       if (waiting) return { nnn, state: 'asking', ask: waiting, reason: String(waiting.context?.reason ?? '') }
     }
-    // A relaunch continues a plan that stopped for a reason that was not its own code (or an answered ask): from the saved work.
-    const resume = resumeOf({ root: ROOT, run: RUN, runBranch: RUN_BRANCH, nnn, branch: l.branch, answered: Boolean(answer) })
+    // A relaunch continues a plan that stopped for a reason that was not its own code (or an answered ask): from the
+    // saved work. Not a final-gate fix round: that one starts from the merged plan's branch.
+    const resume = finalFix ? null : resumeOf({ root: ROOT, run: RUN, runBranch: RUN_BRANCH, nnn, branch: l.branch, answered: Boolean(answer) })
     const info = state('plan-info', { run: RUN, plan: nnn, 'with-worktree': 'yes', 'from-branch': resume?.kind === 'park' ? resume.parkBranch : undefined })
     if (!info.ok) return { nnn, state: 'parked', reason: `plan-info: ${info.error}` }
     const ctx = { nnn, info, wt: info.wt, tier: l.start.tier, tierReason: l.start.reason, round: 0, escalated: false, findings: [], lastWhy: null, mode: 'first' }
+    if (finalFix) {
+      // The final gate's fix round: the plan's own tier, the next round of its maxFixRounds, the findings of the failing check.
+      ctx.round = finalFix.round
+      ctx.tier = finalFix.tier
+      ctx.tierReason = 'final gate fix round, on the tier the plan merged on'
+      ctx.escalated = finalFix.tier === 'judgment'
+      ctx.findings = finalFix.findings
+      ctx.lastWhy = null
+      ctx.mode = 'fix'
+    }
     if (resume) {
       // The round counter and the tier continue where the stopped attempt left them.
       ctx.round = Number(resume.prev.round) || 0
@@ -805,6 +906,8 @@ async function main() {
     let planStart = null
     const park = (reason, { teardown = true, quiet = false } = {}) => {
       setPlan(nnn, { state: 'parked', round: ctx.round, tier: ctx.tier, reason: String(reason).slice(0, 380) })
+      // The park runs the folder's own scripts (the save, the teardown): they need their packages.
+      if (teardown && ctx.wt?.ok && ctx.wt.path) ensureIn(ctx.wt.path, { nnn })
       if (teardown && ctx.wt?.ok) {
         const s = state('park', { run: RUN, plan: nnn, 'reason-b64': b64(String(reason).slice(0, 2000)) })
         const saved = (s.steps ?? []).find((x) => x?.step === 'save')
@@ -858,6 +961,7 @@ async function main() {
       const stage = ctx.mode === 'first' || ctx.mode === 'resume' ? 'builder' : ctx.mode === 'handoff' ? 'judgment builder' : 'builder fix'
       let b = { ok: true, text: '' }
       let result = null
+      ensureIn(wt, { nnn })
       if (ctx.skipBuild) {
         // The run died after the build: the branch has its commits, so the next step is the gate on them, no new builder.
         ctx.skipBuild = false
@@ -902,13 +1006,37 @@ async function main() {
         const onBase = git(ROOT, 'show', `${base}:${l.path}`)
         const planText = onBase.status === 0 ? onBase.out : readFileSync(join(ROOT, l.path), 'utf8')
         const builtins = { [scopeMarker(base, l.path)]: () => scopeCheck({ folder: wt, base, planText, planPath: l.path, hotspots: HOTSPOTS, upstream: UPSTREAM }) }
-        let g = await runGate({ folder: wt, commands: l.checks, timeoutMin: GATE_TIMEOUT_MIN, onResult, builtins })
+        // A promised [auto]/[ui] Done-when item the builder reports as not done never reaches the merge.
+        const left = result ? undoneItems(planText, result.notDone) : []
+        if (left.length) {
+          const first = left[0]
+          const servers = serversNamed(first.reason)
+          let started = ''
+          if (servers) {
+            // The reason names a backend, database or dev server: the main folder's servers are started the way the
+            // preflight starts them (scripts/slot-serve.mjs --main), then the fix round runs.
+            const s = node('slot-serve.mjs', ['--main', '--servers', servers, '--db', o.db])
+            started = s.status === 0 ? `; the main folder's ${servers === 'be' ? 'backend' : 'dev server'} was started` : `; starting the main folder's ${servers === 'be' ? 'backend' : 'dev server'} failed (${lastLine(s.out)})`
+            note(`${first.item.slice(0, 120)}: ${started.slice(2)}`, nnn)
+          }
+          const why = `Done-when item left undone: ${first.item}`
+          failure = { why, fingerprint: `${why} :: ${first.reason}`.slice(0, 240), check: 'done-when', tail: `${first.reason}${started}`,
+            findings: left.map((x, i) => ({ id: `undone-${i + 1}`, file: x.item.slice(0, 80), line: 1, rule: 'Done-when item left undone', reasoning: `You reported it not done: ${x.reason}.${started} Do it, run its check, and report it done.`, severity: 'blocker' })) }
+        } else {
+        ensureIn(wt, { nnn })
+        // A check that ends with an environment failure repairs the environment (a clean reinstall of the failing tree)
+        // before its one retry, instead of running the same command again.
+        const beforeRetry = (command, r) => {
+          ensureIn(wt, { nnn, clean: true, out: r?.out })
+        }
+        let g = await runGate({ folder: wt, commands: l.checks, timeoutMin: GATE_TIMEOUT_MIN, onResult, builtins, beforeRetry })
         if (g.status === 'env') {
           setPlan(nnn, { state: 'env-paused', round: ctx.round, reason: `gate env-fail: ${g.failed.join(', ')}` })
           const env = node('orch-preflight.mjs', ['--env-only', '--run', RUN, '--probe-dir', wt, ...g.failed.flatMap((c) => ['--probe', c])])
           if (env.status !== 0) return park(`environment: ${(orchJson(env.out)?.problems ?? [lastLine(env.out)]).join('; ')}`)
           note(`environment failure (gate env-fail: ${g.failed.join(', ')}); the environment check passed, the gate runs once more without a fix round`, nnn)
-          g = await runGate({ folder: wt, commands: l.checks, timeoutMin: GATE_TIMEOUT_MIN, onResult, builtins })
+          ensureIn(wt, { nnn })
+          g = await runGate({ folder: wt, commands: l.checks, timeoutMin: GATE_TIMEOUT_MIN, onResult, builtins, beforeRetry })
           if (g.status === 'env') return park(`environment, again after one retry: gate env-fail: ${g.failed.join(', ')}`)
         }
         for (const c of g.flaky) state('flake', { run: RUN, plan: nnn, command: c, round: ctx.round, via: 'rerun', where: 'gate', sha: g.head ?? undefined })
@@ -919,6 +1047,7 @@ async function main() {
           failure = { why, fingerprint: `${why} :: ${lastLine(bad[0]?.tail)}`, check: bad[0]?.command, tail: bad[0]?.tail,
             findings: bad.map((x, i) => ({ id: `gate-${i + 1}`, file: x.command, line: 1, rule: 'check fails', reasoning: String(x.tail ?? '').split('\n').slice(-20).join('\n'), severity: 'blocker' })) }
         } else checkedHead = g.head
+        }
       }
       // ---- review ----
       if (!failure) {
@@ -953,7 +1082,7 @@ async function main() {
       // ---- merge ----
       if (!failure) {
         setPlan(nnn, { state: 'merging', round: ctx.round, 'checked-head': checkedHead })
-        const m = await serial(() => mergePlan({ root: ROOT, run: RUN, nnn, branch: info.branch, runBranch: RUN_BRANCH, mergeFolder, checks: mergeChecksOf(l.checks), timeoutMin: GATE_TIMEOUT_MIN, plan: { path: l.path, startCommit: planStart }, onResult: (row) => csvRow(nnn, `merge check: ${row.command}`, '-', row.seconds, 0, 0, row.exit) }))
+        const m = await serial(() => mergePlan({ root: ROOT, run: RUN, nnn, branch: info.branch, runBranch: RUN_BRANCH, mergeFolder, checks: mergeChecksOf(l.checks), timeoutMin: GATE_TIMEOUT_MIN, plan: { path: l.path, startCommit: planStart }, ensure: (clean, command, r) => ensureIn(mergeFolder, { nnn, clean, out: r?.out }), onResult: (row) => csvRow(nnn, `merge check: ${row.command}`, '-', row.seconds, 0, 0, row.exit) }))
         if (m.merged) {
           // The records, written from git by the merge step: the plan-file conflicts it resolved, and a plan changed during the run.
           for (const f of m.planFiles ?? []) note(`merge: ${f} conflicted — the run branch's copy was taken`, nnn)
@@ -963,7 +1092,7 @@ async function main() {
           }
           setPlan(nnn, { state: 'merged', round: ctx.round, tier: ctx.tier, sha: m.sha })
           say(`RUN_PLANS: plan ${nnn} merged into ${RUN_BRANCH} (${m.sha.slice(0, 7)})`)
-          return { nnn, state: 'merged', sha: m.sha, round: ctx.round }
+          return { nnn, state: 'merged', sha: m.sha, round: ctx.round, tier: ctx.tier }
         }
         if (m.pin) return park(m.why)
         if (m.env) return park(`environment: ${m.why}`)
@@ -1199,12 +1328,55 @@ async function main() {
     const merged = outcomes.filter((x) => x.state === 'merged')
     const finalChecks = [...new Set([...gateCommands({ prepare: PREPARE, pm: PM, ...COMMANDS, manifest: init.kitManifest === true }), ...(Array.isArray(CI_MIRROR) ? CI_MIRROR : []).filter((c) => !checkProblem(c, init.npmScripts ?? null)).map((c) => String(c).trim())])]
     if ((merged.length || order.skipped.length) && finalChecks.length && !stopReason) {
-      say(`RUN_PLANS: final gate on ${RUN_BRANCH} (${finalChecks.length} command(s))`)
-      git(mergeFolder, 'fetch', '--quiet', 'origin')
-      git(mergeFolder, 'merge', '--quiet', '--ff-only', `origin/${RUN_BRANCH}`)
-      const g = await runGate({ folder: mergeFolder, commands: finalChecks, timeoutMin: GATE_TIMEOUT_MIN, receipt: false, onResult: (row) => csvRow('final', `final gate: ${row.command}`, '-', row.seconds, 0, 0, row.exit) })
-      const bad = g.results.find((x) => x.status !== 'pass')
-      finalGate = g.status === 'pass' ? { ok: true } : { ok: false, command: bad?.command ?? '', tail: bad?.tail ?? '' }
+      const runFinal = async () => {
+        say(`RUN_PLANS: final gate on ${RUN_BRANCH} (${finalChecks.length} command(s))`)
+        git(mergeFolder, 'fetch', '--quiet', 'origin')
+        git(mergeFolder, 'merge', '--quiet', '--ff-only', `origin/${RUN_BRANCH}`)
+        ensureIn(mergeFolder)
+        const g = await runGate({ folder: mergeFolder, commands: finalChecks, timeoutMin: GATE_TIMEOUT_MIN, receipt: false, onResult: (row) => csvRow('final', `final gate: ${row.command}`, '-', row.seconds, 0, 0, row.exit), beforeRetry: (command, r) => { ensureIn(mergeFolder, { clean: true, out: r?.out }) } })
+        const bad = g.results.find((x) => x.status !== 'pass')
+        return g.status === 'pass' ? { ok: true } : { ok: false, command: bad?.command ?? '', tail: bad?.tail ?? '' }
+      }
+      finalGate = await runFinal()
+      // A failing command whose output names a file that exactly one merged plan changed: that plan gets one fix round in
+      // its own folder (its tier, counted against maxFixRounds), a re-merge and a second final gate.
+      if (!finalGate.ok) {
+        const changed = Object.fromEntries(merged.filter((x) => x.sha).map((x) => [x.nnn, git(mergeFolder, 'diff', '--name-only', '--no-renames', `${x.sha}^1`, x.sha).out.split('\n').map((f) => f.trim()).filter(Boolean)]))
+        const blamed = blameFinalGate({ output: `${finalGate.command}\n${finalGate.tail}`, merged: changed })
+        const prior = blamed ? merged.find((x) => x.nnn === blamed) : null
+        if (blamed && prior && (Number(prior.round) || 0) + 1 <= MAX_FIX_ROUNDS) {
+          finalGate.blamed = blamed
+          note(`final gate failed on ${finalGate.command}: plan ${blamed} gets one fix round`, blamed)
+          say(`RUN_PLANS: final gate failed on ${finalGate.command} — plan ${blamed} changed the file it names; one fix round for plan ${blamed}`)
+          const why = `final gate: ${finalGate.command}`
+          const findings = [{ id: 'final-1', file: finalGate.command, line: 1, rule: 'the final gate fails on the run branch', reasoning: `${String(finalGate.tail).split('\n').slice(-20).join('\n')}\nThe run branch (with the other merged plans) fails this check on a file your plan changed: merge origin/${RUN_BRANCH} into your branch, fix it, rerun the checks.`, severity: 'blocker' }]
+          let out
+          try {
+            out = await runPlan(blamed, { finalFix: { round: (Number(prior.round) || 0) + 1, tier: prior.tier === 'judgment' ? 'judgment' : 'build', findings, why } })
+          } catch (e) {
+            out = { nnn: blamed, state: 'parked', reason: e instanceof RunStop ? `stopped: ${e.message}` : String(e?.message ?? e).slice(0, 300) }
+          }
+          // The answers were already waited for: a question the fix round raises parks the plan with its question, as an
+          // unanswered ask does, and the run stops on the final gate as before.
+          if (out.state === 'asking' || out.state === 'held') {
+            const id = out.ask?.id ?? 'of the fix round'
+            const reason = `${out.reason ?? 'a question'} — ask ${id} not answered: the final gate's fix round ends the run`
+            setPlan(blamed, { state: 'parked', reason: reason.slice(0, 380) })
+            note(`ask ${id} raised in the final gate's fix round — plan ${blamed} parked; the question was: ${out.ask?.question ?? '(none)'}`, blamed)
+            say(`RUN_PLANS: plan ${blamed} parked — ${reason}`)
+            out = { nnn: blamed, state: 'parked', reason, ...(out.ask?.id ? { ask: out.ask.id } : {}) }
+          }
+          state('release', { run: RUN, plan: blamed })
+          const at = outcomes.findIndex((x) => x.nnn === blamed && x.state === 'merged')
+          if (at >= 0) outcomes.splice(at, 1)
+          outcomes.push(out)
+          if (out.state === 'merged') {
+            const blamedAt = finalGate.blamed
+            finalGate = await runFinal()
+            if (!finalGate.ok) finalGate.blamed = blamedAt
+          }
+        }
+      }
       if (!finalGate.ok) {
         stopReason = `final gate failed: ${finalGate.command} — ${String(finalGate.tail).split('\n').slice(-3).join(' / ')}`.slice(0, 380)
         state('stop', { run: RUN, reason: stopReason })

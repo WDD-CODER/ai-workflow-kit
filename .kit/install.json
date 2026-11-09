@@ -3,7 +3,7 @@
     "version": "2.1.0"
   },
   "source": "local:.",
-  "commit": "962d8a760066bb9622ad481a86f8a9ad04116767",
+  "commit": "bd7dc6a6d2a1595785b844829ae4ec3bcfcd5e40",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -375,7 +375,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "2fb99a55d304256661fca4877b4d10ef7b999226ccca23ded1d9d50972159c42",
+      "sha256": "c7f8367c2ba745a649a41c9e65ad6358c89fe08c3dfd2a1cbb7c1dbe667f6944",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -695,7 +695,7 @@
       "source": "core/scripts/lib/invariants.mjs"
     },
     "scripts/lib/orch-folders.mjs": {
-      "sha256": "2e5bf607e6c68e0233c4dbbba57987ec946be166369ba4e110d3ab3c1806bf49",
+      "sha256": "f3e5f3b0698c7d02362b5a7e238dd697e7381bd22f2a33d97c10e05a142b71d4",
       "kind": "managed",
       "source": "core/scripts/lib/orch-folders.mjs"
     },
@@ -715,7 +715,7 @@
       "source": "core/scripts/lib/plan-deps.mjs"
     },
     "scripts/lib/plan-gate.mjs": {
-      "sha256": "da09a0e57c9ccc9e8df707bbd7b6e25867d88519ae8486b95f43248519761089",
+      "sha256": "571e798ea15fa36b8fd21e8a76f65893c48f4b0351aaceb5cf011fd36255fb65",
       "kind": "managed",
       "source": "core/scripts/lib/plan-gate.mjs"
     },
@@ -730,7 +730,7 @@
       "source": "core/scripts/lib/plan-guard-scan.mjs"
     },
     "scripts/lib/plan-merge.mjs": {
-      "sha256": "7706d9cb77b8e24ac8de2188f13aa226e029447edd8a74026433067d82cc891a",
+      "sha256": "d654bcc9092b8a14ea9a9f9755619600093396fecb10409ea1615bf38445209d",
       "kind": "managed",
       "source": "core/scripts/lib/plan-merge.mjs"
     },
@@ -790,12 +790,12 @@
       "source": "core/scripts/next-plan-number.mjs"
     },
     "scripts/orch-preflight.mjs": {
-      "sha256": "71cc467a577d3c1979e7714b12e1fb706b55249448772a171de56a3a795e516f",
+      "sha256": "4fbbc9fd5736946cef40dec8e6bb8a07e093d60368c19b9fc6ac19470a1b18b8",
       "kind": "managed",
       "source": "core/scripts/orch-preflight.mjs"
     },
     "scripts/orch-state.mjs": {
-      "sha256": "d1a927e23899968401487e25bb64b0db733169df3bba43172d4390843d3caca1",
+      "sha256": "42f58a5c85b91edb3fef7a8be40ac436c74100a17612224919b35ab09df0d4f1",
       "kind": "managed",
       "source": "core/scripts/orch-state.mjs"
     },
@@ -870,7 +870,7 @@
       "source": "core/scripts/prune-old-sessions.sh"
     },
     "scripts/run-plans.mjs": {
-      "sha256": "e8cea65a1540a5b742e8ab6b62d5c266f063aea4e1a3ef510cfd5b3c33e5c3bf",
+      "sha256": "b19fb8caff41b71e17bc1da2632fbe7c503c8ae08819c1501b02db3d6fd17035",
       "kind": "managed",
       "source": "core/scripts/run-plans.mjs"
     },
