@@ -1,6 +1,7 @@
 # Plan 111 — No console window ever steals focus: every child process the kit starts is hidden
 
 Status: draft
+Parked: 2026-11-09 — the Human froze new work. v3.0.1 already hides the orchestrator run; the one part kept (S5: check the dev servers from slot-serve, give them the same hidden console only if a window shows) moves into the v3.0.2 fix release. The helper sweep (S1–S4, S6) is parked; reopen only if a window still shows in real use.
 Depends-on: none
 Snapshot: e282b67
 Source: the Human, 2026-11-09 (FoodVibe session, run-518): console windows keep flashing open and shut while runs, servers and gates work; each one takes keyboard focus from whatever the Human is typing in. No new capability; a Windows behaviour fix across the kit's scripts.

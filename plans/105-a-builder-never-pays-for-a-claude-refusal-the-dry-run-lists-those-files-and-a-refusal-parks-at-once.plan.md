@@ -1,6 +1,7 @@
 # Plan 105 — A builder never pays for a .claude/ refusal: the dry run lists those files and a refusal parks at once
 
 Status: draft
+Parked: 2026-11-09 — the Human froze new work until the workflow runs clean on FoodVibe; reopen only when a validation case, a CI check or a real run fails on what this plan fixes.
 Depends-on: 103, 104
 Snapshot: e53dd0a
 Source: run-100 (2026-11-08/09), error review rows "builders refused every edit under `.claude/`". The Human chose on 2026-11-09: keep the kit's sources under `core/.claude/`, let the Planner write those files by hand, and stop paying for the refusal. Reliability fix; no new capability.
