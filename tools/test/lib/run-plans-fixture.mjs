@@ -63,6 +63,8 @@ export function makeProject({ kit, name = 'rp-app', depsFrom = null, config = {}
     GIT_AUTHOR_NAME: 'kit-rp', GIT_AUTHOR_EMAIL: 'kit-rp@example.invalid',
     GIT_COMMITTER_NAME: 'kit-rp', GIT_COMMITTER_EMAIL: 'kit-rp@example.invalid',
     GIT_TERMINAL_PROMPT: '0', RUN_PLANS_CLAUDE: FAKE(kit), FAKE_CLAUDE_LOG: log, FAKE_CLAUDE_SCENARIO: scenarioFile,
+    // A question parks its plan after a short wait in a test run, not after ASK_WAIT_MIN.
+    RUN_PLANS_ASK_WAIT_MS: '1', RUN_PLANS_ASK_POLL_MS: '50',
   }
   for (const k of ['ORCH_FREE_GB', 'ORCH_UI_LOGIN_URL', 'ORCH_UI_API_URL', 'DB_PORT']) delete env[k]
   const sh = (cmd, args, cwd = proj) => {
