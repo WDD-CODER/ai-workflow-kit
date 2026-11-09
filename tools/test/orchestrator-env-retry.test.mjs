@@ -307,6 +307,7 @@ const FINAL_CHECK = [
   "const lines = (f) => readFileSync(f, 'utf8').trim().split('\\n').length",
   "if (inRunBranch && existsSync('src/801.txt') && existsSync('src/802.txt') && lines('src/801.txt') < 2) { console.error('final-check: src/801.txt holds one round only'); process.exit(1) }",
   "if (inRunBranch && existsSync('src/811.txt') && existsSync('src/812.txt')) { console.error('final-check: src/811.txt is not accepted'); process.exit(1) }",
+  "if (inRunBranch && existsSync('src/821.txt') && existsSync('src/822.txt') && lines('src/821.txt') < 2) { console.error('final-check: src/821.txt holds one round only'); process.exit(1) }",
   '',
 ].join('\n')
 
@@ -317,7 +318,7 @@ function finalFixProject() {
     const r = p.git(p.proj, ...a)
     assert.equal(r.status, 0, `git ${a.join(' ')}: ${r.err ?? r.out}`)
   }
-  p.addPlans({ 801: toyPlan(801), 802: toyPlan(802), 811: toyPlan(811), 812: toyPlan(812) })
+  p.addPlans({ 801: toyPlan(801), 802: toyPlan(802), 811: toyPlan(811), 812: toyPlan(812), 821: toyPlan(821), 822: toyPlan(822) })
   return p
 }
 
@@ -349,6 +350,22 @@ test('103 (f) a second final-gate failure after the fix round stops the run, and
     assert.equal(r.json?.finalGate?.blamed, '811', r.out)
     assert.match(String(r.json?.stopReason ?? ''), /^final gate failed: node scripts\/final-check\.mjs/)
     assert.equal(r.calls.filter((c) => c.role === 'builder' && c.plan === '811').length, 2, 'one fix round, not two')
+  } finally {
+    p.cleanup()
+  }
+})
+
+test('103 (f) a question the final gate\'s fix round raises parks the plan with its question; no ask stays open and the run stops', () => {
+  const p = finalFixProject()
+  try {
+    // 821 passes its own gate, then its fix round fails its gate twice for the same reason: an ask after the answer wait.
+    const r = p.runPlans(['--run', 'ff3', '--plans', '821,822'], { scenario: { 821: { builder: [{ gate: 'pass' }, { gate: 'fail', text: 'still one round' }, { gate: 'fail', text: 'still one round' }] } } })
+    assert.notEqual(r.status, 0, r.out)
+    // The run's result parks it with the reason; status.json (read from git at the end) never leaves it asking.
+    assert.match(r.out, /plan 821 parked — .* — ask 821-1 not answered: the final gate's fix round ends the run/)
+    assert.ok(r.json?.parked?.includes('821'), r.out)
+    assert.notEqual(p.status('ff3').plans['821'].state, 'asking', r.out)
+    assert.match(String(r.json?.stopReason ?? ''), /^final gate failed: node scripts\/final-check\.mjs/)
   } finally {
     p.cleanup()
   }

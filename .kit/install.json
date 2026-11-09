@@ -3,7 +3,7 @@
     "version": "2.1.0"
   },
   "source": "local:.",
-  "commit": "a1d7fc2b5c130d6b90ad522a07b1d8e2dcf340b1",
+  "commit": "79de4c068e202c1cc86ec17c1ac536c7110e796d",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -870,7 +870,7 @@
       "source": "core/scripts/prune-old-sessions.sh"
     },
     "scripts/run-plans.mjs": {
-      "sha256": "d1d474f9b8da4ab62f402593d1427cc74b5bacdd9d97186299f04bda18da1858",
+      "sha256": "b19fb8caff41b71e17bc1da2632fbe7c503c8ae08819c1501b02db3d6fd17035",
       "kind": "managed",
       "source": "core/scripts/run-plans.mjs"
     },

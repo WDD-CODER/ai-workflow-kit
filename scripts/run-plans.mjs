@@ -1356,6 +1356,16 @@ async function main() {
           } catch (e) {
             out = { nnn: blamed, state: 'parked', reason: e instanceof RunStop ? `stopped: ${e.message}` : String(e?.message ?? e).slice(0, 300) }
           }
+          // The answers were already waited for: a question the fix round raises parks the plan with its question, as an
+          // unanswered ask does, and the run stops on the final gate as before.
+          if (out.state === 'asking' || out.state === 'held') {
+            const id = out.ask?.id ?? 'of the fix round'
+            const reason = `${out.reason ?? 'a question'} — ask ${id} not answered: the final gate's fix round ends the run`
+            setPlan(blamed, { state: 'parked', reason: reason.slice(0, 380) })
+            note(`ask ${id} raised in the final gate's fix round — plan ${blamed} parked; the question was: ${out.ask?.question ?? '(none)'}`, blamed)
+            say(`RUN_PLANS: plan ${blamed} parked — ${reason}`)
+            out = { nnn: blamed, state: 'parked', reason, ...(out.ask?.id ? { ask: out.ask.id } : {}) }
+          }
           state('release', { run: RUN, plan: blamed })
           const at = outcomes.findIndex((x) => x.nnn === blamed && x.state === 'merged')
           if (at >= 0) outcomes.splice(at, 1)
