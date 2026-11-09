@@ -67,6 +67,9 @@ export const STAGE_WEIGHT: Record<string, number> = {
   skipped: 1,
 }
 
+/** One plain line for the terminal: the live files are not trusted, so control characters (escapes) become spaces. */
+export const plain = (s: unknown, max = 200): string => String(s ?? '').replace(/[\u0000-\u001f\u007f-\u009f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max)
+
 /** The four steps of the bar, and the plan states each one covers. */
 export const STEPS: { name: string; states: string[] }[] = [
   { name: 'build', states: ['building', 'fixing', 'env-paused'] },
@@ -191,14 +194,14 @@ export function planView(key: string, p: PlanStatus, nowMs: number, calls: CallR
   return {
     nnn,
     state: p.state ?? '?',
-    words: stageWords(p),
+    words: plain(stageWords(p)),
     final: (STAGE_WEIGHT[p.state ?? ''] ?? 0) >= 1,
     steps: planSteps(p, nowMs),
-    model: models[models.length - 1] ?? lastModel,
+    model: plain(models[models.length - 1] ?? lastModel, 40) || null,
     round: Number(p.round) || 0,
     tokens: callTokens + (b ? (Number(b.tokensIn) || 0) + (Number(b.tokensOut) || 0) : 0),
-    gate: g && g.command ? { index: Number(g.index) || 0, total: Number(g.total) || 0, command: String(g.command), startedAt: Date.parse(g.startedAt ?? '') || null } : null,
-    builder: b ? { tools: Number(b.tools) || 0, lastTool: String(b.lastTool ?? ''), lastTarget: String(b.lastTarget ?? ''), tokens: (Number(b.tokensIn) || 0) + (Number(b.tokensOut) || 0), at: Date.parse(b.at ?? '') || null } : null,
+    gate: g && g.command ? { index: Number(g.index) || 0, total: Number(g.total) || 0, command: plain(g.command, 160), startedAt: Date.parse(g.startedAt ?? '') || null } : null,
+    builder: b ? { tools: Number(b.tools) || 0, lastTool: plain(b.lastTool, 40), lastTarget: plain(b.lastTarget, 60), tokens: (Number(b.tokensIn) || 0) + (Number(b.tokensOut) || 0), at: Date.parse(b.at ?? '') || null } : null,
   }
 }
 
@@ -332,7 +335,8 @@ export async function scanRuns($: EngineInterface, cwd: string): Promise<FleetRu
     const plans = Object.entries(status.plans ?? {})
       .map(([k, p]) => planView(k, p, nowMs, calls, live[String(p.nnn ?? k)] ?? null))
       .sort((a, b) => Number(a.nnn) - Number(b.nnn) || a.nnn.localeCompare(b.nnn))
-    const fg = live.final?.step === 'final-gate' ? live.final.gate : undefined
+    const fg0 = live.final?.step === 'final-gate' ? live.final.gate : undefined
+    const fg = fg0 ? { ...fg0, command: plain(fg0.command, 160) } : undefined
     const watch = await watchRun($, cwd, e.name, nowMs)
     out.push({
       name: e.name,

@@ -104,6 +104,10 @@ test('panel lines: the run line, a plan line with its bar and facts, the gate an
     '      gate 4/16: pnpm run test:ci · 0:42',
     '  533 · waiting',
   ])
+  // Text from the live file is not trusted: a terminal escape in it is drawn as a space.
+  const evil = planView('534', { nnn: '534', state: 'building' }, NOW, [], { builder: { tools: 1, lastTool: 'Ed\u001b]8;;x\u0007it', lastTarget: 'a\u001b[2Jb\nc' } })
+  expect(evil.builder!.lastTool).toBe('Ed ]8;;x it')
+  expect(evil.builder!.lastTarget).toBe('a [2Jb c')
   // A builder line only while building; a gate line only at the gate.
   expect(planView('531', { nnn: '531', state: 'gate' }, NOW, [], { builder: { tools: 1 } }).builder).toBe(null)
 })
