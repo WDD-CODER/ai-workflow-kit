@@ -747,14 +747,21 @@ async function main() {
       say(`  merge: git merge --no-ff origin/${l.branch} into ${RUN_BRANCH}, merge-verify, ${mergeChecksOf(l.checks).join(', ') || 'no check'}, git push origin ${RUN_BRANCH}`)
     }
   }
+  // A relaunch with every plan already merged still owes the final gate when the earlier attempt never finished it
+  // (stopped or killed during the final gate: phase not finished, or its final gate failed): it runs the final gate only.
+  let prevRun = null
+  try {
+    prevRun = JSON.parse(readFileSync(join(ROOT, '.claude', 'orchestrator-runs', RUN, 'status.json'), 'utf8'))
+  } catch { /* a new run */ }
+  const finalOnly = !all.length && order.skipped.length > 0 && prevRun !== null && (prevRun.phase !== 'finished' || prevRun.finalGate?.ok === false)
   const pre = node('orch-preflight.mjs', ['--run', RUN, '--plans', all.length ? all.join(',') : o.plans.join(','), ...(o.db === 'remote' ? ['--db', 'remote'] : [])])
   const preJson = orchJson(pre.out) ?? { ok: pre.status === 0, problems: [lastLine(pre.out)] }
   for (const line of pre.out.split(/\r?\n/).filter((l) => /^(OK|FAIL|SKIP|WARN|PARK)\b/.test(l.trim()))) say(`PREFLIGHT ${line.trim()}`)
   const notReady = all.filter((n) => !lint[n].ready)
-  const refusal = !all.length ? null : unguarded ? unguarded : notReady.length ? `plan(s) not ready: ${notReady.join(', ')}` : preJson.ok !== true ? `preflight: ${(preJson.problems ?? []).join('; ')}` : null
+  const refusal = !all.length && !finalOnly ? null : finalOnly ? (preJson.ok !== true ? `preflight: ${(preJson.problems ?? []).join('; ')}` : null) : unguarded ? unguarded : notReady.length ? `plan(s) not ready: ${notReady.join(', ')}` : preJson.ok !== true ? `preflight: ${(preJson.problems ?? []).join('; ')}` : null
   if (o.dryRun) {
-    say(`WOULD START: ${refusal ? `no — ${refusal}` : all.length ? 'yes' : 'no — nothing to build'}`)
-    say(`RUN_PLANS_JSON ${JSON.stringify({ ok: true, dryRun: true, run: RUN, waves: order.waves, skipped: order.skipped, plans: Object.fromEntries(all.map((n) => [n, { ready: lint[n].ready, problems: lint[n].problems, checks: lint[n].checks, builder: lint[n].builder }])), preflight: { ok: preJson.ok === true, problems: preJson.problems ?? [] }, wouldStart: !refusal && all.length > 0, modelCalls: 0 })}`)
+    say(`WOULD START: ${refusal ? `no — ${refusal}` : all.length ? 'yes' : finalOnly ? 'yes — the final gate only (every plan is merged; the last attempt did not finish it)' : 'no — nothing to build'}`)
+    say(`RUN_PLANS_JSON ${JSON.stringify({ ok: true, dryRun: true, run: RUN, waves: order.waves, skipped: order.skipped, plans: Object.fromEntries(all.map((n) => [n, { ready: lint[n].ready, problems: lint[n].problems, checks: lint[n].checks, builder: lint[n].builder }])), preflight: { ok: preJson.ok === true, problems: preJson.problems ?? [] }, wouldStart: !refusal && (all.length > 0 || finalOnly), finalOnly, modelCalls: 0 })}`)
     return 0
   }
   if (refusal) {
@@ -762,7 +769,8 @@ async function main() {
     say(`RUN_PLANS_JSON ${JSON.stringify({ ok: false, refused: refusal, plans: Object.fromEntries(notReady.map((n) => [n, lint[n].problems])), preflight: preJson })}`)
     return 1
   }
-  if (!all.length) {
+  if (finalOnly) say(`RUN_PLANS: every plan is merged, but the last attempt did not finish the final gate (phase ${prevRun.phase}${prevRun.finalGate ? `, final gate ${prevRun.finalGate.ok ? 'ok' : 'failed'}` : ', no final gate'}) — running the final gate only`)
+  else if (!all.length) {
     say('RUN_PLANS: nothing to build — every plan is already done')
     say(`RUN_PLANS_JSON ${JSON.stringify({ ok: true, run: RUN, merged: [], parked: [], skipped: order.skipped })}`)
     return 0

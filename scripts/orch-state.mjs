@@ -75,7 +75,7 @@ import { scopeTestsLint } from './lib/scope-tests-lint.mjs'
 import { planNumber, planTitle, mergeSubjectRe } from './lib/plan-deps.mjs'
 import { uiItems } from './lib/done-when.mjs'
 import { listSlots } from './lib/slot.mjs'
-import { ensureDeps, idleSlot, claimSlot, releaseSlot, releaseRunSlots, retryGit } from './lib/orch-folders.mjs'
+import { ensureDeps, idleSlot, claimSlot, releaseSlot, releaseRunSlots, retryGit, isWorktree, removeFolder } from './lib/orch-folders.mjs'
 import { agreementStats, addLesson, lessonParts, ruleLines, LESSON_ROLES } from './decision-log.mjs'
 import { planWithoutNotes, triageForce, triageView, decisionsInView, mergePlanFile, decisionType, runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine, planLines, logQueryArgs, lessonFacts, runLogRow, updateRunLog, parseRunLog, parseDecisionRows, trendOf, contextBudget, INJECTED_ROLES, askCard, ASK_ID_RE } from './lib/orch-run.mjs'
 
@@ -935,6 +935,14 @@ const commands = {
     const slots = USE_SLOTS ? listSlots() : []
     let slot = slots.find((s) => s.plan === planFile && s.branch === branch) ?? null
     let wt = slot ? slot.path : own
+    // A folder left half-deleted by an earlier `git worktree remove` (Windows: node_modules "Directory not empty") is no
+    // longer a worktree: it is removed (or, when that fails, renamed aside) and a fresh folder is made.
+    if (!slot && existsSync(own) && !isWorktree(root, own)) {
+      const gone = removeFolder(own)
+      git(root, 'worktree', 'prune')
+      lines.push(gone.ok ? `removed ${own}: left by an earlier run, no longer a git worktree` : `renamed ${own} to ${gone.aside}: left by an earlier run, no longer a git worktree (${gone.error})`)
+      if (!gone.ok && !gone.aside) fail(`${own} is left by an earlier run, is no longer a git worktree, and could not be removed or renamed: ${gone.error}`, { envFailure: true })
+    }
     if (!slot && !existsSync(own)) {
       const free = idleSlot(slots)
       if (free) {

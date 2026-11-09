@@ -18,6 +18,7 @@
  * failed save) is skipped. Exit 0 always; the last line is `ORCH_JSON {"ok":true,…,"steps":[…]}`.
  */
 import { existsSync, readFileSync, readdirSync, statSync, unlinkSync } from 'fs'
+import { isWorktree, removeFolder } from './lib/orch-folders.mjs'
 import { spawnSync } from 'child_process'
 import { basename, dirname, join, resolve } from 'path'
 import { fileURLToPath } from 'url'
@@ -163,7 +164,10 @@ else if (slot) {
 } else {
   const r = git(root, 'worktree', 'remove', '--force', folder)
   git(root, 'worktree', 'prune')
-  log('folder', r.status === 0 ? `${posix(folder)} removed` : `${posix(folder)} not removed: ${r.err.split('\n').pop()}`)
+  // Windows: git can delete the tracked files, then fail on node_modules ("Directory not empty") and leave a folder that
+  // is no longer a worktree; the rest is deleted (or renamed aside) so the next run's folder is clean.
+  const rest = existsSync(folder) && !isWorktree(root, folder) ? removeFolder(folder) : null
+  log('folder', rest ? (rest.ok ? `${posix(folder)} removed (git left part of it: ${r.err.split('\n').pop() || 'no error'})` : `${posix(folder)} not removed by git; ${rest.aside ? `renamed to ${posix(rest.aside)}` : `left: ${rest.error}`}`) : r.status === 0 ? `${posix(folder)} removed` : `${posix(folder)} not removed: ${r.err.split('\n').pop()}`)
 }
 
 // ---- 5. branch ----------------------------------------------------------------------------------------------------------------

@@ -1,9 +1,9 @@
 {
   "kit": {
-    "version": "3.0.0"
+    "version": "3.0.1"
   },
   "source": "local:.",
-  "commit": "e282b679ff27f450fd281a102be2ea89c5940f7a",
+  "commit": "d2d488aa89c0f98124ed63d666c9c571f34d29e3",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -15,7 +15,7 @@
       "source": "core/.claude/agents/git-agent.md"
     },
     ".claude/agents/orch-builder.md": {
-      "sha256": "2b8711a28536573c629c0ead164fc09d1a05f8685f2f4107273e94fece322244",
+      "sha256": "d474c11c1cd9c28c35565df879fdf9b8c59c6cb14cb477a13fb605be67c8941d",
       "kind": "managed",
       "source": "core/.claude/agents/orch-builder.md"
     },
@@ -695,7 +695,7 @@
       "source": "core/scripts/lib/invariants.mjs"
     },
     "scripts/lib/orch-folders.mjs": {
-      "sha256": "f3e5f3b0698c7d02362b5a7e238dd697e7381bd22f2a33d97c10e05a142b71d4",
+      "sha256": "50d56b94bce1f978dc8b624e9d0fadf792db5de5e5eab7d975bdf589244629a0",
       "kind": "managed",
       "source": "core/scripts/lib/orch-folders.mjs"
     },
@@ -795,7 +795,7 @@
       "source": "core/scripts/orch-preflight.mjs"
     },
     "scripts/orch-state.mjs": {
-      "sha256": "42f58a5c85b91edb3fef7a8be40ac436c74100a17612224919b35ab09df0d4f1",
+      "sha256": "6a7d82dd8f91220f6b3e3687ef3f2a42785566cae7283eadd51529ff7e091f87",
       "kind": "managed",
       "source": "core/scripts/orch-state.mjs"
     },
@@ -835,7 +835,7 @@
       "source": "core/scripts/plan-order.mjs"
     },
     "scripts/plan-park.mjs": {
-      "sha256": "6c7b03a770cf6c4c23d0bf16fb3b72ed43021a637cabed989e038bb4c6b6d6f8",
+      "sha256": "2af8d7c221727aafe72de4e045399f0d35c1ae94d9ca1fdb3fa196e3e1f2e443",
       "kind": "managed",
       "source": "core/scripts/plan-park.mjs"
     },
@@ -870,7 +870,7 @@
       "source": "core/scripts/prune-old-sessions.sh"
     },
     "scripts/run-plans.mjs": {
-      "sha256": "f87c2bc4b74549acbd7c6f996d7e632f7c94894420b45e191ce9198912d10aa3",
+      "sha256": "466a38fe338ff037c26e571dfe28b3639c4a2a15281534b337f5c203c4cbd92b",
       "kind": "managed",
       "source": "core/scripts/run-plans.mjs"
     },

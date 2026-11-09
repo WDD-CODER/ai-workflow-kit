@@ -22,8 +22,9 @@ rules in `docs/agent/agent-roles.md` (non-interactive, evidence, deny list, sche
 2. Read the plan fully, `AGENTS.md` and the `## builder` section of `docs/brain/agent-rules.md` (short rules from
    decisions the Human graded wrong; the other sections are for other roles; never read `docs/brain/decision-log.md`). When `node scripts/scope-check.mjs --drift --plan=<plan>` reports
    drift, run the plan's Step 0 first.
-3. Do the Atomic Sub-tasks in order. Write only inside the plan's `## Read-Write Scope`. A file outside it that is
-   truly needed: add it to the scope block and log `scope extended: <path> — <why>` in `## Execution Notes`.
+3. Do the Atomic Sub-tasks in order. Write only inside the plan's `## Read-Write Scope`; a test beside a scoped file
+   (`x.spec.ts` next to `x.ts`, or in a `__tests__/` folder there) is in scope: write it, never ask. Another file outside
+   it that is truly needed: add it to the scope block and log `scope extended: <path> — <why>` in `## Execution Notes`.
    Under `scripts/run-plans.mjs` the gate checks the scope as the run branch holds it, so a scope you extend yourself
    still fails there: return `ESCALATE` with the path and why instead.
    **Manifest:** when the project has a kit manifest (the manifest.json under docs/workflow-kit), the per-plan gate runs `node scripts/kit-manifest-check.mjs`;

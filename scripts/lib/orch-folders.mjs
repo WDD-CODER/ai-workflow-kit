@@ -4,10 +4,37 @@
  * scripts/orch-state.mjs (`worktree`, `release`); every function takes its folders and commands as arguments, so tests
  * can run them in a scratch repository.
  */
-import { existsSync, writeFileSync, unlinkSync, realpathSync, readFileSync, mkdirSync, rmSync } from 'fs'
+import { existsSync, writeFileSync, unlinkSync, realpathSync, readFileSync, mkdirSync, rmSync, renameSync } from 'fs'
 import { createHash } from 'crypto'
 import { spawnSync } from 'child_process'
 import { join } from 'path'
+
+/** True when git lists `folder` as one of `root`'s worktrees (samePath is defined further down). */
+export function isWorktree(root, folder) {
+  const r = spawnSync('git', ['worktree', 'list', '--porcelain'], { cwd: root, encoding: 'utf8', windowsHide: true })
+  return String(r.stdout ?? '').split('\n').some((l) => l.startsWith('worktree ') && samePath(l.slice(9).trim(), folder))
+}
+/**
+ * Removes a builder folder git no longer tracks, or a worktree `git worktree remove` left half-deleted (on Windows it
+ * fails on node_modules with "Directory not empty"): a recursive delete with retries; when that fails, the folder is
+ * renamed aside so a fresh one can be made. Returns { ok } or { ok: false, aside, error } (aside null: not renamed).
+ */
+export function removeFolder(folder) {
+  let error = 'still there after the delete'
+  try {
+    rmSync(folder, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+    if (!existsSync(folder)) return { ok: true }
+  } catch (e) {
+    error = String(e?.message ?? e).split('\n')[0]
+  }
+  const aside = `${folder}-stale-${Date.now()}`
+  try {
+    renameSync(folder, aside)
+    return { ok: false, aside, error }
+  } catch (e) {
+    return { ok: false, aside: null, error: `${error}; rename failed: ${String(e?.message ?? e).split('\n')[0]}` }
+  }
+}
 
 const run = (cwd, cmd, args) => {
   const r = spawnSync(cmd, args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, shell: process.platform === 'win32' && cmd !== 'git' })
