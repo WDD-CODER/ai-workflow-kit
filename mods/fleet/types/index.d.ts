@@ -7,7 +7,10 @@ export type FleetSession = {
   be: number | null
   branch: string
   plan: string | null
+  /** Changed files this session changed (or that changed since it started). */
   dirty: number
+  /** Changed files in the folder that were already changed when the session started and it has not touched; absent in older rows. */
+  other?: number
   unpushed: number
   startedAt: number
   lastSeen: number
@@ -26,7 +29,10 @@ export type FleetHealth = {
   /** When the seven-day window resets (ISO 8601); null until known. */
   sevenDayResetsAt: string | null
   usd: number
+  /** This session's changed files. */
   dirty: number
+  /** The folder's other changed files (not this session's). */
+  other: number
   unpushed: number
   branch: string
   /** The turn id the band was dismissed in; it shows again on the next turn. */

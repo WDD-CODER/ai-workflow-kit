@@ -66,7 +66,7 @@ Resume:
   cd "<repo>-wt-1" && claude --resume 9b2e7d10-…
 ```
 
-**While working** — the status line under the prompt reads like `cache 42m · ctx 61% · 5h 72% ↻14:30 (2h10m) · wk 64% · ≈$3.10 · feat/041-x · 2 dirty · 1 unpushed`. On the PC a band appears when the cache is about to lapse, context passes 70 % or a limit passes 80 %, with `Keep warm · Compact · Handoff & restart · Keep going`. From the phone: `/health` gives the same facts and a one-line advice.
+**While working** — the status line under the prompt reads like `● 2 files · 1 unpushed → /ship (+3 not this session) · cache 42m · ctx 61% · 5h 72% ↻14:30 (2h10m) · wk 64% · ≈$3.10 · feat/041-x`. The ship badge counts only files this session changed: what was already changed in the folder when the session started (another session's work, old leftovers) shows apart as `+N not this session`, until this session edits it. On the PC a band appears when the cache is about to lapse, context passes 70 % or a limit passes 80 %, with `Keep warm · Compact · Handoff & restart · Keep going`. From the phone: `/health` gives the same facts and a one-line advice.
 
 **Handoff** — `/handoff` (or the button) writes `.claude/sessions/handoff-<branch>.md` (untracked) with `## Session Summary / ## Open Signals / ## Next Steps` and the HEAD hash, clears the conversation and resumes from that file as your first prompt. Use it when `/health` says context is high or the cache went cold.
 

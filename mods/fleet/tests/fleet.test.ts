@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { TestBody } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { clockText, portsFromKitConfig, portsFromSlotScript, resetLong, resetShort, shipBadge, untilText } from '../hooks/register'
+import { clockText, otherText, porcelainPath, portsFromKitConfig, portsFromSlotScript, repoRelative, resetLong, resetShort, shipBadge, splitChanged, untilText } from '../hooks/register'
 
 type Loose = (event: string, hook: (...args: never[]) => unknown) => unknown
 
@@ -278,6 +278,49 @@ test('shipBadge: clean, or how much still needs /ship', () => {
   expect(shipBadge(1, 0)).toBe('● 1 file → /ship')
   expect(shipBadge(5, 2)).toBe('● 5 files · 2 unpushed → /ship')
   expect(shipBadge(0, 3)).toBe('● 3 unpushed → /ship')
+  expect(otherText(0)).toBe('')
+  expect(otherText(3)).toBe('+3 not this session')
+})
+
+test('changed paths split into this session and the rest of the folder', () => {
+  const status = ['?? Claude outputs/', '?? legacy-import/source-data/', ' M src/app.ts', 'R  old.ts -> "new name.ts"'].join('\n')
+  expect(splitChanged(status, null, new Set())).toEqual({ mine: 4, other: 0 })
+  const before = new Set(['claude outputs', 'legacy-import/source-data', 'src/app.ts'])
+  expect(splitChanged(status, before, new Set())).toEqual({ mine: 1, other: 3 })
+  expect(splitChanged(status, before, new Set(['src/app.ts', 'claude outputs/x.md']))).toEqual({ mine: 3, other: 1 })
+  expect(porcelainPath('R  old.ts -> "new name.ts"')).toBe('new name.ts')
+  expect(repoRelative('C:\\Work\\App\\src\\App.ts', 'C:/work/app')).toBe('src/app.ts')
+  expect(repoRelative('./src/a.ts', '/work/app')).toBe('src/a.ts')
+  expect(repoRelative('/work/other/a.ts', '/work/app')).toBeNull()
+})
+
+test('the ship badge counts only what this session changed; old leftovers are a quieter count', async ($, on) => {
+  mock.clock(on, { now: 1_000_000 })
+  mock.store(on)
+  statuses.length = 0
+  let porcelain = ['?? Claude outputs/', '?? legacy-import/source-data/', '?? notes-old/'].join('\n')
+  const runner = (argv: readonly string[]): Ran => {
+    const cmd = argv.join(' ')
+    if (cmd === 'git branch --show-current') return { exitCode: 0, stdout: 'main' }
+    if (cmd === 'git rev-parse --show-toplevel') return { exitCode: 0, stdout: '/work/app' }
+    if (cmd === 'git status --porcelain') return { exitCode: 0, stdout: porcelain }
+    return { exitCode: 0 }
+  }
+  world(on, '/work/app', runner)
+  ;(on as unknown as Loose)('tool.call', () => ({ result: 'ran', text: 'ran' }))
+  await $.session.start(start('/work/app'))
+  expect(statuses.at(-1)).toMatch(/^✓ clean \(\+3 not this session\) · /)
+  // This session edits one file and a command creates another.
+  porcelain += '\n M src/app.ts\n?? src/new.ts'
+  await $.tool.call({ tool: 'Edit', file_path: '/work/app/src/app.ts', old_string: 'a', new_string: 'b', tool_use_id: 'e1' } as never)
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' } as never)
+  expect(statuses.at(-1)).toMatch(/^● 2 files → \/ship \(\+3 not this session\) · /)
+  // Editing a file inside an old folder makes that folder this session's too.
+  await $.tool.call({ tool: 'Write', file_path: '/work/app/notes-old/a.md', content: 'x', tool_use_id: 'w1' } as never)
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't2', reason: 'answer' } as never)
+  expect(statuses.at(-1)).toMatch(/^● 3 files → \/ship \(\+2 not this session\) · /)
+  const { text } = await $.command.run(run('health'))
+  expect(text).toMatch(/git: main · 3 changed by this session \(2 more in the folder from before it\)/)
 })
 
 /** A fake git: answers by argv, records every call. */
