@@ -47,7 +47,7 @@ groups are listed with a recommendation for the Human.
   `state(` and `runner(` site of `orchestrate.js` (a test counts the sites in the file and the rows in the table).
 - [auto] `npm run build`, `npm run lint`, `npm test`, `node --test "tools/test/*.test.mjs"`, `node tools/orchestrator-e2e.mjs` and
   `node tools/drift-check.mjs --target .` all exit 0.
-- [auto] `node scripts/scope-check.mjs --tests --plan=plans/062-orchestrator-status-and-decision-writes-go-in-one-call-each-and-the-other-command-runner-calls-are-listed-for-scripts.plan.md`
+- [auto] `node scripts/scope-check.mjs --tests --plan=plans/062-orchestrator-status-and-decision-writes-in-one-call.plan.md`
   prints `SCOPE_TESTS: ok`, and `node scripts/scope-check.mjs --diff=origin/main` on the finished branch prints `SCOPE: ok`.
 - [human] The Human reads the inventory table and says which rows become a follow-up plan (merge calls / script-only).
 

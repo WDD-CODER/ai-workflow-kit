@@ -35,7 +35,7 @@ core/.claude/commands/plan.md
 .claude/commands/plan.md
 plans/058-orchestrator-preflight-starts-the-main-folder-servers-itself.plan.md
 plans/1-100/083-the-preflight-stops-a-plan-that-will-fail-before-any-builder-starts.plan.md
-plans/1-100/084-cleanup-after-the-reliability-run-steady-windows-tests-lesson-paths-to-six-folders-probe-in-the-gate-folder-and-a-committed-install-manifest.plan.md
+plans/1-100/084-cleanup-after-the-reliability-run.plan.md
 plans/1-100/086-four-cheap-fixes-blind-checkers-clean-base-escalation-guards-at-write-time-idempotent-park.plan.md
 plans/1-100/087-one-blinded-reviewer-measured-against-the-five-checkers-on-the-kits-cases.plan.md
 plans/097-the-runner-checks-human-decisions-md-before-choosing-a-default-with-two-hard-limits.plan.md

@@ -88,6 +88,13 @@ else
 fi
 ABS_NORM=$(printf '%s' "$ABS" | tr '\\' '/')
 
+# A new plan's file name stays short: closed, it moves to plans/<range>/, and a long path cannot be cloned on Windows.
+PLAN_NAME="${NORM##*/}"
+MAX_PLAN_NAME=100
+if [[ ! -f "$ABS" ]] && (( ${#PLAN_NAME} > MAX_PLAN_NAME )); then
+  json_deny "PLAN_WRITE_GUARD: the plan file name is ${#PLAN_NAME} characters; keep it at $MAX_PLAN_NAME or fewer (NNN-<short-slug>.plan.md). The H1 title can stay long. Long paths break a Windows clone of the repo (260-character limit)."
+fi
+
 if [[ -f "$ACK_FILE" ]]; then
   ACK_TARGET=$(tr -d '\r\n' < "$ACK_FILE" | tr '\\' '/')
   if [[ -n "$ACK_TARGET" ]] && { [[ "$ABS_NORM" == *"$ACK_TARGET" ]] || [[ "$ACK_TARGET" == *"$NORM" ]] || [[ "$NORM" == *"$ACK_TARGET" ]]; }; then

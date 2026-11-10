@@ -132,6 +132,18 @@ test('(1) a main-folder session writing into wt-1 outside the plan scope is deni
   assert.match(r.out, /SCOPE_GUARD:/)
 })
 
+test('a new plan file with a name over 100 characters is refused; a short new name and an existing long one are not', () => {
+  const long = `200-${'a-very-long-slug-'.repeat(6)}x.plan.md`
+  assert.ok(long.length > 100)
+  const r = write(main, 'plan-write-guard.sh', join(main, 'plans', long))
+  assert.equal(r.decision, 'deny', r.out)
+  assert.match(r.out, /PLAN_WRITE_GUARD: the plan file name is \d+ characters; keep it at 100 or fewer/)
+  const short = write(main, 'plan-write-guard.sh', join(main, 'plans', '201-short-name.plan.md'))
+  assert.equal(short.decision, 'allow', short.out)
+  const existing = write(main, 'plan-write-guard.sh', join(main, 'plans', '001-alpha.plan.md'))
+  assert.equal(existing.decision, 'allow', existing.out)
+})
+
 test('(2) the same write inside the plan scope is allowed', () => {
   const r = write(main, 'scope-guard.sh', join(slot, 'src', 'b.js'))
   assert.equal(r.decision, 'allow', r.out)
