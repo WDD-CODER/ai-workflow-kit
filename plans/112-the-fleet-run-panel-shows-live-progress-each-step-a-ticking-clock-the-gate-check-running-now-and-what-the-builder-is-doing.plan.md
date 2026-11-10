@@ -84,6 +84,7 @@ tools/test/claude-run-stream.test.mjs
 tools/test/fixtures/fake-claude.mjs
 tools/test/fixtures/claude-p-stream.jsonl
 tools/test/lib/run-plans-fixture.mjs
+tools/test/run-plans.test.mjs
 mods/fleet/hooks/run-progress.tsx
 mods/fleet/hooks/register.tsx
 mods/fleet/types/index.d.ts
