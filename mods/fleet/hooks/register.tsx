@@ -32,6 +32,7 @@ const health = atom({ plugin: 'fleet', key: 'health' } as const, {
   sevenDayResetsAt: null,
   usd: 0,
   dirty: 0,
+  other: 0,
   unpushed: 0,
   branch: '',
   dismissedTurn: null,
@@ -151,13 +152,50 @@ const readText = async ($: EngineInterface, path: string) => {
   }
 }
 
+/** The path of one `git status --porcelain` line: the new name of a rename, quotes and a trailing slash off. */
+export function porcelainPath(line: string): string {
+  let p = line.slice(3)
+  const arrow = p.indexOf(' -> ')
+  if (arrow >= 0) p = p.slice(arrow + 4)
+  if (p.startsWith('"') && p.endsWith('"')) p = p.slice(1, -1)
+  return p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+}
+
+/**
+ * The changed paths split into this session's and the rest of the folder. A path already changed when the session
+ * started is someone else's until this session edits it (or a file inside it); a path changed since is this session's.
+ * No baseline yet: every path counts as this session's (the old count).
+ */
+export function splitChanged(status: string, baseline: ReadonlySet<string> | null, touched: ReadonlySet<string>): { mine: number; other: number } {
+  const paths = status.split('\n').filter(l => l.trim()).map(porcelainPath)
+  if (!baseline) return { mine: paths.length, other: 0 }
+  const edited = (p: string) => [...touched].some(t => t === p || t.startsWith(`${p}/`))
+  const other = paths.filter(p => baseline.has(p) && !edited(p)).length
+  return { mine: paths.length - other, other }
+}
+
+/** A tool's file path as git prints it: relative to the repository root, forward slashes, lower case; null outside it. */
+export function repoRelative(file: string, root: string): string | null {
+  const f = file.replace(/\\/g, '/').toLowerCase()
+  const r = root.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+  if (!/^([a-z]:)?\//.test(f)) return f.replace(/^\.\//, '')
+  return r && f.startsWith(`${r}/`) ? f.slice(r.length + 1) : null
+}
+
+const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
+
+/** What was already changed when this session started, the files it has edited, and the repository root. */
+let baseline: Set<string> | null = null
+let touched = new Set<string>()
+let repoRoot = ''
+
 const gitFacts = async ($: EngineInterface, cwd: string) => {
   const branch = await git($, ['branch', '--show-current'], cwd)
   const status = await git($, ['status', '--porcelain'], cwd)
-  const dirty = status === '' ? 0 : status.split('\n').length
+  const { mine: dirty, other } = splitChanged(status, baseline, touched)
   const ahead = await git($, ['rev-list', '--count', '@{u}..HEAD'], cwd)
   const unpushed = Number(ahead) || 0
-  return { branch: branch || '(detached)', dirty, unpushed }
+  return { branch: branch || '(detached)', dirty, other, unpushed }
 }
 
 const writeLock = async ($: EngineInterface, cwd: string, alive: boolean) => {
@@ -239,7 +277,7 @@ const sessionModel = async ($: EngineInterface) => {
   }
 }
 
-/** Ready for /clear, or still needs /ship: changed files and unpushed commits in this checkout. */
+/** Ready for /clear, or still needs /ship: this session's changed files and the unpushed commits. */
 export const shipBadge = (dirty: number, unpushed: number): string => {
   if (dirty === 0 && unpushed === 0) return '✓ clean'
   const parts = [
@@ -248,6 +286,9 @@ export const shipBadge = (dirty: number, unpushed: number): string => {
   ].filter(Boolean)
   return `● ${parts.join(' · ')} → /ship`
 }
+
+/** The quieter count beside the badge: files changed in the folder that this session did not change; '' for none. */
+export const otherText = (other: number): string => (other ? `+${other} not this session` : '')
 
 const refreshHealth = async ($: EngineInterface) => {
   const usage = await $.session.usage()
@@ -269,6 +310,7 @@ const refreshHealth = async ($: EngineInterface) => {
     sevenDayResetsAt: seven?.resetsAt ?? null,
     usd: usage.cost?.usd ?? 0,
     dirty: me?.dirty ?? h.dirty,
+    other: me?.other ?? h.other,
     unpushed: me?.unpushed ?? h.unpushed,
     branch: me?.branch ?? h.branch,
   }))
@@ -279,7 +321,8 @@ const refreshHealth = async ($: EngineInterface) => {
   const lim = h.sevenDay !== null ? ` · wk ${Math.round(h.sevenDay)}%` : ''
   const five2 = h.fiveHour !== null ? ` · 5h ${Math.round(h.fiveHour)}%${resetShort(h.fiveHourResetsAt, now)}` : ''
   const git2 = me ? ` · ${me.branch}` : ''
-  const badge = me ? `${shipBadge(me.dirty, me.unpushed)} · ` : ''
+  const others = me ? otherText(me.other ?? 0) : ''
+  const badge = me ? `${shipBadge(me.dirty, me.unpushed)}${others ? ` (${others})` : ''} · ` : ''
   const who = me ? `${roleOf(me)} · ` : ''
   $.ui.status(`${badge}${model} · ${who}${cache} · ctx ${h.ctxPercent}%${five2}${lim} · ≈$${h.usd.toFixed(2)}${git2}`)
   scheduleRefresh($, h.fiveHourResetsAt, now)
@@ -472,7 +515,7 @@ const healthReport = async ($: EngineInterface) => {
       `context: ${h.ctxPercent}%`,
       `limits: 5h ${h.fiveHour ?? '-'}%${resetLong(h.fiveHourResetsAt, now)} · 7d ${h.sevenDay ?? '-'}%${resetLong(h.sevenDayResetsAt, now)}`,
       `cost: ≈$${h.usd.toFixed(2)} (API list price; on a subscription this is not a bill)`,
-      `git: ${h.branch} · ${h.dirty} dirty · ${h.unpushed} unpushed`,
+      `git: ${h.branch} · ${h.dirty} changed by this session${h.other ? ` (${h.other} more in the folder from before it)` : ''} · ${h.unpushed} unpushed`,
       '',
       advice,
     ].join('\n'),
@@ -583,6 +626,10 @@ export const register: Register = (on, rawOptions) => {
     const cwd = await $.session.cwd()
     const id = await $.session.id()
     await ensurePorts($, cwd)
+    // What is already changed now belongs to someone else (another session, a person, old leftovers) until this session edits it.
+    touched = new Set()
+    repoRoot = (await git($, ['rev-parse', '--show-toplevel'], cwd)) || cwd
+    baseline = new Set((await git($, ['status', '--porcelain'], cwd)).split('\n').filter(l => l.trim()).map(porcelainPath))
     const facts = await gitFacts($, cwd)
     const plan = await readText($, `${cwd}/.worktree-plan`)
     const { slot, fe, be } = slotOf(cwd)
@@ -676,6 +723,19 @@ export const register: Register = (on, rawOptions) => {
     if (next.called) return next(e)
     void logEvent($, 'lock.error', { note: 'slot lock could not be read; denied' })
     return { decision: 'deny', reason: 'fleet: slot lock could not be read.' }
+  })
+
+  // -- this session's files -------------------------------------------------
+
+  // Observe only: the file an Edit/Write call changes now counts as this session's, even if it was changed before.
+  on('tool.call', async ($, e, next) => {
+    const out = await next(e)
+    if (EDIT_TOOLS.has(String(e.tool))) {
+      const args = e as unknown as { file_path?: string; notebook_path?: string }
+      const rel = repoRelative(String(args.file_path ?? args.notebook_path ?? ''), repoRoot)
+      if (rel) touched.add(rel)
+    }
+    return out
   })
 
   // -- turns and health -----------------------------------------------------
@@ -800,7 +860,10 @@ export const register: Register = (on, rawOptions) => {
     const busy = hs.busy !== 'idle' ? ` · ${hs.busy}…` : ''
     const cache = !hs.cacheAnchor ? 'cache -' : left > 0 ? `cache ${minutes(left)}m` : 'cache cold'
     const isClean = hs.dirty === 0 && hs.unpushed === 0
-    const ship = hs.branch ? <Text color={isClean ? 'green' : 'yellow'} bold={!isClean}>{shipBadge(hs.dirty, hs.unpushed)} </Text> : <Text>{''}</Text>
+    const others = otherText(hs.other)
+    const ship = hs.branch
+      ? <Text><Text color={isClean ? 'green' : 'yellow'} bold={!isClean}>{shipBadge(hs.dirty, hs.unpushed)} </Text>{others ? <Text dimColor>{others} </Text> : ''}</Text>
+      : <Text>{''}</Text>
     // Pull main: hidden while the agent works or another fleet action runs, so git is never moved under it.
     const pull = e.props.isWorking || hs.busy !== 'idle'
       ? <Text>{''}</Text>

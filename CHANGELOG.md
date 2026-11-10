@@ -9,6 +9,13 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+## [3.1.1] - 2026-11-10
+
+Patch: no project action. Update fleet (`claude plugin update fleet@ai-workflow-kit-mods`) to get it.
+
+### Fixed
+- **The fleet ship badge counts only this session's files** (fleet 0.6.1). It counted every line of `git status` in the folder, so old untracked folders and another session's work showed as `● 3 files → /ship` in a session that had changed nothing. Now what was already changed when the session started shows apart, quieter, as `+3 not this session`, until this session edits it; `/health` says the same.
+
 ## [3.1.0] - 2026-11-09
 
 Minor: no project action. Sync it and update fleet (`claude plugin update fleet@ai-workflow-kit-mods`) to see a run live.

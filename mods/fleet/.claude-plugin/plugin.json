@@ -1,6 +1,6 @@
 {
   "name": "fleet",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Session registry across worktree slots (/fleet), slot lock, port janitor (/ports), session health with cache/context/limits and when each limit window resets (with a notice when the 5-hour window refreshes) and a handoff-and-restart button (/health), a Pull main button, an orchestrator run chip with a % that opens a live panel per plan (steps, ticking clocks, the gate check running now, what the builder is doing), and a [ ⏎ ] button inline after each reply the answer marks with ⏎ (fills the prompt box, unsent).",
   "types": "./types/index.d.ts",
   "userConfig": {
