@@ -83,8 +83,8 @@ test('the step bar: closed steps show their time, the running one a clock from w
     { at: at(3.5 * MIN), state: 'building' }, { at: at(1.5 * MIN), state: 'gate' }, { at: at(30 * SEC), state: 'fixing' },
   ] }
   const steps = planSteps(fixing, NOW)
-  expect(stepBar(steps, NOW)).toBe('build ▶2:30 · gate 1:00 · review · merge')
-  expect(stepBar(steps, NOW + 5 * SEC)).toBe('build ▶2:35 · gate 1:00 · review · merge')
+  expect(stepBar(steps, NOW)).toBe('build ▶ 2:30 · gate 1:00 · review · merge')
+  expect(stepBar(steps, NOW + 5 * SEC)).toBe('build ▶ 2:35 · gate 1:00 · review · merge')
 })
 
 test('panel lines: the run line, a plan line with its bar and facts, the gate and builder lines', () => {
@@ -98,9 +98,9 @@ test('panel lines: the run line, a plan line with its bar and facts, the gate an
   expect(runLines(run, NOW).map(l => l.text)).toEqual([
     'run run-519 · 63% · 14:02 · 1.1M tokens',
     '  529 ✓ merged ✓   build 3:00 · gate 4:00 · review 0:10 · merge 0:40   710k tokens',
-    '  531 ▶ building   build ▶1:12 · gate · review · merge   sonnet · round 0 · 315k tokens',
+    '  531 ▶ building   build ▶ 1:12 · gate · review · merge   sonnet · round 0 · 315k tokens',
     '      now: Edit server/mcp/mongo.ts · 23 tools · 210k tokens · 3 s ago',
-    '  532 ▶ checks   build · gate ▶2:00 · review · merge   round 0',
+    '  532 ▶ checks   build · gate ▶ 2:00 · review · merge   round 0',
     '      gate 4/16: pnpm run test:ci · 0:42',
     '  533 · waiting',
   ])
@@ -210,7 +210,7 @@ test('a live run shows a chip with its %; pressing it opens a line per plan and 
   await ui.press({ key: 'run-chip:run-12-13' })
   expect(await ui.find({ key: 'run-panel-frame' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /run run-12-13 · 75% · 10:00/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /12 ▶ checks {3}build · gate ▶3:00 · review · merge/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /12 ▶ checks {3}build · gate ▶ 3:00 · review · merge/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /13 ✓ merged ✓/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: 'RUNNING' })).toBeDefined()
   await ui.press({ key: 'run-chip:run-12-13' })
@@ -235,11 +235,11 @@ test('the open panel shows the gate check and the builder from the live files, a
   await ui.press({ key: 'run-chip:run-12-13' })
   expect(await ui.find({ type: 'Text', text: /gate 4\/16: npm run test · 0:42/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /now: Edit src\/app.ts · 7 tools · 42k tokens/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /14 ▶ building {3}build ▶1:00 .* sonnet · round 0 · 42k tokens/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /14 ▶ building {3}build ▶ 1:00 .* sonnet · round 0 · 42k tokens/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /run run-12-13 · \d+% · 10:00 · 133k tokens/ })).toBeDefined()
   await clock.advance(1000)
   expect(await ui.find({ type: 'Text', text: /gate 4\/16: npm run test · 0:43/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /build ▶1:01/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /build ▶ 1:01/ })).toBeDefined()
   await ui.unmount()
 })
 

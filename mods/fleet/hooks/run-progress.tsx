@@ -207,10 +207,10 @@ export function planView(key: string, p: PlanStatus, nowMs: number, calls: CallR
 
 const ICON: Record<string, string> = { merged: '✓', parked: '✗', skipped: '–', 'left-run': '–', queued: '·' }
 
-/** The step bar: `build 2:39 · gate ▶0:42 · review · merge`. */
+/** The step bar: `build 2:39 · gate ▶ 0:42 · review · merge`. */
 export function stepBar(steps: FleetStep[], nowMs: number): string {
   return steps.map(s => {
-    if (s.runningSince !== null) return `${s.name} ▶${clockText(nowMs - s.runningSince)}`
+    if (s.runningSince !== null) return `${s.name} ▶ ${clockText(nowMs - s.runningSince)}`
     return s.seen ? `${s.name} ${clockText(s.ms)}` : s.name
   }).join(' · ')
 }
