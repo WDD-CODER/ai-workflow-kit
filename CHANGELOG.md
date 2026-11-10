@@ -9,6 +9,13 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+## [3.1.2] - 2026-11-10
+
+Patch: no project action. Update fleet (`claude plugin update fleet@ai-workflow-kit-mods`) to get it.
+
+### Fixed
+- **The running step's clock is readable** (fleet 0.6.2). The run panel drew `build ▶1:45`; in a terminal that draws ▶ wide, the arrow covered the first digit. It is now `build ▶ 1:45`.
+
 ## [3.1.1] - 2026-11-10
 
 Patch: no project action. Update fleet (`claude plugin update fleet@ai-workflow-kit-mods`) to get it.

@@ -93,9 +93,9 @@ The "now" step follows the model's own task list (TaskUpdate/TodoWrite). `/check
 ```
 run run-519 · 63% · 14:02 · 1.1M tokens
   529 ✓ merged ✓   build 2:39 · gate 3:43 · review 0:08 · merge 0:41   710k tokens
-  531 ▶ building   build ▶1:12 · gate · review · merge   sonnet · round 0 · 315k tokens
+  531 ▶ building   build ▶ 1:12 · gate · review · merge   sonnet · round 0 · 315k tokens
       now: Edit server/mcp/mongo.ts · 23 tools · 210k tokens · 3 s ago
-  532 ▶ checks   build 2:10 · gate ▶2:00 · review · merge   round 0
+  532 ▶ checks   build 2:10 · gate ▶ 2:00 · review · merge   round 0
       gate 4/16: pnpm run test:ci · 0:42
   533 · waiting
 RUNNING
