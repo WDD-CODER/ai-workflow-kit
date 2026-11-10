@@ -37,18 +37,54 @@ export type FleetHealth = {
   busy: 'idle' | 'handoff' | 'compact' | 'pulling main'
 }
 
+/** One step of a plan's bar (build · gate · review · merge). */
+export type FleetStep = {
+  name: string
+  /** Closed time spent in this step (ms). */
+  ms: number
+  /** When the running step started (epoch ms, its earlier closed time folded in); null when it is not running. */
+  runningSince: number | null
+  /** The plan has been in this step at least once. */
+  seen: boolean
+}
+
+/** A gate check running now. */
+export type FleetCheck = { index: number; total: number; command: string; startedAt: number | null }
+
+/** One plan of a live run, as the panel draws it (clocks are drawn from the times at each tick). */
+export type FleetPlanView = {
+  nnn: string
+  state: string
+  /** The state in plain words: `checks`, `merged ✓`, `parked: <reason>`. */
+  words: string
+  /** merged, parked, skipped or left the run. */
+  final: boolean
+  steps: FleetStep[]
+  model: string | null
+  round: number
+  /** Builder and reviewer tokens (in + out) from calls.csv, plus the running builder's so far. */
+  tokens: number
+  /** The gate check running now (live-<NNN>.json). */
+  gate: FleetCheck | null
+  /** What the running builder is doing (live-<NNN>.json). */
+  builder: { tools: number; lastTool: string; lastTarget: string; tokens: number; at: number | null } | null
+}
+
 /** One live /orchestrate run of this checkout, as the dock chip and panel draw it. */
 export type FleetRunView = {
   /** The run's folder name under .claude/orchestrator-runs. */
   name: string
-  /** (sum of each plan's stage weight) / plan count, 0..100. */
+  /** (sum of each plan's stage weight) / plan count, 0..100; a gate counts its checks done. */
   percent: number
   /** The watch line starts with STUCK. */
   stuck: boolean
-  /** One plain line per plan: `506 · checks (gate 506 · 20 s ago) · 3 min`. */
-  plans: string[]
-  /** The current agent when its label names no plan of the run (`now: preflight · 5 s ago`). */
-  agent: string | null
+  /** status.json startedAt (epoch ms); null when unknown. */
+  startedAt: number | null
+  /** Every call's tokens in calls.csv, plus the running builders'. */
+  tokens: number
+  plans: FleetPlanView[]
+  /** The run's final gate check running now (live-final.json). */
+  finalGate: FleetCheck | null
   /** The latest `orch-state.mjs watch` line; '' when it could not run. */
   watch: string
 }
@@ -57,8 +93,10 @@ export type FleetRunView = {
 export type FleetRuns = {
   list: FleetRunView[]
   panelOpen: boolean
-  /** $.clock.now() until which fleet keeps looking for a run a Workflow call may have started. */
+  /** $.clock.now() until which fleet keeps looking for a run a command may have started. */
   watchingUntil: number
+  /** $.clock.now() of the last redraw tick (the panel's clocks tick every second while it is open). */
+  tick: number
 }
 
 declare module 'claude-code' {

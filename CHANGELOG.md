@@ -9,6 +9,17 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-11-09
+
+Minor: no project action. Sync it and update fleet (`claude plugin update fleet@ai-workflow-kit-mods`) to see a run live.
+
+### Added
+- **The fleet run panel shows a run live** (fleet 0.6.0). Per plan: a step bar (build · gate · review · merge) with each finished step's time and a clock that ticks every second on the running one; the model, round and tokens; at the gate, the check running now (`gate 4/16: pnpm run test:ci · 0:42`); while building, the builder's last tool and file, its tool count and tokens so far. The run line has the elapsed time and total tokens. Fleet re-reads every 5 s while a run is live.
+- **The run writes a live file per plan.** `scripts/run-plans.mjs` writes `.claude/orchestrator-runs/<run>/live-<NNN>.json` (step, gate check, builder activity; `scripts/lib/run-live.mjs`) and keeps the builder's stream in `builder-<NNN>.events.jsonl`. The builder's call streams (`--output-format stream-json --verbose`); its result is read exactly as before, and a rate limit is read only from the result, stderr or a rejected rate-limit event, never from tool output.
+
+### Fixed
+- **The run chip appears without a new message.** Fleet only started watching after a `Workflow` call, but `/orchestrate` starts the run with a Bash call to `scripts/run-supervisor.mjs`, so the chip showed up only after the next answer. Fleet now starts watching on that call. Its dead workflow-journal reader is removed.
+
 ## [3.0.2] - 2026-11-09
 
 Patch: no project action. Three fixes found by real runs and by the new validation run.

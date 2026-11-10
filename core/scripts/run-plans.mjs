@@ -40,6 +40,7 @@ import { extractScopeGlobs, testRefusals, removedLinesByFile, isTestPath } from 
 import { readAgent, claudeArgs, runAgent, parseResult, passedModel } from './lib/claude-run.mjs'
 import { isSensitive } from './ship-prep.mjs'
 import { gateCommands, runGate, scopeCheck, scopeMarker } from './lib/plan-gate.mjs'
+import { createLive } from './lib/run-live.mjs'
 import { review, blocking, problemLine } from './lib/plan-review.mjs'
 import { mergePlan, orchState } from './lib/plan-merge.mjs'
 import { runOrder, unitsOf, afterPark, blockedBy } from './lib/run-order.mjs'
@@ -739,7 +740,7 @@ async function main() {
       const call = builderCall({ agent: builderAgent, ...l.start, settings: guardFile })
       say(`  tier: ${call.tier} (${call.reason})`)
       if (guardFile) {
-        const argv = claudeArgs({ ...call.opts, systemPromptFile: '<temp>/system.md' })
+        const argv = claudeArgs({ ...call.opts, systemPromptFile: '<temp>/system.md', stream: true })
         l.builder = { tier: call.tier, model: call.model, reason: call.reason, argv }
         say(`  builder: ${show(argv, `<repo>-orch-${RUN}-${nnn}`)}`)
       } else say(`  builder: refused — ${unguarded}`)
@@ -791,6 +792,14 @@ async function main() {
   if (!existsSync(csv)) writeFileSync(csv, 'plan,stage,model,seconds,input_tokens,output_tokens,exit\n')
   const cell = (v) => (/[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v))
   const csvRow = (plan, stage, model, seconds, input, output, exit) => appendFileSync(csv, `${[plan, stage, model, seconds, input, output, exit ?? ''].map(cell).join(',')}\n`)
+  // The live view (lib/run-live.mjs): live-<NNN>.json for fleet's panel, and the builder's stream as builder-<NNN>.events.jsonl.
+  const live = createLive(runDir)
+  const builderStream = (nnn) => ({
+    onEvent: (ev) => {
+      try { appendFileSync(join(runDir, `builder-${nnn}.events.jsonl`), `${JSON.stringify(ev)}\n`) } catch { /* best-effort */ }
+      live.builderEvent(nnn, ev)
+    },
+  })
   const ctxLearn = state('context', { run: RUN })
   const LESSONS = ctxLearn.ok ? [...(ctxLearn.kitLessons?.builder ?? []), ...(ctxLearn.lessons?.builder ?? [])] : []
   const pendingCalls = {}
@@ -799,6 +808,7 @@ async function main() {
     pendingCalls[nnn] = []
     const r = state('set', { run: RUN, plan: nnn, ...fields, ...(calls.length ? { 'calls-b64': b64(JSON.stringify(calls)) } : {}) })
     if (!r.ok) say(`RUN_PLANS: set ${nnn} failed — ${r.error}`)
+    if (fields.state) live.step(nnn, fields.state)
     return r
   }
   const note = (text, nnn) => state('note', { run: RUN, plan: nnn, text: String(text).slice(0, 400) })
@@ -980,7 +990,8 @@ async function main() {
         const prompt = builderPrompt({ RUN, RUN_BRANCH, ctx, l, LESSONS })
         say(`RUN_PLANS: plan ${nnn} ${stage} (${call.model}, tier ${call.tier}: ${call.reason}, round ${ctx.round})`)
         // No wall clock for a builder: only the idle limit (BUILDER_IDLE_MIN) on its folder's file changes.
-        b = await modelCall(nnn, stage, () => runAgent({ ...call.opts, cwd: wt, prompt, timeoutMs: 0, idleMs: BUILDER_IDLE_MS, watchDir: wt, pollMs: BUILDER_POLL_MS, bin: o.claude }), { model: call.model, tier: call.tier })
+        b = await modelCall(nnn, stage, () => runAgent({ ...call.opts, cwd: wt, prompt, timeoutMs: 0, idleMs: BUILDER_IDLE_MS, watchDir: wt, pollMs: BUILDER_POLL_MS, bin: o.claude, stream: builderStream(nnn) }), { model: call.model, tier: call.tier })
+        live.flush(nnn)
         try {
           result = b.ok ? parseResult(b.text) : null
         } catch { /* an unreadable receipt: the gate decides */ }
@@ -1037,14 +1048,15 @@ async function main() {
         const beforeRetry = (command, r) => {
           ensureIn(wt, { nnn, clean: true, out: r?.out })
         }
-        let g = await runGate({ folder: wt, commands: l.checks, timeoutMin: GATE_TIMEOUT_MIN, onResult, builtins, beforeRetry })
+        const onStart = (s) => live.gate(nnn, s)
+        let g = await runGate({ folder: wt, commands: l.checks, timeoutMin: GATE_TIMEOUT_MIN, onResult, onStart, builtins, beforeRetry })
         if (g.status === 'env') {
           setPlan(nnn, { state: 'env-paused', round: ctx.round, reason: `gate env-fail: ${g.failed.join(', ')}` })
           const env = node('orch-preflight.mjs', ['--env-only', '--run', RUN, '--probe-dir', wt, ...g.failed.flatMap((c) => ['--probe', c])])
           if (env.status !== 0) return park(`environment: ${(orchJson(env.out)?.problems ?? [lastLine(env.out)]).join('; ')}`)
           note(`environment failure (gate env-fail: ${g.failed.join(', ')}); the environment check passed, the gate runs once more without a fix round`, nnn)
           ensureIn(wt, { nnn })
-          g = await runGate({ folder: wt, commands: l.checks, timeoutMin: GATE_TIMEOUT_MIN, onResult, builtins, beforeRetry })
+          g = await runGate({ folder: wt, commands: l.checks, timeoutMin: GATE_TIMEOUT_MIN, onResult, onStart, builtins, beforeRetry })
           if (g.status === 'env') return park(`environment, again after one retry: gate env-fail: ${g.failed.join(', ')}`)
         }
         for (const c of g.flaky) state('flake', { run: RUN, plan: nnn, command: c, round: ctx.round, via: 'rerun', where: 'gate', sha: g.head ?? undefined })
@@ -1341,7 +1353,8 @@ async function main() {
         git(mergeFolder, 'fetch', '--quiet', 'origin')
         git(mergeFolder, 'merge', '--quiet', '--ff-only', `origin/${RUN_BRANCH}`)
         ensureIn(mergeFolder)
-        const g = await runGate({ folder: mergeFolder, commands: finalChecks, timeoutMin: GATE_TIMEOUT_MIN, receipt: false, onResult: (row) => csvRow('final', `final gate: ${row.command}`, '-', row.seconds, 0, 0, row.exit), beforeRetry: (command, r) => { ensureIn(mergeFolder, { clean: true, out: r?.out }) } })
+        live.step('final', 'final-gate')
+        const g = await runGate({ folder: mergeFolder, commands: finalChecks, timeoutMin: GATE_TIMEOUT_MIN, receipt: false, onStart: (s) => live.gate('final', s), onResult: (row) => csvRow('final', `final gate: ${row.command}`, '-', row.seconds, 0, 0, row.exit), beforeRetry: (command, r) => { ensureIn(mergeFolder, { clean: true, out: r?.out }) } })
         const bad = g.results.find((x) => x.status !== 'pass')
         return g.status === 'pass' ? { ok: true } : { ok: false, command: bad?.command ?? '', tail: bad?.tail ?? '' }
       }

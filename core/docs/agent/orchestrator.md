@@ -163,6 +163,17 @@ two marked **model**.
    writes the report. Exit 0 = every plan merged, 2 = some parked or skipped. `calls.csv` in the run's folder has one
    row per model call and gate command; its `model` is the value passed after `--model` on that call.
 
+## Live view
+
+For fleet's run panel (`mods/README.md`), the run also writes, in the run's folder (local and git-ignored; nothing
+reads them back into a run):
+
+- `live-<NNN>.json` per plan (`live-final.json` for the final gate), by `scripts/lib/run-live.mjs`, in-process:
+  `step` and `stepAt` on each state change; `gate: { index, total, command, startedAt }` before each gate check;
+  `builder: { tools, lastTool, lastTarget, tokensIn, tokensOut, at }` from the builder's stream. A new step clears the
+  last one's lines. Writes are best-effort (temp file and rename; at most one every 2 s, a step change at once).
+- `builder-<NNN>.events.jsonl`: every event of the builder's streamed call, one per line, for evidence.
+
 ## The supervisor
 
 `scripts/run-supervisor.mjs` makes a run survive its session (a Claude Code session's clean-up of background shells
@@ -202,7 +213,9 @@ can kill a run mid-build). It calls no model and decides nothing a plan's tiers 
 
 Two calls per plan normally, five at worst. Every call is `claude -p --output-format json --system-prompt-file <agent
 body> --setting-sources local --strict-mcp-config --disable-slash-commands --no-session-persistence --model <model>
---tools <agent tools> --allowedTools <…>`. The builder also gets `--settings` with only the main folder's `PreToolUse`
+--tools <agent tools> --allowedTools <…>`. The builder streams instead (`--output-format stream-json --verbose`, for
+the live view): its last `result` event is read exactly as the JSON answer, and a rate limit is read only from that
+result, stderr, `api_error_status` or a `rejected` rate_limit_event, never from tool output. The builder also gets `--settings` with only the main folder's `PreToolUse`
 guard hooks; a hook's deny wins over `--allowedTools`. With no such hooks the run refuses to start: a builder never runs
 unguarded. The reviewer gets its read tools and no Bash (its diff and the gate receipt come inline in the prompt), and
 is refused when the review folder holds a `.claude/settings.local.json`.

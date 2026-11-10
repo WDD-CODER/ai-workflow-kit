@@ -31,8 +31,21 @@ const git = (...a) => {
   return String(r.stdout).trim()
 }
 // reportModel (a step field): the answer names another model than the one passed after --model.
+// With `--output-format stream-json` (the builder) the answer is a stream: init, two tool_use events (Read, then Bash,
+// 70 tokens in and 10 out each), a rate_limit_event that is not a limit, the result event, and one event after it.
+const streaming = argv.includes('stream-json')
 const answer = (obj, usage = { input_tokens: 100, output_tokens: 20, cache_read_input_tokens: 5 }, reportModel = null) => {
-  console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: `Done.\n\n\`\`\`json\n${JSON.stringify(obj, null, 2)}\n\`\`\``, usage, total_cost_usd: 0.01, ...(reportModel ? { model: reportModel } : {}) }))
+  const result = JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: `Done.\n\n\`\`\`json\n${JSON.stringify(obj, null, 2)}\n\`\`\``, usage, total_cost_usd: 0.01, ...(reportModel ? { model: reportModel } : {}) })
+  if (!streaming) return console.log(result)
+  const tool = (id, name, input) => JSON.stringify({ type: 'assistant', message: { id, role: 'assistant', content: [{ type: 'tool_use', id: `t-${id}`, name, input }], usage: { input_tokens: 60, cache_read_input_tokens: 10, output_tokens: 10 } } })
+  console.log([
+    JSON.stringify({ type: 'system', subtype: 'init', model }),
+    tool('m1', 'Read', { file_path: 'src/fake.txt' }),
+    JSON.stringify({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed' } }),
+    tool('m2', 'Bash', { command: 'git commit -q -m toy' }),
+    result,
+    JSON.stringify({ type: 'system', subtype: 'ui_status' }),
+  ].join('\n'))
 }
 
 async function main() {
