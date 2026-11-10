@@ -204,4 +204,6 @@ None open. The Human chose A+B+C on 2026-11-09.
   - `npm run build`, `npm run lint`, `npm test` → exit 0; drift-check → KIT_DRIFT: ok; mods leak-check → ok.
   - Every kit tool test (`node --test "tools/test/*.test.mjs"`) → tests 588, pass 588, fail 0.
   - `node tools/validate-orchestrator.mjs --mode fake` → VALIDATION: PASS, 5 of 5.
+  - Security review (automated, after the first push): model-controlled text (tool targets, gate commands) could carry terminal escapes into the panel. It is now stripped in `run-live.mjs` (`plainLine`) and again in fleet (`plain`), with tests (`50b8f52`).
+- review: checkers kept 0 dropped 0 rechecked 0 minutes 3 models check-plan=sonnet,check-bugs=sonnet,check-rules=sonnet
   - `node tools/validate-orchestrator.mjs --mode real` → VALIDATION: PASS, 5 of 5; 563,635 input tokens of the 3,000,000 cap. Real Sonnet builders ran with `stream-json`; every case's plan merged.
