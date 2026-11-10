@@ -1,6 +1,6 @@
 # Plan 112 — The fleet run panel shows live progress: each step, a ticking clock, the gate check running now and what the builder is doing
 
-Status: draft
+Status: done
 Depends-on: none
 Snapshot: 6218247
 Source: the Human, 2026-11-09, on FoodVibe run-519. The fleet run chip appeared only after the Human sent a message, and then showed only `529 · merged ✓ / 531 · building · 1 min`. The Human approved this plan as an exception to the 2026-11-09 freeze ("plan A+B+C"). Part A1 is the bug fix; the rest is new capability the Human asked for.
@@ -50,7 +50,7 @@ run run-519 · 63% · 14:02 · 1.1M tokens
   - `grep -n "journal" mods/fleet/hooks/run-progress.tsx` prints nothing.
 - [auto] `npm run build`, `npm run lint`, `npm test` (it includes the size budget), every kit tool test (`node --test` over `tools/test`), `node tools/leak-check.mjs` (as CI runs it on mods/) and `node tools/drift-check.mjs --target .` pass. The kit sync with apply runs first; it is a step, not a check.
 - [auto] `node tools/validate-orchestrator.mjs --mode real` reports every case PASS before the release (the freeze's release rule; about 600k tokens).
-- [human] On FoodVibe, after syncing the release and updating fleet, start `/orchestrate` on one plan and send nothing more. Within a minute the run chip appears. Pressing it shows:
+- [x] [human] On FoodVibe, after syncing the release and updating fleet, start `/orchestrate` on one plan and send nothing more. Within a minute the run chip appears. Pressing it shows:
   - the step bar, with a clock that visibly ticks;
   - during the gate, a "gate n/N: <command>" line;
   - during the builder, a "now:" line whose tool count rises.
@@ -207,3 +207,4 @@ None open. The Human chose A+B+C on 2026-11-09.
   - Security review (automated, after the first push): model-controlled text (tool targets, gate commands) could carry terminal escapes into the panel. It is now stripped in `run-live.mjs` (`plainLine`) and again in fleet (`plain`), with tests (`50b8f52`).
 - review: checkers kept 0 dropped 0 rechecked 0 minutes 3 models check-plan=sonnet,check-bugs=sonnet,check-rules=sonnet
   - `node tools/validate-orchestrator.mjs --mode real` → VALIDATION: PASS, 5 of 5; 563,635 input tokens of the 3,000,000 cap. Real Sonnet builders ran with `stream-json`; every case's plan merged.
+- 2026-11-10 Human validation on FoodVibe run-542 (fleet 0.6.1): chip appeared with no message — "yes"; step bar with ticking clock and the "now:" line — "ok now it looks good"; gate line — "ok". Follow-up fix from it: a space after the step arrow (v3.1.2, PR #131).
