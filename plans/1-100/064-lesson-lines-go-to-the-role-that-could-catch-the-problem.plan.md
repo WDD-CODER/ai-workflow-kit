@@ -42,7 +42,7 @@ passing final-gate re-run, `finish` and `lessons` write the passing result every
   failed` after a pass. Test: row says `ok`, report has no stale stop line, a second identical call changes nothing.
 - [auto] `npm run build`, `npm run lint`, `npm test`, `node --test "tools/test/*.test.mjs"`, `node tools/orchestrator-e2e.mjs` and
   `node tools/drift-check.mjs --target .` all exit 0.
-- [auto] `node scripts/scope-check.mjs --tests --plan=plans/064-lesson-lines-go-only-to-the-role-that-could-have-caught-the-problem-and-the-report-and-run-log-follow-the-final-gate-rerun.plan.md`
+- [auto] `node scripts/scope-check.mjs --tests --plan=plans/064-lesson-lines-go-to-the-role-that-could-catch-the-problem.plan.md`
   prints `SCOPE_TESTS: ok`, and `node scripts/scope-check.mjs --diff=origin/main` on the finished branch prints `SCOPE: ok`.
 - [human] On the Human's PC, after a run that stopped at the final gate: fix the cause, run `node scripts/orch-state.mjs final-gate
   --run <name> --result ok`, and the report and the run-log row show the passing result with no lesson line blaming a reviewer.

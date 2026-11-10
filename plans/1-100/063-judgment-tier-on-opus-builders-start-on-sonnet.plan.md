@@ -57,11 +57,11 @@ to a fresh strong builder through a written summary; a second failure stops for 
 - [auto] A judgment-tier builder that returns anything but `built`, or whose checks still fail, parks the plan with a stop line the
   report shows as `needs the Human`; no third builder is started. Flow test (extends the case at `orchestrator.test.mjs:1864-1879`).
 - [auto] `docs/brain/invariants.md` holds INV-1 (text below) instead of the template; ADR `docs/brain/decisions/0016-…md` exists with
-  `status: accepted`; `node scripts/scope-check.mjs --arch --plan=plans/063-the-judgment-tier-is-pinned-to-opus-builders-start-on-sonnet-and-one-failed-fix-round-hands-over-to-a-fresh-opus-builder.plan.md`
+  `status: accepted`; `node scripts/scope-check.mjs --arch --plan=plans/063-judgment-tier-on-opus-builders-start-on-sonnet.plan.md`
   reports nothing missing; the "INV-1" test file name in INV-1's `Test:` line exists.
 - [auto] `npm run build`, `npm run lint`, `npm test`, `node --test "tools/test/*.test.mjs"`, `node tools/orchestrator-e2e.mjs` and
   `node tools/drift-check.mjs --target .` all exit 0.
-- [auto] `node scripts/scope-check.mjs --tests --plan=plans/063-the-judgment-tier-is-pinned-to-opus-builders-start-on-sonnet-and-one-failed-fix-round-hands-over-to-a-fresh-opus-builder.plan.md`
+- [auto] `node scripts/scope-check.mjs --tests --plan=plans/063-judgment-tier-on-opus-builders-start-on-sonnet.plan.md`
   prints `SCOPE_TESTS: ok`, and `node scripts/scope-check.mjs --diff=origin/main` on the finished branch prints `SCOPE: ok`.
 - [human] On the Human's PC, a run with one plan that the Sonnet builder cannot fix in one round: the run log shows an Opus
   builder taking over once, and if it also fails the plan is parked with the Human named as next step.

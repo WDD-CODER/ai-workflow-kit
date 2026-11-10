@@ -9,6 +9,14 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+## [3.1.3] - 2026-11-10
+
+Patch: no project action. Sync it to get the plan-name limit.
+
+### Fixed
+- **The mods marketplace installs on Windows without `core.longpaths`.** `claude plugin marketplace update ai-workflow-kit-mods` failed with "Filename too long" on a 194-character plan path. The 12 plan files over 140 characters are renamed to short slugs (their titles stay), and a kit test (`tools/test/path-length.test.mjs`) fails on any tracked path over 140.
+- **A new plan's file name stays short.** `scripts/plan-write-guard.sh` refuses a new plan file whose name is over 100 characters, and save-plan says the slug is a short form of the title, so a closed plan's path stays well under the limit.
+
 ## [3.1.2] - 2026-11-10
 
 Patch: no project action. Update fleet (`claude plugin update fleet@ai-workflow-kit-mods`) to get it.
