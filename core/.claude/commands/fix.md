@@ -73,3 +73,4 @@ Use this path for fixing bugs, errors, and broken behavior.
 - Match the file's existing style; never reformat untouched lines.
 <!-- PACK:style:fix -->
 - 3-strike rule: at most 3 autonomous fix attempts in scoped files; then STOP and report.
+- A fix that needs its own checkout (this folder is on `{{git.mainBranch}}` or busy): `node scripts/worktree-clean.mjs add fix-<NNN> --branch fix/<slug>`, and when the fix is merged, `node scripts/worktree-clean.mjs remove <folder>`. Never delete a folder any other way; a folder it keeps prints why.

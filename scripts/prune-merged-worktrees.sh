@@ -65,9 +65,8 @@ while IFS= read -r -d '' wt_dir; do
         cp -r "$sessions_src/." "$archive_dest/"
         echo "    Archived sessions to: docs/archive/worktrees/$wt_name/"
       fi
-      # Remove the worktree from git
-      git -C "$REPO_ROOT" worktree remove --force "$wt_dir" 2>/dev/null || rm -rf "$wt_dir"
-      echo "    Removed worktree directory."
+      # Remove it by worktree-clean's rules: clean and merged only, no force; a folder it keeps gets its reason
+      echo "    $(node "$REPO_ROOT/scripts/worktree-clean.mjs" --path "$wt_dir")"
     else
       echo "  WOULD ARCHIVE+REMOVE (merged branch: $wt_branch): $wt_name"
     fi

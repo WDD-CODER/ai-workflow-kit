@@ -202,6 +202,7 @@ Claude Code backs this up in `.claude/settings.json`: `permissions.deny` refuses
 | `brain-capture-comment.mjs` | PR sticky brain-capture comment |
 | `pre-commit-secret-scan.mjs` (+ stack-pack checks) | pre-commit hooks (source of truth for enforcement per `AGENTS.md`) |
 | `prune-merged-worktrees.sh`, `prune-old-sessions.sh` | `/cleanup` |
+| `worktree-clean.mjs` | `run-supervisor.mjs` (run start and end), `free-merged-slots.mjs`, `prune-merged-worktrees.sh`, `/review-it`, `/fix`, agents' scratch checkouts — removes the kit-made worktrees that are safe to remove, one reason line each |
 | `lib/slot.mjs` | `session-startup.sh` (`--describe`), `scope-check.mjs`, `ship-prep.mjs` (`scopedPlanPath`), `take-plan.mjs`; `--list` for the Planner protocol; `--scoped-plan` prints the plan whose scope governs this folder |
 | `lib/guard.mjs` | `scope-guard.sh`, `branch-guard.sh` — the write-guard rules for Edit/Write and Bash; `KIT_GUARD_TRACE=1` prints `GUARD_GIT_CALLS: <n>` |
 | `scope-check.mjs` | `scope-guard.sh` (`--file`), `ship-prep.mjs` (`--diff`, `--arch --diff` warn), the Planner protocol (`--overlap`, `--deps`), save-plan Shape lint (`--arch --plan` block, `--deps`), `/review-it` step 2 (`--arch --diff`), `take-plan.mjs` + `take-plan.md` (`--drift`) |

@@ -1,9 +1,9 @@
 {
   "kit": {
-    "version": "3.1.3"
+    "version": "3.2.0"
   },
   "source": "local:.",
-  "commit": "42b57bd15a1cc47be1a87ae249dafdd22963ca5a",
+  "commit": "1fa1153ae5054a21f29b441daa62e4039356a354",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -65,7 +65,7 @@
       "source": "core/.claude/commands/brief.md"
     },
     ".claude/commands/cleanup.md": {
-      "sha256": "5aa7bc7153b285472db7778823997bb896ec6be1e0e4eee9dc8a83f4e35b9120",
+      "sha256": "021ab53f8c47e250f6fe2af8ff3f1140666a9c1c5a1a415d7833033cef3267cb",
       "kind": "managed",
       "source": "core/.claude/commands/cleanup.md"
     },
@@ -100,7 +100,7 @@
       "source": "core/.claude/commands/fix-pr-checks.md"
     },
     ".claude/commands/fix.md": {
-      "sha256": "393e41e55e37154ef324992358870a77471eafcd2ff9a2596c7cb84ea3830e16",
+      "sha256": "c549dc92946d0a236ba7777fe12a96cd92ade9ca6f6bb4c49c660c7d94830661",
       "kind": "managed",
       "source": "core/.claude/commands/fix.md"
     },
@@ -130,7 +130,7 @@
       "source": "core/.claude/commands/refactor.md"
     },
     ".claude/commands/review-it.md": {
-      "sha256": "e5512394fd840eaacac7aa4f6d4bc16cde6f7535fc112d31b78425c442bbd674",
+      "sha256": "4e3d85470addeaaf370255de16303bcaeeb80948f503b470458bf717da710a01",
       "kind": "managed",
       "source": "core/.claude/commands/review-it.md"
     },
@@ -195,7 +195,7 @@
       "source": "core/.claude/references/prd-template.md"
     },
     ".claude/settings.json": {
-      "sha256": "81d27c934e7999c461978c27d291cd1ccf36da8c526d69307513cd795c4dde9c",
+      "sha256": "e0e3f364ec019c550e3edca5aa8bf8a27c5463434d0fb45497b0c75680fa479e",
       "kind": "managed",
       "source": "core/.claude/settings.json"
     },
@@ -375,7 +375,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "1896411330f21f5b0ba91f08e6c2cdd0e6752f0143e9c5846f88c1acefd7264e",
+      "sha256": "e97386104026f165405f6c52f0560f8f7450f9802b5b2145a8ac51e8d0ff3b3c",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -400,7 +400,7 @@
       "source": "core/docs/agent/standards-security.md"
     },
     "docs/agent/workflow-map.md": {
-      "sha256": "c3d5f837892fd5a09df62d992c41f6b961882b1f4de04325fd8185cb13db4f80",
+      "sha256": "6bb07def05b9f5b401247e3734f7fc2897724bdfac5748e2dbec7b4d2aa94efc",
       "kind": "managed",
       "source": "core/docs/agent/workflow-map.md"
     },
@@ -635,7 +635,7 @@
       "source": "core/scripts/decision-log.mjs"
     },
     "scripts/free-merged-slots.mjs": {
-      "sha256": "10c96300183e0ae5f768088f6d9600f7e0afc531a309118049b66922f11c9e72",
+      "sha256": "2220ea3796375565113e7a9e68020d46273a661dc9609a0a6e66697b5ae2644f",
       "kind": "managed",
       "source": "core/scripts/free-merged-slots.mjs"
     },
@@ -865,7 +865,7 @@
       "source": "core/scripts/preflight.mjs"
     },
     "scripts/prune-merged-worktrees.sh": {
-      "sha256": "9ca1de07ce979fedc42bcde75a17410026566bb99f4057abb237eccda25c3ca2",
+      "sha256": "5ce8bf835c7ba4c753902a8a2023aed29bc1414d69591b1d2446fc46725c85df",
       "kind": "managed",
       "source": "core/scripts/prune-merged-worktrees.sh"
     },
@@ -885,7 +885,7 @@
       "source": "core/scripts/run-python.sh"
     },
     "scripts/run-supervisor.mjs": {
-      "sha256": "b889c8fb9353829e59e82bc0218de96aa6b09819d56de4bf5801336862baab4a",
+      "sha256": "5f052472ff91b698f3d77b7be205cf0f51aad05e02c2ea4103acde7eb93dc682",
       "kind": "managed",
       "source": "core/scripts/run-supervisor.mjs"
     },
@@ -968,6 +968,11 @@
       "sha256": "534d2c26b8011e650daeb57d478de4de744131c80a37537d054b8a7d71d3ea3f",
       "kind": "managed",
       "source": "core/scripts/todo-query.mjs"
+    },
+    "scripts/worktree-clean.mjs": {
+      "sha256": "f88f8f72d4a78f7c964140893bfab5d7d7b258cdc79677445ea5ccf582d4f9dc",
+      "kind": "managed",
+      "source": "core/scripts/worktree-clean.mjs"
     }
   },
   "required": {

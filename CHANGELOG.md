@@ -9,6 +9,17 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-11-10
+
+Minor: no project action. Sync it, and the folders agents left beside the project are cleaned up on the next sweep.
+
+### Added
+- **The kit removes the worktree folders it and its agents made, by script, without asking the Human**. `scripts/worktree-clean.mjs` judges every kit-made worktree `git worktree list` shows (`<repo>-orch-*` builders, merge and review folders, `<repo>-review-*`, `-fix-*`, `-scratch-*`, `-kit-*`, `-sync-*`, `.claude/worktrees/*`; never a `wt-N` slot or a folder you made) and removes one when it is clean, its run is not live, no hand-off names it, it is not on `park/…`, and its work is safe elsewhere (merged, upstream gone, a detached commit on an origin branch; a merge folder waits until its run branch is merged). `git worktree remove` without `--force`, 3 tries, then a scripted delete for a Windows folder git cannot empty. Every kept folder gets one reason line; nothing stops to ask for a delete. The run supervisor sweeps at a run's end as well as its start, and `free-merged-slots.mjs` (the Planner's sync) sweeps too.
+- **Agents never delete a folder themselves.** `/review-it` makes and removes its review folder with the script (also after an early STOP), `/fix` and the git-workflow gotcha use `worktree-clean.mjs add … / remove …` for a scratch checkout, and `.claude/settings.json` allows `node scripts/worktree-clean.mjs` by name, so auto mode does not refuse it (auto mode drops the blanket `Bash(*)` rule).
+
+### Fixed
+- **`prune-merged-worktrees.sh` no longer force-deletes.** It ran `git worktree remove --force … || rm -rf` on a merged `.claude/worktrees/*` folder without checking it was clean; it now hands each folder to `worktree-clean.mjs --path`.
+
 ## [3.1.3] - 2026-11-10
 
 Patch: no project action. Sync it to get the plan-name limit.

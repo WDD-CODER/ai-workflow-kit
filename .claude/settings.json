@@ -6,6 +6,7 @@
     "defaultMode": "plan",
     "allow": [
       "Bash(*)",
+      "Bash(node scripts/worktree-clean.mjs:*)",
       "mcp__ide__getDiagnostics",
       "WebFetch",
       "WebSearch",
