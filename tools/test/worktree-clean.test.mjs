@@ -190,6 +190,30 @@ test('prune-merged-worktrees.sh no longer force-deletes: it hands each folder to
   assert.match(sh, /worktree-clean\.mjs" --path/)
 })
 
+test('during a live run, a merged plan\'s builder folder goes at once; one not in the run branch, or with changes, stays', () => {
+  const s = scratch()
+  try {
+    const { main, at, commit } = s
+    s.status('big', 'running')
+    for (const n of ['001', '002', '003']) g(main, 'worktree', 'add', '-q', '-b', `feat/${n}-x`, at(`orch-big-${n}`))
+    commit(at('orch-big-001'), 'w1')
+    g(at('orch-big-001'), 'push', '-q', 'origin', `feat/001-x:${runPrefix}big`)
+    commit(at('orch-big-002'), 'w2')
+    writeFileSync(join(at('orch-big-003'), 'late.txt'), 'x\n')
+    g(main, 'fetch', '-q', 'origin')
+    const one = wc.removeMergedBuilder(main, at('orch-big-001'), 'big')
+    assert.match(one.line, /removed — feat\/001-x is merged into origin\/main|removed — feat\/001-x is merged into origin\/.*big/)
+    assert.equal(existsSync(at('orch-big-001')), false)
+    assert.match(wc.removeMergedBuilder(main, at('orch-big-002'), 'big').line, /kept — feat\/002-x is not in origin\/.*big/)
+    assert.match(wc.removeMergedBuilder(main, at('orch-big-003'), 'big').line, /kept — it has uncommitted files/)
+    assert.match(wc.removeMergedBuilder(main, at('orch-big-002'), 'other').line, /kept — not this run's builder folder/)
+    assert.ok(existsSync(at('orch-big-002')) && existsSync(at('orch-big-003')))
+    assert.match(lineFor(wc.sweep({ root: main, youngMs: 0 }), at('orch-big-002')), /kept — run big is live/, 'the sweep still keeps a live run\'s folders')
+  } finally {
+    s.done()
+  }
+})
+
 test('run from a slot, the sweep reads the main checkout\'s run state: a live run\'s builder folder stays', () => {
   const s = scratch()
   try {

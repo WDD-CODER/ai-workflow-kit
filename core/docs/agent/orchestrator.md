@@ -234,6 +234,9 @@ is refused when the review folder holds a `.claude/settings.local.json`.
   the last two hours) or one whose scope overlaps it. After a crash, `orch-state.mjs stop --run <run> --reason "<why>"`.
 - `free-merged-slots` leaves every slot a live run holds alone, and removes a merged run's merge folder
   (`<repo>-orch-merge-<run>`) once it is clean and its branch is merged; then it runs `worktree-clean.mjs`'s sweep.
+- A plan that built in its own folder: when it merges, `orch-state.mjs release` removes that folder at once
+  (`worktree-clean.mjs` rules; its branch must be in `origin/<run branch>`), so a long run holds only the folders of
+  plans still building. The branch is kept; a folder it cannot remove is a line, never a stop.
 - No agent deletes a folder itself: `node scripts/worktree-clean.mjs --path <folder>` (or `--sweep`) does, by the
   rules above, and prints why it kept one.
 - To validate a run branch in an idle slot: `node scripts/slot-serve.mjs --ref <branch>` there. `/orchestrate` does it

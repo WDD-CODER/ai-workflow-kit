@@ -1,9 +1,9 @@
 {
   "kit": {
-    "version": "3.2.0"
+    "version": "3.2.1"
   },
   "source": "local:.",
-  "commit": "1fa1153ae5054a21f29b441daa62e4039356a354",
+  "commit": "9a407ce50096254875d8bd27522335409f67ba56",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -375,7 +375,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "e97386104026f165405f6c52f0560f8f7450f9802b5b2145a8ac51e8d0ff3b3c",
+      "sha256": "a7249bd73aeec89aca2ed9f7ac6310079865fee7f361ea9873d82e182337d222",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -800,7 +800,7 @@
       "source": "core/scripts/orch-preflight.mjs"
     },
     "scripts/orch-state.mjs": {
-      "sha256": "6a7d82dd8f91220f6b3e3687ef3f2a42785566cae7283eadd51529ff7e091f87",
+      "sha256": "2e4be0977baf4a375faa07728473da5261c98b3d2125c5158f999fd4455fedff",
       "kind": "managed",
       "source": "core/scripts/orch-state.mjs"
     },
@@ -970,7 +970,7 @@
       "source": "core/scripts/todo-query.mjs"
     },
     "scripts/worktree-clean.mjs": {
-      "sha256": "f88f8f72d4a78f7c964140893bfab5d7d7b258cdc79677445ea5ccf582d4f9dc",
+      "sha256": "92a3cc03b0e5ba06c8b7d06306edede2cfb34f25f7f98a9213ef05d219428a58",
       "kind": "managed",
       "source": "core/scripts/worktree-clean.mjs"
     }

@@ -76,6 +76,7 @@ import { planNumber, planTitle, mergeSubjectRe } from './lib/plan-deps.mjs'
 import { uiItems } from './lib/done-when.mjs'
 import { listSlots } from './lib/slot.mjs'
 import { ensureDeps, idleSlot, claimSlot, releaseSlot, releaseRunSlots, retryGit, isWorktree, removeFolder } from './lib/orch-folders.mjs'
+import { removeMergedBuilder } from './worktree-clean.mjs'
 import { agreementStats, addLesson, lessonParts, ruleLines, LESSON_ROLES } from './decision-log.mjs'
 import { planWithoutNotes, triageForce, triageView, decisionsInView, mergePlanFile, decisionType, runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine, planLines, logQueryArgs, lessonFacts, runLogRow, updateRunLog, parseRunLog, parseDecisionRows, trendOf, contextBudget, INJECTED_ROLES, askCard, ASK_ID_RE } from './lib/orch-run.mjs'
 
@@ -1100,7 +1101,15 @@ const commands = {
     const branch = branchOf(planPath(nnn), nnn)
     const planFile = planPath(nnn)
     const slot = listSlots().find((s) => s.plan === planFile) ?? null
-    if (!slot) emit({ ok: true, released: false, why: 'built in its own folder' }, [`plan ${nnn}: no slot to release`])
+    if (!slot) {
+      // A merged plan's own builder folder goes now, not at the run's end: a long run would hold every plan's folder
+      // (and its packages) on disk. worktree-clean.mjs's rules: clean, not parked, not in a hand-off, merged.
+      const own = builderFolder(run, nnn)
+      if (readStatus(run)?.plans?.[nnn]?.state !== 'merged' || !existsSync(own)) emit({ ok: true, released: false, why: 'built in its own folder' }, [`plan ${nnn}: no slot to release`])
+      fetchOrigin()
+      const r = removeMergedBuilder(root, own, run)
+      emit({ ok: true, released: false, removed: r.removed, why: r.line }, [`plan ${nnn}: ${r.line}`])
+    }
     fetchOrigin()
     const target = `origin/${runBranch(run)}`
     const r = releaseSlot({ path: slot.path, branch, target: refExists(target) ? target : `origin/${MAIN}` })
