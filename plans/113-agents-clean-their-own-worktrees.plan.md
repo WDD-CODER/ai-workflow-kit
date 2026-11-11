@@ -116,3 +116,4 @@ None open.
 - 2026-11-11 Review (check-plan, minor): the two-hour guard above is not in the plan — kept as a safety guard, named here for the Human.
 - 2026-11-10 Builder: run-plans.mjs and tools/lib/kit.mjs not changed (worktree-clean is not added to the CI-mirror not-a-check list: that list is mirrored in run-plans.mjs, INV-1 scope; a project has no reason to list it as a CI check).
 - review: checkers kept 6 dropped 0 rechecked 6 minutes 12 models check-plan=sonnet,check-bugs=sonnet,check-rules=sonnet,verify=sonnet
+- 2026-11-11 Human: check 1 passed — in a new auto-mode session the agent ran node scripts/worktree-clean.mjs --sweep --dry-run with no prompt or refusal ("WORKTREE_CLEAN: no worktree folder to clean", exit 0). Checks 2-3 wait for FoodVibe on v3.2.0.
