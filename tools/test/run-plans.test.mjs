@@ -486,6 +486,12 @@ test('the builder runs under the project\'s guard hooks: --settings names a file
   assert.ok(!commands.includes('CLAUDE_PROJECT_DIR'))
   // What those hooks decide for the builder's folder (scope-guard.sh runs scripts/lib/guard.mjs scope).
   const wt = b.cwd
+  // The merged plan's folder is removed at release (v3.2.1): check it out again on the kept branch for the guard.
+  if (!existsSync(wt)) {
+    const br = spawnSync('git', ['for-each-ref', '--format=%(refname:short)', 'refs/heads/feat/451-*'], { cwd: p.proj, encoding: 'utf8' }).stdout.trim().split('\n')[0]
+    assert.ok(br, 'the plan branch is kept')
+    assert.equal(spawnSync('git', ['worktree', 'add', '-q', wt, br], { cwd: p.proj, encoding: 'utf8' }).status, 0)
+  }
   const ask = (file) => spawnSync(process.execPath, [join(p.proj, 'scripts', 'lib', 'guard.mjs'), 'scope'], { input: JSON.stringify({ tool_name: 'Write', tool_input: { file_path: join(wt, file) }, cwd: wt }), encoding: 'utf8', env: p.env }).stdout
   assert.match(ask('stray.txt'), /deny[\s\S]*SCOPE_GUARD: stray\.txt is outside this plan's Read-Write Scope/)
   assert.doesNotMatch(ask('src/451.txt'), /deny/)

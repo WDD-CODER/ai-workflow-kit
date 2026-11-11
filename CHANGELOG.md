@@ -9,6 +9,13 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+## [3.2.1] - 2026-11-11
+
+Patch: no project action. Sync it before a long orchestrator run.
+
+### Fixed
+- **A run no longer holds every plan's builder folder on disk until it ends.** A 13-plan run needed about 18 GB because 3.2.0 removed builder folders only at the run's end. Now, when a plan that built in its own folder merges, `orch-state.mjs release` removes that folder at once with `worktree-clean.mjs`'s rules (clean, not parked, not in a hand-off, its branch in `origin/<run branch>`); the branch is kept, and a folder it cannot remove is one line, never a stop.
+
 ## [3.2.0] - 2026-11-10
 
 Minor: no project action. Sync it, and the folders agents left beside the project are cleaned up on the next sweep.

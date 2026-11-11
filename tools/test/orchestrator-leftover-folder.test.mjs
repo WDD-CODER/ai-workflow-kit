@@ -29,6 +29,20 @@ test('a leftover builder folder that is no longer a worktree is removed and made
   }
 })
 
+// v3.2.1: a merged plan's own builder folder is removed when the plan is released, not at the run's end.
+test('a plan that merges in a run of its own folder: the folder is gone before the run ends, its branch kept', () => {
+  const p = makeProject({ kit, name: 'rel-app' })
+  try {
+    p.addPlans({ 451: toyPlan(451) })
+    const r = p.runPlans(['--run', 'rl', '--plans', '451'])
+    assert.equal(r.status, 0, r.out.split('\n').slice(-6).join('\n'))
+    assert.equal(p.status('rl').plans['451'].state, 'merged')
+    assert.equal(existsSync(join(p.root, 'rel-app-orch-rl-451')), false, r.out.split('\n').filter((l) => /451/.test(l)).slice(-6).join('\n'))
+  } finally {
+    p.cleanup()
+  }
+})
+
 test('removeFolder deletes a folder git does not track, and isWorktree tells a worktree from a plain folder', () => {
   const d = mkdtempSync(join(tmpdir(), 'kit-rf-'))
   try {

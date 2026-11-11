@@ -233,6 +233,23 @@ export function sweep({ root = ROOT, now = Date.now(), youngMs = YOUNG_MS, dryRu
   return lines
 }
 
+/**
+ * A plan of a live run that just merged: its own builder folder `path` is removed by the same rules, except that its
+ * run being live does not keep it (the plan is done; orch-state.mjs release calls this only for a merged plan). Its
+ * branch must be in origin/<run branch>. Returns { line, removed }.
+ */
+export function removeMergedBuilder(root, path, run, { remove = removeWorktree } = {}) {
+  const main = mainCheckout(norm(root))
+  const want = norm(path)
+  const wt = listWorktrees(main).find((w) => same(w.path, want))
+  if (!wt) return { line: `${want}: kept — git does not list it as a worktree, so its content cannot be checked`, removed: false }
+  const kind = kitKind(wt.path, { root: main, repo: REPO || basename(main) })
+  if (kind?.kind !== 'builder' || kind.run !== run) return { line: `${want}: kept — not this run's builder folder`, removed: false }
+  const runRef = `origin/${RUN_PREFIX}${run}`
+  if (!wt.branch || !refOk(main, runRef) || !ancestor(main, `refs/heads/${wt.branch}`, runRef)) return { line: `${want}: kept — ${wt.branch ?? 'its commit'} is not in ${runRef}`, removed: false }
+  return cleanOne(main, wt, { repo: REPO || basename(main), live: new Set(), handoffs: handoffTexts(main), youngMs: 0, remove })
+}
+
 /** The main checkout: the first worktree git lists (`listed` = listWorktrees(root), or read here). */
 export function mainCheckout(root, listed = listWorktrees(root)) {
   return norm(listed[0]?.path || root)
