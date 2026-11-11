@@ -13,6 +13,8 @@
  * Usage:
  *   node scripts/free-merged-slots.mjs             # fetch first
  *   node scripts/free-merged-slots.mjs --no-fetch  # local refs only (session start: fast, no network)
+ *   --no-sweep                                     # skip the worktree-clean.mjs sweep that runs last (--no-fetch skips it too;
+ *                                                  #   the supervisor runs it itself)
  */
 import { existsSync, rmSync, readdirSync, readFileSync } from 'fs'
 import { execFileSync } from 'child_process'
@@ -21,6 +23,7 @@ import { fileURLToPath } from 'url'
 import { listSlots } from './lib/slot.mjs'
 import { samePath } from './lib/orch-folders.mjs'
 import { stopSlotServers } from './lib/slot-procs.mjs'
+import { sweep } from './worktree-clean.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(__dirname, '..')
@@ -184,6 +187,9 @@ function main() {
     console.log(`wt-${s.slot}: freed (branch=${s.branch} merged) -> idle @ origin/main; servers stopped (${stopped.length} action(s))`)
   }
   freeMergeFolders()
+  // Every other kit-made worktree (dead runs' builder and review folders, agent folders) by worktree-clean's rules.
+  // Not at session start (--no-fetch runs under a 10-second timeout that could stop a delete half-way).
+  if (!process.argv.includes('--no-sweep') && !process.argv.includes('--no-fetch')) for (const l of sweep({ root: repoRoot })) console.log(`WORKTREE_CLEAN: ${l}`)
 }
 
 main()

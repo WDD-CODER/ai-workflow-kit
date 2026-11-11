@@ -18,9 +18,10 @@ result schema are in `docs/agent/agent-roles.md`.
    to review.
    **Review folder:** `<branch>` is the current branch → this folder. Otherwise the commands below must see that
    branch, not this folder's: check it out read-only in a temporary folder,
-   `git worktree add --detach ../<this folder's name>-review-<NNN> <ref>`, run every command of steps 2–3 there
-   (finders get that folder and `<ref>` as the branch), and `git worktree remove ../<this folder's name>-review-<NNN>`
-   after the verdict. Never switch this folder's branch for a review.
+   `node scripts/worktree-clean.mjs add review-<NNN> --detach <ref>` (prints `WORKTREE_ADD: <folder>`), run every
+   command of steps 2–3 there (finders get that folder and `<ref>` as the branch), and as the last step — after the
+   verdict, and also when you STOP after the folder exists — `node scripts/worktree-clean.mjs remove <folder>`. Never
+   delete the folder any other way, and never switch this folder's branch for a review.
 
 2. **Commands (by code, no runner agent):** run `node scripts/ship-prep.mjs --gate --lane REGULAR` (build, lint, tests,
    ledger and override check, one `GATE: <cmd> → exit <n>` line each; at `/ship` Phase 1 already ran it — reuse its

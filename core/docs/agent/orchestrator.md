@@ -186,10 +186,15 @@ can kill a run mid-build). It calls no model and decides nothing a plan's tiers 
   needed); a launcher that stayed alive would take the child down with its tree. run-plans.mjs is started detached
   too (a dead supervisor leaves the run alive) and, under the supervisor, does not append the console log itself
   (one writer).
-- **Sweep.** At start: `orphan-sweep.mjs`, `free-merged-slots.mjs --no-fetch`, then the builder folders of runs that
-  are not live — a clean folder whose branch is merged into the run branch or `origin/{{git.mainBranch}}` is removed
-  with `git worktree remove` (no `--force`, the branch kept); a folder on a `park/…` branch, named in a hand-off, of a
-  live run, with uncommitted files or not listed by git is kept. One `SUPERVISOR_SWEEP:` line per folder.
+- **Sweep.** At start and again when the run ends: `orphan-sweep.mjs`, `free-merged-slots.mjs --no-fetch --no-sweep`,
+  then `worktree-clean.mjs`'s sweep of every kit-made worktree git lists (builders, merge and review folders, agent
+  folders `-review-*`, `-fix-*`, `-scratch-*`, `-kit-*`, `-sync-*`, `.claude/worktrees/*`; never a slot or another
+  folder). Removed when clean, its run not live, not in a hand-off, not on `park/…`, not locked, and its work is safe
+  elsewhere: a branch merged into `origin/{{git.mainBranch}}` or (a builder) the run branch, or with its upstream gone;
+  a detached folder whose commit is on an origin branch. A merge folder stays until its run branch is merged (grade
+  and lessons still use it). `git worktree remove`
+  without `--force` (3 tries), then a scripted delete for a Windows folder git cannot empty; the branch is kept. One
+  `SUPERVISOR_SWEEP:` line per folder; a folder that cannot be removed is a kept line, never a stop.
 - **After each launch** (from `status.json`): `finished`, `stopped` for any reason but a rate limit, or a refusal
   before `init`: done. Still `running` — the process died: the death is written with
   `orch-state.mjs stop --reason "process died (exit <code>)"` (slots go back) and the same command is launched again
@@ -228,7 +233,9 @@ is refused when the review folder holds a `.claude/settings.local.json`.
 - One run at a time per plan and per file: the preflight refuses a plan of a live run (status `running`, updated in
   the last two hours) or one whose scope overlaps it. After a crash, `orch-state.mjs stop --run <run> --reason "<why>"`.
 - `free-merged-slots` leaves every slot a live run holds alone, and removes a merged run's merge folder
-  (`<repo>-orch-merge-<run>`) once it is clean and its branch is merged.
+  (`<repo>-orch-merge-<run>`) once it is clean and its branch is merged; then it runs `worktree-clean.mjs`'s sweep.
+- No agent deletes a folder itself: `node scripts/worktree-clean.mjs --path <folder>` (or `--sweep`) does, by the
+  rules above, and prints why it kept one.
 - To validate a run branch in an idle slot: `node scripts/slot-serve.mjs --ref <branch>` there. `/orchestrate` does it
   itself at a run's end when a card needs the app, checks every card URL answers, and prints the cards unasked.
 - `decision-log.mjs grade` refuses a folder on `{{git.mainBranch}}` (exit 2, naming `<repo>-orch-merge-<run>`): the

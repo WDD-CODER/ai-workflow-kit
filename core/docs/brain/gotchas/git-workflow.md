@@ -99,8 +99,9 @@ clean, PR-able diff against main. Stack any recovered/other-session buckets afte
 `git branch <name> <sha>` — never checkout a different branch in the shared directory to
 do this, since checkout would overwrite files a live concurrent editor may still have
 open; if you need a branch actually checked out (e.g. to append a file after PR checks
-already passed), use `git worktree add <scratch-path> <branch>` instead, work there, then
-`git worktree remove` it. Never invent a PR for a bucket you didn't author or fully
+already passed), use `node scripts/worktree-clean.mjs add scratch-<slug> --branch <branch>` instead, work there, then
+`node scripts/worktree-clean.mjs remove <folder>` (it removes only a clean, merged folder and prints why it kept one;
+never delete the folder yourself — the delete is refused and stops the work). Never invent a PR for a bucket you didn't author or fully
 verify — push it as a checkpoint and say so explicitly.
 
 ---

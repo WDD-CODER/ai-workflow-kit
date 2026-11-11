@@ -8,8 +8,8 @@
  *       no window), its output and the run's appended to .claude/orchestrator-runs/<run>.console.log.
  *   node scripts/run-supervisor.mjs --free-mem   → the free memory in GB (the helper /orchestrate's second-run rule uses)
  *
- * At start it sweeps what dead runs left (orphan-sweep.mjs, free-merged-slots.mjs --no-fetch, the builder folders of
- * runs that are not live) and prints one line per folder it removed or kept. Then, per launch of run-plans.mjs:
+ * At start and again when the run ends it sweeps what runs left (orphan-sweep.mjs, free-merged-slots.mjs, the kit-made
+ * worktrees worktree-clean.mjs judges safe) and prints one line per folder it removed or kept. Per launch of run-plans.mjs:
  * - `finished`, or `stopped` with any reason but a rate limit, or a refusal before the start: the supervisor ends;
  * - a child that exits while status.json still says `running`: the death is written as a stop
  *   (`process died (exit <code>)`) and the same command is launched again (merged plans are left out, git is the
@@ -25,11 +25,12 @@
  * RUN_SUPERVISOR_RUN_PLANS replaces the run-plans.mjs path (a fake child).
  */
 import { spawn, spawnSync } from 'node:child_process'
-import { openSync, closeSync, mkdirSync, existsSync, readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs'
+import { openSync, closeSync, mkdirSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { freemem } from 'node:os'
-import { resolve, dirname, join, basename } from 'node:path'
+import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { freeMemGb, runNameProblem } from './lib/orch-run.mjs'
+import { sweep as sweepWorktrees } from './worktree-clean.mjs'
 
 const SELF = fileURLToPath(import.meta.url)
 const ROOT = resolve(dirname(SELF), '..')
@@ -40,11 +41,6 @@ export const MEM_POLL_MIN = 2
 export const MEM_WAIT_MAX_MIN = 60
 export const RATE_LIMIT_CAP_MIN = 6 * 60
 const RATE_LIMIT_WAIT_MIN = Number(30) >= 0 ? Number(30) : 30
-const RUN_PREFIX = "orch/"
-const MAIN = 'main'
-const REPO = 'ai-workflow-kit'
-// A run counts as live while its status.json says running and was updated in the last two hours (free-merged-slots).
-const LIVE_MS = 2 * 60 * 60 * 1000
 
 const envNum = (k, d) => {
   const v = process.env[k]
@@ -54,7 +50,6 @@ const envNum = (k, d) => {
 export const limits = () => ({ maxRelaunches: envNum('RUN_SUPERVISOR_MAX_RELAUNCHES', MAX_RELAUNCHES), minFreeMemGb: envNum('RUN_SUPERVISOR_MIN_FREE_MEM_GB', MIN_FREE_MEM_GB) })
 
 const nowIso = () => new Date().toISOString()
-const norm = (p) => String(p ?? '').replace(/\\/g, '/').replace(/\/+$/, '')
 export const runsDir = (root) => join(root, '.claude', 'orchestrator-runs')
 export const consoleLogPath = (root, run) => join(runsDir(root), `${run}.console.log`)
 const statusFile = (root, run) => join(runsDir(root), run, 'status.json')
@@ -166,6 +161,8 @@ export async function supervise({ root = ROOT, runArgs, runPlans = process.env.R
     writeFileSync(join(runsDir(root), run, 'supervisor.json'), `${JSON.stringify({ ...sup, updatedAt: nowIso() }, null, 2)}\n`)
   }
   const end = (outcome, reason) => {
+    // The run is over (finished, stopped or given up): its merged folders go now, not at the next start.
+    if (sweep) for (const l of sweepLeftovers({ root })) log(`SUPERVISOR_SWEEP: ${l}`)
     sup.phase = outcome
     sup.reason = reason
     save()
@@ -221,88 +218,23 @@ export async function supervise({ root = ROOT, runArgs, runPlans = process.env.R
 
 // ---- the leftover sweep -----------------------------------------------------------------------------------------
 
-/** The runs whose status.json says running and was updated in the last two hours. */
-function liveRuns(root) {
-  const dir = runsDir(root)
-  const out = new Set()
-  if (!existsSync(dir)) return out
-  for (const name of readdirSync(dir)) {
-    const s = readJson(join(dir, name, 'status.json'))
-    if (s && s.phase === 'running' && Date.now() - Date.parse(s.updatedAt ?? 0) <= LIVE_MS) out.add(name)
-  }
-  return out
-}
-
-/** Every hand-off file's text (.claude/sessions/orch-<run>/handoff-<NNN>.md): a folder it names is never removed. */
-function handoffTexts(root) {
-  const dir = join(root, '.claude', 'sessions')
-  const out = []
-  if (!existsSync(dir)) return out
-  for (const d of readdirSync(dir)) {
-    const p = join(dir, d)
-    if (!d.startsWith('orch-') || !statSync(p).isDirectory()) continue
-    for (const f of readdirSync(p)) if (/^handoff-\d+\.md$/.test(f)) out.push(norm(readFileSync(join(p, f), 'utf8')))
-  }
-  return out
-}
-
-const gitIn = (cwd, ...a) => {
-  const r = spawnSync('git', a, { cwd, encoding: 'utf8', windowsHide: true })
-  return { status: r.status ?? 1, out: String(r.stdout ?? '').trim(), err: String(r.stderr ?? '').trim() }
-}
-
 /**
- * What dead runs left, before a run starts: one line per folder or branch removed or kept, with the reason.
- * orphan-sweep.mjs (orphaned dev processes) and free-merged-slots.mjs --no-fetch (slots on merged branches, merge
- * folders of merged runs) run as they are; then the builder folders <repo>-orch-<run>-<NNN> of runs that are not live:
- * a clean folder whose branch is merged into the run branch or origin/<main> is removed with `git worktree remove`
- * (no --force, the branch kept). A folder on a park/… branch, named in a hand-off, of a live run, with uncommitted
- * files, or that git does not list as a worktree is kept.
+ * What dead runs left, at a run's start and end: one line per folder removed or kept, with the reason.
+ * orphan-sweep.mjs (orphaned dev processes) and free-merged-slots.mjs --no-fetch --no-sweep (slots on merged branches,
+ * merge folders of merged runs) run as they are; then worktree-clean.mjs's sweep judges every kit-made worktree
+ * (builders, merge and review folders, agent folders) by its rules: clean, merged or safe on origin, not parked, not in
+ * a hand-off, run not live. `git worktree remove` without --force, the branch kept; a held Windows folder is a line.
  */
 export function sweepLeftovers({ root = ROOT } = {}) {
   const lines = []
-  for (const [script, args] of [['orphan-sweep.mjs', ['--quiet']], ['free-merged-slots.mjs', ['--no-fetch']]]) {
+  for (const [script, args] of [['orphan-sweep.mjs', ['--quiet']], ['free-merged-slots.mjs', ['--no-fetch', '--no-sweep']]]) {
     const p = join(root, 'scripts', script)
     if (!existsSync(p)) continue
     const r = spawnSync(process.execPath, [p, ...args], { cwd: root, encoding: 'utf8', timeout: 5 * 60_000, windowsHide: true })
     for (const l of `${r.stdout ?? ''}`.split('\n').map((x) => x.trim()).filter(Boolean)) lines.push(`${script}: ${l}`)
     if (r.status !== 0) lines.push(`${script}: exit ${r.status} — ${String(r.stderr ?? '').trim().split('\n').pop() || 'no output'}`)
   }
-  gitIn(root, 'worktree', 'prune')
-  const repo = REPO || basename(root)
-  const prefix = `${repo}-orch-`
-  const parent = dirname(root)
-  const worktrees = new Map()
-  let cur = null
-  for (const line of gitIn(root, 'worktree', 'list', '--porcelain').out.split('\n')) {
-    if (line.startsWith('worktree ')) worktrees.set(norm(cur = line.slice(9).trim()), null)
-    else if (cur && line.startsWith('branch ')) worktrees.set(norm(cur), line.slice(7).trim().replace('refs/heads/', ''))
-  }
-  const live = liveRuns(root)
-  const handoffs = handoffTexts(root)
-  let names = []
-  try {
-    names = readdirSync(parent).filter((n) => n.startsWith(prefix) && !n.startsWith(`${prefix}merge-`))
-  } catch { /* no parent listing: nothing to sweep */ }
-  for (const name of names) {
-    const path = norm(join(parent, name))
-    const m = /^(.+)-(\d{1,4})$/.exec(name.slice(prefix.length))
-    if (!m) continue
-    const [, run] = m
-    const keep = (why) => lines.push(`${path}: kept — ${why}`)
-    if (live.has(run)) { keep(`run ${run} is live`); continue }
-    if (handoffs.some((t) => t.includes(path) || t.includes(name))) { keep('a parked plan\'s hand-off names it'); continue }
-    if (!worktrees.has(path)) { keep('git does not list it as a worktree (remove it by hand)'); continue }
-    const branch = worktrees.get(path)
-    if (!branch) { keep('it is on no branch'); continue }
-    if (branch.startsWith('park/')) { keep(`it is on ${branch}`); continue }
-    if (gitIn(path, 'status', '--porcelain').out) { keep('it has uncommitted files'); continue }
-    const into = [`origin/${RUN_PREFIX}${run}`, `origin/${MAIN}`].find((ref) => gitIn(root, 'rev-parse', '--verify', '--quiet', ref).status === 0 && gitIn(root, 'merge-base', '--is-ancestor', `refs/heads/${branch}`, ref).status === 0)
-    if (!into) { keep(`${branch} is not merged`); continue }
-    const rm = gitIn(root, 'worktree', 'remove', path)
-    if (rm.status === 0) lines.push(`${path}: removed — ${branch} is merged into ${into} (branch kept)`)
-    else keep(`git worktree remove failed: ${rm.err.split('\n').pop()}`)
-  }
+  lines.push(...sweepWorktrees({ root }))
   if (!lines.length) lines.push('nothing left by earlier runs')
   return lines
 }

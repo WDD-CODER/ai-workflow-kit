@@ -20,7 +20,9 @@ prompts user to confirm before executing deletions.
 2. **Prune merged worktrees** (`scripts/prune-merged-worktrees.sh`)
    - Scans `.claude/worktrees/` for worktrees whose branch is merged to `main`
    - Archives session files to `docs/archive/worktrees/<name>/` before deletion
-   - Removes the worktree directory via `git worktree remove`
+   - Hands each folder to `node scripts/worktree-clean.mjs --path` (clean and merged only, no `--force`)
+   - A merged, clean worktree needs no YES: the sweep (`free-merged-slots.mjs`, the run supervisor) already removes it;
+     the YES below is for old sessions and for archiving
 
 ## Execution steps
 

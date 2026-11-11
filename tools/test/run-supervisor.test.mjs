@@ -266,7 +266,7 @@ test('/orchestrate (installed) starts the supervisor line and returns; no run_in
 })
 
 test('the leftover sweep: a merged dead builder folder is removed; park/…, a hand-off folder, a live run, unmerged work and a non-worktree are kept, each with a line', () => {
-  const repo = /^const REPO = '([^']*)'$/m.exec(readFileSync(join(root, 'scripts', 'run-supervisor.mjs'), 'utf8'))[1]
+  const repo = /^const REPO = '([^']*)'$/m.exec(readFileSync(join(root, 'scripts', 'worktree-clean.mjs'), 'utf8'))[1]
   const parent = realpathSync(mkdtempSync(join(tmpdir(), 'run-sup-sweep-')))
   const name = repo || 'proj'
   const main = join(parent, name)
@@ -302,6 +302,38 @@ test('the leftover sweep: a merged dead builder folder is removed; park/…, a h
     assert.match(line('005'), /kept — a parked plan's hand-off names it/)
     assert.match(line('006'), /kept — run live is live/)
     for (const n of ['002', '003', '004', '005', '006']) assert.ok(existsSync(f(n === '006' ? 'live' : 'old', n)), `${n} kept`)
+  } finally {
+    rmSync(parent, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+  }
+})
+
+// Plan 113: the run's own folders go when it ends, not at the next supervisor start.
+test('a supervised run that finishes sweeps at the end: its merged builder folder (kept at the start: the run was live) is gone', async () => {
+  const repo = /^const REPO = '([^']*)'$/m.exec(readFileSync(join(root, 'scripts', 'worktree-clean.mjs'), 'utf8'))[1] || 'proj'
+  const parent = realpathSync(mkdtempSync(join(tmpdir(), 'run-sup-end-')))
+  const dir = join(parent, repo)
+  const g = (cwd, ...a) => assert.equal(spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd, encoding: 'utf8' }).status, 0, `git ${a.join(' ')}`)
+  try {
+    mkdirSync(dir)
+    cpSync(join(root, 'scripts'), join(dir, 'scripts'), { recursive: true, dereference: true })
+    writeFileSync(join(dir, 'fake-run-plans.mjs'), FAKE)
+    g(dir, 'init', '-q', '-b', 'main')
+    writeFileSync(join(dir, '.git', 'info', 'exclude'), 'scripts/\n.claude/\nfake-run-plans.mjs\nargv.log\n')
+    g(dir, 'commit', '-q', '--allow-empty', '-m', 'base')
+    g(dir, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+    const builder = join(parent, `${repo}-orch-r1-001`)
+    g(dir, 'worktree', 'add', '-q', '-b', 'feat/001-a', builder)
+    mkdirSync(join(dir, '.claude', 'orchestrator-runs', 'r1'), { recursive: true })
+    writeFileSync(join(dir, '.claude', 'orchestrator-runs', 'r1', 'status.json'), JSON.stringify({ run: 'r1', phase: 'running', updatedAt: new Date().toISOString(), plans: {}, notes: [] }))
+    process.env.FAKE_SCENARIO = 'finish'
+    const lines = []
+    const r = await sup.supervise({ root: dir, runArgs: ['--run', 'r1', '--plans', '001'], runPlans: join(dir, 'fake-run-plans.mjs'), freeMem: () => 16, sleep: async () => {}, log: (l) => lines.push(l), lim: { maxRelaunches: 3, minFreeMemGb: 4 } })
+    assert.equal(r.outcome, 'done')
+    const sweeps = lines.filter((l) => l.startsWith('SUPERVISOR_SWEEP:') && l.includes('-orch-r1-001'))
+    assert.match(sweeps[0] ?? '', /kept — run r1 is live/, 'kept at the start')
+    assert.match(sweeps[1] ?? '', /removed — feat\/001-a is merged into origin\/main/, `removed at the end: ${lines.join(' | ')}`)
+    assert.ok(lines.indexOf(lines.find((l) => /removed — feat\/001-a/.test(l))) < lines.findIndex((l) => l.startsWith('SUPERVISOR: done')), 'before the done line')
+    assert.equal(existsSync(builder), false)
   } finally {
     rmSync(parent, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
   }
