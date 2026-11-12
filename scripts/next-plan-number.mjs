@@ -28,11 +28,12 @@ function git(cmdArgs) {
 
 if (!process.argv.includes('--no-fetch')) git(['fetch', 'origin', '--prune'])
 
-const used = []
+// A running maximum, never an array spread into Math.max: hundreds of refs × hundreds of plan files overflow the stack.
+let max = 0
 const take = (names, re) => {
   for (const name of names) {
     const m = name.match(re)
-    if (m) used.push(Number(m[1]))
+    if (m) max = Math.max(max, Number(m[1]))
   }
 }
 const planRe = /(?:^|\/)(\d{3})-[^/]*\.plan\.md$/
@@ -43,13 +44,17 @@ take(listPlans(repoRoot), planRe)
 take(git(['ls-tree', '-r', '--name-only', 'origin/main', '--', 'plans/']).split('\n'), planRe)
 const mainWorktree = (git(['worktree', 'list', '--porcelain']).match(/^worktree (.+)$/m) || [])[1]
 if (mainWorktree) take(listPlans(mainWorktree), planRe)
-const refs = git(['for-each-ref', '--format=%(refname:short)', 'refs/heads', 'refs/remotes/origin']).split('\n').filter(Boolean)
-take(refs, /\/(\d{3})-/)
-// The plan files on every other ref: a branch need not carry a number in its name to hold plans. One ls-tree per ref.
-for (const ref of refs) {
-  if (ref === 'origin/HEAD' || ref === 'origin/main') continue
-  take(git(['ls-tree', '-r', '--name-only', ref, '--', 'plans/']).split('\n'), planRe)
+const refRows = git(['for-each-ref', '--format=%(objectname) %(refname:short)', 'refs/heads', 'refs/remotes/origin']).split('\n').filter(Boolean)
+  .map((l) => { const i = l.indexOf(' '); return { sha: l.slice(0, i), ref: l.slice(i + 1) } })
+take(refRows.map((r) => r.ref), /\/(\d{3})-/)
+// The plan files on every other ref: a branch need not carry a number in its name to hold plans. One ls-tree per
+// commit: refs at the same commit (a branch and its origin copy, run branches at one tip) hold the same files.
+const seen = new Set([git(['rev-parse', '--verify', '--quiet', 'origin/main'])])
+for (const { sha, ref } of refRows) {
+  if (ref === 'origin/HEAD' || ref === 'origin/main' || seen.has(sha)) continue
+  seen.add(sha)
+  take(git(['ls-tree', '-r', '--name-only', sha, '--', 'plans/']).split('\n'), planRe)
 }
 
-const next = String((used.length ? Math.max(...used) : 0) + 1).padStart(3, '0')
+const next = String(max + 1).padStart(3, '0')
 console.log(next)

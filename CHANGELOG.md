@@ -10,6 +10,7 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 ## [Unreleased]
 
 ### Fixed
+- **`next-plan-number.mjs` no longer crashes in a repository with many branches.** With about 290 refs and 600 plan files each it threw "Maximum call stack size exceeded". It now keeps a running maximum and reads each commit's plans once, so refs at the same commit cost one `git ls-tree`.
 - **A builder may change a test beside a file it is allowed to change, assertions included.** The run refused such a test when its diff changed an assertion, which any behaviour change needs, so plans stopped for an `approved:` after two lost builder rounds. The reviewer now judges a changed assertion against the plan (`weakened test`). `scope-check --tests` runs the run's own test-file check on the test paths the plan names (`warn`, with the line to add), and a scope line that is only a test's file name is `SCOPE_TESTS: bad` (exit 1) and a dry-run problem.
 
 ## [3.2.1] - 2026-11-11

@@ -73,6 +73,20 @@ test('a plan filed under plans/done/ on a branch counts too — the max is what 
   rmSync(dir, { recursive: true, force: true })
 })
 
+// FoodVibe 2026-11-12: 291 refs × ~600 plan files → ~170,000 numbers, and `Math.max(...used)` threw "Maximum call
+// stack size exceeded". Here 900 plan files on one unmerged commit and 200 branches at it: 180,000 before dedupe.
+test('fix next-plan-number-many-refs: many refs with many plan files return max + 1 without throwing', () => {
+  const { dir } = project()
+  sh(dir, 'switch', '-q', '-c', 'plan/many')
+  for (let i = 100; i < 1000; i++) writeFileSync(join(dir, 'plans', `${String(i).padStart(3, '0')}-p.plan.md`), 'x\n')
+  sh(dir, 'add', '-A')
+  sh(dir, 'commit', '-q', '-m', 'many plans')
+  sh(dir, 'switch', '-q', 'main')
+  for (let i = 0; i < 200; i++) sh(dir, 'branch', `plan/copy-${i}`, 'plan/many')
+  assert.equal(next(dir, '--no-fetch'), '1000')
+  rmSync(dir, { recursive: true, force: true })
+})
+
 test('--no-fetch skips the fetch and still reads the remote-tracking refs the clone has', () => {
   const { dir } = project()
   // the remote gains a plan the local refs do not know about yet
