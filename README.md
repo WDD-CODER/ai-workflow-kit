@@ -305,7 +305,7 @@ scaffold every project starts from. Any project whose `kit.config.json` is somet
 | `tools/lib/kit.mjs`, `tools/lib/source.mjs` | Render/plan engine; release fetch + cache. |
 | `tools/adoption-report.mjs` | Which workflow parts an installed project has and whether each works (hooks, git hooks, scripts dependencies, links, CI, stack). |
 | `tools/leak-check.mjs`, `tools/pack-check.mjs`, `tools/install-check.mjs`, `tools/e2e-check.mjs`, `tools/workflow-link-check.mjs`, `tools/acceptance-check.mjs` | Checks (below). `tools/fixtures/` builds the fixture projects the acceptance check installs into. |
-| `.github/workflows/leak-check.yml` | Runs every check on push and pull request. |
+| `.github/workflows/leak-check.yml` | Runs the leak, sync and test checks on every pull request, and the end-to-end checks on release tags, on a self-hosted Windows runner. |
 
 Placeholder filters (code contexts): `{{paths.hotspots|quoted}}` → `'a', 'b'`, `|dquoted`, `|glob` →
 `{a,b}`, `|alt` → `a|b` (regex alternation, metacharacters escaped), `|json` → the value as a JS/JSON literal

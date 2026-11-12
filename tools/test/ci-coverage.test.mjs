@@ -18,10 +18,10 @@ function jobBlock(src, name) {
   return lines.slice(start, end).join('\n')
 }
 
-test('CI: the kit-tests job installs the scripts packages, then runs every tools/test file on Ubuntu, Node 22', () => {
+test('CI: the kit-tests job installs the scripts packages, then runs every tools/test file on the self-hosted runner, Node 22', () => {
   const job = jobBlock(workflow, 'kit-tests')
   assert.ok(job, 'leak-check.yml has a kit-tests job')
-  assert.match(job, /runs-on: ubuntu-latest/)
+  assert.match(job, /runs-on: \[self-hosted, Windows\]/)
   assert.match(job, /node-version: 22/)
   const install = job.indexOf('run: npm ci --prefix scripts')
   const step = job.indexOf('- name: Every kit tool test (node --test tools/test)')
@@ -55,7 +55,7 @@ test('change loop: section 1 names the local checks and keeps the e2e checks in 
   const doc = readFileSync(join(kit, 'docs', 'CHANGE-LOOP.md'), 'utf8')
   const s1 = doc.slice(doc.indexOf('## 1. Change the kit'), doc.indexOf('## 2.')).replace(/\s+/g, ' ')
   for (const c of ['npm run build', 'npm run lint', 'npm test', 'drift-check', 'node --test "tools/test/*.test.mjs"']) assert.ok(s1.includes(c), `section 1 names ${c}`)
-  assert.match(s1, /`e2e-check` and `acceptance-check --e2e` run in CI on every PR/)
+  assert.match(s1, /`e2e-check` and `acceptance-check --e2e` run in CI on every release tag/)
   assert.match(s1, /locally only to debug a CI failure/)
   assert.match(s1, /never run `orchestrator-e2e` and `e2e-check` both/)
 })
