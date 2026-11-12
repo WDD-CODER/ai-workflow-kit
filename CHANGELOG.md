@@ -9,6 +9,9 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Fixed
+- **`next-plan-number.mjs` no longer crashes in a repository with many branches.** With about 290 refs and 600 plan files each it threw "Maximum call stack size exceeded". It now keeps a running maximum and reads each commit's plans once, so refs at the same commit cost one `git ls-tree`.
+
 ## [3.2.1] - 2026-11-11
 
 Patch: no project action. Sync it before a long orchestrator run.

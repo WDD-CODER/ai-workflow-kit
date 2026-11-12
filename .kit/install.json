@@ -3,7 +3,7 @@
     "version": "3.2.1"
   },
   "source": "local:.",
-  "commit": "9a407ce50096254875d8bd27522335409f67ba56",
+  "commit": "94cd8ba9545ece27fcfaa5dd6f1e65922ae38260",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -790,7 +790,7 @@
       "source": "core/scripts/local-excludes.mjs"
     },
     "scripts/next-plan-number.mjs": {
-      "sha256": "0b18f8c04d9a8d5ab1b9ad32a639856547df37605068be2d548eceb8c01cefed",
+      "sha256": "755f1ca9a2c733f4706d72c3844a96d7122fecd840704ec3201e50483f81bf20",
       "kind": "managed",
       "source": "core/scripts/next-plan-number.mjs"
     },
