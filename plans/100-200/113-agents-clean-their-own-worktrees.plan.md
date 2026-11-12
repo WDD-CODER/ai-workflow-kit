@@ -1,6 +1,6 @@
 # Plan 113 — A project cleans up the worktree folders its agents made, by script, without asking the Human
 
-Status: active
+Status: done
 Depends-on: none
 Snapshot: 0ebea33
 Source: the Human, 2026-11-10 (feature request + Architect + PM review in the kit main folder; the six recommendations accepted with "recommended b" and "go", which is also the freeze yes for this plan).
@@ -118,3 +118,4 @@ None open.
 - review: checkers kept 6 dropped 0 rechecked 6 minutes 12 models check-plan=sonnet,check-bugs=sonnet,check-rules=sonnet,verify=sonnet
 - 2026-11-11 Human: check 1 passed — in a new auto-mode session the agent ran node scripts/worktree-clean.mjs --sweep --dry-run with no prompt or refusal ("WORKTREE_CLEAN: no worktree folder to clean", exit 0). Checks 2-3 wait for FoodVibe on v3.2.0.
 - 2026-11-11 Human: check 2 passed — on FoodVibe (v3.2.0 synced, uncommitted) a new session ran the sweep: foodVibe1.0-fix-541 and foodVibe1.0-kit-310 removed, local branches kept, exit 0. Check 3 waits for the next FoodVibe run: run fd-1a-data's folders were already gone before v3.2.0 reached it.
+- 2026-11-12 Human: check 3 passed — on FoodVibe with v3.2.1 (PR #134: a merged plan's builder folder removed at once), the run's worktree folders are removed correctly ("it removes the diff worktrees correctly you can close it"). Plan closed.
