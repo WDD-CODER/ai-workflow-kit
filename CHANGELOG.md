@@ -9,6 +9,9 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Fixed
+- **`orch-state.mjs watch` says `STARTING` for a run the supervisor is still starting.** Until run-plans.mjs wrote its first state (after its preflight and plan lint, about 2 minutes), watch failed with "no run", and the `/orchestrate` wait loop ended at once. The supervisor now writes supervisor.json before its first launch, watch prints `STARTING` (exit 0) while it is alive, and the loop waits on `RUNNING` or `STARTING`.
+
 ## [3.2.1] - 2026-11-11
 
 Patch: no project action. Sync it before a long orchestrator run.
