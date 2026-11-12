@@ -1,25 +1,42 @@
 name: leak-check
 
+# CI runs on the Human's own machine: a self-hosted Windows runner (the repository is private, so GitHub-hosted
+# minutes would be billed). A pull request runs leak-check and kit-tests; a release tag also runs e2e; any job can be
+# started by hand from the Actions tab. A push to main runs nothing: its pull request already ran the checks.
 on:
-  # A branch is checked once, by its pull request; `main` and release tags are checked after the merge.
   push:
-    branches: [main]
     tags: ['v*']
   pull_request:
+  workflow_dispatch:
 
-# A newer commit on the same branch/PR cancels the run it makes stale (never on `main` or a tag).
+# A newer commit on the same branch/PR cancels the run it makes stale (never on a tag).
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# The runner's service account has no git identity; the fixture repositories the checks create commit with this one.
+env:
+  GIT_AUTHOR_NAME: kit-ci
+  GIT_AUTHOR_EMAIL: kit-ci@example.invalid
+  GIT_COMMITTER_NAME: kit-ci
+  GIT_COMMITTER_EMAIL: kit-ci@example.invalid
+
+# Git Bash, not the WSL bash.exe in System32: the first step of each job puts Git's bin folder first on PATH.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   leak-check:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Windows]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Git Bash first on PATH
+        shell: powershell
+        run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\usr\bin'; Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\bin'
       - name: Core, layers and templates must not name a framework, stack or project
         run: node tools/leak-check.mjs
       - name: Packs must not name the project
@@ -38,17 +55,18 @@ jobs:
         run: node tools/drift-check.mjs --target .
       # actionlint, pinned by version and checksum, lints every workflow install-check renders.
       - name: Install actionlint (pinned)
+        shell: powershell
         env:
           ACTIONLINT_VERSION: 1.7.7
-          ACTIONLINT_SHA256: 023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757
+          ACTIONLINT_SHA256: 7f12f1801bca3d480d67aaf7774f4c2a6359a3ca8eebe382c95c10c9704aa731
         run: |
-          set -euo pipefail
-          tgz="$RUNNER_TEMP/actionlint.tar.gz"
-          curl -sSfL -o "$tgz" "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
-          echo "${ACTIONLINT_SHA256}  $tgz" | sha256sum -c -
-          mkdir -p "$RUNNER_TEMP/actionlint"
-          tar -xzf "$tgz" -C "$RUNNER_TEMP/actionlint" actionlint
-          echo "ACTIONLINT=$RUNNER_TEMP/actionlint/actionlint" >> "$GITHUB_ENV"
+          $ErrorActionPreference = 'Stop'
+          $zip = Join-Path $env:RUNNER_TEMP 'actionlint.zip'
+          Invoke-WebRequest -UseBasicParsing -OutFile $zip "https://github.com/rhysd/actionlint/releases/download/v$env:ACTIONLINT_VERSION/actionlint_$($env:ACTIONLINT_VERSION)_windows_amd64.zip"
+          if ((Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower() -ne $env:ACTIONLINT_SHA256) { throw 'actionlint checksum mismatch' }
+          $dir = Join-Path $env:RUNNER_TEMP 'actionlint'
+          Expand-Archive -Force -Path $zip -DestinationPath $dir
+          Add-Content -Path $env:GITHUB_ENV -Value "ACTIONLINT=$dir\actionlint.exe"
       - name: Installer and sync install a working project (fixtures; rendered workflows pass actionlint)
         env:
           KIT_REQUIRE_ACTIONLINT: '1'
@@ -59,12 +77,15 @@ jobs:
   kit-tests:
     # Every kit tool test once per pull request, in its own job beside leak-check so the PR does not wait longer
     # (plan 075). Local runs keep to the checks CI does not cover (docs/CHANGE-LOOP.md section 1).
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Windows]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Git Bash first on PATH
+        shell: powershell
+        run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\usr\bin'; Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\bin'
       # The workflow scripts import picomatch (scripts/package.json).
       - name: Install the workflow scripts' packages
         run: npm ci --prefix scripts
@@ -76,24 +97,22 @@ jobs:
         run: node tools/validate-orchestrator.mjs --mode fake
 
   e2e:
-    # A fresh project taken through plan -> take-plan -> ship -> merge -> close-out (tools/e2e-check.mjs).
-    strategy:
-      fail-fast: false
-      matrix:
-        # Windows is the slow leg (~4 min vs ~1 min): a pull request runs Ubuntu only, `main` and tags run both.
-        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest","windows-latest"]') }}
-    runs-on: ${{ matrix.os }}
+    # A fresh project taken through plan -> take-plan -> ship -> merge -> close-out (tools/e2e-check.mjs). Release tags
+    # and hand-started runs only: projects take released versions, and kit-tests covers each pull request.
+    if: github.event_name != 'pull_request'
+    runs-on: [self-hosted, Windows]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Git Bash first on PATH
+        shell: powershell
+        run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\usr\bin'; Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\bin'
       - name: End-to-end workflow cycle in a fresh project
-        shell: bash
         run: node tools/e2e-check.mjs
       # Fixture projects (Angular + Express, React-Vite + Supabase, an upstream-owned React-Vite copy): stack detection,
       # install, link check, drift-check, rendered CI, adoption report, first commit through the hooks, then
       # e2e-check --project on the two React-Vite fixtures (Vite slot server, /pull-copy, Planner close-out).
       - name: Acceptance on fixture projects (+ e2e --project)
-        shell: bash
         run: node tools/acceptance-check.mjs --e2e

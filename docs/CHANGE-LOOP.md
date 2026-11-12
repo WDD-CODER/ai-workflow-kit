@@ -16,7 +16,8 @@ kit branch + PR  ->  merge  ->  tag vX.Y.Z + GitHub release  ->  project: kit-sy
 - Add a line under `## [Unreleased]` in `CHANGELOG.md`: what changed, and what a project must do, if anything.
 - Run the local checks: `npm run build`, `npm run lint`, `npm test`, `node tools/drift-check.mjs --target .` and
   `node --test "tools/test/*.test.mjs"` (CI runs the last one too, in its `kit-tests` job). `e2e-check` and
-  `acceptance-check --e2e` run in CI on every PR; run them locally only to debug a CI failure, and never run
+  `acceptance-check --e2e` run in CI on every release tag (and by hand from the Actions tab); CI runs on the Human's
+  own machine (a self-hosted Windows runner). Run them locally only to debug a CI failure, and never run
   `orchestrator-e2e` and `e2e-check` both. The leak checks, `pack-check`, `install-check` and `workflow-link-check`
   also run in CI (the README's **Checks**). Open a PR and merge once CI is green.
 - The kit is installed into itself: after editing a source, run `node tools/sync.mjs --target . --apply` and commit

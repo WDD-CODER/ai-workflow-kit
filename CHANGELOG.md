@@ -9,6 +9,9 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Changed
+- **The kit's own CI runs on a self-hosted Windows runner.** Pull requests run the leak, sync and test checks; release tags also run the end-to-end checks; a push to main runs nothing. No project action: a project's own CI is unchanged.
+
 ## [3.2.2] - 2026-11-12
 
 Patch: no project action. Sync it between orchestrator runs, never during one. A plan scope line that is only a test
