@@ -28,7 +28,7 @@ Always allowed regardless of the list below: this plan file itself, its own
 hotspots (`CHANGELOG.md, README.md` — add to them, never rewrite or remove an existing entry without escalating).
 
 ```scope
-[one glob per line, prefer folder globs for code]
+[one glob per line, each a path from the repo root, prefer folder globs for code]
 [and, when a step changes code that has tests elsewhere, one line that must name the test location itself — a tests
 folder glob or a single test file; a test beside a scoped file (same folder or its __tests__/) needs no line, but
 beyond that a code-folder glob does not cover the tests under it]

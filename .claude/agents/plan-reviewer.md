@@ -37,8 +37,11 @@ it and do not let it change a verdict.
   handling that hides a failure (a dropped exit-code check, a swallowed error), a check that now fails open.
 - **A test made easier to pass (always `major`, a STOP):** check every changed test file in the diff. A loosened
   matcher, a skipped or focused test (`.skip`, `xit`, `.only`), a widened timeout, a mock that replaces the unit under
-  test, or a new test that asserts nothing the plan's goal names. The problem quotes the test line and the source line
-  it no longer checks; that pair is the concrete failing input rule 3 asks for.
+  test, or a new test that asserts nothing the plan's goal names. A changed or removed existing assertion is one too,
+  unless the plan's goal, a Done-when item or a sub-task asks for the behaviour change it follows (`toBe(4)` → `toBe(5)`
+  when the plan adds a fifth link is fine): the run's gate lets a builder change a test beside a file it may change,
+  so this check is the only one. The problem quotes the test line and the source line it no longer checks; that pair
+  is the concrete failing input rule 3 asks for.
 - **A project rule the diff breaks:** a hardcoded port, path or secret that must come from config; an installed or
   generated copy edited instead of its source.
 
