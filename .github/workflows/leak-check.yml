@@ -9,6 +9,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# The checks only read the repository.
+permissions:
+  contents: read
+
 # A newer commit on the same branch/PR cancels the run it makes stale (never on a tag).
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -28,6 +32,8 @@ defaults:
 
 jobs:
   leak-check:
+    # Never code from a fork on the Human's machine: a pull request runs only when its branch is in this repository.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Windows]
     steps:
       - uses: actions/checkout@v4
@@ -77,6 +83,8 @@ jobs:
   kit-tests:
     # Every kit tool test once per pull request, in its own job beside leak-check so the PR does not wait longer
     # (plan 075). Local runs keep to the checks CI does not cover (docs/CHANGE-LOOP.md section 1).
+    # Never code from a fork on the Human's machine (see leak-check).
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Windows]
     steps:
       - uses: actions/checkout@v4
