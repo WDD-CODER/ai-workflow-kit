@@ -53,7 +53,7 @@ import { resolve, dirname, join, relative, isAbsolute } from 'path'
 import { fileURLToPath } from 'url'
 import picomatch from 'picomatch'
 import { activePlanPath, branchPlanPath } from './lib/slot.mjs'
-import { extractScopeGlobs, testRefusals, removedLinesByFile, isSiblingTest } from './lib/plan-scope.mjs'
+import { extractScopeGlobs, testRefusals, isSiblingTest, bareLineReason } from './lib/plan-scope.mjs'
 import { listOpenPlans, OPEN_PLAN_DIRS } from './lib/plan-paths.mjs'
 import { parseDependsOn, parseProsePrerequisites } from './lib/plan-deps.mjs'
 import { doneWhenTagProblems } from './lib/done-when.mjs'
@@ -205,8 +205,7 @@ function cmdDiff(args) {
   // own scope block must not approve its own test edits. A plan not on the base falls back to the working copy.
   const onBase = git(['show', `${args.diff}:${planPath}`])
   const baseGlobs = (onBase && extractScopeGlobs(onBase)) || scopeGlobs
-  const removed = removedLinesByFile(git(['diff', '-U0', '--no-color', '--no-renames', `${args.diff}...HEAD`]))
-  const testOut = testRefusals(files.filter(f => !out.includes(f)), baseGlobs, (g) => picomatch(g, { dot: true }), removed)
+  const testOut = testRefusals(files.filter(f => !out.includes(f)), baseGlobs, (g) => picomatch(g, { dot: true }))
 
   if (!out.length && !testOut.length) {
     console.log('SCOPE: ok')
@@ -362,7 +361,15 @@ function cmdTests(args) {
   if (!args.plan || args.plan === true) fail('--tests requires --plan=<path>')
   const planPath = normalize(args.plan)
   const r = scopeTestsLint(readPlanFile(planPath))
-  if (r.status === 'warn') {
+  if (r.status === 'bad') {
+    // Exit 1: a bare line matches nothing the plan means, so save-plan fixes it before the save.
+    console.log('SCOPE_TESTS: bad')
+    for (const g of r.bare) console.log(`  ${bareLineReason(g)}`)
+    process.exit(1)
+  } else if (r.status === 'warn' && r.refused.length) {
+    console.log('SCOPE_TESTS: warn')
+    for (const x of r.refused) console.log(`  test file gate: ${x.reason}; add this line to the scope block: ${x.file}`)
+  } else if (r.status === 'warn') {
     console.log('SCOPE_TESTS: warn')
     console.log(`  ${planPath} changes code (scope: ${r.codeGlobs.join(', ')}) but no scope line names a test location - add one (a tests folder glob or a single test file); a code-folder glob does not cover the tests under it`)
   } else if (r.status === 'docs-only') console.log('SCOPE_TESTS: skipped (docs only)')

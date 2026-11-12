@@ -90,7 +90,6 @@ test('scope-check --diff: a renamed test file still counts as a changed test fil
 })
 
 // Plan 101: the test file next to a scoped file needs no scope line of its own.
-const { removedLinesByFile } = await import(pathToFileURL(join(kit, 'scripts', 'lib', 'plan-scope.mjs')).href)
 const pm = (g) => picomatch(g, { dot: true })
 
 test('101 (a) a sibling test of a scoped file is allowed', () => {
@@ -112,19 +111,18 @@ test('101 (d) same folder only; a __tests__ folder directly beneath counts as th
   assert.deepEqual(testFilesOutOfScope(['src/app/__tests__/deep/x.component.spec.ts'], ['src/app/x.component.ts'], pm), ['src/app/__tests__/deep/x.component.spec.ts'])
 })
 
-test('101 (e) a sibling test whose diff removes an assertion is refused; added lines are fine', () => {
-  const diff = ['diff --git a/src/a.spec.ts b/src/a.spec.ts', '--- a/src/a.spec.ts', '+++ b/src/a.spec.ts', '@@ -4,2 +4,1 @@', '-  expect(a).toBe(1)', '-  const x = 1', '+  const y = 2', ''].join('\n')
-  const removed = removedLinesByFile(diff)
-  assert.deepEqual(removed['src/a.spec.ts'].map((r) => r.line), [4, 5])
-  assert.deepEqual(testFilesOutOfScope(['src/a.spec.ts'], ['src/a.ts'], pm, removed), ['src/a.spec.ts'])
-  const addOnly = removedLinesByFile(['--- a/src/a.spec.ts', '+++ b/src/a.spec.ts', '@@ -4,0 +5,1 @@', '+  expect(b).toBe(2)', ''].join('\n'))
-  assert.deepEqual(testFilesOutOfScope(['src/a.spec.ts'], ['src/a.ts'], pm, addOnly), [])
-  for (const text of [" it('x', () => {", " test('x'", "describe('x'", '  assertEqual(a, b)']) {
-    assert.deepEqual(testFilesOutOfScope(['src/a.spec.ts'], ['src/a.ts'], pm, { 'src/a.spec.ts': [{ line: 1, text }] }), ['src/a.spec.ts'], text)
-  }
+// The gate takes no diff any more: a sibling test passes whatever its diff does to assertions (the real-script test
+// below changes one).
+test('fix sibling-test-scope: a sibling test is in scope (plans 547, 552)', () => {
+  // FoodVibe 547: the header spec changed `toBe(4)` to `toBe(5)`; the scope had the header folder glob.
+  const header = 'src/app/core/components/header/header.component.spec.ts'
+  assert.deepEqual(testFilesOutOfScope([header], ['header.component.spec.ts', 'src/app/core/components/header/**'], pm), [])
+  // FoodVibe 552: the tab-chips spec beside the scoped component file.
+  const chips = 'src/app/core/components/tab-chips/tab-chips.component.spec.ts'
+  assert.deepEqual(testFilesOutOfScope([chips], ['src/app/core/components/tab-chips/tab-chips.component.ts'], pm), [])
 })
 
-test('101 scope-check --diff names the weakened sibling test', () => {
+test('fix sibling-test-scope: scope-check --diff passes a sibling test whose assertions changed', () => {
   git('switch', '-q', 'main')
   mkdirSync(join(dir, 'src'), { recursive: true })
   writeFileSync(join(dir, 'plans', '001-gate.plan.md'), plan(['src/a.ts']))
@@ -135,12 +133,8 @@ test('101 scope-check --diff names the weakened sibling test', () => {
   writeFileSync(join(dir, 'src', 'a.ts'), 'export const a = 1\n')
   writeFileSync(join(dir, 'src', 'a.spec.ts'), 'const k = 1\nconst z = 2\n')
   git('add', '-A')
-  git('commit', '-q', '-m', 'weaken')
+  git('commit', '-q', '-m', 'change an assertion')
   const r = spawnSync('node', ['scripts/scope-check.mjs', '--diff=main', '--plan=plans/001-gate.plan.md'], { cwd: dir, encoding: 'utf8' })
-  assert.equal(r.status, 1, r.stdout + r.stderr)
-  assert.match(r.stderr, /sibling test weakened: src\/a\.spec\.ts:1 — name the test in the scope to change its assertions/, r.stdout)
-  writeFileSync(join(dir, 'src', 'a.spec.ts'), 'expect(a).toBe(1)\nconst k = 1\nconst z = 2\n')
-  git('commit', '-q', '-am', 'only add')
-  const ok = spawnSync('node', ['scripts/scope-check.mjs', '--diff=main', '--plan=plans/001-gate.plan.md'], { cwd: dir, encoding: 'utf8' })
-  assert.equal(ok.status, 0, ok.stdout + ok.stderr)
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+  assert.match(r.stdout, /SCOPE: ok/)
 })
