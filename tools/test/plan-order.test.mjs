@@ -196,7 +196,7 @@ test('merged on an integration branch: only the anchored merge subject counts', 
   for (const subject of [
     'feat(011): plan 011 work',
     'Merge feat/011-x into orch/x (plan 0110)',
-    'Merge feat/011-x into orch/y (plan 011)',
+    'Merge feat/011-x into main (plan 011)',
     'Merge feat/011-x into orch/x (plan 011) and more',
     'note: Merge feat/011-x into orch/x (plan 011)',
   ]) gitIn(dir, 'commit', '-q', '--allow-empty', '-m', subject)
@@ -211,11 +211,29 @@ test('merged on an integration branch: only the anchored merge subject counts', 
   assert.deepEqual(orderJson(dir, '012', '--branch=orch/x', '--merged-from=git').waves, [['012']])
 })
 
-test('mergedPlansFromSubjects keeps the plan number exactly as written', async () => {
-  const { mergedPlansFromSubjects } = await lib('plan-deps.mjs')
-  const got = mergedPlansFromSubjects(['Merge feat/011-x into orch/x (plan 011)', 'Merge feat/0110-x into orch/x (plan 0110)', 'Merge a into orch/x (plan 012)\r'], 'orch/x')
-  assert.deepEqual([...got].sort(), ['0110', '011', '012'].sort())
+// FoodVibe: orch/batch-2 was made from orch/run-546; the dry run rebuilt 546, 567 and 579, merged into orch/run-546.
+test('fix inherited-run-merges: a run branch made from another run branch counts the plans merged in its history', () => {
+  const dir = fixture({ '011': { header: 'Depends-on: none' }, '012': { header: 'Depends-on: 011' } }, { git: true })
+  gitIn(dir, 'add', '-A')
+  gitIn(dir, 'commit', '-q', '-m', 'plan(011,012): fixtures')
+  gitIn(dir, 'switch', '-q', '-c', 'orch/run-1')
+  gitIn(dir, 'commit', '-q', '--allow-empty', '-m', 'Merge feat/011-x into orch/run-1 (plan 011)')
+  gitIn(dir, 'switch', '-q', '-c', 'orch/batch-2')
+  const got = orderJson(dir, '--branch', 'orch/batch-2', '--merged-from', 'git')
+  assert.deepEqual(got.waves, [['012']])
+  assert.deepEqual(got.skipped, ['011'])
+  assert.equal(got.done['011'], 'merged into orch/run-1')
+})
+
+test('mergedPlansInHistory keeps the plan number exactly as written', async () => {
+  const { mergedPlansInHistory } = await lib('plan-deps.mjs')
+  const got = mergedPlansInHistory(['Merge feat/011-x into orch/x (plan 011)', 'Merge feat/0110-x into orch/x (plan 0110)', 'Merge a into orch/x (plan 012)\r'], 'orch/x')
+  assert.deepEqual([...got.keys()].sort(), ['0110', '011', '012'].sort())
   assert.ok(!got.has('110'))
+  // With the run prefix, a merge into another run branch counts; outside it (a feat/ branch), only its own merges.
+  const runs = mergedPlansInHistory(['Merge a into orch/run-1 (plan 013)', 'Merge b into main (plan 014)'], 'orch/x', 'orch/')
+  assert.deepEqual([...runs], [['013', 'orch/run-1']])
+  assert.equal(mergedPlansInHistory(['Merge a into orch/run-1 (plan 013)'], 'feat/x', 'orch/').size, 0)
 })
 
 test('scope-check --deps: missing without a Depends-on line, ok with one (none counts)', () => {

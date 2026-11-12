@@ -106,13 +106,18 @@ export function mergeSubjectRe(branch) {
   return new RegExp(`^Merge \\S+ into ${escapeRe(branch)} \\(plan (\\d+)\\)$`)
 }
 
-/** The plan numbers (as written, e.g. "011") that commit subjects mark merged into branch. */
-export function mergedPlansFromSubjects(subjects, branch) {
-  const re = mergeSubjectRe(branch)
-  const out = new Set()
+/**
+ * The plans merged into `branch` or into any run branch (`<runPrefix>…`) in its history: { nnn → the branch merged into }.
+ * A run branch made from another run branch holds that run's merged plans, so they are done there too. Without a
+ * runPrefix, or for a branch outside it, only `branch`'s own merges count.
+ */
+export function mergedPlansInHistory(subjects, branch, runPrefix) {
+  const target = runPrefix && branch.startsWith(runPrefix) ? `${escapeRe(runPrefix)}\\S+` : escapeRe(branch)
+  const re = new RegExp(`^Merge \\S+ into (${target}) \\(plan (\\d+)\\)$`)
+  const out = new Map()
   for (const s of subjects) {
     const m = String(s).replace(/\r$/, '').match(re)
-    if (m) out.add(m[1])
+    if (m && !out.has(m[2])) out.set(m[2], m[1])
   }
   return out
 }

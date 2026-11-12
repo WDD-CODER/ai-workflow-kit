@@ -8,7 +8,7 @@
  *
  * No plans named = every open plan. A dependency that is an open plan but not named is added to the order.
  * A dependency counts as met (done) when its plan is closed (moved out of the open plan folders), its Status: says
- * done/superseded/closed, every Atomic Sub-task is [x] (the same rule take-plan uses), or — with --branch <b> --merged-from git — a commit subject on <b> reads exactly
+ * done/superseded/closed, every Atomic Sub-task is [x] (the same rule take-plan uses), or — with --branch <b> --merged-from git — a commit subject in <b>'s history (into <b>, or into any run branch when <b> is one) reads exactly
  *   Merge <source-branch> into <b> (plan NNN)
  * (anchored: "plan NNN" anywhere else in a subject never counts). A named plan that is done is left out of the waves.
  *
@@ -25,10 +25,12 @@ import { resolve, dirname, join, isAbsolute, relative } from 'path'
 import { fileURLToPath } from 'url'
 import { extractScopeGlobs } from './lib/plan-scope.mjs'
 import { listOpenPlans, isOpenPlanPath, OPEN_PLAN_DIRS } from './lib/plan-paths.mjs'
-import { planNumber, planTitle, planDependencies, planDoneReason, mergedPlansFromSubjects } from './lib/plan-deps.mjs'
+import { planNumber, planTitle, planDependencies, planDoneReason, mergedPlansInHistory } from './lib/plan-deps.mjs'
 import { computeOrder, formatOrder } from './lib/plan-graph.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+// The orchestrator's run branches: a merge into any of them in --branch's history counts as done.
+const RUN_PREFIX = 'orch/'
 
 // Append-only files every plan may touch (the same list scope-check.mjs allows): never a conflict.
 const HOTSPOTS = [
@@ -104,7 +106,8 @@ if (args['merged-from'] === 'git') {
   const ref = git(['rev-parse', '--verify', '--quiet', branch]) ? branch : git(['rev-parse', '--verify', '--quiet', `origin/${branch}`]) ? `origin/${branch}` : null
   if (!ref) fail(`PLAN_ORDER: branch ${branch} not found in ${toPosix(root)}`)
   const subjects = git(['log', '--format=%s', ref]).split('\n')
-  for (const n of mergedPlansFromSubjects(subjects, branch)) done.set(n, `merged into ${branch}`)
+  // A merge into this branch or into an earlier run branch it was made from: both are in its history.
+  for (const [n, into] of mergedPlansInHistory(subjects, branch, RUN_PREFIX)) done.set(n, `merged into ${into}`)
 }
 
 const texts = new Map()

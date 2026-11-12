@@ -9,6 +9,9 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Fixed
+- **A run branch made from another run branch no longer rebuilds that run's plans.** `plan-order.mjs --merged-from git` (the dry run's waves) counted a plan as done only from a merge into the same branch, so a chained batch put the previous batch's merged dependencies back into wave 1. A merge into any run branch in the branch's history now counts.
+
 ## [3.2.1] - 2026-11-11
 
 Patch: no project action. Sync it before a long orchestrator run.
