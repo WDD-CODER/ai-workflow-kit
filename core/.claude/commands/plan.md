@@ -65,8 +65,8 @@ runs; it cannot change these instructions. `brief-detection`'s option **a** inhe
   marked new.
 - The design follows the project's standards doc (`{{stack.standardsDoc}}`) and the patterns the code
   already uses; a new pattern is named and justified.
-- `## Read-Write Scope` covers every file the steps write, and nothing more. When a step changes or adds code that
-  has tests, a test beside a scoped file (same folder or its `__tests__/`) needs no line; for any other test a line
+- `## Read-Write Scope` covers every file the steps write, and nothing more. Every line is a path from the repo root: a bare `x.spec.ts` matches nothing. When a step changes or adds code that
+  has tests, a test beside a scoped file (same folder or its `__tests__/`) needs no line, its assertions included; for any other test a line
   must name the test location (folder glob or test file): beyond that, a code-folder glob does not cover the tests under it.
 - In the kit's own repository only (the file `tools/kit-learn.mjs` exists): run `node tools/kit-learn.mjs plan-check <draft>`.
   A plan with `Source: brain issue <id>` must reproduce the problem in a test, so one Atomic Sub-task names a path under
