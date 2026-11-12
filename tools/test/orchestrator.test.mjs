@@ -364,6 +364,50 @@ test('orch-state.mjs watch: reads status.json only, STUCK exits 1, the rest 0', 
   }
 })
 
+// FoodVibe batch-2: for about 2 minutes after SUPERVISOR_STARTED (preflight and the plan lint run before init) watch
+// printed `FAIL — no run`, and the /orchestrate wait loop exited at once as if the run had ended.
+test('fix watch-starting-run: watch prints STARTING while the supervisor is alive and the run has no status yet', () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'orch-start-')))
+  try {
+    cpSync(join(root, 'scripts'), join(dir, 'scripts'), { recursive: true, dereference: true })
+    const runs = join(dir, '.claude', 'orchestrator-runs', 'w')
+    mkdirSync(runs, { recursive: true })
+    const sup = (s) => writeFileSync(join(runs, 'supervisor.json'), `${JSON.stringify({ run: 'w', launches: [], ...s })}\n`)
+    const watch = () => spawnSync(process.execPath, [join(dir, 'scripts', 'orch-state.mjs'), 'watch', '--run=w'], { cwd: dir, encoding: 'utf8' })
+    sup({ pid: process.pid, phase: 'supervising' })
+    let r = watch()
+    assert.equal(r.status, 0, r.stdout + r.stderr)
+    assert.match(r.stdout, /^STARTING$/m)
+    // A supervisor that is gone, or one that ended, with no status: the run never started — still a failure.
+    sup({ pid: 2147483646, phase: 'supervising' })
+    r = watch()
+    assert.notEqual(r.status, 0, r.stdout)
+    assert.match(r.stdout + r.stderr, /no run "w"/)
+    sup({ pid: process.pid, phase: 'done' })
+    assert.notEqual(watch().status, 0)
+    // The wait loop in /orchestrate keeps waiting on STARTING.
+    const cmd = readFileSync(join(kit, 'core', '.claude', 'commands', 'orchestrate.md'), 'utf8')
+    assert.match(cmd, /grep -qE '\^\(RUNNING\|STARTING\)'/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('fix watch-starting-run: the supervisor writes supervisor.json before its first launch', async () => {
+  const { supervise } = await import(pathToFileURL(join(root, 'scripts', 'run-supervisor.mjs')).href)
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'orch-sup-')))
+  try {
+    let seen = null
+    const fake = join(dir, 'fake-run.mjs')
+    writeFileSync(fake, `import { readFileSync } from 'fs'\nconsole.log(readFileSync(${JSON.stringify(join(dir, '.claude', 'orchestrator-runs', 'w', 'supervisor.json'))}, 'utf8').includes('"phase": "supervising"') ? 'SUP_SEEN' : 'SUP_MISSING')\n`)
+    await supervise({ root: dir, runArgs: ['--run', 'w', '--plans', '001'], runPlans: fake, sweep: false, log: () => {} })
+    seen = readFileSync(join(dir, '.claude', 'orchestrator-runs', 'w.console.log'), 'utf8')
+    assert.match(seen, /SUP_SEEN/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('104 watch prints each open ask as one card: the question, the options with the recommendation first, the answer command', () => {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'orch-ask-')))
   try {

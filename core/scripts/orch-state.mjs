@@ -43,7 +43,7 @@
  *   node scripts/orch-state.mjs decisions  --run <name> --b64 <base64 of a JSON list of decision objects>   every decision in one call, all-or-nothing
  *   node scripts/orch-state.mjs brain-commit --run <name>                   commit docs/brain in the merge folder, push the run branch
  *   node scripts/orch-state.mjs stop       --run <name> --reason "<why the run stopped>"   (gives every held slot back)
- *   node scripts/orch-state.mjs watch      --run <name> [--stale-min <n>]   one line: RUNNING, FINISHED, STOPPED: <why>
+ *   node scripts/orch-state.mjs watch      --run <name> [--stale-min <n>]   one line: STARTING, RUNNING, FINISHED, STOPPED: <why>
  *                                          or STUCK: plan <NNN> · <state> · no progress for <n> min · last: <note>
  *                                          (exit 1); reads status.json only — no git, no agent, no lock;
  *                                          then one card per open ask (question, options, the answer command)
@@ -285,6 +285,18 @@ function runName() {
 const runBranch = (run) => `${PREFIX}${run}`
 const runsDir = () => join(root, '.claude', 'orchestrator-runs')
 const statusPath = (run) => join(runsDir(), run, 'status.json')
+/** True when run-supervisor.mjs wrote supervisor.json for this run, is still supervising, and its pid is alive. */
+function supervisorStarting(run) {
+  try {
+    const s = JSON.parse(readFileSync(join(runsDir(), run, 'supervisor.json'), 'utf8'))
+    if (s.phase !== 'supervising' || !Number.isInteger(s.pid)) return false
+    process.kill(s.pid, 0)
+    return true
+  } catch (e) {
+    // EPERM: the process exists but belongs to someone else — alive. Anything else (no file, no process): not starting.
+    return e?.code === 'EPERM'
+  }
+}
 const mergeFolder = (run) => join(parent, `${repoName}-orch-merge-${run}`)
 const builderFolder = (run, nnn) => join(parent, `${repoName}-orch-${run}-${nnn}`)
 // The builder marker `worktree` writes (lib/db-write.mjs), removed when the folder is given back. A slot released some
@@ -1626,7 +1638,15 @@ const commands = {
   watch() {
     const run = runName()
     const p = statusPath(run)
-    if (!existsSync(p)) fail(`no run "${run}" — start it with: node scripts/orch-state.mjs init --run ${run}`)
+    if (!existsSync(p)) {
+      // Started under the supervisor and not yet at init (run-plans.mjs runs its preflight and plan lint first): the
+      // supervisor is alive and still supervising, so the run is starting, not missing.
+      if (supervisorStarting(run)) {
+        emit({ ok: true, stuck: false, line: 'STARTING', phase: 'starting', updatedAt: null, asks: [] }, ['STARTING'])
+        return
+      }
+      fail(`no run "${run}" — start it with: node scripts/orch-state.mjs init --run ${run}`)
+    }
     let status
     try {
       status = JSON.parse(readFileSync(p, 'utf8'))

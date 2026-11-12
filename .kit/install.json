@@ -3,7 +3,7 @@
     "version": "3.2.1"
   },
   "source": "local:.",
-  "commit": "60b04662dc3b31079eacf1656eea657a1235bb00",
+  "commit": "e508c84888ae2e0117daeb165e32194b9eacce66",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -115,7 +115,7 @@
       "source": "core/.claude/commands/kit-feedback.md"
     },
     ".claude/commands/orchestrate.md": {
-      "sha256": "44a71c1a73d1267db9b9daed4487a6e3b8102cb7f223ce2df3f5b10b93d01460",
+      "sha256": "74373db7f4b2ac6a6978a802c20296b5459680082bd9abeef73d4cc7d49e2190",
       "kind": "managed",
       "source": "core/.claude/commands/orchestrate.md"
     },
@@ -800,7 +800,7 @@
       "source": "core/scripts/orch-preflight.mjs"
     },
     "scripts/orch-state.mjs": {
-      "sha256": "181e410bad56e31c0436aa061603a5bea16e50e67f0d59d2d911a86f0605651d",
+      "sha256": "6539b9d61578a49a2f1a4868700018dea0b0ff5b11c03e7902731e1fd1f6ac66",
       "kind": "managed",
       "source": "core/scripts/orch-state.mjs"
     },
@@ -885,7 +885,7 @@
       "source": "core/scripts/run-python.sh"
     },
     "scripts/run-supervisor.mjs": {
-      "sha256": "5f052472ff91b698f3d77b7be205cf0f51aad05e02c2ea4103acde7eb93dc682",
+      "sha256": "822e2e366f311f8fc5b87c93d012f7473a444294c362ab46c5673e17eced4620",
       "kind": "managed",
       "source": "core/scripts/run-supervisor.mjs"
     },
