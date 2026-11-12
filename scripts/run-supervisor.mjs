@@ -173,6 +173,9 @@ export async function supervise({ root = ROOT, runArgs, runPlans = process.env.R
     stopRun(root, run, reason)
     return end('gave-up', reason)
   }
+  // Written before anything else: until run-plans.mjs writes status.json (after its preflight and plan lint), this file
+  // is how `orch-state.mjs watch` tells a run that is starting from one that does not exist.
+  save()
   if (sweep) for (const l of sweepLeftovers({ root })) log(`SUPERVISOR_SWEEP: ${l}`)
   let rateWaitMs = 0
   for (;;) {

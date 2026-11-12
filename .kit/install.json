@@ -3,7 +3,7 @@
     "version": "3.2.1"
   },
   "source": "local:.",
-  "commit": "94cd8ba9545ece27fcfaa5dd6f1e65922ae38260",
+  "commit": "70b18779192f7233c12cadcb79c3eda921a3d721",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -50,7 +50,7 @@
       "source": "core/.claude/agents/orch-verify.md"
     },
     ".claude/agents/plan-reviewer.md": {
-      "sha256": "13ff4665087b1c2f759683b3be89801663046df6f8ba558800eccfa256b88a7c",
+      "sha256": "097e77136d85236598d4709702386df604cedf95568f1252d025b8fd946fdb5a",
       "kind": "managed",
       "source": "core/.claude/agents/plan-reviewer.md"
     },
@@ -115,12 +115,12 @@
       "source": "core/.claude/commands/kit-feedback.md"
     },
     ".claude/commands/orchestrate.md": {
-      "sha256": "44a71c1a73d1267db9b9daed4487a6e3b8102cb7f223ce2df3f5b10b93d01460",
+      "sha256": "74373db7f4b2ac6a6978a802c20296b5459680082bd9abeef73d4cc7d49e2190",
       "kind": "managed",
       "source": "core/.claude/commands/orchestrate.md"
     },
     ".claude/commands/plan.md": {
-      "sha256": "54da8e8454a56c1d9ac8e0ad0ecb890bc0a5a3befadb77881fa3d875b7964795",
+      "sha256": "1b63fa9c954d5e50e346dfa1632c27e80dff01b6293b66be647ad66ab175e444",
       "kind": "managed",
       "source": "core/.claude/commands/plan.md"
     },
@@ -190,7 +190,7 @@
       "source": "core/.claude/references/hld-template.md"
     },
     ".claude/references/prd-template.md": {
-      "sha256": "fcd35be1c66157a8de9ccda6dfad9d3375cc2852e3004d8bcaeb0991c4c7748a",
+      "sha256": "2e916a2f497f57c66fcd59dd16e2f641e83d76feafdf3fd1ea7e41f3103fbe64",
       "kind": "managed",
       "source": "core/.claude/references/prd-template.md"
     },
@@ -215,7 +215,7 @@
       "source": "core/.claude/skills/preflight/SKILL.md"
     },
     ".claude/skills/save-plan/SKILL.md": {
-      "sha256": "3fa3c147ca277dc96fb181ff26b10f9d473e3558994a050ba4368bd6faab6acd",
+      "sha256": "04493b684185dfeb8879ea3b5c8d2351a68e49b1d7d2d699f87a50efa8078c94",
       "kind": "managed",
       "source": "core/.claude/skills/save-plan/SKILL.md"
     },
@@ -375,7 +375,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "a7249bd73aeec89aca2ed9f7ac6310079865fee7f361ea9873d82e182337d222",
+      "sha256": "f52ca25aa44d6353abe99a319de064ca797f6014defd2dec38942fedc9312afe",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -745,7 +745,7 @@
       "source": "core/scripts/lib/plan-review.mjs"
     },
     "scripts/lib/plan-scope.mjs": {
-      "sha256": "d4435a932a1e27f77ccd923e7a79f3d745c492854736013b3b90f95c15246c88",
+      "sha256": "b4f97ec46df809ce8286b6e6a16697d5f4ae210ae3e9e7f2bb0693dcb2bdee59",
       "kind": "managed",
       "source": "core/scripts/lib/plan-scope.mjs"
     },
@@ -765,7 +765,7 @@
       "source": "core/scripts/lib/run-order.mjs"
     },
     "scripts/lib/scope-tests-lint.mjs": {
-      "sha256": "300b7d0efda98b7d343cf1c93be9ee587fc49d3c1789f370a59b452c30af18e3",
+      "sha256": "8fa63c4094581cfae84e0609a6a04b50d36a7567598840124e5e8d630c90d7df",
       "kind": "managed",
       "source": "core/scripts/lib/scope-tests-lint.mjs"
     },
@@ -790,7 +790,7 @@
       "source": "core/scripts/local-excludes.mjs"
     },
     "scripts/next-plan-number.mjs": {
-      "sha256": "0b18f8c04d9a8d5ab1b9ad32a639856547df37605068be2d548eceb8c01cefed",
+      "sha256": "755f1ca9a2c733f4706d72c3844a96d7122fecd840704ec3201e50483f81bf20",
       "kind": "managed",
       "source": "core/scripts/next-plan-number.mjs"
     },
@@ -800,7 +800,7 @@
       "source": "core/scripts/orch-preflight.mjs"
     },
     "scripts/orch-state.mjs": {
-      "sha256": "2e4be0977baf4a375faa07728473da5261c98b3d2125c5158f999fd4455fedff",
+      "sha256": "6539b9d61578a49a2f1a4868700018dea0b0ff5b11c03e7902731e1fd1f6ac66",
       "kind": "managed",
       "source": "core/scripts/orch-state.mjs"
     },
@@ -875,7 +875,7 @@
       "source": "core/scripts/prune-old-sessions.sh"
     },
     "scripts/run-plans.mjs": {
-      "sha256": "f5efd9c2de66989654f994ad76794d7f6848a3f77d1d01c6469971e59c8c7c41",
+      "sha256": "3771da070d9e001c4336e21b85dc0ec145c21ef6e974191aa969dd68bbfa53d1",
       "kind": "managed",
       "source": "core/scripts/run-plans.mjs"
     },
@@ -885,12 +885,12 @@
       "source": "core/scripts/run-python.sh"
     },
     "scripts/run-supervisor.mjs": {
-      "sha256": "5f052472ff91b698f3d77b7be205cf0f51aad05e02c2ea4103acde7eb93dc682",
+      "sha256": "822e2e366f311f8fc5b87c93d012f7473a444294c362ab46c5673e17eced4620",
       "kind": "managed",
       "source": "core/scripts/run-supervisor.mjs"
     },
     "scripts/scope-check.mjs": {
-      "sha256": "7030eedb5d6955d37e75e6007885e493af2f6e33732e0dffdaef0b5577d63a05",
+      "sha256": "aefb14e0e32f8180fb949f3c0e08badbe0a382a73f0f452b76bf8b9c10c49c07",
       "kind": "managed",
       "source": "core/scripts/scope-check.mjs"
     },
