@@ -63,6 +63,31 @@ test('the shipped instructions carry the rule, and save-plan runs --tests', () =
   assert.equal((skill.match(/scope-check\.mjs --tests --plan=<path>/g) ?? []).length >= 2, true, 'checklist and Phase 2 both run --tests')
 })
 
+// FoodVibe 547 and 552: scope lines that are only a test's file name match nothing; the lint said ok.
+test('fix sibling-test-scope: a scope line that is only a test file name is bad (547, 552)', () => {
+  const r547 = scopeTestsLint(plan(['tab-chips.component.spec.ts', 'header.component.spec.ts', 'src/app/core/components/header/**', 'e2e/ui/547-1.spec.ts']))
+  assert.equal(r547.status, 'bad')
+  assert.deepEqual(r547.bare, ['tab-chips.component.spec.ts', 'header.component.spec.ts'])
+  const r552 = scopeTestsLint(plan(['src/app/core/components/tab-chips/tab-chips.component.ts', 'requests.page.spec.ts']))
+  assert.equal(r552.status, 'bad')
+  assert.deepEqual(r552.bare, ['requests.page.spec.ts'])
+  // A root file is a path from the repo root: never bare.
+  assert.equal(scopeTestsLint(plan(['src/**', 'src/a.test.ts', 'package.json', 'CHANGELOG.md'])).status, 'ok')
+})
+
+// FoodVibe 580: the plan named test files the scope did not cover; the run's start check refused, the lint said ok.
+test('fix sibling-test-scope: a test path the plan names that the run would refuse is a warn, with the line to add (580)', () => {
+  const text = plan(['server/routes/ai.js', 'server/test/ai-menu.test.js'])
+    .replace('- [ ] T1: x', '- [ ] A6: Test the menu route — server/test/ai-menu.test.js (pattern: server/test/ai-match-product-names.test.js; `captureLogs` from server/test/helpers/log-capture.js)')
+  const r = scopeTestsLint(text)
+  assert.equal(r.status, 'warn')
+  assert.deepEqual(r.refused.map((x) => x.file), ['server/test/ai-match-product-names.test.js', 'server/test/helpers/log-capture.js'])
+  assert.match(r.refused[0].reason, /no scope line names a test location/)
+  // A test beside a scoped file, named in the plan, is in scope.
+  const sib = plan(['src/app/x.component.ts', 'src/app/x.test.ts']).replace('- [ ] T1: x', '- [ ] T1: Update the test — src/app/x.component.spec.ts')
+  assert.equal(scopeTestsLint(sib).status, 'ok')
+})
+
 test('save-plan eval 2 covers the code-folder-only plan', () => {
   const evals = JSON.parse(readFileSync(join(kit, 'core', '.claude', 'skills', 'save-plan', 'evals', 'evals.json'), 'utf8')).evals
   const e = evals.find((x) => x.id === 2)
@@ -155,7 +180,13 @@ test('real scripts: a plan the lint accepts passes the gate', () => {
   assert.deepEqual(d.json.testsOutOfScope, [])
 })
 
-test('real scripts: --tests needs --plan and always exits 0 on a readable plan', () => {
+test('real scripts: --tests needs --plan, exits 0 on ok or warn and 1 on a bare scope line', () => {
   assert.equal(script('scope-check.mjs', '--tests').status, 1)
   assert.equal(script('scope-check.mjs', '--tests', '--plan=plans/001-gate.plan.md').status, 0)
+  writeFileSync(join(dir, 'plans', '003-bare.plan.md'), plan(['src/**', 'a.spec.ts']).replace('Plan 001', 'Plan 003'))
+  const bad = script('scope-check.mjs', '--tests', '--plan=plans/003-bare.plan.md')
+  rmSync(join(dir, 'plans', '003-bare.plan.md'))
+  assert.equal(bad.status, 1, bad.stdout + bad.stderr)
+  assert.match(bad.stdout, /^SCOPE_TESTS: bad/)
+  assert.match(bad.stdout, /a\.spec\.ts: bare file name — write the path from the repo root/)
 })

@@ -1,24 +1,37 @@
 /**
- * Scope-tests lint — the save-plan shape check that a plan changing code names a test location in its scope.
- * The gate (scripts/lib/plan-scope.mjs) blocks a changed test file no scope line names a test location for; this tells
- * the Planner at save time. Read from the scope lines only (sub-task targets are prose). Pure: callers pass the plan
- * text. The test-path rule is plan-scope.mjs's (`testScopeGlobs`); nothing of it is repeated here.
+ * Scope-tests lint — the save-plan shape check that a plan's scope lets the run change the tests the plan needs.
+ * It runs the run's own test-file gate (scripts/lib/plan-scope.mjs `testRefusals`, the function `orch-state.mjs diff`
+ * and the dry run's readiness check call) on the test paths the plan names, so the save and the run cannot disagree.
+ * Pure: callers pass the plan text. The test-path rule is plan-scope.mjs's; nothing of it is repeated here.
  *
- * Status: 'no-scope' (no parsable scope block), 'docs-only' (every scope line is documentation), 'ok' (a scope line
- * names a test location, or the only lines are test lines), 'warn' (code lines and no test line; `codeGlobs` lists them).
+ * Status, worst first:
+ *   'bad'       a scope line is only a test's file name (`bare`): it matches nothing the plan means;
+ *   'warn'      a test path the plan names would be refused by the run (`refused`: { file, reason }), or the scope names
+ *               code and no test location (`codeGlobs`);
+ *   'ok'        none of those; 'docs-only' (every scope line is documentation); 'no-scope' (no parsable scope block).
  */
-import { extractScopeGlobs, testScopeGlobs } from './plan-scope.mjs'
+import { createRequire } from 'module'
+import { extractScopeGlobs, testScopeGlobs, testRefusals, plannedTestPaths, bareTestLines } from './plan-scope.mjs'
 
 // A scope line that only ever matches documentation: a text file, a docs/ or plans/ folder, a changelog/readme/license.
 const DOC_GLOB = /(\.(md|mdx|txt|rst)$)|(^(docs|plans)\/)|(^(CHANGELOG|README|LICENSE)[^/]*$)/i
 
 export const isDocGlob = (glob) => DOC_GLOB.test(String(glob).replace(/\\/g, '/'))
 
+const picomatch = createRequire(import.meta.url)('picomatch')
+const matchGlobs = (g) => picomatch(g, { dot: true })
+
 export function scopeTestsLint(planText) {
-  const globs = extractScopeGlobs(String(planText).replace(/\r\n/g, '\n'))
-  if (!globs) return { status: 'no-scope', codeGlobs: [] }
+  const text = String(planText).replace(/\r\n/g, '\n')
+  const globs = extractScopeGlobs(text)
+  if (!globs) return { status: 'no-scope', codeGlobs: [], bare: [], refused: [] }
+  const bare = bareTestLines(globs)
+  const refused = testRefusals(plannedTestPaths(text), globs, matchGlobs)
   const tests = new Set(testScopeGlobs(globs))
   const codeGlobs = globs.filter((g) => !tests.has(g) && !isDocGlob(g))
-  if (!codeGlobs.length) return { status: tests.size ? 'ok' : 'docs-only', codeGlobs }
-  return { status: tests.size ? 'ok' : 'warn', codeGlobs }
+  const out = { codeGlobs, bare, refused }
+  if (bare.length) return { status: 'bad', ...out }
+  if (refused.length) return { status: 'warn', ...out }
+  if (!codeGlobs.length) return { status: tests.size ? 'ok' : 'docs-only', ...out }
+  return { status: tests.size ? 'ok' : 'warn', ...out }
 }
