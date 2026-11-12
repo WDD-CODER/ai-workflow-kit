@@ -1,9 +1,9 @@
 {
   "kit": {
-    "version": "3.2.1"
+    "version": "3.2.2"
   },
   "source": "local:.",
-  "commit": "e508c84888ae2e0117daeb165e32194b9eacce66",
+  "commit": "1018663e6f782382de0339b724d88de0ee9608d9",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -710,7 +710,7 @@
       "source": "core/scripts/lib/override-steps.mjs"
     },
     "scripts/lib/plan-deps.mjs": {
-      "sha256": "b534e3fd9dd125048b9e130406bb54dc298af10090185e40f15432a7473889ad",
+      "sha256": "acbfa2e191e889c944bad28ef8f2fec408779edf8b59ad738b4f5bac9997c489",
       "kind": "managed",
       "source": "core/scripts/lib/plan-deps.mjs"
     },
@@ -835,7 +835,7 @@
       "source": "core/scripts/plan-name-similarity.mjs"
     },
     "scripts/plan-order.mjs": {
-      "sha256": "277050b45f364af2796c37a3d061bdd4a147ee168af154fff96b96856fa9e051",
+      "sha256": "42931b9b95d2bdb66f5bfdffa8f4d8b0f7ceb0871fac29fe670e53f39f65fc8e",
       "kind": "managed",
       "source": "core/scripts/plan-order.mjs"
     },
