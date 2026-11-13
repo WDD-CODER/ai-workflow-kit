@@ -205,6 +205,14 @@ can kill a run mid-build). It calls no model and decides nothing a plan's tiers 
   (plus one minute), else after `rateLimitWaitMin`; these do not count against the 3, and their waits stop at 6 hours.
 - **Memory.** Before a relaunch, free memory (`os.freemem()`, `freeMemGb` in `lib/orch-run.mjs`; `--free-mem` prints
   it) below `MIN_FREE_MEM_GB` (4) waits, re-checked every 2 minutes up to 60, then stops with `low memory: <n> GB free`.
+- **The session's watch under low memory.** Claude Code stops a background shell when the machine runs low on memory
+  ("stopped because the system is running low on memory … Do not start it again on your own"). That kills the
+  Planner's `orch-state.mjs watch` wait, and the run goes unwatched: no `ASK` card and no end card reach the Human.
+  The run itself lives under the supervisor and goes on. To stop Claude Code from doing this, the Human sets
+  `CLAUDE_CODE_DISABLE_BG_SHELL_PRESSURE_REAP=1` before Claude Code starts: in `~/.claude/settings.json` under `env`
+  (`"env": { "CLAUDE_CODE_DISABLE_BG_SHELL_PRESSURE_REAP": "1" }`) or in the system environment, then restarts
+  Claude Code. The cost: under real memory pressure the system may kill the whole session instead of one shell.
+  Without it, after such a stop, run `watch` once by hand to see the run's state.
 - The two limits are fixed in code, the way `BUILDER_IDLE_MIN` is; no setting. `supervisor.json` beside `status.json`
   holds its pid, every launch, the relaunches and the waits. Every stop stays in `status.json` `stops[]`
   (`{ at, reason, attempt }`); `stopReason` is the latest, and the report lists every stop under `## Stops`.
@@ -241,6 +249,19 @@ is refused when the review folder holds a `.claude/settings.local.json`.
   plans still building. The branch is kept; a folder it cannot remove is a line, never a stop.
 - No agent deletes a folder itself: `node scripts/worktree-clean.mjs --path <folder>` (or `--sweep`) does, by the
   rules above, and prints why it kept one.
+- **Cleanup: the script for each job.** Raw deletes and kills (`rm -r`, `Remove-Item -Recurse`, `taskkill`, `kill`,
+  `git reset --hard`, `git worktree remove --force`) are refused by the deny list and the auto-mode classifier by
+  design. Never retry one in another shell or another form; use the script:
+  - a kit-made worktree folder: `node scripts/worktree-clean.mjs --path <folder>`; all of them:
+    `node scripts/worktree-clean.mjs --sweep` (`--dry-run` first to see what it would do);
+  - a slot's dev servers: `node scripts/slot-stop.mjs` in the slot; the main folder's servers that
+    `slot-serve.mjs --main` started: `node scripts/slot-stop.mjs --main`;
+  - orphaned dev watchers of this folder: `node scripts/orphan-sweep.mjs`;
+  - slots whose branch merged, and a merged run's merge folder: `node scripts/free-merged-slots.mjs`;
+  - a crashed or dead run (its slots go back): `node scripts/orch-state.mjs stop --run <run> --reason "<why>"`;
+  - a half-done merge in the merge folder: `git merge --abort`, then `node scripts/orch-state.mjs clean --run <run>`
+    says whether the folder is clean.
+  A cleanup no script covers is the Human's: say what is left and where.
 - To validate a run branch in an idle slot: `node scripts/slot-serve.mjs --ref <branch>` there. `/orchestrate` does it
   itself at a run's end when a card needs the app, checks every card URL answers, and prints the cards unasked.
 - `decision-log.mjs grade` refuses a folder on `{{git.mainBranch}}` (exit 2, naming `<repo>-orch-merge-<run>`): the
@@ -269,6 +290,11 @@ is refused when the review folder holds a `.claude/settings.local.json`.
   permission mode. A push to `{{git.mainBranch}}` is not asked (the Planner pushes plan files there); `branch-guard.sh`
   and the pre-push hook limit what a push may carry.
 - No plan's Execution Mode may pre-approve that merge.
+- When the run branch needs `{{git.mainBranch}}` merged in (its pull request conflicts), do it after the run ended,
+  in the merge folder, with a named message, never git's default (a detached folder writes `... into HEAD`):
+  `git merge --no-ff -m "Merge origin/{{git.mainBranch}} into {{orchestrator.runBranchPrefix}}<run>" origin/{{git.mainBranch}}`,
+  then `git push origin HEAD:refs/heads/{{orchestrator.runBranchPrefix}}<run>`. The subject has no `(plan NNN)`, so
+  the merged-plan ledger (State rules) does not count it.
 
 ## Never
 

@@ -33,6 +33,7 @@ own log is `.claude/orchestrator-runs/<run>.console.log`, appended):
 a background shell command (`STARTING`: the supervisor is up and the run has not reached its first state yet; one `-e 'ASK <id> '` per card already printed; none yet: `-e '^$'`):
 `until ! node scripts/orch-state.mjs watch --run <run> | grep -qE '^(RUNNING|STARTING)' || node scripts/orch-state.mjs watch --run <run> | grep '^ASK ' | grep -qv -e '^$'; do sleep 60; done`.
 When it exits while the run is still RUNNING, print the new card (3) and start the wait again; else go to 4.
+A low-memory stop of this wait ("Do not start it again on your own") leaves the run going under the supervisor: run `watch` once and tell the Human once that `CLAUDE_CODE_DISABLE_BG_SHELL_PRESSURE_REAP=1` in `~/.claude/settings.json` `env` stops it, at the cost of the whole session under real pressure (`docs/agent/orchestrator.md` → The supervisor).
 
 ## 3. Deaths and rate limits
 
