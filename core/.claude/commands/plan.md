@@ -162,7 +162,8 @@ review docs allow a direct push to `main` — restricted to `plans/*.plan.md` an
    and overwriting it to "now" would hide drift between when the plan was written and when
    it was saved.
 5. `git add` only the plan file and `.claude/todo.md` (never `-A`), then commit and push
-   to `main` directly.
+   to `main` directly. The push prints `remote: Bypassed rule violations for refs/heads/main: …`; that is expected
+   and not an error. Judge the push only by its exit code and by `! [rejected]` and `error:` lines.
 6. End with: `Plan NNN pushed. Open a free slot and say: execute plan NNN.`
 
 A plan drafted outside the main folder (Claude.ai, another tool) is only a draft: the Planner reviews
