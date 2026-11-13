@@ -3,7 +3,7 @@
     "version": "3.2.2"
   },
   "source": "local:.",
-  "commit": "1018663e6f782382de0339b724d88de0ee9608d9",
+  "commit": "f5a37c38dc288baa91d4ae1bb0829e3cd04e9b1e",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -115,12 +115,12 @@
       "source": "core/.claude/commands/kit-feedback.md"
     },
     ".claude/commands/orchestrate.md": {
-      "sha256": "74373db7f4b2ac6a6978a802c20296b5459680082bd9abeef73d4cc7d49e2190",
+      "sha256": "6bdb6e0aaad694c9cb5c71fb9e7a800a26827207eac5af0a8ad489169e701d8d",
       "kind": "managed",
       "source": "core/.claude/commands/orchestrate.md"
     },
     ".claude/commands/plan.md": {
-      "sha256": "1b63fa9c954d5e50e346dfa1632c27e80dff01b6293b66be647ad66ab175e444",
+      "sha256": "5580dfc7c17c4526ba207813fe1679d084b86753af5de22aa511560b25b5dc9f",
       "kind": "managed",
       "source": "core/.claude/commands/plan.md"
     },
@@ -215,7 +215,7 @@
       "source": "core/.claude/skills/preflight/SKILL.md"
     },
     ".claude/skills/save-plan/SKILL.md": {
-      "sha256": "04493b684185dfeb8879ea3b5c8d2351a68e49b1d7d2d699f87a50efa8078c94",
+      "sha256": "cf75d8c5c8dd980f5eca609483d26b4116b5a227050b5a3c748ccb777665d7a5",
       "kind": "managed",
       "source": "core/.claude/skills/save-plan/SKILL.md"
     },
@@ -375,7 +375,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "f52ca25aa44d6353abe99a319de064ca797f6014defd2dec38942fedc9312afe",
+      "sha256": "98f5db0dd281496cad605fa2c4d57e7f15705bc188444b371d5b2a1ecc864be4",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
