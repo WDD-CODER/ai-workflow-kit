@@ -3,7 +3,7 @@
     "version": "3.2.2"
   },
   "source": "local:.",
-  "commit": "d142cdd967a5bde0a4812b9dd6433d0a2fdb9a19",
+  "commit": "458e7ff0f41ce334c3f5a1392a049d4fa9286164",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -58,6 +58,11 @@
       "sha256": "130fb5fa2f3043a3546fee6bed18dc95d759b71a81a88140614f50bb33e86d1b",
       "kind": "managed",
       "source": "core/.claude/agents/skill-judge.md"
+    },
+    ".claude/agents/styleqa-reviewer.md": {
+      "sha256": "39ed876e7307c292d6dbf866ba68ab7efe2a12ef84a6d492b4de30c408fe075d",
+      "kind": "managed",
+      "source": "core/.claude/agents/styleqa-reviewer.md"
     },
     ".claude/commands/brief.md": {
       "sha256": "55a830a0aee50eba0660085d550ed0c1b7af2b12bc8c39882aa8eaf0dc2b0383",
@@ -155,7 +160,7 @@
       "source": "core/.claude/commands/ship.md"
     },
     ".claude/commands/skills.md": {
-      "sha256": "a17df4611387090568661364977004f38a52a3f8b139260d9e3c937a86a6a172",
+      "sha256": "09cf549206ba1853b3cc4e8e55a2f88d45181ad2eea6eacb1707235cc74f0214",
       "kind": "managed",
       "source": "core/.claude/commands/skills.md"
     },
@@ -228,6 +233,11 @@
       "sha256": "7cb17f394e3e594346ce4a1311d932ab76d1ce91f77ee600d107dc0a510cedc4",
       "kind": "managed",
       "source": "core/.claude/skills/save-plan/reference/mid-flight-sync.md"
+    },
+    ".claude/skills/styleqa/SKILL.md": {
+      "sha256": "df8e1e248b75bc6b964f3b3e689fe9f749081b529b5d73979d6d1e9fa5dfe58c",
+      "kind": "managed",
+      "source": "core/.claude/skills/styleqa/SKILL.md"
     },
     ".claude/skills/techdebt/SKILL.md": {
       "sha256": "0c408dc75c69444f3ae08c5da32aace20c0ce50f24f3d0d8ecf1772c8ba3556a",
@@ -370,7 +380,7 @@
       "source": "core/docs/agent/kit-lessons/verify.md"
     },
     "docs/agent/model-routing.md": {
-      "sha256": "fc650e39a4e170ef73afccb4046d4063fd6d5e58c077a09ba7bd290e0c4dff13",
+      "sha256": "409e4b4b5f8eba609d1fc8ccdaf83d8b4ede178ce5f54ab15f3120aa4751d87a",
       "kind": "managed",
       "source": "core/docs/agent/model-routing.md"
     },
@@ -399,8 +409,18 @@
       "kind": "managed",
       "source": "core/docs/agent/standards-security.md"
     },
+    "docs/agent/styleqa-rubric.md": {
+      "sha256": "148e47fb205b4fd72bb35e0aeb33b9700ccbe26b060fa4efbb35cab83561d7b8",
+      "kind": "managed",
+      "source": "core/docs/agent/styleqa-rubric.md"
+    },
+    "docs/agent/styleqa.md": {
+      "sha256": "e198ccf24bd1933c5cb7ffa83bfa42c48a64e07884a624bb433d292fd209e32f",
+      "kind": "managed",
+      "source": "core/docs/agent/styleqa.md"
+    },
     "docs/agent/workflow-map.md": {
-      "sha256": "6bb07def05b9f5b401247e3734f7fc2897724bdfac5748e2dbec7b4d2aa94efc",
+      "sha256": "632527ee522fbb7e1c764ba20662937c5820cb1d2faad984dbf9174f1dbc59a7",
       "kind": "managed",
       "source": "core/docs/agent/workflow-map.md"
     },
@@ -969,6 +989,11 @@
       "kind": "managed",
       "source": "core/scripts/styleqa/findings.mjs"
     },
+    "scripts/styleqa/merge.mjs": {
+      "sha256": "d128b3432c5cb6673dd0ead0787229d1240c488191b903cea92c282edcd19ffe",
+      "kind": "managed",
+      "source": "core/scripts/styleqa/merge.mjs"
+    },
     "scripts/styleqa/pages.mjs": {
       "sha256": "40e5ca215ac17f153ca6fdb508c6e902f5b1ff576b0ec7d8492c0f5df9399eb0",
       "kind": "managed",
@@ -978,6 +1003,11 @@
       "sha256": "43a7f145f0cf9d0194dd1f740ac22dc18ae0ca6352d62a342028fe6e492ea2aa",
       "kind": "managed",
       "source": "core/scripts/styleqa/probe.mjs"
+    },
+    "scripts/styleqa/queue.mjs": {
+      "sha256": "ad68aac85a108a66f6bd6c87d875465046bcfa6dff58eead2efebedccef0ab0c",
+      "kind": "managed",
+      "source": "core/scripts/styleqa/queue.mjs"
     },
     "scripts/styleqa/redact.mjs": {
       "sha256": "6276dfd7bdca3772657e1f633066f73d6f4f1fda0dc60775a83250c6e394f86d",
@@ -990,7 +1020,7 @@
       "source": "core/scripts/styleqa/report.mjs"
     },
     "scripts/styleqa/run.mjs": {
-      "sha256": "cd183d923182a4f3bcb919b95dfaffcb9d17751471a287a115e7e38a191bdae4",
+      "sha256": "be9d1c3edd8dfcafc785c24ec4b2f482c92336acbbfda57695f527ac8fc7772a",
       "kind": "managed",
       "source": "core/scripts/styleqa/run.mjs"
     },

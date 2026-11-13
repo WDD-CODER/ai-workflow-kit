@@ -189,6 +189,8 @@ export async function main(argv) {
   const { store, current } = updateStore(readStore(storeFile), { findings: found, coverage }, { date })
   writeStore(storeFile, store)
   writeFileSync(reportFile, renderReport({ date, current, coverage, notes, pages: map.pages, direction: settings.uiDirection, rails }))
+  // What merge.mjs needs to draw the same report again with the visual findings folded in.
+  writeFileSync(join(outDir, 'run.json'), `${JSON.stringify({ date, coverage, notes, rails }, null, 2)}\n`)
   const n = (s) => current.filter((f) => f.status === s).length
   for (const note of notes) say.push(`STYLEQA: ${note}`)
   say.push(`STYLEQA: report ${relative(root, reportFile).replace(/\\/g, '/')} — ${n('new') + n('known')} open (${n('new')} new, ${n('known')} known), ${n('gone')} gone`)

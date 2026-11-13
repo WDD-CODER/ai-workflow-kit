@@ -969,7 +969,8 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     }
     // The Style QA engine and its two seeds; the settings render with their defaults and the engine runs.
     for (const f of ['scripts/styleqa/run.mjs', 'scripts/styleqa/config.mjs', 'scripts/styleqa/pages.mjs', 'scripts/styleqa/static-checks.mjs', 'scripts/styleqa/findings.mjs',
-      'scripts/styleqa/report.mjs', 'scripts/styleqa/redact.mjs', 'scripts/styleqa/sweep.mjs', 'scripts/styleqa/probe.mjs', 'docs/qa/styleqa-pages.json', 'docs/qa/styleqa-theme.md']) {
+      'scripts/styleqa/report.mjs', 'scripts/styleqa/redact.mjs', 'scripts/styleqa/sweep.mjs', 'scripts/styleqa/probe.mjs', 'docs/qa/styleqa-pages.json', 'docs/qa/styleqa-theme.md',
+      'scripts/styleqa/queue.mjs', 'scripts/styleqa/merge.mjs', '.claude/skills/styleqa/SKILL.md', '.claude/agents/styleqa-reviewer.md', 'docs/agent/styleqa.md', 'docs/agent/styleqa-rubric.md']) {
       if (!existsSync(join(od, f))) fail(`styleqa: install did not copy ${f}`)
     }
     const sqc = existsSync(join(od, 'scripts/styleqa/config.mjs')) ? read(od, 'scripts/styleqa/config.mjs') : ''
