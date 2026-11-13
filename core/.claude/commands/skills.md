@@ -25,5 +25,6 @@ Show all registered skills with trigger patterns and file locations.
 ## Notes
 
 - Slash commands live in `.claude/commands/` — use `/commands`. Skills are separate from commands.
+- `/styleqa` is a skill, not a command (the command budget is full): `.claude/skills/styleqa/SKILL.md`; see `docs/agent/styleqa.md`.
 - When adding/removing a skill, update `AGENTS.md`'s `## Skill triggers` table — not this file.
 - Do not list retired skills (`mp-search`, `nightly-audit`, `worktree-session-end`, `execute-debugging`) even if mentioned in archives.

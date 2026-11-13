@@ -1,0 +1,7 @@
+{
+  "tokenPrefixes": { "color": "", "fontSize": "", "radius": "" },
+  "outDir": "out/styleqa",
+  "widths": ["375x812", "620x900", "1366x768"],
+  "uiDirection": "ltr",
+  "loaderText": []
+}

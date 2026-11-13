@@ -94,6 +94,17 @@ for (const name of REVIEWERS) {
   })
 }
 
+test('styleqa-reviewer: review tier, Read/Glob/Write only (no browser, no Bash), at most 120 lines', () => {
+  assert.ok(agentFiles.includes('styleqa-reviewer.md'), 'styleqa-reviewer.md is installed')
+  const text = read('styleqa-reviewer.md')
+  const fm = frontmatter(text)
+  assert.equal(fm.name, 'styleqa-reviewer')
+  assert.ok(fm.model && !/\{\{/.test(fm.model) && !/haiku/i.test(fm.model), `model: ${fm.model}`)
+  assert.deepEqual(fm.tools.split(',').map((t) => t.trim()), ['Read', 'Glob', 'Write'])
+  assert.ok(text.split(/\r?\n/).length <= 120)
+  for (const re of DENY) assert.ok(!re.test(text), `styleqa-reviewer.md contains ${re}`)
+})
+
 test('no role agent names a deny-listed command', () => {
   for (const f of agentFiles.filter((x) => x.startsWith('orch-'))) {
     const text = read(f)
