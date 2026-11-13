@@ -180,9 +180,18 @@ export function undoneItems(planText, notDone) {
       // Only a named item counts: its command, its opening words, or the whole note inside it — never shared words.
       return el.length >= 20 && low.includes(el)
     })
-    if (entry) found.push({ item: `[${item.tag}] ${item.text}`.slice(0, 200), reason: entry })
+    if (entry) found.push({ item: `[${item.tag}] ${item.text}`.slice(0, 200), reason: entry, tag: item.tag })
   }
   return found
+}
+/**
+ * The builder's undone items split in two: `fail`, the [auto] items, which fail the gate; `uiNotRun`, the [ui] items.
+ * A builder's folder has no running app and no QA login, so it can write a [ui] spec but never run it: a [ui] item is a
+ * note for the run's [ui] step and the Human, never a failure, a fix round or a tier change.
+ */
+export function undoneSplit(planText, notDone) {
+  const all = undoneItems(planText, notDone)
+  return { fail: all.filter((x) => x.tag !== 'ui'), uiNotRun: all.filter((x) => x.tag === 'ui') }
 }
 /** The main folder's servers a reason names: 'fe' (a dev server, the frontend), 'be' (a backend, a database, an API) or null. */
 export function serversNamed(reason) {
@@ -1008,8 +1017,15 @@ async function main() {
         const onBase = git(ROOT, 'show', `${base}:${l.path}`)
         const planText = onBase.status === 0 ? onBase.out : readFileSync(join(ROOT, l.path), 'utf8')
         const builtins = { [scopeMarker(base, l.path)]: () => scopeCheck({ folder: wt, base, planText, planPath: l.path, hotspots: HOTSPOTS, upstream: UPSTREAM }) }
-        // A promised [auto]/[ui] Done-when item the builder reports as not done never reaches the merge.
-        const left = result ? undoneItems(planText, result.notDone) : []
+        // A promised [auto] Done-when item the builder reports as not done never reaches the merge. A [ui] item it
+        // reports as not done is a spec written but not run (its folder has no app and no QA login): a note and an
+        // unchecked card for the Human, never a failure, a fix round or a tier change.
+        const { fail: left, uiNotRun } = result ? undoneSplit(planText, result.notDone) : { fail: [], uiNotRun: [] }
+        for (const x of uiNotRun) {
+          note(`${x.item.slice(0, 160)}: written, not run — checked by the run's [ui] step / the Human`, nnn)
+          const card = x.item.replace(/^\[ui\]\s*/, '').replace(/^[\s-]+/, '').slice(0, 160)
+          if (card) setPlan(nnn, { card, 'card-status': 'unchecked', via: 'none' })
+        }
         if (left.length) {
           const first = left[0]
           const servers = serversNamed(first.reason)

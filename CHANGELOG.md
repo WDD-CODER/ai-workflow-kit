@@ -9,6 +9,9 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Fixed
+- **A `[ui]` item the builder could not run no longer fails the plan.** The builder's folder has no running app and no QA login, so a `[ui]` spec it wrote could never run there; the gate counted it as left undone, used both fix rounds, moved to the judgment tier and asked to park. Now a `[ui]` item in the builder's `notDone` is a run note ("written, not run") and an unchecked card for the Human. An `[auto]` item left undone still fails. The builder is told to write the `[ui]` spec, not run it, and never ask for QA credentials.
+
 ## [3.2.2] - 2026-11-12
 
 Patch: no project action. Sync it between orchestrator runs, never during one. A plan scope line that is only a test

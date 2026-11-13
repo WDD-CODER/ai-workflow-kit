@@ -157,9 +157,11 @@ two marked **model**.
   `cannot lock ref` or a network error; a failed park still saves the work to `park/<run>-<NNN>`.
 - **Long Windows paths:** the preflight's `git longpaths` check sets `core.longpaths true` in the repository config when it
   is not (`OK git longpaths (set to true)`), or prints the exact command when that fails.
-- **Undone items:** a builder result whose `notDone` names an open `[auto]` or `[ui]` Done-when item fails the gate with
+- **Undone items:** a builder result whose `notDone` names an open `[auto]` Done-when item fails the gate with
   `Done-when item left undone: <item>` and takes a fix round. When the reason names a backend, database or dev server,
-  the main folder's servers are started (`scripts/slot-serve.mjs --main`) first.
+  the main folder's servers are started (`scripts/slot-serve.mjs --main`) first. An open `[ui]` item in `notDone` is a
+  spec written but not run (the builder's folder has no app and no QA login): a run note and an unchecked card for the
+  Human, never a failure.
 5. **Report.** The builders' `behaviour:` / `seen:` / `removes:` decisions go in one `decisions` call; `finish`
    writes the report. Exit 0 = every plan merged, 2 = some parked or skipped. `calls.csv` in the run's folder has one
    row per model call and gate command; its `model` is the value passed after `--model` on that call.
