@@ -18,7 +18,8 @@
  * builder (INV-1); the same reason twice, or a failure after that, asks (orchestrator.maxFixRounds counts those rounds,
  * default 2). An ask — those, a builder's question, a review that could not run twice — is one file
  * (.claude/orchestrator-runs/<run>/asks/<NNN>-<n>.json): only its plan waits, and what it blocks is held; once the rest
- * ended the run polls for answers (ASK_WAIT_MIN), resumes an answered plan, and parks an unanswered one. A park skips
+ * ended the run polls for answers, resumes an answered plan, and keeps waiting for an unanswered one (a note at ASK_WAIT_MIN,
+ * then at most once an hour); only after ASK_PARK_MIN does it park. A park skips
  * only the later plans that depend on it or share its files
  * (orchestrator.onPark "dependents"); the run goes on. A call that hits a rate or usage limit pauses the run
  * (env-paused), waits orchestrator.rateLimitWaitMin minutes and retries once; a second hit stops the run with
@@ -64,11 +65,16 @@ export const BUILDER_IDLE_MIN = 15
 // RUN_PLANS_BUILDER_IDLE_MS and RUN_PLANS_BUILDER_POLL_MS (tests only) replace them, like RUN_PLANS_CLAUDE replaces claude.
 const BUILDER_IDLE_MS = Number(process.env.RUN_PLANS_BUILDER_IDLE_MS) > 0 ? Number(process.env.RUN_PLANS_BUILDER_IDLE_MS) : BUILDER_IDLE_MIN * 60_000
 const BUILDER_POLL_MS = Number(process.env.RUN_PLANS_BUILDER_POLL_MS) > 0 ? Number(process.env.RUN_PLANS_BUILDER_POLL_MS) : 30_000
-// A plan that asks waits, once every other plan of the run has ended, this many minutes for its answer (polled every
-// 30 s); then it parks with its question in the report. Fixed like BUILDER_IDLE_MIN, not a setting.
+// A plan that asks waits, once every other plan of the run has ended, for its answer (polled every 30 s). After
+// ASK_WAIT_MIN an unanswered ask gets a "still waiting" note (again at most once an hour) and stays open: parking costs
+// a relaunch, waiting costs nothing. Only after ASK_PARK_MIN (24 h, so a run still ends some day) does it park with its
+// question in the report. Fixed like BUILDER_IDLE_MIN, not a setting.
 export const ASK_WAIT_MIN = 180
-// RUN_PLANS_ASK_WAIT_MS and RUN_PLANS_ASK_POLL_MS (tests only) replace them.
+export const ASK_PARK_MIN = 24 * 60
+const ASK_NOTE_EVERY_MS = 60 * 60_000
+// RUN_PLANS_ASK_WAIT_MS, RUN_PLANS_ASK_PARK_MS and RUN_PLANS_ASK_POLL_MS (tests only) replace them.
 const ASK_WAIT_MS = Number(process.env.RUN_PLANS_ASK_WAIT_MS) > 0 ? Number(process.env.RUN_PLANS_ASK_WAIT_MS) : ASK_WAIT_MIN * 60_000
+const ASK_PARK_MS = Number(process.env.RUN_PLANS_ASK_PARK_MS) > 0 ? Number(process.env.RUN_PLANS_ASK_PARK_MS) : ASK_PARK_MIN * 60_000
 const ASK_POLL_MS = Number(process.env.RUN_PLANS_ASK_POLL_MS) > 0 ? Number(process.env.RUN_PLANS_ASK_POLL_MS) : 30_000
 // A plan asks at most this many times in one run; the next question parks it (an answer loop never runs forever).
 const ASK_MAX = 3
@@ -1234,13 +1240,15 @@ async function main() {
     }
     await settle(await runOne(nnn, { answer: { ...ans, ask: a.ask } }))
   }
-  /** Once every other plan has ended: poll the answers every ASK_POLL_MS, each ask for up to ASK_WAIT_MS. */
+  /** Once every other plan has ended: poll the answers every ASK_POLL_MS; an ask past ASK_WAIT_MS stays open (one note,
+   * then at most one an hour); only one past ASK_PARK_MS parks. */
   const waitForAnswers = async () => {
-    if (asking.size) say(`RUN_PLANS: waiting for ${asking.size} answer(s), up to ${ASK_WAIT_MIN} min each — node scripts/orch-state.mjs watch --run ${RUN} prints them`)
+    if (asking.size) say(`RUN_PLANS: waiting for ${asking.size} answer(s) — node scripts/orch-state.mjs watch --run ${RUN} prints them`)
     while (asking.size && !stopReason) {
       let moved = false
       for (const [nnn, a] of [...asking]) {
-        a.deadline ??= Date.now() + ASK_WAIT_MS
+        a.since ??= Date.now()
+        a.deadline ??= a.since + ASK_WAIT_MS
         const ans = readAnswer(runDir, a.ask)
         if (ans?.refused) note(`ask ${a.ask.id}: an answer by the ${ans.by} was refused: ${ans.why}; the ask stays open`, nnn)
         if (!ans || ans.refused) continue
@@ -1252,8 +1260,16 @@ async function main() {
       if (moved) continue
       for (const [nnn, a] of [...asking]) {
         if (Date.now() < a.deadline) continue
-        asking.delete(nnn)
-        await endAsk(nnn, a, `not answered in ${Math.round(ASK_WAIT_MS / 60000)} min`)
+        if (Date.now() >= a.since + ASK_PARK_MS) {
+          asking.delete(nnn)
+          await endAsk(nnn, a, `not answered in ${Math.round(ASK_PARK_MS / 60000)} min`)
+          continue
+        }
+        if (a.noted && Date.now() - a.noted < ASK_NOTE_EVERY_MS) continue
+        a.noted = Date.now()
+        const line = `ask ${a.ask.id} still open after ${Math.round((a.noted - a.since) / 60000)} min — still waiting`
+        note(line, nnn)
+        say(`RUN_PLANS: plan ${nnn} — ${line}`)
       }
       if (asking.size) await sleep(ASK_POLL_MS)
     }

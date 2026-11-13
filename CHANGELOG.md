@@ -9,6 +9,9 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Fixed
+- **A question nobody answers no longer parks its plan after 3 hours.** A park costs a full relaunch, while waiting costs nothing, and the Human may simply be away. Now an ask still open after `ASK_WAIT_MIN` (180 min) gets one run note, `ask <id> still open after <n> min — still waiting` (again at most once an hour), and stays answerable. Only an ask unanswered for `ASK_PARK_MIN` (24 h) parks, so a run still ends some day.
+
 ## [3.2.2] - 2026-11-12
 
 Patch: no project action. Sync it between orchestrator runs, never during one. A plan scope line that is only a test
