@@ -3,7 +3,7 @@
     "version": "3.2.2"
   },
   "source": "local:.",
-  "commit": "3e59af205ad0580ed174b79f37305ab61ca156f4",
+  "commit": "4c35279b1d05791bd0004a60e88b75249d1c498b",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -15,7 +15,7 @@
       "source": "core/.claude/agents/git-agent.md"
     },
     ".claude/agents/orch-builder.md": {
-      "sha256": "d474c11c1cd9c28c35565df879fdf9b8c59c6cb14cb477a13fb605be67c8941d",
+      "sha256": "bd3f0ed8ed1ed3778cb7e251ff4dd06023c7dd663f5be9746315c8650d4dcf68",
       "kind": "managed",
       "source": "core/.claude/agents/orch-builder.md"
     },
@@ -375,7 +375,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "3b6142e8d8a72439245cc63c926315c04cfcfeb3fe9b9a1fe02fcacc45184aba",
+      "sha256": "41056d6d75738f9922ebae4b109874fd0815d7cc226202842e3475896c53c925",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -875,7 +875,7 @@
       "source": "core/scripts/prune-old-sessions.sh"
     },
     "scripts/run-plans.mjs": {
-      "sha256": "c54042302fde128dabfca826beef2e9eaaddf420ed51e500b82472dce8903891",
+      "sha256": "603308a94bf5c3b862365ffdb6e09e38a029e1f833454fa9025d091e7b4d2fd0",
       "kind": "managed",
       "source": "core/scripts/run-plans.mjs"
     },
