@@ -892,7 +892,7 @@ test('103 (g) a notDone entry that names an open [auto] or [ui] Done-when item i
 
 test('103 (g) a builder result with a notDone Done-when item fails the gate with "Done-when item left undone: <item>"', () => {
   const src = readFileSync(join(kit, 'scripts', 'run-plans.mjs'), 'utf8')
-  assert.match(src, /undoneItems\(planText, result\.notDone\)/)
+  assert.match(src, /undoneSplit\(planText, result\.notDone\)/)
   assert.match(src, /`Done-when item left undone: \$\{first\.item\}`/)
   assert.match(src, /slot-serve\.mjs', \['--main', '--servers', servers/)
 })
