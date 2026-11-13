@@ -6,17 +6,38 @@
  *   // o = { ok, waves, waveLocks, edges (unmet only), plans: { NNN: { path, title } }, skipped, error? }
  *
  * Waves and edges come from `scripts/plan-order.mjs --json` (with `--branch <run branch> --merged-from git` once the run
- * branch exists, so a relaunch leaves the merged plans out). `blockedBy()` is the rule the old workflow runtime used (moved
+ * branch exists, so a relaunch leaves the merged plans out). The merged plans are read from origin/<run branch> after a
+ * fetch; the local branch only when origin has none. A local branch that is not in origin's history gives `warning`. `blockedBy()` is the rule the old workflow runtime used (moved
  * here before the runtime was deleted): a parked plan skips the later plans that depend on it, or share its files, and
  * the plans that depend on those. `afterPark()` applies orchestrator.onPark ("dependents" or "all").
  */
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 
-const refExists = (root, ref) => spawnSync('git', ['rev-parse', '--verify', '--quiet', ref], { cwd: root }).status === 0
+const sha = (root, ref) => {
+  const r = spawnSync('git', ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], { cwd: root, encoding: 'utf8' })
+  return r.status === 0 ? r.stdout.trim() : null
+}
+
+/**
+ * The history the run's merged plans are read from: origin/<run branch> (fetched first) wins over a stale local branch
+ * (`git worktree add -b` leaves one behind); the local branch only when origin has none. A local branch that is not in
+ * origin's history (ahead or diverged) gives one warning line naming both SHAs.
+ */
+function mergedRef(root, runBranch) {
+  spawnSync('git', ['fetch', '--quiet', 'origin'], { cwd: root })
+  const local = sha(root, `refs/heads/${runBranch}`)
+  const remote = sha(root, `refs/remotes/origin/${runBranch}`)
+  if (!remote) return { ref: local ? runBranch : null, warning: null }
+  const behind = !local || local === remote || spawnSync('git', ['merge-base', '--is-ancestor', local, remote], { cwd: root }).status === 0
+  const warning = behind ? null : `RUN_ORDER: warning — local ${runBranch} ${local.slice(0, 12)} is not in origin/${runBranch} ${remote.slice(0, 12)}; reading the merged plans from origin/${runBranch}`
+  return { ref: `origin/${runBranch}`, warning }
+}
 
 export function runOrder({ root, plans, runBranch = null }) {
-  const fromGit = runBranch && (refExists(root, runBranch) || refExists(root, `origin/${runBranch}`)) ? ['--branch', runBranch, '--merged-from', 'git'] : []
+  const { ref, warning } = runBranch ? mergedRef(root, runBranch) : { ref: null, warning: null }
+  // --branch keeps the merge subjects naming the run branch; --ref is the history they are read from.
+  const fromGit = ref ? ['--branch', runBranch, '--merged-from', 'git', '--ref', ref] : []
   const r = spawnSync(process.execPath, [join(root, 'scripts', 'plan-order.mjs'), ...plans, '--json', ...fromGit], { cwd: root, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 })
   let j
   try {
@@ -25,7 +46,7 @@ export function runOrder({ root, plans, runBranch = null }) {
     return { ok: false, error: `plan-order exit ${r.status}: ${String(r.stderr || r.stdout).trim().split('\n').pop()}` }
   }
   if (r.status !== 0) return { ok: false, error: `plan-order exit ${r.status}: ${String(r.stderr ?? '').trim().split('\n').join(' | ')}` }
-  return { ok: true, waves: j.waves ?? [], waveLocks: j.waveLocks ?? [], edges: (j.edges ?? []).filter((e) => !e.met), plans: j.plans ?? {}, skipped: j.skipped ?? [], done: j.done ?? {} }
+  return { ok: true, waves: j.waves ?? [], waveLocks: j.waveLocks ?? [], edges: (j.edges ?? []).filter((e) => !e.met), plans: j.plans ?? {}, skipped: j.skipped ?? [], done: j.done ?? {}, warning }
 }
 
 /**
