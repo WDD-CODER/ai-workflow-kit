@@ -27,6 +27,10 @@ export const SETTINGS = Object.freeze({
   // Reused stack keys: the stylesheet extension (the default glob) and the UI direction (report wording).
   stylesheetExt: "css",
   uiDirection: "",
+  // The stack pack's route reader and the router file it reads (the map check, --changed); '' = none.
+  routesFile: "",
+  mainBranch: "main",
+  routesReader: '',
 })
 
 /** The page map, relative to the project root. */

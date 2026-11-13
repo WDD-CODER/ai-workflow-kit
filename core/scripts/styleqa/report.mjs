@@ -29,13 +29,16 @@ export function edges(direction) {
  * The report text. current: the findings with their status (findings.mjs updateStore); coverage: { layers, pages,
  * states, widths }; notes: lines such as "S2/S3 off: …"; pages: the page map's pages (titles); rails: sweep rows.
  */
-export function renderReport({ date, current, coverage, notes = [], pages = [], rails = [], direction = '' }) {
+export function renderReport({ date, current, coverage, notes = [], pages = [], rails = [], direction = '', failed = '' }) {
   const open = current.filter((f) => f.status !== 'gone')
   const count = (st, list = current) => list.filter((f) => f.status === st).length
   const out = [`# Style QA report — ${cell(date)}`, '']
-  out.push(`Status: ${open.length} open (${count('new')} new, ${count('known')} known), ${count('gone')} gone this run.`)
+  if (failed) out.push(`Status: failed — ${cell(failed)}`)
+  else out.push(`Status: ${open.length} open (${count('new')} new, ${count('known')} known), ${count('gone')} gone this run.`)
   const all = (v) => (v ? v.join(', ') : 'all')
   out.push(`Coverage: layers ${all(coverage.layers)}; pages ${coverage.pages.length ? coverage.pages.join(', ') : 'none'}; states ${all(coverage.states)}; widths ${all(coverage.widths)}.`)
+  for (const s of coverage.skipped ?? []) out.push(`Skipped: ${cell(s)}`)
+  if (coverage.truncated?.length) out.push(`Truncated: ${cell(coverage.truncated.join('; '))} (the page is taller than ${4} viewport-high screenshots)`)
   if (direction === 'rtl' || direction === 'ltr') {
     const e = edges(direction)
     out.push(`Direction: ${direction} — inline-start is the ${e.start} edge, inline-end the ${e.end} edge.`)
@@ -72,8 +75,10 @@ export function renderReport({ date, current, coverage, notes = [], pages = [], 
   if (!slugs.length) out.push('No page findings (the sweep and visual layers fill this section).')
   for (const slug of slugs) {
     out.push(`### ${cell(slug)}${titles.has(slug) ? ` — ${cell(titles.get(slug))}` : ''}`, '')
-    out.push(...table(['ID', 'Status', 'Check', 'State', 'Widths', 'Component', 'What'], paged.filter((f) => f.page === slug)
-      .map((f) => [f.id, f.status, f.check, f.state, f.widths, f.component ?? '', f.message])), '')
+    const mine = paged.filter((f) => f.page === slug)
+    const shots = mine.some((f) => f.screenshots?.length)
+    out.push(...table(['ID', 'Status', 'Check', 'State', 'Widths', 'Component', 'What', ...(shots ? ['Screenshots'] : [])], mine
+      .map((f) => [f.id, f.status, f.check, f.state, f.widths, f.source && f.source !== 'unknown' ? `${f.component ?? ''} (${f.source})` : f.component ?? '', f.message, ...(shots ? [f.screenshots ?? []] : [])])), '')
   }
   if (!slugs.length) out.push('')
 

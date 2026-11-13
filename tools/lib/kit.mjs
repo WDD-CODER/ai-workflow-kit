@@ -524,6 +524,7 @@ export const CONTRACT = {
   authSkill: 'skill', // the auth + logging skill (guards, interceptors, audit checklist)
   docsMapSkill: 'skill', // optional: the skill that refreshes the folder maps
   docsMapCheck: 'script', // optional: the script that skill runs first
+  styleqaRoutes: 'script', // optional: the script that reads the app's routes for the Style QA map check
   cssSection: 'section', // the standards-doc section /fix loads for a styling bug
   componentsSection: 'section', // the standards-doc section /fix loads for a UI bug
 }

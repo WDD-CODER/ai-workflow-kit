@@ -124,13 +124,13 @@ per commit: `ok` or `conflict: <what>`. STOP for a go only on a `conflict`.
 
 ## Atomic Sub-tasks
 
-- [ ] B1: Write failing tests for the probe, the state safety rules and the angular route reader first — recorded-box fixtures, a fixture routes file and a static fixture app with planted defects — tools/test/styleqa-probe.test.mjs, tools/test/styleqa-states.test.mjs, tools/test/styleqa-routes-angular.test.mjs, tools/test/styleqa-browser.test.mjs, tools/fixtures/styleqa/**
-- [ ] B2: Measure layout, theme and touch defects inside the page, mirrored for right-to-left projects — L1–L6, U1, T1–T3, G5, Rails rows, component root — core/scripts/styleqa/probe.mjs
-- [ ] B3: Drive each page, state and width in a browser without ever sending a write to the server — widths, touch, sign-in module, :id records, states, blocked steps, request guard, axe A1 — core/scripts/styleqa/sweep.mjs
-- [ ] B4: Take bounded screenshots in viewport-high segments and attach them to findings — max 4, truncated marker — core/scripts/styleqa/sweep.mjs, core/scripts/styleqa/findings.mjs
-- [ ] B5: Let the stack pack read the app's routes so the page map cannot go stale silently — new contract key styleqaRoutes (script), angular reader with a component locator, SKIP without a reader — packs/angular/scripts/styleqa-routes.mjs, packs/angular/pack.json, tools/lib/kit.mjs, tools/pack-check.mjs, kit.config.json, core/scripts/styleqa/pages.mjs
-- [ ] B6: Wire the sweep into the entry point and the report, including the changed-pages filter — --layers=sweep, --changed, --app/--api, dependency check, failed status — core/scripts/styleqa/run.mjs, core/scripts/styleqa/report.mjs
-- [ ] B7: Resync the kit's own copy and pass every check — install-check expects scripts/styleqa/sweep.mjs; node tools/sync.mjs --target . --apply — tools/install-check.mjs, scripts/**, CHANGELOG.md
+- [x] B1: Write failing tests for the probe, the state safety rules and the angular route reader first — recorded-box fixtures, a fixture routes file and a static fixture app with planted defects — tools/test/styleqa-probe.test.mjs, tools/test/styleqa-states.test.mjs, tools/test/styleqa-routes-angular.test.mjs, tools/test/styleqa-browser.test.mjs, tools/fixtures/styleqa/**
+- [x] B2: Measure layout, theme and touch defects inside the page, mirrored for right-to-left projects — L1–L6, U1, T1–T3, G5, Rails rows, component root — core/scripts/styleqa/probe.mjs
+- [x] B3: Drive each page, state and width in a browser without ever sending a write to the server — widths, touch, sign-in module, :id records, states, blocked steps, request guard, axe A1 — core/scripts/styleqa/sweep.mjs
+- [x] B4: Take bounded screenshots in viewport-high segments and attach them to findings — max 4, truncated marker — core/scripts/styleqa/sweep.mjs, core/scripts/styleqa/findings.mjs
+- [x] B5: Let the stack pack read the app's routes so the page map cannot go stale silently — new contract key styleqaRoutes (script), angular reader with a component locator, SKIP without a reader — packs/angular/scripts/styleqa-routes.mjs, packs/angular/pack.json, tools/lib/kit.mjs, tools/pack-check.mjs, kit.config.json, core/scripts/styleqa/pages.mjs
+- [x] B6: Wire the sweep into the entry point and the report, including the changed-pages filter — --layers=sweep, --changed, --app/--api, dependency check, failed status — core/scripts/styleqa/run.mjs, core/scripts/styleqa/report.mjs
+- [x] B7: Resync the kit's own copy and pass every check — install-check expects scripts/styleqa/sweep.mjs; node tools/sync.mjs --target . --apply — tools/install-check.mjs, scripts/**, CHANGELOG.md
 
 ## Technical Considerations
 - Dependencies: `@playwright/test`, `@axe-core/playwright` from the project's own `node_modules` (resolved from the project
@@ -160,3 +160,6 @@ per commit: `ok` or `conflict: <what>`. STOP for a go only on a `conflict`.
 
 ## Execution Notes
 - 2026-11-13 Planner: saved with plans 117 and 119 from the brief.
+- 2026-11-13 Builder: Step 0 drift listed only unrelated fix commits (no styleqa symbol) — ok. Playwright is not installed here, so the real browser test printed `SKIP styleqa-browser: Playwright not installed` (the `[human]` item stays open); the sweep driver is unrun in a browser.
+- Evidence: `npm run build` → 0; `npm run lint` → 0; `npm run test` → 0; `node tools/pack-check.mjs` → 0 (9 contract keys); `node tools/drift-check.mjs --target .` → 0 after sync; `node tools/install-check.mjs` → 0; `node tools/workflow-link-check.mjs` → 0; `node tools/e2e-check.mjs` → 0 (55 passed); `node tools/acceptance-check.mjs --e2e` → 0 (122); `node --test tools/test/styleqa-*.test.mjs` → pass 37, fail 0, skipped 2 (browser); `scope-check --diff=origin/orch/styleqa` → ok.
+- Choices: `idType` is read as the list request path (`/api/x` or a full URL); a bare word gives `skipped: no record`. A page with `idType` also runs the `empty` state; a route with `?query` is a tab state `tab-<value>`. The map check runs on every run (static or sweep), prints `SKIP map check: …` without a reader.
