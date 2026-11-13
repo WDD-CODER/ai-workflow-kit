@@ -128,14 +128,15 @@ two marked **model**.
      `db-write` and for a question with no kind; false for `scope`, `technical`, `environment` and `review`. The plan's
      state is `asking`; it blocks exactly what a park would, but those plans are held, not skipped, and the rest of
      the run goes on. `watch` prints each open ask as a card with its answer command. When every other plan has ended,
-     the run polls the answers every 30 s, each ask for up to `ASK_WAIT_MIN` (180, fixed in `run-plans.mjs`), while
-     `watch` still says `RUNNING`. `node scripts/orch-state.mjs answer --run <run> --id <id> --choice <n>` (or
+     the run polls the answers every 30 s while `watch` still says `RUNNING`. An ask still open after `ASK_WAIT_MIN`
+     (180, fixed in `run-plans.mjs`) gets a run note `ask <id> still open after <n> min — still waiting` (again at most
+     once an hour) and stays open: parking costs a relaunch, waiting costs nothing. `node scripts/orch-state.mjs answer --run <run> --id <id> --choice <n>` (or
      `--text "<answer>"`) writes `<id>.answer.json` with `by: human`; a `park:` option parks; a `scope` answer that
      names paths adds them to the plan's scope on the run branch first; any other answer resumes the plan in the same
      run through the resume rule above (its saved work, its round and tier, the hand-off), with the answer as
      `ANSWER` in the builder's prompt, and then the plans it held. An answer file with `by: advisor` on a `humanOnly`
-     ask is refused with a run note and the ask stays open. An unanswered ask parks its plan with its question in the
-     run notes; a plan asks at most 3 times in one run.
+     ask is refused with a run note and the ask stays open. An ask unanswered after `ASK_PARK_MIN` (24 h) parks its
+     plan with its question in the run notes; a plan asks at most 3 times in one run.
 4. **Final gate** on the run branch (`prepare`, the project checks, the manifest check, `ciMirror`). Every one of
    those commands is also in each plan's own gate (the manifest check reads the plan's folder), so the final gate finds
    nothing a plan's gate did not. When it still fails on a command whose output names a file that exactly one merged
@@ -206,6 +207,14 @@ can kill a run mid-build). It calls no model and decides nothing a plan's tiers 
   (plus one minute), else after `rateLimitWaitMin`; these do not count against the 3, and their waits stop at 6 hours.
 - **Memory.** Before a relaunch, free memory (`os.freemem()`, `freeMemGb` in `lib/orch-run.mjs`; `--free-mem` prints
   it) below `MIN_FREE_MEM_GB` (4) waits, re-checked every 2 minutes up to 60, then stops with `low memory: <n> GB free`.
+- **The session's watch under low memory.** Claude Code stops a background shell when the machine runs low on memory
+  ("stopped because the system is running low on memory … Do not start it again on your own"). That kills the
+  Planner's `orch-state.mjs watch` wait, and the run goes unwatched: no `ASK` card and no end card reach the Human.
+  The run itself lives under the supervisor and goes on. To stop Claude Code from doing this, the Human sets
+  `CLAUDE_CODE_DISABLE_BG_SHELL_PRESSURE_REAP=1` before Claude Code starts: in `~/.claude/settings.json` under `env`
+  (`"env": { "CLAUDE_CODE_DISABLE_BG_SHELL_PRESSURE_REAP": "1" }`) or in the system environment, then restarts
+  Claude Code. The cost: under real memory pressure the system may kill the whole session instead of one shell.
+  Without it, after such a stop, run `watch` once by hand to see the run's state.
 - The two limits are fixed in code, the way `BUILDER_IDLE_MIN` is; no setting. `supervisor.json` beside `status.json`
   holds its pid, every launch, the relaunches and the waits. Every stop stays in `status.json` `stops[]`
   (`{ at, reason, attempt }`); `stopReason` is the latest, and the report lists every stop under `## Stops`.
@@ -242,6 +251,19 @@ is refused when the review folder holds a `.claude/settings.local.json`.
   plans still building. The branch is kept; a folder it cannot remove is a line, never a stop.
 - No agent deletes a folder itself: `node scripts/worktree-clean.mjs --path <folder>` (or `--sweep`) does, by the
   rules above, and prints why it kept one.
+- **Cleanup: the script for each job.** Raw deletes and kills (`rm -r`, `Remove-Item -Recurse`, `taskkill`, `kill`,
+  `git reset --hard`, `git worktree remove --force`) are refused by the deny list and the auto-mode classifier by
+  design. Never retry one in another shell or another form; use the script:
+  - a kit-made worktree folder: `node scripts/worktree-clean.mjs --path <folder>`; all of them:
+    `node scripts/worktree-clean.mjs --sweep` (`--dry-run` first to see what it would do);
+  - a slot's dev servers: `node scripts/slot-stop.mjs` in the slot; the main folder's servers that
+    `slot-serve.mjs --main` started: `node scripts/slot-stop.mjs --main`;
+  - orphaned dev watchers of this folder: `node scripts/orphan-sweep.mjs`;
+  - slots whose branch merged, and a merged run's merge folder: `node scripts/free-merged-slots.mjs`;
+  - a crashed or dead run (its slots go back): `node scripts/orch-state.mjs stop --run <run> --reason "<why>"`;
+  - a half-done merge in the merge folder: `git merge --abort`, then `node scripts/orch-state.mjs clean --run <run>`
+    says whether the folder is clean.
+  A cleanup no script covers is the Human's: say what is left and where.
 - To validate a run branch in an idle slot: `node scripts/slot-serve.mjs --ref <branch>` there. `/orchestrate` does it
   itself at a run's end when a card needs the app, checks every card URL answers, and prints the cards unasked.
 - `decision-log.mjs grade` refuses a folder on `main` (exit 2, naming `<repo>-orch-merge-<run>`): the
@@ -270,6 +292,11 @@ is refused when the review folder holds a `.claude/settings.local.json`.
   permission mode. A push to `main` is not asked (the Planner pushes plan files there); `branch-guard.sh`
   and the pre-push hook limit what a push may carry.
 - No plan's Execution Mode may pre-approve that merge.
+- When the run branch needs `main` merged in (its pull request conflicts), do it after the run ended,
+  in the merge folder, with a named message, never git's default (a detached folder writes `... into HEAD`):
+  `git merge --no-ff -m "Merge origin/main into orch/<run>" origin/main`,
+  then `git push origin HEAD:refs/heads/orch/<run>`. The subject has no `(plan NNN)`, so
+  the merged-plan ledger (State rules) does not count it.
 
 ## Never
 

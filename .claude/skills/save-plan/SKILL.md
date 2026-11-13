@@ -86,7 +86,7 @@ A Worker never assigns `NNN` and never touches `.claude/todo.md` (it is Planner-
 
 1. `git branch --show-current` **immediately before committing** — if it is not `main` (e.g. `branch-guard.sh` auto-switched to `feat/session-*`), `git checkout main` first. Catch it here, not after.
 2. `git add` the plan file and `.claude/todo.md` only (never `-A`), commit. This is the Planner's admin write to `main` (`AGENTS.md` Planner-Worker bullet; enforced by `scripts/branch-guard.sh` and `.husky/pre-push`).
-3. `git push origin main`. Blocked, rejected or non-zero → **stop**; surface the blocker and ask. Do not tell the Human the plan is ready.
+3. `git push origin main`. Blocked, rejected or non-zero → **stop**; surface the blocker and ask. Do not tell the Human the plan is ready. The line `remote: Bypassed rule violations for refs/heads/main: Changes must be made through a pull request.` is expected on this push and is not an error. Judge the push only by its exit code and by `! [rejected]` and `error:` lines; a `non-fast-forward` rejection hides easily under that remote message.
 4. `git fetch origin --quiet` then `git ls-tree origin/main --name-only -- <plan path>` must print the path. Empty → the push did not land; stop and investigate.
 
 A Worker saving mid-brief does not commit here — its plan-file change rides its `feat/NNN-*` branch at `/ship`.

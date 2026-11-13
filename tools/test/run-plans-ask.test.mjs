@@ -19,7 +19,7 @@ let tmp
 before(() => {
   p = makeProject({ kit })
   tmp = mkdtempSync(join(tmpdir(), 'rp-ask-'))
-  p.addPlans({ 701: toyPlan(701), 702: toyPlan(702), 703: toyPlan(703, { deps: '701' }), 704: toyPlan(704), 711: toyPlan(711), 712: toyPlan(712, { deps: '711' }), 713: toyPlan(713), 721: toyPlan(721), 722: toyPlan(722, { deps: '723' }), 723: toyPlan(723), 724: toyPlan(724, { deps: '721, 722' }) })
+  p.addPlans({ 701: toyPlan(701), 702: toyPlan(702), 703: toyPlan(703, { deps: '701' }), 704: toyPlan(704), 705: toyPlan(705), 711: toyPlan(711), 712: toyPlan(712, { deps: '711' }), 713: toyPlan(713), 721: toyPlan(721), 722: toyPlan(722, { deps: '723' }), 723: toyPlan(723), 724: toyPlan(724, { deps: '721, 722' }), 731: toyPlan(731) })
 })
 after(() => {
   p?.cleanup()
@@ -85,8 +85,10 @@ test('(b) humanOnly by kind; an ESCALATE with no kind is Human-only; the builder
 
 test('(S8) the answer wait is fixed in code: ASK_WAIT_MIN 180 with test-only overrides; the scaffold has no askWaitMin', () => {
   assert.equal(runPlans.ASK_WAIT_MIN, 180)
+  assert.equal(runPlans.ASK_PARK_MIN, 1440)
   const src = readFileSync(join(kit, 'scripts', 'run-plans.mjs'), 'utf8')
   assert.match(src, /RUN_PLANS_ASK_WAIT_MS/)
+  assert.match(src, /RUN_PLANS_ASK_PARK_MS/)
   assert.match(src, /RUN_PLANS_ASK_POLL_MS/)
   const scaffold = JSON.parse(readFileSync(join(kit, 'kit.config.json'), 'utf8')).orchestrator
   assert.equal(scaffold.askWaitMin, undefined)
@@ -160,6 +162,41 @@ test('(a)(c)(d)(e) one plan asks, the others go on; watch shows RUNNING and the 
   }
 })
 
+test('(K8) an approved: answer whose scope push loses a race to another push still resumes the plan; it does not park', async () => {
+  // FoodVibe batch-3: the Planner pushed to the run branch while the run committed the answer's scope line; the run's
+  // push was refused and the plan parked "replan needed". Here origin refuses the first push of the answer's commit.
+  const b = bin('claude-race', { escalate: { 731: { status: 'ESCALATE', blocker: 'src/731-extra.txt is outside the Read-Write Scope', ask: { kind: 'scope', question: 'May plan 731 also write src/731-extra.txt?', options: ['approved: src/731-extra.txt'] } } } })
+  writeFileSync(join(p.origin, 'hooks', 'pre-receive'), [
+    '#!/bin/sh',
+    'while read old new ref; do',
+    '  if [ "$ref" = refs/heads/orch/race ] && [ ! -f lost-once ] && git log -1 --format=%s "$new" | grep -q "the answer to ask"; then',
+    '    touch lost-once; echo "rejected: fetch first" >&2; exit 1',
+    '  fi',
+    'done',
+    'exit 0',
+    '',
+  ].join('\n'), { mode: 0o755 })
+  Object.assign(p.env, { RUN_PLANS_ASK_WAIT_MS: '240000', RUN_PLANS_ASK_POLL_MS: '300' })
+  let run = null
+  try {
+    run = p.startPlans(['--run', 'race', '--plans', '731', '--claude', b.file], { scenario: { 731: { builder: [{ extraFile: 'src/731-extra.txt' }] } } })
+    await until('731 asking', () => p.status('race').plans['731'].state === 'asking')
+    const ans = p.state('answer', '--run=race', '--id=731-1', '--choice=1')
+    assert.equal(ans.status, 0, ans.out)
+    const r = await run.done
+    assert.equal(existsSync(join(p.origin, 'lost-once')), true, 'the first push of the answer was refused')
+    const s = p.status('race')
+    assert.equal(s.plans['731'].state, 'merged', `${s.plans['731'].reason}\n${r.out}`)
+    assert.deepEqual(b.calls().filter((c) => c.role === 'builder' && c.plan === '731').map((c) => c.answer), [false, true], 'the plan resumed with the answer')
+    assert.match(p.git(p.proj, 'show', 'origin/orch/race:plans/731-toy-731.plan.md').out, /```scope\n[^`]*src\/731-extra\.txt\n```/)
+  } finally {
+    if (run && run.child.exitCode === null) run.child.kill()
+    rmSync(join(p.origin, 'hooks', 'pre-receive'), { force: true })
+    delete p.env.RUN_PLANS_ASK_WAIT_MS
+    delete p.env.RUN_PLANS_ASK_POLL_MS
+  }
+})
+
 test('a plan an ask holds stays blocked by a park in the last wave: freed by the answer, it is skipped, not built', async () => {
   // 721 asks (wave 1), so 724 (needs 721 and 722) is held and wave 3 is left empty; 722 parks in wave 2 on an
   // environment failure. When the answer frees 724, the park of 722 must still skip it.
@@ -183,6 +220,34 @@ test('a plan an ask holds stays blocked by a park in the last wave: freed by the
     if (run && run.child.exitCode === null) run.child.kill()
     delete p.env.RUN_PLANS_ASK_WAIT_MS
     delete p.env.RUN_PLANS_ASK_POLL_MS
+  }
+})
+
+test('K14: an ask past its wait is not parked — one "still waiting" note, the plan stays asking, and a late answer resumes it', async () => {
+  // FoodVibe ask 559-2 parked after 180 min while the Human was away; parking cost a relaunch. Now the wait only
+  // writes a note and the ask stays open until ASK_PARK_MIN (24 h).
+  const b = bin('claude-late', { escalate: { 705: { status: 'ESCALATE', blocker: 'ESCALATE: db-write psql -c "insert into toys"' } } })
+  Object.assign(p.env, { RUN_PLANS_ASK_WAIT_MS: '300', RUN_PLANS_ASK_PARK_MS: '600000', RUN_PLANS_ASK_POLL_MS: '100' })
+  let run = null
+  try {
+    run = p.startPlans(['--run', 'late', '--plans', '705', '--claude', b.file])
+    const st = () => p.status('late')
+    const waitNotes = () => st().notes.filter((n) => n.plan === '705' && /still open after \d+ min — still waiting/.test(n.text))
+    await until('the still-waiting note for ask 705-1', () => waitNotes().length === 1, 60000)
+    assert.match(waitNotes()[0].text, /^ask 705-1 still open after \d+ min — still waiting$/)
+    await new Promise((r) => setTimeout(r, 1500))
+    assert.equal(st().plans['705'].state, 'asking', 'past the wait, the plan still asks — not parked')
+    assert.equal(waitNotes().length, 1, 'the note is not repeated within the hour')
+    assert.equal(run.child.exitCode, null, 'the run keeps waiting')
+    const ans = p.state('answer', '--run=late', '--id=705-1', '--text=no database write: build the toy without it')
+    assert.equal(ans.status, 0, ans.out)
+    const r = await run.done
+    assert.equal(r.status, 0, r.out)
+    assert.equal(st().plans['705'].state, 'merged', r.out)
+    assert.deepEqual(b.calls().filter((c) => c.role === 'builder' && c.plan === '705').map((c) => c.answer), [false, true])
+  } finally {
+    if (run && run.child.exitCode === null) run.child.kill()
+    Object.assign(p.env, { RUN_PLANS_ASK_WAIT_MS: '1', RUN_PLANS_ASK_PARK_MS: '1', RUN_PLANS_ASK_POLL_MS: '50' })
   }
 })
 

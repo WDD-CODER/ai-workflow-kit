@@ -207,6 +207,44 @@ export function retryGit(cwd, args, { exec = (c, a) => git(c, ...a), sleep = sle
   return r
 }
 
+/** The trimmed lines inside a plan's ```scope block ([] when it has none). */
+function scopeBlockLines(planText) {
+  const lines = String(planText).replace(/\r\n/g, '\n').split('\n')
+  const at = lines.findIndex((l) => /^```scope\s*$/.test(l.trim()))
+  const end = at < 0 ? -1 : lines.findIndex((l, i) => i > at && /^```\s*$/.test(l.trim()))
+  return end < 0 ? [] : lines.slice(at + 1, end).map((l) => l.trim()).filter(Boolean)
+}
+/** The subject of the commit run-plans makes for an `approved:` answer (extendScope). */
+export const SCOPE_ANSWER_SUBJECT_RE = /^plan\(\d+\): scope \+ .+ — the answer to ask \S+ of run \S+$/
+
+/**
+ * A merge folder whose own commits beyond `ref` are only scope-answer commits whose added scope lines `ref` already
+ * holds (someone pushed the same lines first, or the run's own push lost a race): those commits add nothing, so the
+ * folder is moved to `ref` with `git reset --keep` (it refuses rather than lose an uncommitted file). Any other local
+ * commit leaves the folder as it is. Returns { ok: true, dropped: [sha] } or { ok: false, why }.
+ */
+export function dropScopeCommitsOnRef(folder, ref) {
+  const shas = git(folder, 'rev-list', `${ref}..HEAD`).out.split('\n').filter(Boolean)
+  if (!shas.length) return { ok: false, why: `no commit of its own beyond ${ref}` }
+  for (const sha of shas) {
+    const short = sha.slice(0, 8)
+    if (!SCOPE_ANSWER_SUBJECT_RE.test(git(folder, 'log', '-1', '--format=%s', sha).out)) return { ok: false, why: `${short} is not a scope-answer commit` }
+    const files = git(folder, 'show', '--format=', '--name-only', sha).out.split('\n').filter(Boolean)
+    if (files.length !== 1 || !files[0].endsWith('.plan.md')) return { ok: false, why: `${short} changes more than one plan file` }
+    const diff = git(folder, 'show', '--format=', '--no-color', '-U0', sha).out.split('\n')
+    const added = diff.filter((l) => l.startsWith('+') && !l.startsWith('+++')).map((l) => l.slice(1).trim()).filter(Boolean)
+    if (!added.length || diff.some((l) => l.startsWith('-') && !l.startsWith('---'))) return { ok: false, why: `${short} does more than add scope lines` }
+    const there = git(folder, 'show', `${ref}:${files[0]}`)
+    if (there.status !== 0) return { ok: false, why: `${files[0]} is not on ${ref}` }
+    const have = new Set(scopeBlockLines(there.out))
+    const missing = added.filter((x) => !have.has(x))
+    if (missing.length) return { ok: false, why: `${ref} does not hold the scope line(s) of ${short}: ${missing.join(', ')}` }
+  }
+  const r = git(folder, 'reset', '--quiet', '--keep', ref)
+  if (r.status !== 0) return { ok: false, why: `git reset --keep ${ref}: ${r.err || r.out}` }
+  return { ok: true, dropped: shas }
+}
+
 // The slot's own runtime files (.worktree-root, -port, -plan) are not work, even where a project did not exclude them.
 const dirty = (path) => git(path, 'status', '--porcelain').out.split('\n').filter((l) => l && !/^\?\? \.worktree-/.test(l)).length > 0
 

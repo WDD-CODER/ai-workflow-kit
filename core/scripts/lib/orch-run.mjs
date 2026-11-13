@@ -508,6 +508,27 @@ export function builderTiers(p) {
   return tiers.map((t) => String(t).replace(/\|/g, '/')).join(' → ')
 }
 
+// ---- the lines of a failing check's output worth reading (the final gate's stop reason and report, a hand-off) ----
+const NOISE_RE = /ELIFECYCLE|ERR_PNPM|npm ERR!|^npm error\b|Command failed with exit code/i
+// a totals line: Karma TOTAL / Executed n of m (k FAILED), jest/vitest Tests:/Test Files, node:test ℹ fail / TAP # fail, mocha n failing
+const TOTALS_RE = /^TOTAL:|\bExecuted \d+ of \d+\b.*\bFAILED\b|^(?:Tests?|Test Files|Test Suites):?\s.*\bfail|^(?:ℹ|#) fail\b|^\d+ failing\b/i
+// a failing test or error: Karma/Jasmine FAILED, node:test not ok / ✖, jest/vitest FAIL / ●, mocha 1) name, Error:
+const NAME_RE = /\bFAILED\b|^not ok\b|^✖|^FAIL\b|^●|^\d+\) \S|\bError:/
+const SKIP_RE = /^✖ failing tests:?$|^● Console\b/
+/** No plan of the run changed a file the final gate's output names: the failure may be this machine, not the plans. */
+export const NO_PLAN_FILE_NOTE = "no plan in this run changed the failing files — may be this machine (try the same command on the run's base commit)"
+/**
+ * The lines of a failing check's output worth reading: the last totals line first, then up to `max` failing test names
+ * or errors (Karma/Jasmine, node:test, jest/vitest, mocha). No such line: the last `last` lines that are not empty.
+ */
+export function failingLines(tail, { max = 5, last = 3 } = {}) {
+  const lines = String(tail ?? '').replace(/\u001b\[[0-9;]*[A-Za-z]/g, '').split(/\r?\n/).map((l) => l.trim().slice(0, 200)).filter(Boolean)
+  const totals = lines.filter((l) => !NOISE_RE.test(l) && TOTALS_RE.test(l))
+  const names = [...new Set(lines.filter((l) => !NOISE_RE.test(l) && !SKIP_RE.test(l) && !TOTALS_RE.test(l) && NAME_RE.test(l)))].slice(0, max)
+  const picked = [...totals.slice(-1), ...names]
+  return picked.length ? picked : lines.slice(-last)
+}
+
 export function formatReport({ status, merged, mainShaNow, finishedAt, runBranch, mainBranch, mainChangedFiles = null, appErrors = null, decisions = null, triage = {}, learning = null }) {
   const plans = Object.values(status.plans ?? {}).sort((a, b) => (a.nnn < b.nnn ? -1 : 1))
   const mergedSet = new Map(merged.map((m) => [m.nnn, m]))
@@ -524,6 +545,8 @@ export function formatReport({ status, merged, mainShaNow, finishedAt, runBranch
     // Every stop of every attempt (orch-state.mjs stop appends to stops[]): a later attempt never hides an earlier cause.
     ...(Array.isArray(status.stops) && status.stops.length ? ['', '## Stops', '', ...status.stops.map((st) => `- attempt ${st.attempt ?? '?'} · ${st.at ?? '?'} · ${st.reason}`), ''] : []),
     status.finalGate ? `Final gate: ${status.finalGate.ok ? 'ok' : `failed${status.finalGate.command ? `: ${status.finalGate.command}` : ''}`} (attempt ${status.finalGate.attempt ?? 1})` : '',
+    status.finalGate && !status.finalGate.ok && status.finalGate.failing?.length ? `Failing: ${status.finalGate.failing.join(' / ')}` : '',
+    status.finalGate && !status.finalGate.ok && status.finalGate.noPlanFile ? `Final gate note: ${NO_PLAN_FILE_NOTE}` : '',
     '',
     '## Plans',
     '',
@@ -746,15 +769,29 @@ export function runLogRow({ status, merged = [], finalGate = 'none', date }) {
   }
 }
 
-/** { pre: the lines above the table (the `Earlier` line excluded), earlier: that line or null, rows } from a run-log.md text. */
+/**
+ * { pre: the lines above the table (the `Earlier` line excluded), earlier: that line or null, rows } from a run-log.md text.
+ * The run log merges with `merge=union` (.gitattributes), which can leave two `Earlier` lines and two copies of a row both
+ * sides rewrote: the `Earlier` line with the most runs wins, and a run keeps one row (at its first place, the copy with the
+ * most columns filled).
+ */
 export function parseRunLog(text) {
   const lines = String(text ?? '').replace(/\r\n/g, '\n').split('\n')
   const head = lines.findIndex((l) => /^\|\s*Date\s*\|/.test(l))
   const above = head < 0 ? lines : lines.slice(0, head)
-  const earlier = above.find((l) => /^Earlier \(\d+ runs?\):/.test(l)) ?? null
-  const rows = (head < 0 ? [] : lines.slice(head + 2)).filter((l) => /^\|/.test(l)).map((l) => l.split('|').slice(1, -1).map((c) => c.trim())).filter((c) => c.length >= ROW_KEYS.length)
+  const earliers = above.filter((l) => /^Earlier \(\d+ runs?\):/.test(l))
+  const runsIn = (l) => Number(/^Earlier \((\d+)/.exec(l)[1])
+  const earlier = earliers.reduce((best, l) => (best === null || runsIn(l) > runsIn(best) ? l : best), null)
+  const all = (head < 0 ? [] : lines.slice(head + 2)).filter((l) => /^\|/.test(l)).map((l) => l.split('|').slice(1, -1).map((c) => c.trim())).filter((c) => c.length >= ROW_KEYS.length)
     .map((c) => Object.fromEntries(ROW_KEYS.map((k, i) => [k, c[i]])))
-  return { pre: above.filter((l) => l !== earlier), earlier, rows }
+  const filled = (r) => ROW_KEYS.filter((k) => r[k] && r[k] !== '-').length
+  const rows = []
+  const at = new Map()
+  for (const r of all) {
+    if (!at.has(r.run)) at.set(r.run, rows.push(r) - 1)
+    else if (filled(r) > filled(rows[at.get(r.run)])) rows[at.get(r.run)] = r
+  }
+  return { pre: above.filter((l) => !earliers.includes(l)), earlier, rows }
 }
 
 const SUM_LABELS = [['plans', 'plans'], ['merged', 'merged'], ['parked', 'parked'], ['fixRounds', 'fix rounds'], ['escalations', 'escalations'], ['gateFails', 'gate fails'], ['x', '✗'], ['misses', 'checker misses']]

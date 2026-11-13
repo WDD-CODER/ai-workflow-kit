@@ -14,15 +14,19 @@
  * Removed only when: git lists it, it is not locked, it has no uncommitted file (server logs .claude/*.log aside),
  * its run is not live, no hand-off names it, it is not on park/…, and its work is safe elsewhere:
  *   a branch merged into origin/<main> or (a builder) origin/<run branch>, or whose upstream is gone (squash merge);
- *   (a merge folder stays until its run branch is merged: the run's grade and lessons still work in it);
+ *   (a merge folder stays until its run branch is merged: the run's grade and lessons still work in it — unless its
+ *   commit is on an origin branch other than its own run branch, as when a run was fast-forwarded onto a later one);
  *   a detached folder: its commit is on an origin branch.
  * A sweep also keeps a non-orchestrator folder made in the last two hours (an agent may still use it).
+ * A merge folder git no longer lists (git dropped the worktree, the files stayed) is deleted when its run is not live,
+ * no hand-off names it, and its run branch is merged into origin/<main> or its local tip is on an origin branch.
+ * Any other kit-named folder git does not list is only reported. The sweep ends with one `free disk: N GB` line.
  * Removal: `git worktree remove` without --force, 3 tries; then (Windows "Directory not empty", a held file) a
  * recursive delete with retries, renamed aside when even that fails. The local branch is always kept. Each folder
  * gives one line `<path>: removed — <why>` or `<path>: kept — <why>`; the exit code is 0 whatever was kept.
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, readdirSync, readFileSync, statSync, unlinkSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync, statfsSync, unlinkSync } from 'node:fs'
 import { resolve, dirname, join, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { removeFolder } from './lib/orch-folders.mjs'
@@ -126,6 +130,9 @@ function changes(path) {
 
 const refOk = (root, ref) => gitIn(root, 'rev-parse', '--verify', '--quiet', ref).status === 0
 const ancestor = (root, a, b) => gitIn(root, 'merge-base', '--is-ancestor', a, b).status === 0
+// The first origin branch that holds `commit`, `except` and origin/HEAD aside; '' when none does.
+const originHolding = (root, commit, except = '') => gitIn(root, 'for-each-ref', '--format=%(refname:short)', '--contains', commit, 'refs/remotes').out
+  .split('\n').map((r) => r.trim()).find((r) => r && r !== except && !/^[^/]+$/.test(r) && !/\/HEAD$/.test(r)) ?? ''
 
 /** Why `wt` must stay, or null when its work is safe elsewhere (and the reason it is). Returns { keep } or { why }. */
 export function judge(wt, kind, { root, live, handoffs, now = Date.now(), youngMs = YOUNG_MS }) {
@@ -156,7 +163,12 @@ export function judge(wt, kind, { root, live, handoffs, now = Date.now(), youngM
     .find((ref) => refOk(root, ref) && ancestor(root, b, ref))
   if (into) return { why: `${wt.branch} is merged into ${into} (branch kept)` }
   if (gitIn(root, 'for-each-ref', '--format=%(upstream:track)', b).out === '[gone]') return { why: `${wt.branch} was merged and its remote branch deleted (branch kept)` }
-  // A merge folder stays until its run branch is merged: grade, lessons, finish and clean still work in it.
+  // A merge folder stays until its run branch is merged: grade, lessons, finish and clean still work in it. When its
+  // commit is on another origin branch (a run fast-forwarded onto a later run branch), that run carries the work on.
+  if (kind.kind === 'merge') {
+    const on = originHolding(root, wt.head || b, `origin/${wt.branch}`)
+    if (on) return { why: `its commit is on ${on} (branch kept)` }
+  }
   if (kind.kind === 'merge') return { keep: `${wt.branch} is not merged into origin/${MAIN} (the run's grade and lessons still use this folder)` }
   return { keep: `${wt.branch} is not merged` }
 }
@@ -191,6 +203,40 @@ function readdirSafe(p) {
   try { return readdirSync(p) } catch { return [] }
 }
 
+const UNLISTED = 'git does not list it as a worktree'
+
+/**
+ * A kit-named folder git does not list. Only a merge folder can go: git dropped the worktree but the files stayed
+ * (node_modules, 1-2 GB). Its run must not be live, no hand-off may name it, and its run branch must be merged into
+ * origin/<main> or have its local tip on an origin branch. Returns { keep } or { why }.
+ */
+export function judgeUnlisted(path, kind, { root, live, handoffs }) {
+  if (kind.kind !== 'merge') return { keep: `${UNLISTED}, so its content cannot be checked` }
+  if (live.has(kind.run)) return { keep: `run ${kind.run} is live` }
+  if (handoffs.some((t) => t.includes(path) || t.includes(basename(path)))) return { keep: 'a parked plan\'s hand-off names it' }
+  const branch = `${RUN_PREFIX}${kind.run}`
+  const local = `refs/heads/${branch}`
+  const tip = refOk(root, local) ? local : refOk(root, `origin/${branch}`) ? `origin/${branch}` : null
+  if (!tip) return { keep: `${UNLISTED} and run branch ${branch} is gone, so its work cannot be checked` }
+  if (refOk(root, `origin/${MAIN}`) && ancestor(root, tip, `origin/${MAIN}`)) return { why: `git no longer lists it; run branch ${branch} is merged into origin/${MAIN}` }
+  const on = tip === local ? originHolding(root, local) : ''
+  if (on) return { why: `git no longer lists it; run branch ${branch} is on ${on}` }
+  return { keep: `${UNLISTED} and run branch ${branch} is not merged into origin/${MAIN}` }
+}
+
+/**
+ * Free space on the disk that holds `root`, in GB (one decimal, rounded down like lib/orch-run.mjs freeGb, which is
+ * not imported: its imports need scripts/node_modules), or null when it cannot be read.
+ */
+function freeDisk(root) {
+  try {
+    const st = statfsSync(root)
+    return Math.floor((Number(st.bavail) * Number(st.bsize)) / 1e8) / 10
+  } catch {
+    return null
+  }
+}
+
 /** One folder: { line, removed }. */
 export function cleanOne(root, wt, { repo, live, handoffs, now, youngMs, dryRun = false, remove = removeWorktree } = {}) {
   const kind = kitKind(wt.path, { root, repo })
@@ -217,19 +263,31 @@ export function sweep({ root = ROOT, now = Date.now(), youngMs = YOUNG_MS, dryRu
     if (same(wt.path, root) || same(wt.path, here) || !kitKind(wt.path, { root, repo })) continue
     lines.push(cleanOne(root, wt, { repo, live, handoffs, now, youngMs, dryRun, remove }).line)
   }
-  // Kit-named folders git does not list: an earlier delete's aside copy is removed; anything else is only reported.
+  // Kit-named folders git does not list: an earlier delete's aside copy is removed, so is a merge folder whose run
+  // branch is safe on origin (judgeUnlisted); anything else is only reported.
   const parent = dirname(root)
   for (const name of readdirSafe(parent)) {
     const path = norm(join(parent, name))
-    if (listed.some((w) => same(w.path, path)) || !kitKind(path, { root, repo })) continue
+    const kind = kitKind(path, { root, repo })
+    if (listed.some((w) => same(w.path, path)) || !kind) continue
     try { if (!statSync(path).isDirectory()) continue } catch { continue }
     if (/-stale-\d+$/.test(name)) {
       if (dryRun) { lines.push(`${path}: would remove — an earlier removal moved it aside`); continue }
       const r = removeFolder(path)
       lines.push(r.ok ? `${path}: removed — an earlier removal moved it aside` : `${path}: kept — still held (${r.error})`)
-    } else lines.push(`${path}: kept — git does not list it as a worktree, so its content cannot be checked`)
+      continue
+    }
+    const j = judgeUnlisted(path, kind, { root, live, handoffs })
+    if (j.keep) { lines.push(`${path}: kept — ${j.keep}`); continue }
+    if (dryRun) { lines.push(`${path}: would remove — ${j.why}`); continue }
+    const r = removeFolder(path)
+    if (r.ok) lines.push(`${path}: removed — ${j.why}`)
+    else if (r.aside) lines.push(`${path}: removed — ${j.why} (a running program holds it: moved aside to ${norm(r.aside)}, deleted by a later sweep)`)
+    else lines.push(`${path}: kept — could not remove: ${r.error}`)
   }
   if (!lines.length) lines.push('no worktree folder to clean')
+  const gb = freeDisk(root)
+  if (gb !== null) lines.push(`free disk: ${gb} GB`)
   return lines
 }
 

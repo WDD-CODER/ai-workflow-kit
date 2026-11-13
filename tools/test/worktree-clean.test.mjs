@@ -230,6 +230,75 @@ test('run from a slot, the sweep reads the main checkout\'s run state: a live ru
   }
 })
 
+// K9 (FoodVibe 2026-11-13): git dropped a merged run's merge folder but its files (node_modules) stayed, and every sweep
+// said "kept — git does not list it" forever; a run fast-forwarded onto another run branch kept its folder too.
+test('a merge folder git no longer lists is removed once its run branch is safe on origin; others stay; the sweep prints free disk', () => {
+  const s = scratch()
+  try {
+    const { main, at, commit } = s
+    const loose = (run) => { mkdirSync(join(at(`orch-merge-${run}`), 'node_modules', 'pkg'), { recursive: true }); writeFileSync(join(at(`orch-merge-${run}`), 'node_modules', 'pkg', 'i.js'), 'x\n') }
+    // merged into origin/main
+    g(main, 'switch', '-q', '-c', `${runPrefix}m1`)
+    commit(main, 'm1')
+    g(main, 'switch', '-q', 'main')
+    g(main, 'merge', '-q', '--no-ff', '-m', 'merge m1', `${runPrefix}m1`)
+    g(main, 'push', '-q', 'origin', 'main')
+    loose('m1')
+    // its tip is on another origin branch (fast-forwarded onto a later run branch)
+    g(main, 'switch', '-q', '-c', `${runPrefix}m2`)
+    commit(main, 'm2')
+    g(main, 'push', '-q', 'origin', `${runPrefix}m2:${runPrefix}later`)
+    g(main, 'switch', '-q', 'main')
+    loose('m2')
+    // kept: unmerged and unpushed, a live run, no run branch at all
+    g(main, 'switch', '-q', '-c', `${runPrefix}m3`)
+    commit(main, 'm3')
+    g(main, 'switch', '-q', 'main')
+    loose('m3')
+    g(main, 'branch', '--no-track', `${runPrefix}m4`, `${runPrefix}m1`)
+    loose('m4')
+    s.status('m4', 'running')
+    loose('m5')
+    g(main, 'fetch', '-q', 'origin')
+
+    const lines = wc.sweep({ root: main, youngMs: 0 })
+    assert.match(lineFor(lines, at('orch-merge-m1')), /removed — git no longer lists it; run branch .*m1 is merged into origin\/main/)
+    assert.match(lineFor(lines, at('orch-merge-m2')), /removed — git no longer lists it; run branch .*m2 is on origin\/.*later/)
+    for (const run of ['m1', 'm2']) assert.equal(existsSync(at(`orch-merge-${run}`)), false, `${run} is gone`)
+    assert.match(lineFor(lines, at('orch-merge-m3')), /kept — git does not list it as a worktree and run branch .*m3 is not merged/)
+    assert.match(lineFor(lines, at('orch-merge-m4')), /kept — run m4 is live/)
+    assert.match(lineFor(lines, at('orch-merge-m5')), /kept — git does not list it as a worktree and run branch .*m5 is gone/)
+    for (const run of ['m3', 'm4', 'm5']) assert.ok(existsSync(at(`orch-merge-${run}`)), `${run} stays`)
+    assert.equal(lines.filter((l) => /^free disk: [\d.]+ GB$/.test(l)).length, 1, `one free-disk line: ${lines.join(' | ')}`)
+  } finally {
+    s.done()
+  }
+})
+
+test('a clean merge folder of a run that is not live goes when its commit is on another origin branch; on its own run branch only, it stays', () => {
+  const s = scratch()
+  try {
+    const { main, at, commit } = s
+    g(main, 'branch', '--no-track', `${runPrefix}r591`, 'main')
+    g(main, 'worktree', 'add', '-q', at('orch-merge-r591'), `${runPrefix}r591`)
+    commit(at('orch-merge-r591'), 'r591')
+    g(at('orch-merge-r591'), 'push', '-q', 'origin', `${runPrefix}r591:${runPrefix}r589`)
+    g(main, 'branch', '--no-track', `${runPrefix}own`, 'main')
+    g(main, 'worktree', 'add', '-q', at('orch-merge-own'), `${runPrefix}own`)
+    commit(at('orch-merge-own'), 'own')
+    g(at('orch-merge-own'), 'push', '-q', 'origin', `${runPrefix}own`)
+    g(main, 'fetch', '-q', 'origin')
+    s.status('r591', 'finished')
+    const lines = wc.sweep({ root: main, youngMs: 0 })
+    assert.match(lineFor(lines, at('orch-merge-r591')), /removed — its commit is on origin\/.*r589 \(branch kept\)/)
+    assert.equal(existsSync(at('orch-merge-r591')), false)
+    assert.match(lineFor(lines, at('orch-merge-own')), /kept — .*own is not merged into origin\/main/)
+    assert.ok(existsSync(at('orch-merge-own')))
+  } finally {
+    s.done()
+  }
+})
+
 test('when git refuses and the folder has changed since it was judged, the scripted delete does not run', () => {
   const s = scratch()
   try {
