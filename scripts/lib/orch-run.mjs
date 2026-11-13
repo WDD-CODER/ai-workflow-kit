@@ -769,15 +769,29 @@ export function runLogRow({ status, merged = [], finalGate = 'none', date }) {
   }
 }
 
-/** { pre: the lines above the table (the `Earlier` line excluded), earlier: that line or null, rows } from a run-log.md text. */
+/**
+ * { pre: the lines above the table (the `Earlier` line excluded), earlier: that line or null, rows } from a run-log.md text.
+ * The run log merges with `merge=union` (.gitattributes), which can leave two `Earlier` lines and two copies of a row both
+ * sides rewrote: the `Earlier` line with the most runs wins, and a run keeps one row (at its first place, the copy with the
+ * most columns filled).
+ */
 export function parseRunLog(text) {
   const lines = String(text ?? '').replace(/\r\n/g, '\n').split('\n')
   const head = lines.findIndex((l) => /^\|\s*Date\s*\|/.test(l))
   const above = head < 0 ? lines : lines.slice(0, head)
-  const earlier = above.find((l) => /^Earlier \(\d+ runs?\):/.test(l)) ?? null
-  const rows = (head < 0 ? [] : lines.slice(head + 2)).filter((l) => /^\|/.test(l)).map((l) => l.split('|').slice(1, -1).map((c) => c.trim())).filter((c) => c.length >= ROW_KEYS.length)
+  const earliers = above.filter((l) => /^Earlier \(\d+ runs?\):/.test(l))
+  const runsIn = (l) => Number(/^Earlier \((\d+)/.exec(l)[1])
+  const earlier = earliers.reduce((best, l) => (best === null || runsIn(l) > runsIn(best) ? l : best), null)
+  const all = (head < 0 ? [] : lines.slice(head + 2)).filter((l) => /^\|/.test(l)).map((l) => l.split('|').slice(1, -1).map((c) => c.trim())).filter((c) => c.length >= ROW_KEYS.length)
     .map((c) => Object.fromEntries(ROW_KEYS.map((k, i) => [k, c[i]])))
-  return { pre: above.filter((l) => l !== earlier), earlier, rows }
+  const filled = (r) => ROW_KEYS.filter((k) => r[k] && r[k] !== '-').length
+  const rows = []
+  const at = new Map()
+  for (const r of all) {
+    if (!at.has(r.run)) at.set(r.run, rows.push(r) - 1)
+    else if (filled(r) > filled(rows[at.get(r.run)])) rows[at.get(r.run)] = r
+  }
+  return { pre: above.filter((l) => !earliers.includes(l)), earlier, rows }
 }
 
 const SUM_LABELS = [['plans', 'plans'], ['merged', 'merged'], ['parked', 'parked'], ['fixRounds', 'fix rounds'], ['escalations', 'escalations'], ['gateFails', 'gate fails'], ['x', '✗'], ['misses', 'checker misses']]
