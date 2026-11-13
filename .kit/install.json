@@ -3,7 +3,7 @@
     "version": "3.2.2"
   },
   "source": "local:.",
-  "commit": "1018663e6f782382de0339b724d88de0ee9608d9",
+  "commit": "f5a37c38dc288baa91d4ae1bb0829e3cd04e9b1e",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -770,7 +770,7 @@
       "source": "core/scripts/lib/scope-tests-lint.mjs"
     },
     "scripts/lib/slot-procs.mjs": {
-      "sha256": "1b817b3706bbc66284a9b6a246d58f0d1abaaef28e63ea17d594dfdd9445dfd2",
+      "sha256": "ca78f9a1bc518609415072d0938a5f5ca44c82f2684a2c5934746beaa538a16f",
       "kind": "managed",
       "source": "core/scripts/lib/slot-procs.mjs"
     },
@@ -940,7 +940,7 @@
       "source": "core/scripts/ship-prep.mjs"
     },
     "scripts/slot-serve.mjs": {
-      "sha256": "ede66782ac0aa3ee61687d2caba9013016bc26a1da6488fa75cd26ee990073d8",
+      "sha256": "0c5cd3dbce482b2db2079d52ca24c609f877c02595d6cb166ed1735429c748ee",
       "kind": "managed",
       "source": "core/scripts/slot-serve.mjs"
     },

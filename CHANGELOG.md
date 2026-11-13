@@ -9,6 +9,9 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Fixed
+- **`slot-serve.mjs` no longer stops its own slow frontend as "taken by another PID".** It judged the port's listener from one process snapshot, and on Windows that snapshot can miss the link to the server it started (a shim in between has exited). It now reads the process table again after 2 s, and a listener that runs from the start's folder counts as its own. It also prints a "starting" line before each wait, and a `SLOT_SERVE:` line on an unexpected error, so no call ends without a result line.
+
 ## [3.2.2] - 2026-11-12
 
 Patch: no project action. Sync it between orchestrator runs, never during one. A plan scope line that is only a test
