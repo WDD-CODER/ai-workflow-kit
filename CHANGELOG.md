@@ -9,6 +9,9 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Fixed
+- **The run reads its merged plans from origin, not from a stale local run branch.** The dry run passed the local run branch to `plan-order.mjs`, so a local branch left behind by `git worktree add -b` put plans already merged on `origin/<run branch>` back into wave 1. The run now fetches and reads `origin/<run branch>`, and the local branch only when origin has none. A local branch that is not in origin's history prints one warning line with both SHAs.
+
 ## [3.2.2] - 2026-11-12
 
 Patch: no project action. Sync it between orchestrator runs, never during one. A plan scope line that is only a test
