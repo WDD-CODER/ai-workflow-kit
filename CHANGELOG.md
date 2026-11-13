@@ -11,6 +11,8 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ### Fixed
 - **The run reads its merged plans from origin, not from a stale local run branch.** The dry run passed the local run branch to `plan-order.mjs`, so a local branch left behind by `git worktree add -b` put plans already merged on `origin/<run branch>` back into wave 1. The run now fetches and reads `origin/<run branch>`, and the local branch only when origin has none. A local branch that is not in origin's history prints one warning line with both SHAs.
+- **A question nobody answers no longer parks its plan after 3 hours.** A park costs a full relaunch, while waiting costs nothing, and the Human may simply be away. Now an ask still open after `ASK_WAIT_MIN` (180 min) gets one run note, `ask <id> still open after <n> min — still waiting` (again at most once an hour), and stays answerable. Only an ask unanswered for `ASK_PARK_MIN` (24 h) parks, so a run still ends some day.
+- **Merging main into a run branch no longer clashes in `docs/brain/run-log.md`.** Every run appends its row at the same place, so about 10 merges in 2 days stopped on that file. The installed `.gitattributes` now marks the run log `merge=union`, and the run-log reader keeps one row per run, so a row both sides rewrote is folded and the next run writes a clean log. Only this kit file merges this way, never code. A project that keeps its own `.gitattributes` adds the line `docs/brain/run-log.md merge=union` itself.
 
 ## [3.2.2] - 2026-11-12
 
