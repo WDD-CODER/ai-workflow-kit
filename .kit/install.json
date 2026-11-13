@@ -3,7 +3,7 @@
     "version": "3.2.2"
   },
   "source": "local:.",
-  "commit": "fc992215acd914c824fa0cee6d55b499cf4d8df0",
+  "commit": "3c5c4fbf36cf5293955b911157acaf5ea80917e0",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -635,7 +635,7 @@
       "source": "core/scripts/decision-log.mjs"
     },
     "scripts/free-merged-slots.mjs": {
-      "sha256": "2220ea3796375565113e7a9e68020d46273a661dc9609a0a6e66697b5ae2644f",
+      "sha256": "1c41976b765b451075531bd1ac2a3670deafe48b85b65b099afaa5b1e3a628ca",
       "kind": "managed",
       "source": "core/scripts/free-merged-slots.mjs"
     },
@@ -970,7 +970,7 @@
       "source": "core/scripts/todo-query.mjs"
     },
     "scripts/worktree-clean.mjs": {
-      "sha256": "92a3cc03b0e5ba06c8b7d06306edede2cfb34f25f7f98a9213ef05d219428a58",
+      "sha256": "42f988605c3be25007574fd4e49661b51116ffff502a513c16fa545c37b516fa",
       "kind": "managed",
       "source": "core/scripts/worktree-clean.mjs"
     }

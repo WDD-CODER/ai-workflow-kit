@@ -469,6 +469,43 @@ test('free-merged-slots removes the clean merge folder of a merged run; a live, 
   assert.ok(!/orch-merge/.test(r.stdout.split(/\r?\n/).filter((l) => /done/.test(l) && /left alone/.test(l)).join('')), 'the removed folder is not also reported as left alone')
 })
 
+// K9 (FoodVibe 2026-11-13): on Windows `git worktree remove` failed "Directory not empty" on node_modules and the merged
+// run's folder (1-2 GB) stayed forever. Here git refuses for another reason (a folder with a submodule), the same way.
+test('free-merged-slots deletes a merged run\'s clean merge folder by script when git worktree remove refuses', () => {
+  const repoName = /const repo = '([^']*)'/.exec(readFileSync(join(root, 'scripts', 'free-merged-slots.mjs'), 'utf8'))?.[1] || 'proj'
+  const parent = tmp()
+  const dir = join(parent, repoName)
+  mkdirSync(dir)
+  const origin = join(tmp(), 'origin.git')
+  const lib = tmp()
+  sh(lib, 'init', '-q', '-b', 'main')
+  sh(lib, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'lib')
+  sh(dir, 'init', '-q', '--bare', '-b', 'main', origin)
+  sh(dir, 'init', '-q', '-b', 'main')
+  sh(dir, 'config', 'user.email', 't@t')
+  sh(dir, 'config', 'user.name', 't')
+  copyScripts(dir)
+  writeFileSync(join(dir, '.git', 'info', 'exclude'), 'scripts/\n.claude/\n.worktree-*\n')
+  writeFileSync(join(dir, 'a.txt'), 'a\n')
+  sh(dir, 'add', '-A')
+  sh(dir, 'commit', '-q', '-m', 'first')
+  sh(dir, 'remote', 'add', 'origin', origin)
+  sh(dir, 'push', '-q', '-u', 'origin', 'main')
+  const mf = join(parent, repoName + '-orch-merge-held')
+  sh(dir, 'branch', '--no-track', 'orch/held', 'main')
+  sh(dir, 'worktree', 'add', '-q', mf, 'orch/held')
+  sh(mf, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', lib, 'sub')
+  sh(mf, 'commit', '-q', '-m', 'orch(held): work')
+  sh(dir, 'merge', '-q', '--no-ff', '-m', 'merge held', 'orch/held')
+  sh(dir, 'push', '-q', 'origin', 'main')
+  const r = node(dir, 'free-merged-slots.mjs', '--no-fetch')
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+  const line = r.stdout.split(/\r?\n/).find((l) => /^merge folder .*orch-merge-held: /.test(l)) ?? r.stdout
+  assert.match(line, /: removed \(run branch orch\/held merged; local branch kept\).*deleted by script/)
+  assert.equal(existsSync(mf), false, 'the merged run\'s folder is gone')
+  assert.equal(sh(dir, 'branch', '--list', 'orch/held').includes('orch/held'), true, 'the local branch is kept')
+})
+
 test('slot-serve --ref: an idle slot checks out the branch detached and is marked validating; every view and claimer respects it; slot-stop ends it', () => {
   const parent = tmp()
   const dir = join(parent, 'main')
