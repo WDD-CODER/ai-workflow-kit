@@ -492,10 +492,11 @@ export const projectPm = () => PROJECT_PM
  * Start one dev server unless its port is held, then wait until it listens. A start that does not come up
  * (or whose port was taken by someone else meanwhile) is killed from its root, so it never leaves a watcher.
  * `spawner` defaults to spawnNpm (the slot paths); the main folder passes spawnPm.
- * Returns { ok: true, root } or { ok: false, message }.
+ * Returns { ok: true, root } or { ok: false, message }. `deps` replaces the OS calls (tests only).
  */
-export function startServer({ label, port, cwd, args, env, logPath, timeoutMs, spawner = spawnNpm }) {
-  const holder = portOwnerPid(port)
+export function startServer({ label, port, cwd, args, env, logPath, timeoutMs, spawner = spawnNpm }, deps = {}) {
+  const { portOwner = portOwnerPid, wait = waitForPort, readTable = processTable, kill = killTree, pause = sleep } = deps
+  const holder = portOwner(port)
   if (holder) return { ok: false, message: `${label} not started: port ${port} is already held by PID ${holder} (${short(commandLine(holder))}). A second start would leave an idle watcher behind. Run node scripts/slot-stop.mjs if it is a leftover, then re-run.` }
   mkdirSync(dirname(logPath), { recursive: true })
   // Keep the previous run's log as <dir>/logs/<name>-<YYYYMMDD-HHmmss>.log instead of truncating it
@@ -517,14 +518,27 @@ export function startServer({ label, port, cwd, args, env, logPath, timeoutMs, s
       return false
     }
   }
-  const owner = waitForPort(port, timeoutMs, alive)
-  const table = processTable()
-  if (!owner || !subtree(table, child.pid).includes(owner)) {
-    killTree(child.pid)
+  const owner = wait(port, timeoutMs, alive)
+  // Is the listener this start? On Windows the first snapshot can miss the link (a shim between the spawned
+  // shell and the real server just exited, or the server is not in the table yet): read it once more after a
+  // short pause. A listener whose command line runs from this start's folder is ours too - the port was free
+  // when this start began, and the parent link is gone for good once a shim exits.
+  let table = owner ? readTable() : null
+  let linked = Boolean(owner) && subtree(table, child.pid).includes(owner)
+  let mine = linked
+  if (owner && !mine) {
+    pause(2000)
+    table = readTable()
+    linked = subtree(table, child.pid).includes(owner)
+    mine = linked || Boolean(cwd && table.get(owner) && procInFolder(table.get(owner), folderKey(cwd)))
+  }
+  if (!mine) {
+    kill(child.pid)
     const why = owner ? `port ${port} was taken by PID ${owner}, not by this start` : `not listening on port ${port} after ${timeoutMs / 1000}s`
     return { ok: false, message: `${label} server ${why} - stopped what it started. Last lines of ${logPath}:\n${tail(logPath) || '(log is empty)'}` }
   }
-  return { ok: true, root: child.pid }
+  // No link to the spawned process: record the real server, so slot-stop can still stop it.
+  return { ok: true, root: linked ? child.pid : owner }
 }
 
 // --- setup steps shared by take-plan.mjs and slot-serve.mjs --------------------------------------
