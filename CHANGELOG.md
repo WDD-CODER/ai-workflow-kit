@@ -9,6 +9,9 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Fixed
+- **An `approved:` answer resumes its plan even when someone pushed to the run branch at the same time.** The run committed the answer's scope line, its push was refused because the Planner had pushed first, and the plan parked "replan needed"; the relaunch then refused, because the merge folder kept the unpushed commit. Now a refused push drops that commit and tries again on the new run branch (no commit when the line is already there), and a merge folder whose only own commits are scope lines the run branch already holds is moved to the run branch instead of stopping the run.
+
 ## [3.2.2] - 2026-11-12
 
 Patch: no project action. Sync it between orchestrator runs, never during one. A plan scope line that is only a test

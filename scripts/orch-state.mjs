@@ -75,7 +75,7 @@ import { scopeTestsLint } from './lib/scope-tests-lint.mjs'
 import { planNumber, planTitle, mergeSubjectRe } from './lib/plan-deps.mjs'
 import { uiItems } from './lib/done-when.mjs'
 import { listSlots } from './lib/slot.mjs'
-import { ensureDeps, idleSlot, claimSlot, releaseSlot, releaseRunSlots, retryGit, isWorktree, removeFolder } from './lib/orch-folders.mjs'
+import { ensureDeps, idleSlot, claimSlot, releaseSlot, releaseRunSlots, retryGit, isWorktree, removeFolder, dropScopeCommitsOnRef } from './lib/orch-folders.mjs'
 import { removeMergedBuilder } from './worktree-clean.mjs'
 import { agreementStats, addLesson, lessonParts, ruleLines, LESSON_ROLES } from './decision-log.mjs'
 import { planWithoutNotes, triageForce, triageView, decisionsInView, mergePlanFile, decisionType, runNameProblem, PLAN_STATES, planBranch, planBranchProblem, startTier, humanItems, freeGb, formatReport, addedCodeFiles, uiCardProblem, watchLine, planLines, logQueryArgs, lessonFacts, runLogRow, updateRunLog, parseRunLog, parseDecisionRows, trendOf, contextBudget, INJECTED_ROLES, askCard, ASK_ID_RE } from './lib/orch-run.mjs'
@@ -741,7 +741,12 @@ const commands = {
       if (dirty) fail(`the merge folder ${mf} has uncommitted files: ${dirty.split('\n').map((l) => l.slice(3)).join(', ')}`)
       if (refExists(`origin/${branch}`)) {
         const ff = git(mf, 'merge', '--quiet', '--ff-only', `origin/${branch}`)
-        if (ff.status !== 0) fail(`the merge folder cannot fast-forward to origin/${branch}: ${ff.err}`)
+        if (ff.status !== 0) {
+          // Its only own commits are scope-answer lines origin already holds (K8): they add nothing, so it moves to origin.
+          const d = dropScopeCommitsOnRef(mf, `origin/${branch}`)
+          if (!d.ok) fail(`the merge folder cannot fast-forward to origin/${branch}: ${ff.err} (${d.why})`)
+          lines.push(`merge folder moved to origin/${branch}: its scope commit(s) ${d.dropped.map((s) => s.slice(0, 8)).join(', ')} are already there`)
+        }
       }
     }
     if (!refExists(`origin/${branch}`)) {

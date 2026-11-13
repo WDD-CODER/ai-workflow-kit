@@ -45,7 +45,7 @@ import { review, blocking, problemLine } from './lib/plan-review.mjs'
 import { mergePlan, orchState } from './lib/plan-merge.mjs'
 import { runOrder, unitsOf, afterPark, blockedBy } from './lib/run-order.mjs'
 import { planBranch, planBranchProblem, runNameProblem, startTier, humanOnlyAsk, ASK_KINDS, askCard, ASK_ID_RE } from './lib/orch-run.mjs'
-import { ensureEnv, failingTree, depFolders, retryGit } from './lib/orch-folders.mjs'
+import { ensureEnv, failingTree, depFolders, retryGit, dropScopeCommitsOnRef } from './lib/orch-folders.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
@@ -1442,24 +1442,40 @@ function mergeChecksOf(checks) {
   return build ? [build] : []
 }
 
+const SCOPE_PUSH_TRIES = 3
 /**
  * A scope answer's paths, added to the plan's ```scope block on the run branch before the plan resumes: one commit in
  * the merge folder, pushed (the gate reads the scope from the run branch; plan-info merges it into the plan branch).
+ * One owner for the line (K8): a line origin already holds gets no commit of the run; a push that loses a race (the
+ * Planner pushed meanwhile) drops the local commit and tries again on the new origin, up to SCOPE_PUSH_TRIES times; a
+ * leftover local scope commit whose lines origin holds is dropped (dropScopeCommitsOnRef) instead of blocking.
  */
-function extendScope({ mergeFolder, runBranch, planPath, paths, id, run, nnn }) {
-  git(mergeFolder, 'fetch', '--quiet', 'origin')
-  const ff = git(mergeFolder, 'merge', '--quiet', '--ff-only', `origin/${runBranch}`)
-  if (ff.status !== 0) return { ok: false, error: `the merge folder does not fast-forward to origin/${runBranch}: ${lastLine(ff.err)}` }
-  const file = join(mergeFolder, planPath)
-  if (!existsSync(file)) return { ok: false, error: `${planPath} is not on ${runBranch}` }
-  const { text, added } = withScopeLines(readFileSync(file, 'utf8'), paths)
-  if (!added.length) return { ok: true, added }
-  writeFileSync(file, text)
-  for (const step of [['add', '--', planPath], ['commit', '--quiet', '-m', `plan(${nnn}): scope + ${added.join(', ')} — the answer to ask ${id} of run ${run}`], ['push', '--quiet', 'origin', `HEAD:refs/heads/${runBranch}`]]) {
-    const r = git(mergeFolder, ...step)
-    if (r.status !== 0) return { ok: false, error: `git ${step[0]}: ${lastLine(r.err || r.out)}` }
+export function extendScope({ mergeFolder, runBranch, planPath, paths, id, run, nnn }) {
+  let error = ''
+  for (let attempt = 1; attempt <= SCOPE_PUSH_TRIES; attempt++) {
+    git(mergeFolder, 'fetch', '--quiet', 'origin')
+    const ff = git(mergeFolder, 'merge', '--quiet', '--ff-only', `origin/${runBranch}`)
+    if (ff.status !== 0) {
+      const d = dropScopeCommitsOnRef(mergeFolder, `origin/${runBranch}`)
+      if (!d.ok) return { ok: false, error: `the merge folder does not fast-forward to origin/${runBranch}: ${lastLine(ff.err)} (${d.why})` }
+    }
+    const file = join(mergeFolder, planPath)
+    if (!existsSync(file)) return { ok: false, error: `${planPath} is not on ${runBranch}` }
+    const { text, added } = withScopeLines(readFileSync(file, 'utf8'), paths)
+    if (!added.length) return { ok: true, added }
+    writeFileSync(file, text)
+    for (const step of [['add', '--', planPath], ['commit', '--quiet', '-m', `plan(${nnn}): scope + ${added.join(', ')} — the answer to ask ${id} of run ${run}`]]) {
+      const r = git(mergeFolder, ...step)
+      if (r.status !== 0) return { ok: false, error: `git ${step[0]}: ${lastLine(r.err || r.out)}` }
+    }
+    const p = git(mergeFolder, 'push', '--quiet', 'origin', `HEAD:refs/heads/${runBranch}`)
+    if (p.status === 0) return { ok: true, added }
+    error = `git push: ${lastLine(p.err || p.out)}`
+    // The push lost: the local commit goes, so the merge folder fast-forwards to the new origin on the next try.
+    const back = git(mergeFolder, 'reset', '--quiet', '--keep', 'HEAD~1')
+    if (back.status !== 0) return { ok: false, error: `${error}; git reset --keep HEAD~1: ${lastLine(back.err || back.out)}` }
   }
-  return { ok: true, added }
+  return { ok: false, error: `${error} (${SCOPE_PUSH_TRIES} tries)` }
 }
 
 /** After the builder: no uncommitted file, at least one commit beyond the run branch, and the branch on origin. */
