@@ -1,9 +1,9 @@
 {
   "kit": {
-    "version": "3.2.2"
+    "version": "3.2.3"
   },
   "source": "local:.",
-  "commit": "4c35279b1d05791bd0004a60e88b75249d1c498b",
+  "commit": "e75d3dac4c071b173cf191ef9554b6c1c1e67b28",
   "packs": [],
   "layers": [],
   "cursor": false,

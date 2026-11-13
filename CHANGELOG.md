@@ -9,6 +9,11 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+## [3.2.3] - 2026-11-13
+
+Patch: no project action. Sync it between orchestrator runs, never during one. A project that keeps its own
+`.gitattributes` (an override) adds the line `docs/brain/run-log.md merge=union` itself.
+
 ### Fixed
 - **A `[ui]` item the builder could not run no longer fails the plan.** The builder's folder has no running app and no QA login, so a `[ui]` spec it wrote could never run there; the gate counted it as left undone, used both fix rounds, moved to the judgment tier and asked to park. Now a `[ui]` item in the builder's `notDone` is a run note ("written, not run") and an unchecked card for the Human. An `[auto]` item left undone still fails. The builder is told to write the `[ui]` spec, not run it, and never ask for QA credentials.
 - **An `approved:` answer resumes its plan even when someone pushed to the run branch at the same time.** The run committed the answer's scope line, its push was refused because the Planner had pushed first, and the plan parked "replan needed"; the relaunch then refused, because the merge folder kept the unpushed commit. Now a refused push drops that commit and tries again on the new run branch (no commit when the line is already there), and a merge folder whose only own commits are scope lines the run branch already holds is moved to the run branch instead of stopping the run.
