@@ -3,7 +3,7 @@
     "version": "3.2.2"
   },
   "source": "local:.",
-  "commit": "f23faebf94f478d31ee8e53e45b9bd6621a09d60",
+  "commit": "3e59af205ad0580ed174b79f37305ab61ca156f4",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -695,7 +695,7 @@
       "source": "core/scripts/lib/invariants.mjs"
     },
     "scripts/lib/orch-folders.mjs": {
-      "sha256": "50d56b94bce1f978dc8b624e9d0fadf792db5de5e5eab7d975bdf589244629a0",
+      "sha256": "1dd2bb08e12e9246b683c50c5af3ca312d3377b3d2525edcb5368b13e90bbf65",
       "kind": "managed",
       "source": "core/scripts/lib/orch-folders.mjs"
     },
@@ -800,7 +800,7 @@
       "source": "core/scripts/orch-preflight.mjs"
     },
     "scripts/orch-state.mjs": {
-      "sha256": "57c422c56bd1e2d2f5fee93afee1632988da908331926f8c489a7c8b1f811946",
+      "sha256": "8881b304c50688e88dcc5261f20ce10fb981cdc0f174985e94cb105a1eed9921",
       "kind": "managed",
       "source": "core/scripts/orch-state.mjs"
     },
@@ -875,7 +875,7 @@
       "source": "core/scripts/prune-old-sessions.sh"
     },
     "scripts/run-plans.mjs": {
-      "sha256": "5350b43f9e96d6f3fb44921d42dccf651e229284b5d841c01cd067fb1fb71686",
+      "sha256": "c54042302fde128dabfca826beef2e9eaaddf420ed51e500b82472dce8903891",
       "kind": "managed",
       "source": "core/scripts/run-plans.mjs"
     },
