@@ -3,7 +3,7 @@
     "version": "3.2.2"
   },
   "source": "local:.",
-  "commit": "e55bfbc25baf8a01fdc4d6f83e29bfd829afe33a",
+  "commit": "d142cdd967a5bde0a4812b9dd6433d0a2fdb9a19",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -960,7 +960,7 @@
       "source": "core/scripts/slot-stop.mjs"
     },
     "scripts/styleqa/config.mjs": {
-      "sha256": "a6e46e86628825c46455a3d3162f2913af6c00ec6baccbf04a4c086f38fa6b24",
+      "sha256": "6eedaff2294aa206c0e60c96f18b4be792e3fe4224b7cf41803c5dc8c5ee42fd",
       "kind": "managed",
       "source": "core/scripts/styleqa/config.mjs"
     },
@@ -970,9 +970,14 @@
       "source": "core/scripts/styleqa/findings.mjs"
     },
     "scripts/styleqa/pages.mjs": {
-      "sha256": "ff047b6451e433aa4faa700beeb53dec3562865bd534c14c71afa62422d91ee7",
+      "sha256": "40e5ca215ac17f153ca6fdb508c6e902f5b1ff576b0ec7d8492c0f5df9399eb0",
       "kind": "managed",
       "source": "core/scripts/styleqa/pages.mjs"
+    },
+    "scripts/styleqa/probe.mjs": {
+      "sha256": "43a7f145f0cf9d0194dd1f740ac22dc18ae0ca6352d62a342028fe6e492ea2aa",
+      "kind": "managed",
+      "source": "core/scripts/styleqa/probe.mjs"
     },
     "scripts/styleqa/redact.mjs": {
       "sha256": "6276dfd7bdca3772657e1f633066f73d6f4f1fda0dc60775a83250c6e394f86d",
@@ -980,12 +985,12 @@
       "source": "core/scripts/styleqa/redact.mjs"
     },
     "scripts/styleqa/report.mjs": {
-      "sha256": "908233671741b22c0916e335950dcb177e307b7dd10205ebf03c70380afd8cfd",
+      "sha256": "333c7c52d0f241ed5bdadef074657134cd12d311788c52895fd243f4f7847fec",
       "kind": "managed",
       "source": "core/scripts/styleqa/report.mjs"
     },
     "scripts/styleqa/run.mjs": {
-      "sha256": "3b9e0adf5a6502fb4633d6143704fd73a1e9b112c9d8026034f99e7e28e841e4",
+      "sha256": "cd183d923182a4f3bcb919b95dfaffcb9d17751471a287a115e7e38a191bdae4",
       "kind": "managed",
       "source": "core/scripts/styleqa/run.mjs"
     },
@@ -993,6 +998,11 @@
       "sha256": "c7fac22c13d98c39e2ebe620b8349cf855fde2ed75accbb915a4875bfde9057f",
       "kind": "managed",
       "source": "core/scripts/styleqa/static-checks.mjs"
+    },
+    "scripts/styleqa/sweep.mjs": {
+      "sha256": "2f39788e8390591e1cd25cabeb2da453368abe12e6fbddfa2140f757146ea207",
+      "kind": "managed",
+      "source": "core/scripts/styleqa/sweep.mjs"
     },
     "scripts/take-plan.mjs": {
       "sha256": "591b2e0fcdb304247dd90e308395eb54a3fe5ec6a7c3cd9542d2127e345a3b9b",

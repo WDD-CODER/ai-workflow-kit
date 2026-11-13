@@ -36,6 +36,7 @@
     "authSkill": "auth-and-logging",
     "docsMapSkill": "breadcrumbs",
     "docsMapCheck": "scripts/breadcrumbs-check.mjs",
+    "styleqaRoutes": "scripts/styleqa-routes.mjs",
     "cssSection": "UI, CSS & Folder Structure",
     "componentsSection": "Angular 19 & Reactivity"
   },

@@ -139,3 +139,60 @@ export function listLines(map) {
     return `${p.slug} — ${p.title}${aka}  routes: ${p.routes.join(', ')}  states: ${statesOf(p).join(', ')}`
   })
 }
+
+// ---- the sweep layer's view of the page map ----
+
+const ROUTE_PARAM = /:[A-Za-z_]\w*/g
+/** A route with every `:param` named alike, so `/a/:id` and `/a/:recipeId` are one route. */
+export const routeShape = (r) => String(r).split('?')[0].replace(/\/+$/, '').replace(ROUTE_PARAM, ':p') || '/'
+
+/** The tab states of a page: every route with a query (`/settings?tab=billing`) is a state `tab-<value>`. */
+export function tabStates(page) {
+  return page.routes.filter((r) => r.includes('?')).map((r) => {
+    const q = new URLSearchParams(r.split('?')[1])
+    const v = [...q.values()][0] ?? 'x'
+    return { name: `tab-${String(v).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'x'}`, route: r }
+  })
+}
+
+/** The state names the sweep runs for a page: default, empty (a page with `idType` lists records), tabs, then its own. */
+export function sweepStatesOf(page) {
+  return [DEFAULT_STATE, ...(page.idType ? ['empty'] : []), ...tabStates(page).map((t) => t.name), ...(page.states ?? []).map((s) => s.name)]
+}
+
+/** The route a page opens by default: the first without a query. */
+export const baseRoute = (page) => page.routes.find((r) => !r.includes('?')) ?? page.routes[0]
+
+/**
+ * The map check: app routes (from the stack pack's reader) that are in neither `pages` nor `excluded`.
+ * routes: [{ path, lazy? }]. A lazy route covers every page route beneath it. → the uncovered paths.
+ */
+export function mapCheck(map, routes) {
+  const known = new Set()
+  for (const p of map.pages ?? []) for (const r of p.routes) known.add(routeShape(r))
+  for (const e of map.excluded ?? []) known.add(routeShape(e.route))
+  return routes.filter((r) => {
+    const s = routeShape(r.path)
+    if (known.has(s)) return false
+    return !(r.lazy && [...known].some((k) => k.startsWith(`${s}/`)))
+  }).map((r) => r.path)
+}
+
+/**
+ * --changed: the pages whose route folders or component folders hold a changed file. files: repo-relative paths;
+ * routes: the stack pack's route list ([{ path, folder? }]). A page whose routes the reader gives a folder for is
+ * judged by that folder alone; without one, by its slug and route words appearing as a folder or file name.
+ */
+export function changedPages(pages, files, routes = []) {
+  const changed = files.map((f) => f.replace(/\\/g, '/'))
+  return pages.filter((p) => {
+    const shapes = p.routes.map(routeShape)
+    const folders = routes.filter((r) => r.folder && shapes.includes(routeShape(r.path))).map((r) => `${r.folder.replace(/\/+$/, '')}/`)
+    if (folders.length) return changed.some((f) => folders.some((d) => f.startsWith(d)))
+    const words = new Set([p.slug, ...shapes.flatMap((s) => s.split('/').filter((x) => x && !x.startsWith(':')))])
+    return changed.some((f) => {
+      const parts = f.split('/')
+      return parts.some((seg, i) => words.has(i === parts.length - 1 ? seg.replace(/\..*$/, '') : seg))
+    })
+  })
+}

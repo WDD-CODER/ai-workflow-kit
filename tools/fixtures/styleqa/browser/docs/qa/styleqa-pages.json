@@ -1,0 +1,8 @@
+{
+  "$comment": "Style QA browser-test fixture page map (tools/test/styleqa-browser.test.mjs).",
+  "pages": [
+    { "slug": "wide", "title": "Wide page", "routes": ["/wide"], "auth": false },
+    { "slug": "rails", "title": "Rail page", "routes": ["/rails"], "auth": false }
+  ],
+  "excluded": []
+}
