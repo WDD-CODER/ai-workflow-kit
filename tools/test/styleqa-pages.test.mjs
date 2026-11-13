@@ -14,8 +14,10 @@ const fixture = join(kit, 'tools', 'fixtures', 'styleqa')
 const engine = join(kit, 'scripts', 'styleqa')
 const { pageMapProblems, resolvePages, STEP_ACTIONS } = await import(pathToFileURL(join(engine, 'pages.mjs')).href)
 const map = JSON.parse(readFileSync(join(fixture, 'docs', 'qa', 'styleqa-pages.json'), 'utf8'))
+// An output folder that must never be created: in the temp folder, so no run can leave it beside the fixture.
+const neverWritten = join(tmpdir(), `styleqa-never-written-${process.pid}`)
 const cli = (root, ...args) => {
-  const r = spawnSync(process.execPath, [join(engine, 'run.mjs'), `--root=${root}`, `--settings=${join(fixture, 'settings.json')}`, '--out=../never-written', ...args], { encoding: 'utf8' })
+  const r = spawnSync(process.execPath, [join(engine, 'run.mjs'), `--root=${root}`, `--settings=${join(fixture, 'settings.json')}`, `--out=${neverWritten}`, ...args], { encoding: 'utf8' })
   return { status: r.status, out: `${r.stdout}${r.stderr}` }
 }
 
@@ -34,10 +36,20 @@ test('--pages=nope exits 1 and prints every valid slug and alias, before anythin
   assert.equal(r.status, 1)
   assert.match(r.out, /unknown page "nope"/)
   for (const name of ['dashboard', 'home', 'панель', 'settings', 'prefs']) assert.ok(r.out.includes(name), `lists ${name}`)
-  assert.ok(!existsSync(join(fixture, '..', 'never-written')), 'nothing was written')
-  const ok = cli(fixture, '--pages=home', '--layers=sweep')
-  assert.equal(ok.status, 2, 'a known alias passes; sweep is not installed yet')
-  assert.match(ok.out, /sweep layer not installed/)
+  assert.ok(!existsSync(neverWritten), 'nothing was written')
+  // A known alias gets past page resolution. What the sweep does next depends on whether Playwright is installed here
+  // (exit 2 "not installed", or a failed sweep against an origin that does not answer), so only resolution is
+  // asserted, and the run writes into its own temp folder, never next to the fixture.
+  const out = mkdtempSync(join(tmpdir(), 'styleqa-pages-'))
+  try {
+    const r2 = spawnSync(process.execPath, [join(engine, 'run.mjs'), `--root=${fixture}`, `--settings=${join(fixture, 'settings.json')}`, `--out=${out}`, '--pages=home', '--layers=sweep', '--app=http://127.0.0.1:9'], { encoding: 'utf8' })
+    const ok = `${r2.stdout}${r2.stderr}`
+    assert.notEqual(r2.status, 0, ok)
+    assert.doesNotMatch(ok, /unknown page/)
+    assert.match(ok, /sweep layer not installed|failed/i, ok)
+  } finally {
+    rmSync(out, { recursive: true, force: true })
+  }
 })
 
 test('--list prints the pages with their states', () => {
