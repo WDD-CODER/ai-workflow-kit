@@ -107,7 +107,17 @@ test('init still refuses a merge folder with a scope line origin does not hold, 
   }
 })
 
-const extend = (mf) => runPlans.extendScope({ mergeFolder: mf, runBranch: 'orch/batch-3', planPath: PLAN, paths: ['src/554-extra.txt'], id: '554-1', run: 'batch-3', nnn: '554' })
+// extendScope runs git in this process: give it the test's git identity (CI has none of its own).
+const extend = (mf) => {
+  const keys = ['GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL']
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]))
+  Object.assign(process.env, Object.fromEntries(keys.map((k) => [k, ENV[k]])))
+  try {
+    return runPlans.extendScope({ mergeFolder: mf, runBranch: 'orch/batch-3', planPath: PLAN, paths: ['src/554-extra.txt'], id: '554-1', run: 'batch-3', nnn: '554' })
+  } finally {
+    for (const k of keys) if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]
+  }
+}
 
 test('extendScope: a leftover local scope commit whose line origin holds is dropped; the run adds no commit of its own', () => {
   const t = setup()
