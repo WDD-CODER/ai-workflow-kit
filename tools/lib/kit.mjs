@@ -90,6 +90,7 @@ export function commandProblems(vals) {
   out.push(...orchestratorProblems(vals))
   out.push(...brainProblems(vals))
   out.push(...reviewProblems(vals))
+  out.push(...styleqaProblems(vals))
   // ownership.upstreamPaths is read by the kit's own glob matcher and by the scope guard's (picomatch): only the syntax
   // both read alike (`**`, `*`, `?`, a trailing `/`).
   for (const g of asList(vals['ownership.upstreamPaths'])) {
@@ -293,6 +294,71 @@ export function orchestratorProblems(vals) {
   const wait = vals['orchestrator.rateLimitWaitMin']
   if (wait !== undefined && !(Number.isInteger(wait) && wait >= 0 && wait <= 600)) {
     out.push(`orchestrator.rateLimitWaitMin is ${JSON.stringify(wait)} — it must be a whole number of minutes from 0 to 600`)
+  }
+  return out
+}
+
+/**
+ * styleqa.* (the Style QA engine, scripts/styleqa/run.mjs): rendered into scripts/styleqa/config.mjs, so a bad value
+ * would only fail when the engine runs. Unset keys take the kit.config.json defaults. One message per bad key; an
+ * unknown styleqa key is refused too (a typo would silently keep the default).
+ */
+export const STYLEQA_KEYS = ['appOrigin', 'apiOrigin', 'signIn', 'uiFontToken', 'tokenPrefixes.color', 'tokenPrefixes.fontSize', 'tokenPrefixes.radius',
+  'tokenFiles', 'breakpointPattern', 'stylesheets', 'loaderText', 'blockedSteps.words', 'blockedSteps.selectors', 'outDir', 'widths']
+const REPO_PATH = (p) => typeof p === 'string' && p.trim() !== '' && !/^[\\/]/.test(p) && !/^[A-Za-z]:/.test(p) && !p.split(/[\\/]/).includes('..')
+export function styleqaProblems(vals) {
+  const out = []
+  const v = (k) => vals[`styleqa.${k}`]
+  for (const key of Object.keys(vals)) {
+    if (key.startsWith('styleqa.') && !STYLEQA_KEYS.includes(key.slice('styleqa.'.length))) out.push(`styleqa key ${key} is unknown — allowed: ${STYLEQA_KEYS.map((k) => `styleqa.${k}`).join(', ')}`)
+  }
+  for (const k of ['appOrigin', 'apiOrigin']) {
+    const o = v(k)
+    if (o !== undefined && o !== '' && !(typeof o === 'string' && /^https?:\/\/[^\s/"'`$\\<>|;&]+$/.test(o))) out.push(`styleqa.${k} is ${JSON.stringify(o)} — it must be an http(s) origin with no path (e.g. "http://localhost:8080"), or empty to use this checkout's port`)
+  }
+  const signIn = v('signIn')
+  if (signIn !== undefined && signIn !== '' && !REPO_PATH(signIn)) out.push(`styleqa.signIn is ${JSON.stringify(signIn)} — it must be a repo-relative path (no absolute path, no ".."), or empty`)
+  for (const k of ['uiFontToken', 'tokenPrefixes.color', 'tokenPrefixes.fontSize', 'tokenPrefixes.radius']) {
+    const t = v(k)
+    if (t !== undefined && !(typeof t === 'string' && /^\S*$/.test(t))) out.push(`styleqa.${k} is ${JSON.stringify(t)} — it must be a token name or prefix with no spaces (e.g. "--color-"), or empty`)
+  }
+  for (const k of ['tokenFiles', 'stylesheets']) {
+    const list = v(k)
+    if (list === undefined || list === '') continue
+    if (!Array.isArray(list)) {
+      out.push(`styleqa.${k} is ${JSON.stringify(list)} — it must be a list of repo-relative globs`)
+      continue
+    }
+    for (const g of list) {
+      const why = typeof g !== 'string' || !REPO_PATH(g) ? 'it must be a repo-relative glob (no absolute path, no "..")' : globProblem(g)
+      if (why) out.push(`styleqa.${k} item ${JSON.stringify(g)} — ${why}`)
+    }
+  }
+  for (const k of ['loaderText', 'blockedSteps.words', 'blockedSteps.selectors']) {
+    const list = v(k)
+    if (list !== undefined && list !== '' && !(Array.isArray(list) && list.every((x) => typeof x === 'string' && x.trim() !== ''))) out.push(`styleqa.${k} is ${JSON.stringify(list)} — it must be a list of non-empty strings`)
+  }
+  const bp = v('breakpointPattern')
+  if (bp !== undefined) {
+    let bad = typeof bp !== 'string'
+    if (!bad) {
+      try {
+        new RegExp(bp)
+      } catch {
+        bad = true
+      }
+    }
+    if (bad) out.push(`styleqa.breakpointPattern is ${JSON.stringify(bp)} — it must be a regular expression (a string; empty = none)`)
+  }
+  const dir = v('outDir')
+  if (dir !== undefined && !REPO_PATH(dir)) out.push(`styleqa.outDir is ${JSON.stringify(dir)} — it must be a repo-relative folder (no absolute path, no "..")`)
+  const widths = v('widths')
+  if (widths !== undefined && widths !== '') {
+    const okW = (w) => {
+      const m = typeof w === 'string' ? /^(\d{3,4})x(\d{3,4})$/.exec(w) : null
+      return m && +m[1] >= 200 && +m[1] <= 4000 && +m[2] >= 200 && +m[2] <= 4000
+    }
+    if (!Array.isArray(widths) || !widths.length || !widths.every(okW)) out.push(`styleqa.widths is ${JSON.stringify(widths)} — it must be a list of "WIDTHxHEIGHT" viewports from 200 to 4000 pixels (e.g. "375x812")`)
   }
   return out
 }

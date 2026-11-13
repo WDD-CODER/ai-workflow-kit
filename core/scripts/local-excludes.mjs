@@ -46,6 +46,8 @@ export const RUNTIME_IGNORES = [
   '.claude/sessions/',
   // Orchestrator runs: live status.json and the local copy of each run report (the run branch keeps the record)
   '.claude/orchestrator-runs/',
+  // Style QA output: the report and the finding store (styleqa.outDir default)
+  '.claude/styleqa/',
   // Workflow script dependencies (npm install inside scripts/)
   'scripts/node_modules/'
 ]

@@ -967,6 +967,16 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
       '.claude/commands/scout.md', 'scripts/scout/render.mjs', 'scripts/scout/pr.mjs', 'scripts/scout/page-template.html', 'docs/scout/sources.json']) {
       if (!existsSync(join(od, f))) fail(`orchestrator: install did not copy ${f}`)
     }
+    // The Style QA engine and its two seeds; the settings render with their defaults and the engine runs.
+    for (const f of ['scripts/styleqa/run.mjs', 'scripts/styleqa/config.mjs', 'scripts/styleqa/pages.mjs', 'scripts/styleqa/static-checks.mjs', 'scripts/styleqa/findings.mjs',
+      'scripts/styleqa/report.mjs', 'scripts/styleqa/redact.mjs', 'docs/qa/styleqa-pages.json', 'docs/qa/styleqa-theme.md']) {
+      if (!existsSync(join(od, f))) fail(`styleqa: install did not copy ${f}`)
+    }
+    const sqc = existsSync(join(od, 'scripts/styleqa/config.mjs')) ? read(od, 'scripts/styleqa/config.mjs') : ''
+    if (!sqc.includes('outDir: ".claude/styleqa"') || !sqc.includes('"375x812"') || /\{\{[\w.|]+\}\}/.test(sqc)) fail('styleqa: config.mjs does not render the styleqa.* defaults (or keeps a placeholder)')
+    const sqr = spawnSync(process.execPath, [join(od, 'scripts', 'styleqa', 'run.mjs')], { encoding: 'utf8' })
+    if (sqr.status !== 0 || !sqr.stdout.includes('no pages in docs/qa/styleqa-pages.json')) fail(`styleqa: the installed engine on the empty page map: exit ${sqr.status}, ${(sqr.stdout + sqr.stderr).trim().split('\n').pop()}`)
+    if (!/^\.claude\/styleqa\/$/m.test(read(od, '.gitignore'))) fail('styleqa: the rendered .gitignore does not ignore .claude/styleqa/')
     // Plan 030: the lessons and run-log seeds are installed.
     for (const f of ['docs/brain/run-log.md', ...['readiness', 'builder', 'check-plan', 'check-bugs', 'check-rules', 'security', 'verify', 'ui', 'gate', 'planner'].map((r) => `docs/brain/agent-lessons/${r}.md`)]) {
       if (!existsSync(join(od, f))) fail(`lessons: install did not copy the seed ${f}`)
@@ -1081,6 +1091,20 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
     if (b.status !== 2 || !b.stderr.includes(msg) || files(bb).length !== 1) fail(`install with brain ${JSON.stringify(brain).slice(0, 40)}: exit ${b.status}, ${b.stderr.trim().split('\n')[0]}`)
     rmSync(bb, { recursive: true, force: true })
   }
+  // styleqa.* (the Style QA engine): install refuses a bad value, naming the key, and writes nothing.
+  for (const [styleqa, msg] of [
+    [{ widths: ['375'] }, 'styleqa.widths is ["375"] — it must be a list of "WIDTHxHEIGHT" viewports'],
+    [{ appOrigin: 'localhost' }, 'styleqa.appOrigin is "localhost" — it must be an http(s) origin'],
+    [{ outDir: '../out' }, 'styleqa.outDir is "../out" — it must be a repo-relative folder'],
+    [{ breakpointPattern: '(' }, 'styleqa.breakpointPattern is "(" — it must be a regular expression'],
+    [{ tokenPrefixes: { colour: '--c-' } }, 'styleqa key styleqa.tokenPrefixes.colour is unknown'],
+  ]) {
+    const sb = tmp('styleqa-bad')
+    writeFileSync(join(sb, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, styleqa }))
+    const b = run('install.mjs', ['--target', sb])
+    if (b.status !== 2 || !b.stderr.includes(msg) || files(sb).length !== 1) fail(`install with styleqa ${JSON.stringify(styleqa)}: exit ${b.status}, ${b.stderr.trim().split('\n')[0]}`)
+    rmSync(sb, { recursive: true, force: true })
+  }
   // sync refuses a bad value too, naming the key.
   const os = tmp('orch-sync')
   writeFileSync(join(os, 'kit.config.json'), JSON.stringify(CORE_CFG))
@@ -1091,6 +1115,9 @@ for (const [name, packArgs] of [['core', []], ['angular', ['--packs', 'angular']
   writeFileSync(join(os, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, orchestrator: { reviewerModel: 'haiku', staleMin: 0 } }))
   const s2 = run('sync.mjs', ['--target', os, '--apply'])
   if (s2.status !== 2 || !s2.stderr.includes('orchestrator.reviewerModel is "haiku"') || !s2.stderr.includes('orchestrator.staleMin is 0')) fail(`sync with orchestrator.reviewerModel haiku / staleMin 0: exit ${s2.status}, ${s2.stderr.trim().split('\n')[0]}`)
+  writeFileSync(join(os, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, styleqa: { widths: [], stylesheets: ['src/{a,b}/*.css'] } }))
+  const sq = run('sync.mjs', ['--target', os, '--apply'])
+  if (sq.status !== 2 || !sq.stderr.includes('styleqa.stylesheets item "src/{a,b}/*.css" — brace lists')) fail(`sync with a styleqa.stylesheets brace glob: exit ${sq.status}, ${sq.stderr.trim().split('\n')[0]}`)
   // Plan 088: a retired key is no refusal any more — sync applies and prints one NOTE per key.
   writeFileSync(join(os, 'kit.config.json'), JSON.stringify({ ...CORE_CFG, orchestrator: { fallbackModel: 'haiku', triage: 'loud' } }))
   const s3 = run('sync.mjs', ['--target', os, '--apply'])
