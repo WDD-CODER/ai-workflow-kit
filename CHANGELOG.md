@@ -9,6 +9,9 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Fixed
+- **Merging main into a run branch no longer clashes in `docs/brain/run-log.md`.** Every run appends its row at the same place, so about 10 merges in 2 days stopped on that file. The installed `.gitattributes` now marks the run log `merge=union`, and the run-log reader keeps one row per run, so a row both sides rewrote is folded and the next run writes a clean log. Only this kit file merges this way, never code. A project that keeps its own `.gitattributes` adds the line `docs/brain/run-log.md merge=union` itself.
+
 ## [3.2.2] - 2026-11-12
 
 Patch: no project action. Sync it between orchestrator runs, never during one. A plan scope line that is only a test
