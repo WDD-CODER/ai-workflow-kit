@@ -10,6 +10,7 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 ## [Unreleased]
 
 ### Fixed
+- **A failing final gate names the failing tests.** The stop reason and the run report showed the last 3 lines of the output, which were the build and pnpm lines. They now show the failing test names and the totals line. When no plan in the run changed a file the failure names, they also say it may be this machine: try the same command on the run's base commit.
 - **The orchestrator doc and `/orchestrate` say how to keep the run's watch alive on low memory.** Claude Code stops a background shell when memory runs low, and the Planner's watch wait went with it six times in one chain. Setting `CLAUDE_CODE_DISABLE_BG_SHELL_PRESSURE_REAP=1` in `~/.claude/settings.json` `env` stops that; the cost is that the whole session may be killed instead. The run itself lives under the supervisor either way.
 - **save-plan and `/plan` say the `Bypassed rule violations` line on a plan push is expected.** It printed on every push to main and once hid a real `non-fast-forward` rejection. Judge the push by its exit code and `! [rejected]` / `error:` lines.
 - **The orchestrator doc gives the command to merge main into a run branch with a named message.** Done by hand in a detached folder, git's default subject was `... into HEAD`. The documented command uses `-m "Merge origin/<main> into <run branch>"`.
