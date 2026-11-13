@@ -121,7 +121,7 @@ per commit: `ok` or `conflict: <what>`. STOP for a go only on a `conflict`.
   most 6 findings per state; "no findings" is valid; never report low confidence.
 - [ ] Merge (`merge.mjs`): validates each review file, assigns IDs through plan 117's finding store, folds visual findings into
   the report, idempotent, a malformed file skipped with one line.
-- [ ] Docs `docs/agent/styleqa.md`: adoption contract (page map, sign-in module, config values, theme facts, the two dev
+- [ ] Docs `docs/agent/styleqa.md`: adoption contract (page map `docs/qa/styleqa-pages.json`, sign-in module, the `styleqa.*` keys in `kit.config.json`, theme facts, the two dev
   dependencies and their install line), how to add a page or a state, how to read the report, cost (measured: no tokens;
   visual: at most 24 images per page on the review tier, 3 reviewers at once).
 - [ ] Registration: model-routing table row, workflow-map entry, skills listing, `agentFiles.max` 11 with its reason,

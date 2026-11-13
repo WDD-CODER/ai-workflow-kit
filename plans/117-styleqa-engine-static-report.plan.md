@@ -19,9 +19,11 @@ report renderer. Plan 118 adds the browser sweep on top; plan 119 adds `/styleqa
 Where the brief and the kit disagree, the kit wins:
 - The brief's package script (`pnpm run qa:style`) — the kit never writes a project's `package.json`. The engine is
   `node scripts/styleqa/run.mjs …`, the way every kit script runs; a project may add its own alias.
-- The brief's config values live in **one project-owned seed file**, `docs/qa/styleqa.json` (`config`, `widths`,
-  `pages`, `excluded`), not as new `kit.config.json` keys: no install/sync validation work, and the project edits one
-  file. Kit placeholders are used only where they already exist: `{{project.uiDirection}}`, `{{stack.stylesheetExt}}`.
+- Settings are `kit.config.json` keys under `styleqa.*`, like every other kit setting (the Human, 2026-11-13): install and
+  sync validate them and render them into the engine (`{{styleqa.<key>|json}}`, as `run-plans.mjs` renders
+  `orchestrator.ciMirror`). Only the **page map** is its own project-owned file, `docs/qa/styleqa-pages.json`: it is a long
+  list the project edits every time it adds a page or a state, and a kit-sync per new page would be wrong. Existing keys
+  are reused: `{{project.uiDirection}}`, `{{stack.stylesheetExt}}`, the slot ports.
 
 ## Goals & Success Criteria
 
@@ -63,6 +65,9 @@ tools/test/styleqa-static.test.mjs
 tools/test/styleqa-findings.test.mjs
 tools/test/styleqa-pages.test.mjs
 tools/install-check.mjs
+kit.config.json
+.kit/config.json
+tools/lib/kit.mjs
 scripts/**
 docs/qa/**
 .gitignore
@@ -97,12 +102,15 @@ per commit: `ok` or `conflict: <what>`. STOP for a go only on a `conflict`.
 ## Functional Requirements
 
 ### Must Have (P0)
-- [ ] The seed `docs/qa/styleqa.json` (from `templates/docs/qa/styleqa.json`): `config` (`appOrigin`, `apiOrigin` — empty
-  = this checkout's frontend/backend port from `scripts/lib/slot.mjs`; `signIn` — path of the project's sign-in module or
-  empty; `uiFontToken`; `tokenPrefixes` `{ color, fontSize, radius }`; `tokenFiles`; `breakpointPattern`; `stylesheets`
-  globs; `loaderText`; `blockedSteps` `{ words, selectors }`; `outDir`, default `.claude/styleqa`), `widths` (default
-  375×812, 620×900, 768×1024, 1024×768, 1366×768), `pages: [{ slug, aliases, title, routes, idType?, auth, oneRow?, states }]`,
-  `excluded: [{ route, why }]`. The seed ships with empty `pages` and a comment line naming the docs (plan 119).
+- [ ] `kit.config.json` keys `styleqa.*`, each with a default, documented in its `$comment` and validated by install and sync
+  (a bad value is refused naming the key, as for `orchestrator.*`): `appOrigin`, `apiOrigin` (empty = this checkout's
+  frontend/backend port from `scripts/lib/slot.mjs`); `signIn` (repo-relative path of the project's sign-in module, or
+  empty); `uiFontToken`; `tokenPrefixes` `{ color, fontSize, radius }`; `tokenFiles`; `breakpointPattern`; `stylesheets`
+  (globs); `loaderText`; `blockedSteps` `{ words, selectors }`; `outDir` (default `.claude/styleqa`); `widths` (default
+  375×812, 620×900, 768×1024, 1024×768, 1366×768). The engine gets them rendered at install/sync.
+- [ ] The page-map seed `docs/qa/styleqa-pages.json` (from `templates/docs/qa/styleqa-pages.json`):
+  `pages: [{ slug, aliases, title, routes, idType?, auth, oneRow?, states }]`, `excluded: [{ route, why }]`. Ships with
+  empty `pages` and a line naming the docs (plan 119).
 - [ ] Theme-facts seed `docs/qa/styleqa-theme.md` (surfaces, primary colour, font, type and spacing scales, component
   families) — read by plan 119's reviewer; this plan only ships the template.
 - [ ] Page resolution by slug or alias (aliases may be in any language; matching is exact after trimming); unknown → exit 1
@@ -123,14 +131,14 @@ per commit: `ok` or `conflict: <what>`. STOP for a go only on a `conflict`.
 
 ## Atomic Sub-tasks
 
-- [ ] E1: Write failing tests for page resolution, the static checks and the finding store first — fixture under tools/fixtures/styleqa/ (a page map, two stylesheets with planted S1–S3 literals and token definitions) — tools/test/styleqa-pages.test.mjs, tools/test/styleqa-static.test.mjs, tools/test/styleqa-findings.test.mjs, tools/fixtures/styleqa/**
-- [ ] E2: Ship the project's Style QA config and page map as a seed the project owns — schema validation with the field named in every refusal, defaults filled in — templates/docs/qa/styleqa.json, templates/docs/qa/styleqa-theme.md, core/scripts/styleqa/config.mjs
+- [ ] E1: Write failing tests for page resolution, the static checks and the finding store first — fixture under tools/fixtures/styleqa/ (a page map, styleqa settings, two stylesheets with planted S1–S3 literals and token definitions) — tools/test/styleqa-pages.test.mjs, tools/test/styleqa-static.test.mjs, tools/test/styleqa-findings.test.mjs, tools/fixtures/styleqa/**
+- [ ] E2: Add the Style QA settings to the kit config and ship the page map as a file the project owns — styleqa.* keys with defaults, install/sync validation naming the key, page-map schema validation naming the field — kit.config.json, tools/lib/kit.mjs, templates/docs/qa/styleqa-pages.json, templates/docs/qa/styleqa-theme.md, core/scripts/styleqa/config.mjs
 - [ ] E3: Resolve page words to pages and stop on an unknown one with the list of valid names — slugs and aliases, --list — core/scripts/styleqa/pages.mjs
 - [ ] E4: Find literal breakpoints, colours and font sizes in the stylesheets that bypass the design tokens — S1–S3, off with a reason line when no tokens are configured — core/scripts/styleqa/static-checks.mjs
 - [ ] E5: Give every finding an ID that survives unrelated edits and track new, known and gone — fingerprint, known.json, width collapse, subset update — core/scripts/styleqa/findings.mjs
 - [ ] E6: Render one report ordered for fixing, with shared components first — the section order above, redaction — core/scripts/styleqa/report.mjs
 - [ ] E7: Add the command-line entry point and keep the output folder out of git — run.mjs flags above; runtime-ignores entry — core/scripts/styleqa/run.mjs, core/scripts/local-excludes.mjs
-- [ ] E8: Make install copy the engine and seeds, resync the kit's own copy and pass every check — install-check expects scripts/styleqa/run.mjs and docs/qa/styleqa.json; node tools/sync.mjs --target . --apply — tools/install-check.mjs, scripts/**, docs/qa/**, .gitignore, CHANGELOG.md
+- [ ] E8: Make install copy the engine and seeds, resync the kit's own copy and pass every check — install-check expects scripts/styleqa/run.mjs and docs/qa/styleqa-pages.json and refuses a bad styleqa.* value; node tools/sync.mjs --target . --apply — tools/install-check.mjs, scripts/**, docs/qa/**, .gitignore, CHANGELOG.md
 
 ## Technical Considerations
 - Dependencies: Node built-ins only in this plan (the kit's scripts may also use `picomatch` from `scripts/package.json`
@@ -142,7 +150,7 @@ per commit: `ok` or `conflict: <what>`. STOP for a go only on a `conflict`.
 - Auth and validation: the page map is validated on load; nothing is called.
 - Security surface: report redaction; the output folder is git-ignored.
 - Data / migration: none. Templates are seeds: install writes them once, the project owns them after.
-- The kit repository itself gets the seed too (empty `pages`): the engine then prints `no pages in docs/qa/styleqa.json`
+- The kit repository itself gets the seed too (empty `pages`): the engine then prints `no pages in docs/qa/styleqa-pages.json`
   and exits 0.
 - Leak check: no project name, port, language name or token name in `core/` or `templates/` (`npm run lint`).
 
@@ -153,7 +161,7 @@ per commit: `ok` or `conflict: <what>`. STOP for a go only on a `conflict`.
 - The kit release (the Human releases after merging the run branch) and FoodVibe adoption (planned in FoodVibe after it).
 
 ## Critical Questions
-- Q1: Where do the project's Style QA settings live? A: Planner default (the Human may change it before the run) — one project-owned seed `docs/qa/styleqa.json`, no new kit.config keys.
+- Q1: Where do the project's Style QA settings live? A: (Human, 2026-11-13) settings in `kit.config.json` under `styleqa.*`; only the page map is its own file, `docs/qa/styleqa-pages.json`.
 - Q2: How does a project run the engine without the command? A: (Human, 2026-11-13) `node scripts/styleqa/run.mjs …`; the kit never edits the project's package.json.
 
 ## Execution Notes

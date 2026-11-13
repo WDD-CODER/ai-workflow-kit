@@ -100,15 +100,15 @@ per commit: `ok` or `conflict: <what>`. STOP for a go only on a `conflict`.
 
 ### Must Have (P0)
 - [ ] Sweep driver: Playwright Chromium, one context per width from the page map (phone widths ≤ 620 with touch), signed in
-  through the project's `config.signIn` module when the page has `auth` (`export async function signIn(context, { appOrigin, apiOrigin })`);
-  waits for load and for `config.loaderText` to disappear.
+  through the project's `styleqa.signIn` module when the page has `auth` (`export async function signIn(context, { appOrigin, apiOrigin })`);
+  waits for load and for `styleqa.loaderText` to disappear.
 - [ ] `:id` routes: `idType` names a list request; the first record's id fills the route; none → the page is reported
   `skipped: no record` in coverage.
 - [ ] States: `default` always; `empty` for list pages (list requests answered `[]` inside the browser); one state per tab
   reachable by URL; `steps` states (`click | hover | fill | press | waitFor | scrollTo`). A step targeting a blocked word
   or selector is refused before the run. Every non-GET request is aborted by a request guard, so the server receives no write.
 - [ ] Probe (injected; its geometry is pure functions exported for tests): L1–L6, U1, T1–T3 (computed value vs the
-  resolved tokens of `config.tokenPrefixes`; no tokens → off with a line), G5; all edges inline-start / inline-end from
+  resolved tokens of `styleqa.tokenPrefixes`; no tokens → off with a line), G5; all edges inline-start / inline-end from
   `{{project.uiDirection}}`. A1 = axe-core `color-contrast` only.
 - [ ] `Rails` table rows for every horizontally scrollable container (selector, width, visible children, scroll-snap).
 - [ ] Component: nearest element whose tag has a hyphen (custom element / component root); its source folder from the pack's
@@ -142,7 +142,7 @@ per commit: `ok` or `conflict: <what>`. STOP for a go only on a `conflict`.
 - Backend / API: none; the request guard makes every run read-only against the server.
 - Auth and validation: the sign-in module is the project's; the engine passes it a browser context and never reads a
   credential. Reports and console output pass redaction.
-- Security surface: a project module is imported (`config.signIn`, a repo-relative path inside the project — refuse an
+- Security surface: a project module is imported (`styleqa.signIn`, a repo-relative path inside the project — refuse an
   absolute path or `..`).
 - Data / migration: none.
 - `kit.config.json` `$comment` lists the pack-contract keys; add `styleqaRoutes` there. A core placeholder no pack fills
