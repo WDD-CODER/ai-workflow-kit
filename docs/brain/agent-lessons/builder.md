@@ -5,3 +5,6 @@ Facts from earlier runs of the builder role in this project, written by scripts 
 - 2026-11-08 run-095: parked: same reason twice
 - 2026-11-08 run-100: parked: needs the Human
 - 2026-11-08 run-100: parked: worktree
+- 2026-11-13 styleqa: fix round caused by: lint failed
+- 2026-11-13 styleqa: fix round caused by: node tools/acceptance-check.mjs --e2e failed
+- 2026-11-13 styleqa: escalated to the judgment tier at round 2: node tools/acceptance-check.mjs --e2e
