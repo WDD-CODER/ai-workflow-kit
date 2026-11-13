@@ -9,6 +9,9 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Fixed
+- **A failing final gate names the failing tests.** The stop reason and the run report showed the last 3 lines of the output, which were the build and pnpm lines. They now show the failing test names and the totals line. When no plan in the run changed a file the failure names, they also say it may be this machine: try the same command on the run's base commit.
+
 ## [3.2.2] - 2026-11-12
 
 Patch: no project action. Sync it between orchestrator runs, never during one. A plan scope line that is only a test

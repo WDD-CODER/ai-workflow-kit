@@ -44,7 +44,7 @@ import { createLive } from './lib/run-live.mjs'
 import { review, blocking, problemLine } from './lib/plan-review.mjs'
 import { mergePlan, orchState } from './lib/plan-merge.mjs'
 import { runOrder, unitsOf, afterPark, blockedBy } from './lib/run-order.mjs'
-import { planBranch, planBranchProblem, runNameProblem, startTier, humanOnlyAsk, ASK_KINDS, askCard, ASK_ID_RE } from './lib/orch-run.mjs'
+import { planBranch, planBranchProblem, runNameProblem, startTier, humanOnlyAsk, ASK_KINDS, askCard, ASK_ID_RE, failingLines, NO_PLAN_FILE_NOTE } from './lib/orch-run.mjs'
 import { ensureEnv, failingTree, depFolders, retryGit } from './lib/orch-folders.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -205,6 +205,19 @@ export function blameFinalGate({ output, merged }) {
     if (who.length === 1) owners.add(who[0])
   }
   return owners.size === 1 ? [...owners][0] : null
+}
+/** Does the failing output name any file a merged plan changed? `merged` is { nnn: [files the plan changed] }. */
+export function planFileNamed({ output, merged }) {
+  const text = String(output ?? '').replace(/\\/g, '/')
+  return Object.values(merged ?? {}).flat().some((f) => f && text.includes(f))
+}
+/**
+ * The run's stop reason when the final gate fails: the failing test names and the totals line (not the output's last
+ * lines), and, when no merged plan changed a file the output names, that it may be this machine.
+ */
+export function finalGateStopReason({ command, tail, merged }) {
+  const note = planFileNamed({ output: `${command}\n${tail}`, merged }) ? '' : ` — ${NO_PLAN_FILE_NOTE}`
+  return `${`final gate failed: ${command} — ${failingLines(tail).join(' / ')}`.slice(0, 600 - note.length)}${note}`
 }
 /** orchestrator.ciMirror as the plan gate runs it: allowed commands only, the trusted manifest check left to its own entry. */
 export function ciMirrorChecks(list, scripts = null, { manifest = false } = {}) {
@@ -1114,7 +1127,7 @@ async function main() {
       if (failure.escalate || ctx.round >= 2) {
         const h = state('handoff', {
           run: RUN, plan: nnn, 'reset-base': true, step: `round ${ctx.round}`, check: String(failure.check ?? failure.why).slice(0, 200),
-          tail: String(failure.tail ?? failure.why).split(/\r?\n/).slice(-5).join(' / ').slice(0, 390), tried: `${ctx.tier} builder, mode ${ctx.mode}`,
+          tail: failingLines(failure.tail ?? failure.why, { last: 5 }).join(' / ').slice(0, 390), tried: `${ctx.tier} builder, mode ${ctx.mode}`,
           failed: [`${failure.check ?? failure.why}`, ...ctx.findings.slice(0, 10).map((f) => `${f.id} ${f.file}:${f.line ?? '?'} ${f.rule ?? ''}`)].join(' | ').slice(0, 390),
           replan: result?.planChange?.needed === true ? 'yes' : 'no', 'replan-why': String(result?.planChange?.why ?? 'the builder gave no planChange').slice(0, 240),
         })
@@ -1341,11 +1354,13 @@ async function main() {
         const bad = g.results.find((x) => x.status !== 'pass')
         return g.status === 'pass' ? { ok: true } : { ok: false, command: bad?.command ?? '', tail: bad?.tail ?? '' }
       }
+      // { nnn: [files the plan changed] } of every plan merged into the run branch now
+      const changedByPlan = () => Object.fromEntries(outcomes.filter((x) => x.state === 'merged' && x.sha).map((x) => [x.nnn, git(mergeFolder, 'diff', '--name-only', '--no-renames', `${x.sha}^1`, x.sha).out.split('\n').map((f) => f.trim()).filter(Boolean)]))
       finalGate = await runFinal()
       // A failing command whose output names a file that exactly one merged plan changed: that plan gets one fix round in
       // its own folder (its tier, counted against maxFixRounds), a re-merge and a second final gate.
       if (!finalGate.ok) {
-        const changed = Object.fromEntries(merged.filter((x) => x.sha).map((x) => [x.nnn, git(mergeFolder, 'diff', '--name-only', '--no-renames', `${x.sha}^1`, x.sha).out.split('\n').map((f) => f.trim()).filter(Boolean)]))
+        const changed = changedByPlan()
         const blamed = blameFinalGate({ output: `${finalGate.command}\n${finalGate.tail}`, merged: changed })
         const prior = blamed ? merged.find((x) => x.nnn === blamed) : null
         if (blamed && prior && (Number(prior.round) || 0) + 1 <= MAX_FIX_ROUNDS) {
@@ -1382,7 +1397,9 @@ async function main() {
         }
       }
       if (!finalGate.ok) {
-        stopReason = `final gate failed: ${finalGate.command} — ${String(finalGate.tail).split('\n').slice(-3).join(' / ')}`.slice(0, 380)
+        const changed = changedByPlan()
+        if (!planFileNamed({ output: `${finalGate.command}\n${finalGate.tail}`, merged: changed })) finalGate.noPlanFile = true
+        stopReason = finalGateStopReason({ command: finalGate.command, tail: finalGate.tail, merged: changed })
         state('stop', { run: RUN, reason: stopReason })
       }
     }
@@ -1397,7 +1414,7 @@ async function main() {
   if (rows.length) state('decisions', { run: RUN, b64: b64(JSON.stringify(rows)) })
   const fin = state('finish', {
     run: RUN, 'final-gate': finalGate ? (finalGate.ok ? 'ok' : 'failed') : 'none',
-    ...(finalGate && !finalGate.ok && finalGate.command ? { 'final-gate-command-b64': b64(finalGate.command), 'final-gate-tail-b64': b64(String(finalGate.tail).slice(-2000)) } : {}),
+    ...(finalGate && !finalGate.ok && finalGate.command ? { 'final-gate-command-b64': b64(finalGate.command), 'final-gate-tail-b64': b64([...failingLines(finalGate.tail), String(finalGate.tail).slice(-2000)].join('\n')), ...(finalGate.noPlanFile ? { 'final-gate-no-plan-file': 'yes' } : {}) } : {}),
   })
   const mergedList = outcomes.filter((x) => x.state === 'merged').map((x) => x.nnn)
   const parkedList = outcomes.filter((x) => x.state === 'parked').map((x) => x.nnn)
