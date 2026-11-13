@@ -705,6 +705,7 @@ async function main() {
     say(`RUN_PLANS_JSON ${JSON.stringify({ ok: false, refused: order.error })}`)
     return 1
   }
+  if (order.warning) say(order.warning)
   const all = order.waves.flat()
   say(`RUN_PLANS: ${o.dryRun ? 'dry run of' : 'run'} ${RUN} → ${RUN_BRANCH} · ${all.length} plan(s) in ${order.waves.length} wave(s) · concurrency ${o.concurrency} · reviewer ${REVIEW_MODEL} (${o.reviewerMode})`)
   order.waves.forEach((w, i) => say(`WAVE ${i + 1}: ${w.join(', ')}`))
