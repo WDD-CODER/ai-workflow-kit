@@ -1,0 +1,9 @@
+{
+  "tokenPrefixes": { "color": "--color-", "fontSize": "--font-size-", "radius": "--radius-" },
+  "tokenFiles": ["styles/tokens.css"],
+  "breakpointPattern": "var\\(--bp-",
+  "stylesheets": ["styles/**/*.css"],
+  "outDir": "out/styleqa",
+  "widths": ["375x812", "620x900", "1366x768"],
+  "uiDirection": "ltr"
+}

@@ -131,14 +131,14 @@ per commit: `ok` or `conflict: <what>`. STOP for a go only on a `conflict`.
 
 ## Atomic Sub-tasks
 
-- [ ] E1: Write failing tests for page resolution, the static checks and the finding store first — fixture under tools/fixtures/styleqa/ (a page map, styleqa settings, two stylesheets with planted S1–S3 literals and token definitions) — tools/test/styleqa-pages.test.mjs, tools/test/styleqa-static.test.mjs, tools/test/styleqa-findings.test.mjs, tools/fixtures/styleqa/**
-- [ ] E2: Add the Style QA settings to the kit config and ship the page map as a file the project owns — styleqa.* keys with defaults, install/sync validation naming the key, page-map schema validation naming the field — kit.config.json, tools/lib/kit.mjs, templates/docs/qa/styleqa-pages.json, templates/docs/qa/styleqa-theme.md, core/scripts/styleqa/config.mjs
-- [ ] E3: Resolve page words to pages and stop on an unknown one with the list of valid names — slugs and aliases, --list — core/scripts/styleqa/pages.mjs
-- [ ] E4: Find literal breakpoints, colours and font sizes in the stylesheets that bypass the design tokens — S1–S3, off with a reason line when no tokens are configured — core/scripts/styleqa/static-checks.mjs
-- [ ] E5: Give every finding an ID that survives unrelated edits and track new, known and gone — fingerprint, known.json, width collapse, subset update — core/scripts/styleqa/findings.mjs
-- [ ] E6: Render one report ordered for fixing, with shared components first — the section order above, redaction — core/scripts/styleqa/report.mjs
-- [ ] E7: Add the command-line entry point and keep the output folder out of git — run.mjs flags above; runtime-ignores entry — core/scripts/styleqa/run.mjs, core/scripts/local-excludes.mjs
-- [ ] E8: Make install copy the engine and seeds, resync the kit's own copy and pass every check — install-check expects scripts/styleqa/run.mjs and docs/qa/styleqa-pages.json and refuses a bad styleqa.* value; node tools/sync.mjs --target . --apply — tools/install-check.mjs, scripts/**, docs/qa/**, .gitignore, CHANGELOG.md
+- [x] E1: Write failing tests for page resolution, the static checks and the finding store first — fixture under tools/fixtures/styleqa/ (a page map, styleqa settings, two stylesheets with planted S1–S3 literals and token definitions) — tools/test/styleqa-pages.test.mjs, tools/test/styleqa-static.test.mjs, tools/test/styleqa-findings.test.mjs, tools/fixtures/styleqa/**
+- [x] E2: Add the Style QA settings to the kit config and ship the page map as a file the project owns — styleqa.* keys with defaults, install/sync validation naming the key, page-map schema validation naming the field — kit.config.json, tools/lib/kit.mjs, templates/docs/qa/styleqa-pages.json, templates/docs/qa/styleqa-theme.md, core/scripts/styleqa/config.mjs
+- [x] E3: Resolve page words to pages and stop on an unknown one with the list of valid names — slugs and aliases, --list — core/scripts/styleqa/pages.mjs
+- [x] E4: Find literal breakpoints, colours and font sizes in the stylesheets that bypass the design tokens — S1–S3, off with a reason line when no tokens are configured — core/scripts/styleqa/static-checks.mjs
+- [x] E5: Give every finding an ID that survives unrelated edits and track new, known and gone — fingerprint, known.json, width collapse, subset update — core/scripts/styleqa/findings.mjs
+- [x] E6: Render one report ordered for fixing, with shared components first — the section order above, redaction — core/scripts/styleqa/report.mjs
+- [x] E7: Add the command-line entry point and keep the output folder out of git — run.mjs flags above; runtime-ignores entry — core/scripts/styleqa/run.mjs, core/scripts/local-excludes.mjs
+- [x] E8: Make install copy the engine and seeds, resync the kit's own copy and pass every check — install-check expects scripts/styleqa/run.mjs and docs/qa/styleqa-pages.json and refuses a bad styleqa.* value; node tools/sync.mjs --target . --apply — tools/install-check.mjs, scripts/**, docs/qa/**, .gitignore, CHANGELOG.md
 
 ## Technical Considerations
 - Dependencies: Node built-ins only in this plan (the kit's scripts may also use `picomatch` from `scripts/package.json`
@@ -167,3 +167,21 @@ per commit: `ok` or `conflict: <what>`. STOP for a go only on a `conflict`.
 ## Execution Notes
 - 2026-11-13 Planner: saved from the brief with plans 118 and 119; the Human chose: save from a temporary main worktree,
   `/styleqa` as a skill plus agentFiles budget 11, an opt-in local browser test, dev dependencies checked only.
+- 2026-11-13 Builder (run styleqa, round 2, fresh builder from base e55bfbc): the round-1 gate failure
+  (`node tools/acceptance-check.mjs --e2e`, 1 of 38 checks) did not reproduce: on the base → exit 0, 122 passed; on the
+  discarded attempt 02dd0d8 → exit 0, 122 passed; on this build → exit 0, 122 passed. Re-implemented from the base.
+- Engine: `core/scripts/styleqa/{config,pages,static-checks,findings,report,run,redact}.mjs`. Only `config.mjs` carries
+  placeholders (`{{styleqa.*|json}}`, `{{stack.stylesheetExt|json}}`, `{{project.uiDirection|json}}`, slot base ports);
+  the rest import nothing rendered. Redaction is engine-local (`redact.mjs`) on the pre-commit scan's PATTERNS plus JWT,
+  bearer, secret query values and URL credentials (`core/scripts/lib/redact.mjs` is the plan-notes redactor, not secrets).
+- Page-map step shape: `{ "action": click|hover|fill|press|waitFor|scrollTo, "target": "<selector>", "value"? }`; every
+  page has the implicit state `default`; `auth` is true, false or a ui.logins role word.
+- Settings: `styleqaProblems` in `tools/lib/kit.mjs` (unknown `styleqa.*` keys refused too), wired into the config
+  problems install and sync already run; install-check covers 5 install refusals, 1 sync refusal, the copied engine and
+  seeds, the rendered defaults, the installed engine on the empty page map and the `.claude/styleqa/` ignore.
+- Evidence: `node --test tools/test/styleqa-static.test.mjs tools/test/styleqa-findings.test.mjs tools/test/styleqa-pages.test.mjs`
+  → exit 0, pass 16, fail 0 · `node tools/sync.mjs --target . --apply` → exit 0 · `npm run build` → exit 0 ·
+  `npm run lint` → exit 0 (first run flagged a framework folder name in the skip list; removed) · `npm run test` → exit 0
+  (INSTALL_CHECK ok, 0 problems) · `node tools/drift-check.mjs --target .` → exit 0 · `node tools/pack-check.mjs` → exit 0 ·
+  `node tools/workflow-link-check.mjs` → exit 0 · `node tools/e2e-check.mjs` → exit 0 (55 passed, 1 skipped) ·
+  `node tools/acceptance-check.mjs --e2e` → exit 0 (122 passed) · `node scripts/scope-check.mjs --diff=origin/orch/styleqa` → SCOPE: ok.

@@ -3,7 +3,7 @@
     "version": "3.2.2"
   },
   "source": "local:.",
-  "commit": "6464822f2ec7a373eebed57fadb9b9b70d262bea",
+  "commit": "e55bfbc25baf8a01fdc4d6f83e29bfd829afe33a",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -599,6 +599,16 @@
       "kind": "seed",
       "source": "templates/docs/project/tech-stack.md"
     },
+    "docs/qa/styleqa-pages.json": {
+      "sha256": "9fac18e5130b589f12adb10304bd6301a94f6109a3c0b49b0b5b9ad60819c882",
+      "kind": "seed",
+      "source": "templates/docs/qa/styleqa-pages.json"
+    },
+    "docs/qa/styleqa-theme.md": {
+      "sha256": "fbcf66ad61d3ab29a8b27dd8916a1e9a68ee806299601154898044d4ca3d21d2",
+      "kind": "seed",
+      "source": "templates/docs/qa/styleqa-theme.md"
+    },
     "docs/scout/sources.json": {
       "sha256": "5230547b992d3d5c0576123aa226bdecfb52240eedba8b7d15b072a714ea801e",
       "kind": "seed",
@@ -785,7 +795,7 @@
       "source": "core/scripts/lib/todo-parse.mjs"
     },
     "scripts/local-excludes.mjs": {
-      "sha256": "ad80e8e4683279214fda50aa86a1cfe23d70130ee0d25fc33be06fc2c3258c5a",
+      "sha256": "5673ee0e29cd7a0fab583e21e9577aed319cd726605cada9401ac76ef89ded22",
       "kind": "managed",
       "source": "core/scripts/local-excludes.mjs"
     },
@@ -948,6 +958,41 @@
       "sha256": "1652ee83ac02172c251a3e6e42d876b4da53a6df16a9987f638a93f8c096df25",
       "kind": "managed",
       "source": "core/scripts/slot-stop.mjs"
+    },
+    "scripts/styleqa/config.mjs": {
+      "sha256": "a6e46e86628825c46455a3d3162f2913af6c00ec6baccbf04a4c086f38fa6b24",
+      "kind": "managed",
+      "source": "core/scripts/styleqa/config.mjs"
+    },
+    "scripts/styleqa/findings.mjs": {
+      "sha256": "c5997c2836a431b38da3469a94a5123150d4234bfb031c5af81435368092ffef",
+      "kind": "managed",
+      "source": "core/scripts/styleqa/findings.mjs"
+    },
+    "scripts/styleqa/pages.mjs": {
+      "sha256": "ff047b6451e433aa4faa700beeb53dec3562865bd534c14c71afa62422d91ee7",
+      "kind": "managed",
+      "source": "core/scripts/styleqa/pages.mjs"
+    },
+    "scripts/styleqa/redact.mjs": {
+      "sha256": "6276dfd7bdca3772657e1f633066f73d6f4f1fda0dc60775a83250c6e394f86d",
+      "kind": "managed",
+      "source": "core/scripts/styleqa/redact.mjs"
+    },
+    "scripts/styleqa/report.mjs": {
+      "sha256": "908233671741b22c0916e335950dcb177e307b7dd10205ebf03c70380afd8cfd",
+      "kind": "managed",
+      "source": "core/scripts/styleqa/report.mjs"
+    },
+    "scripts/styleqa/run.mjs": {
+      "sha256": "3b9e0adf5a6502fb4633d6143704fd73a1e9b112c9d8026034f99e7e28e841e4",
+      "kind": "managed",
+      "source": "core/scripts/styleqa/run.mjs"
+    },
+    "scripts/styleqa/static-checks.mjs": {
+      "sha256": "c7fac22c13d98c39e2ebe620b8349cf855fde2ed75accbb915a4875bfde9057f",
+      "kind": "managed",
+      "source": "core/scripts/styleqa/static-checks.mjs"
     },
     "scripts/take-plan.mjs": {
       "sha256": "591b2e0fcdb304247dd90e308395eb54a3fe5ec6a7c3cd9542d2127e345a3b9b",
