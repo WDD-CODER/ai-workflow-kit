@@ -128,14 +128,15 @@ two marked **model**.
      `db-write` and for a question with no kind; false for `scope`, `technical`, `environment` and `review`. The plan's
      state is `asking`; it blocks exactly what a park would, but those plans are held, not skipped, and the rest of
      the run goes on. `watch` prints each open ask as a card with its answer command. When every other plan has ended,
-     the run polls the answers every 30 s, each ask for up to `ASK_WAIT_MIN` (180, fixed in `run-plans.mjs`), while
-     `watch` still says `RUNNING`. `node scripts/orch-state.mjs answer --run <run> --id <id> --choice <n>` (or
+     the run polls the answers every 30 s while `watch` still says `RUNNING`. An ask still open after `ASK_WAIT_MIN`
+     (180, fixed in `run-plans.mjs`) gets a run note `ask <id> still open after <n> min — still waiting` (again at most
+     once an hour) and stays open: parking costs a relaunch, waiting costs nothing. `node scripts/orch-state.mjs answer --run <run> --id <id> --choice <n>` (or
      `--text "<answer>"`) writes `<id>.answer.json` with `by: human`; a `park:` option parks; a `scope` answer that
      names paths adds them to the plan's scope on the run branch first; any other answer resumes the plan in the same
      run through the resume rule above (its saved work, its round and tier, the hand-off), with the answer as
      `ANSWER` in the builder's prompt, and then the plans it held. An answer file with `by: advisor` on a `humanOnly`
-     ask is refused with a run note and the ask stays open. An unanswered ask parks its plan with its question in the
-     run notes; a plan asks at most 3 times in one run.
+     ask is refused with a run note and the ask stays open. An ask unanswered after `ASK_PARK_MIN` (24 h) parks its
+     plan with its question in the run notes; a plan asks at most 3 times in one run.
 4. **Final gate** on the run branch (`prepare`, the project checks, the manifest check, `ciMirror`). Every one of
    those commands is also in each plan's own gate (the manifest check reads the plan's folder), so the final gate finds
    nothing a plan's gate did not. When it still fails on a command whose output names a file that exactly one merged

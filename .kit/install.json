@@ -3,7 +3,7 @@
     "version": "3.2.2"
   },
   "source": "local:.",
-  "commit": "f5a37c38dc288baa91d4ae1bb0829e3cd04e9b1e",
+  "commit": "1990a450c30083bcb522ef1ad77968fda021d28a",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -375,7 +375,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "f52ca25aa44d6353abe99a319de064ca797f6014defd2dec38942fedc9312afe",
+      "sha256": "1ec025c8b10b8b69ae97bb4c50926d8fedbcc0233c102225cd1ae001df45886f",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -875,7 +875,7 @@
       "source": "core/scripts/prune-old-sessions.sh"
     },
     "scripts/run-plans.mjs": {
-      "sha256": "3771da070d9e001c4336e21b85dc0ec145c21ef6e974191aa969dd68bbfa53d1",
+      "sha256": "fe9af4d721d1a7295ae1e9d1d517524cf3832cc100bdb029351bfece54b8211e",
       "kind": "managed",
       "source": "core/scripts/run-plans.mjs"
     },
