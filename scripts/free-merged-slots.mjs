@@ -8,7 +8,8 @@
  * A slot that serves a branch for the Human's validation (.worktree-validating, slot-serve.mjs --ref) is left alone.
  * Also removes the merge folder of a merged run (<repo>-orch-merge-<run>, a worktree on the run branch): when the run
  * is not live, the folder has no uncommitted file and its run branch is merged into origin/main (or its
- * upstream is gone after a squash merge). `git worktree remove` without --force; the local branch is kept.
+ * upstream is gone after a squash merge). worktree-clean.mjs removeWorktree: `git worktree remove` without --force
+ * (3 tries), then a scripted delete (Windows "Directory not empty" on node_modules); the local branch is kept.
  *
  * Usage:
  *   node scripts/free-merged-slots.mjs             # fetch first
@@ -23,7 +24,7 @@ import { fileURLToPath } from 'url'
 import { listSlots } from './lib/slot.mjs'
 import { samePath } from './lib/orch-folders.mjs'
 import { stopSlotServers } from './lib/slot-procs.mjs'
-import { sweep } from './worktree-clean.mjs'
+import { sweep, removeWorktree } from './worktree-clean.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(__dirname, '..')
@@ -100,8 +101,9 @@ function freeMergeFolders() {
   for (const line of git(['worktree', 'list', '--porcelain']).split('\n')) {
     if (line.startsWith('worktree ')) {
       if (cur) folders.push(cur)
-      cur = { path: line.slice('worktree '.length), branch: null }
+      cur = { path: line.slice('worktree '.length), branch: null, locked: false }
     } else if (cur && line.startsWith('branch ')) cur.branch = line.slice('branch '.length).replace('refs/heads/', '')
+    else if (cur && line.startsWith('locked')) cur.locked = true
   }
   if (cur) folders.push(cur)
   const mine = folders.filter((f) => norm(f.path).split('/').pop().startsWith(prefix) && norm(f.path) !== norm(repoRoot))
@@ -115,6 +117,10 @@ function freeMergeFolders() {
     }
     if (!f.branch) {
       console.log(`merge folder ${f.path}: left alone — it is not on a run branch`)
+      continue
+    }
+    if (f.locked) {
+      console.log(`merge folder ${f.path}: left alone — git has it locked`)
       continue
     }
     let clean = false
@@ -132,12 +138,11 @@ function freeMergeFolders() {
       console.log(`merge folder ${f.path}: left alone — run branch ${f.branch} is not merged into origin/main`)
       continue
     }
-    try {
-      git(['worktree', 'remove', f.path])
-      console.log(`merge folder ${f.path}: removed (run branch ${f.branch} merged; local branch kept)`)
-    } catch (e) {
-      console.log(`merge folder ${f.path}: left alone — git worktree remove failed (${String(e.stderr || e.message).trim().split('\n').pop()}); a server or editor may still hold a file`)
-    }
+    // git alone failed on Windows ("Directory not empty" on node_modules) and left 1-2 GB behind: retries, then a
+    // scripted delete of the clean folder.
+    const r = removeWorktree(repoRoot, f.path)
+    if (r.ok) console.log(`merge folder ${f.path}: removed (run branch ${f.branch} merged; local branch kept)${r.note}`)
+    else console.log(`merge folder ${f.path}: left alone — ${r.note}`)
   }
 }
 

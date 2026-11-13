@@ -9,6 +9,9 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Fixed
+- **A merged run's merge folder no longer stays on disk.** On Windows `git worktree remove` failed with "Directory not empty" on node_modules, and `free-merged-slots.mjs` left the folder (1-2 GB each) alone; a project's disk filled to 98%. It now retries and then deletes the clean folder by script, like `worktree-clean.mjs`. A sweep also deletes a merge folder git no longer lists when its run branch is merged into origin/main or is on an origin branch, and a clean merge folder of a run that is not live when its commit is on another origin branch (a run fast-forwarded onto a later run). Each sweep ends with one `free disk: N GB` line.
+
 ## [3.2.2] - 2026-11-12
 
 Patch: no project action. Sync it between orchestrator runs, never during one. A plan scope line that is only a test
