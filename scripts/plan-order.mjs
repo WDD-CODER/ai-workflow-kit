@@ -4,13 +4,14 @@
  *
  * Usage:
  *   node scripts/plan-order.mjs [NNN | plans/NNN-x.plan.md ...] [--json]
- *                               [--branch <name> --merged-from git] [--root <dir>]
+ *                               [--branch <name> --merged-from git [--ref <git ref>]] [--root <dir>]
  *
  * No plans named = every open plan. A dependency that is an open plan but not named is added to the order.
  * A dependency counts as met (done) when its plan is closed (moved out of the open plan folders), its Status: says
  * done/superseded/closed, every Atomic Sub-task is [x] (the same rule take-plan uses), or — with --branch <b> --merged-from git — a commit subject in <b>'s history (into <b>, or into any run branch when <b> is one) reads exactly
  *   Merge <source-branch> into <b> (plan NNN)
  * (anchored: "plan NNN" anywhere else in a subject never counts). A named plan that is done is left out of the waves.
+ * --ref names the history to read (e.g. origin/<b>); the subjects still name <b>. Without it: <b>, else origin/<b>.
  *
  * Dependencies come from the plan's "Depends-on:" line and legacy prose ("Prerequisite: plan NNN merged"), read by
  * scripts/lib/plan-deps.mjs — the same parser scope-check --deps and take-plan use.
@@ -40,7 +41,7 @@ const HOTSPOTS = [
 
 function parseArgs(argv) {
   const out = { plans: [] }
-  const valued = new Set(['branch', 'merged-from', 'root'])
+  const valued = new Set(['branch', 'merged-from', 'ref', 'root'])
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (!a.startsWith('--')) {
@@ -103,8 +104,9 @@ const done = new Map()
 for (const [n, p] of closedByNnn) if (!openByNnn.has(n)) done.set(n, `closed: ${p}`)
 if (args['merged-from'] === 'git') {
   const branch = String(args.branch)
-  const ref = git(['rev-parse', '--verify', '--quiet', branch]) ? branch : git(['rev-parse', '--verify', '--quiet', `origin/${branch}`]) ? `origin/${branch}` : null
-  if (!ref) fail(`PLAN_ORDER: branch ${branch} not found in ${toPosix(root)}`)
+  const has = (r) => Boolean(git(['rev-parse', '--verify', '--quiet', r]))
+  const ref = args.ref ? (has(String(args.ref)) ? String(args.ref) : null) : has(branch) ? branch : has(`origin/${branch}`) ? `origin/${branch}` : null
+  if (!ref) fail(`PLAN_ORDER: ${args.ref ? `ref ${args.ref}` : `branch ${branch}`} not found in ${toPosix(root)}`)
   const subjects = git(['log', '--format=%s', ref]).split('\n')
   // A merge into this branch or into an earlier run branch it was made from: both are in its history.
   for (const [n, into] of mergedPlansInHistory(subjects, branch, RUN_PREFIX)) done.set(n, `merged into ${into}`)

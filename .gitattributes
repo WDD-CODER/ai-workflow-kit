@@ -1,2 +1,5 @@
 # LF in the repo and the working tree, so kit-extract --check compares byte-for-byte on Windows too
 * text=auto eol=lf
+
+# The run log only gains rows: a merge keeps both sides' rows (scripts/lib/orch-run.mjs folds a doubled row)
+docs/brain/run-log.md merge=union

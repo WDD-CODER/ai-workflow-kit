@@ -3,7 +3,7 @@
     "version": "3.2.2"
   },
   "source": "local:.",
-  "commit": "f5a37c38dc288baa91d4ae1bb0829e3cd04e9b1e",
+  "commit": "6464822f2ec7a373eebed57fadb9b9b70d262bea",
   "packs": [],
   "layers": [],
   "cursor": false,
@@ -375,7 +375,7 @@
       "source": "core/docs/agent/model-routing.md"
     },
     "docs/agent/orchestrator.md": {
-      "sha256": "f52ca25aa44d6353abe99a319de064ca797f6014defd2dec38942fedc9312afe",
+      "sha256": "1ec025c8b10b8b69ae97bb4c50926d8fedbcc0233c102225cd1ae001df45886f",
       "kind": "managed",
       "source": "core/docs/agent/orchestrator.md"
     },
@@ -700,7 +700,7 @@
       "source": "core/scripts/lib/orch-folders.mjs"
     },
     "scripts/lib/orch-run.mjs": {
-      "sha256": "871741be94edcae4557e981de8fc0638fe2940c6fc3d260003567e84a4d23433",
+      "sha256": "29936ad77ff7b6d2a59141aa7f0b6f8b210f0d3904adb4eaf28567025c9cd972",
       "kind": "managed",
       "source": "core/scripts/lib/orch-run.mjs"
     },
@@ -760,7 +760,7 @@
       "source": "core/scripts/lib/run-live.mjs"
     },
     "scripts/lib/run-order.mjs": {
-      "sha256": "995e06f29f04c13d190f4530d7de51a84b814f04498a85b463c1c0fa3be78018",
+      "sha256": "328a678ff91c794a945027cd319b3dabf9e24ac2879e88ca28ba904a4e514bee",
       "kind": "managed",
       "source": "core/scripts/lib/run-order.mjs"
     },
@@ -770,7 +770,7 @@
       "source": "core/scripts/lib/scope-tests-lint.mjs"
     },
     "scripts/lib/slot-procs.mjs": {
-      "sha256": "ca78f9a1bc518609415072d0938a5f5ca44c82f2684a2c5934746beaa538a16f",
+      "sha256": "1b817b3706bbc66284a9b6a246d58f0d1abaaef28e63ea17d594dfdd9445dfd2",
       "kind": "managed",
       "source": "core/scripts/lib/slot-procs.mjs"
     },
@@ -835,7 +835,7 @@
       "source": "core/scripts/plan-name-similarity.mjs"
     },
     "scripts/plan-order.mjs": {
-      "sha256": "42931b9b95d2bdb66f5bfdffa8f4d8b0f7ceb0871fac29fe670e53f39f65fc8e",
+      "sha256": "d8b04ced3cf8fab68bae0ab6ddf4efd5e5cd66824332893f220b8f1e54d87b28",
       "kind": "managed",
       "source": "core/scripts/plan-order.mjs"
     },
@@ -875,7 +875,7 @@
       "source": "core/scripts/prune-old-sessions.sh"
     },
     "scripts/run-plans.mjs": {
-      "sha256": "3771da070d9e001c4336e21b85dc0ec145c21ef6e974191aa969dd68bbfa53d1",
+      "sha256": "65cde35195ffe0ef8d65b226f1ed6f5d378b478cf6738671187714402b6ac88d",
       "kind": "managed",
       "source": "core/scripts/run-plans.mjs"
     },
@@ -940,7 +940,7 @@
       "source": "core/scripts/ship-prep.mjs"
     },
     "scripts/slot-serve.mjs": {
-      "sha256": "0c5cd3dbce482b2db2079d52ca24c609f877c02595d6cb166ed1735429c748ee",
+      "sha256": "ede66782ac0aa3ee61687d2caba9013016bc26a1da6488fa75cd26ee990073d8",
       "kind": "managed",
       "source": "core/scripts/slot-serve.mjs"
     },

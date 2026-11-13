@@ -1,6 +1,9 @@
 # Enforce LF line endings in the repository
 * text=auto eol=lf
 
+# The run log only gains rows: a merge keeps both sides' rows (scripts/lib/orch-run.mjs folds a doubled row)
+docs/brain/run-log.md merge=union
+
 # Explicitly binary — no conversion
 *.png binary
 *.jpg binary
