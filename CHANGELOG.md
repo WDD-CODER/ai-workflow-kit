@@ -9,6 +9,13 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-11-14
+
+Minor: no project action. New: `/styleqa`, an opt-in Style QA audit of a project's web UI. It does nothing until a
+project adopts it: fill `docs/qa/styleqa-pages.json`, the `styleqa.*` keys in `kit.config.json` and
+`docs/qa/styleqa-theme.md`, and add `@playwright/test` and `@axe-core/playwright` as dev dependencies
+(`docs/agent/styleqa.md`).
+
 ### Added
 
 - `/styleqa` (a skill): the measured Style QA audit plus a bounded visual review (`styleqa-reviewer`, review tier, at most 3 at once, at most 24 images per page) merged into one report with stable IDs. New: `scripts/styleqa/queue.mjs`, `merge.mjs`, `docs/agent/styleqa.md`, `styleqa-rubric.md`; `agentFiles.max` is 11.
