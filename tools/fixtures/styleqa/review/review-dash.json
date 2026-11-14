@@ -1,0 +1,8 @@
+{
+  "findings": [
+    { "check": "V1", "severity": "high", "confidence": 90, "state": "default", "width": 375, "shot": "out/styleqa/screens/dash-default-375-1.png", "region": "header", "anchorText": "Copy link", "title": "The copy-link control looks unstyled", "expected": "a styled button", "actual": "a plain browser button", "extra": "dropped" },
+    { "check": "V3", "severity": "medium", "confidence": 80, "state": "default", "width": 1366, "shot": "out/styleqa/screens/dash-default-1366-1.png", "region": "cards", "anchorText": "Recipes", "title": "The cards are not aligned", "expected": "one left edge", "actual": "two left edges" },
+    { "check": "V1", "severity": "low", "confidence": 40, "state": "default", "width": 375, "shot": "out/styleqa/screens/dash-default-375-1.png", "region": "footer", "anchorText": "Terms", "title": "Maybe a plain link", "expected": "", "actual": "" },
+    { "check": "V9", "severity": "high", "confidence": 95, "state": "default", "width": 375, "shot": "out/styleqa/screens/dash-default-375-1.png", "region": "x", "anchorText": "y", "title": "Not a rubric check", "expected": "", "actual": "" }
+  ]
+}

@@ -1,0 +1,24 @@
+/* Planted literals for the static checks. Line numbers are asserted by tools/test/styleqa-static.test.mjs. */
+.card {
+  --color-accent: #00aa55;
+  color: var(--color-primary);
+  background: #ff0000;
+  font-size: 14px;
+}
+
+@media (max-width: 600px) {
+  .card {
+    padding: 4px;
+  }
+}
+
+@media (min-width: var(--bp-md)) {
+  .card {
+    padding: 8px;
+  }
+}
+
+.title {
+  font-size: var(--font-size-body);
+  border-color: rgba(0, 0, 0, 0.2); /* a colour: #123456 in a comment is not reported */
+}

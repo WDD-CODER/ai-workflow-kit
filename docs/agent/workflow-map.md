@@ -83,6 +83,7 @@ Redirect stubs for palette discoverability ship with the optional Cursor layer (
 | `brief-detection` | a pasted Plan Contract or structured brief (H2 markers), or a feature request in prose in the main folder | gates it: a = Architect + PM review, nothing saved · b = `/plan` → save-plan → a Worker claims it with `take-plan` · c = discussion | `brief-detection-must-use-skill` |
 | `github-sync` | session start, once per day | forked, `mechanical` tier (questions come back as `ASK:` lines); `scripts/github-sync-gate.mjs` (injected gate); writes `notes/github-sync/YYYY-MM-DD.md` | `github-sync-must-use-skill` — best-effort, no `SessionStart`-hook equivalent in Cursor |
 | `preflight` | before dev server / browser / DB workflows | `scripts/preflight.mjs` | `preflight-must-use-skill` |
+| `styleqa` | `/styleqa` — a style or visual QA of pages | inline; `scripts/styleqa/run.mjs`, `queue.mjs`, `merge.mjs`; `styleqa-reviewer` (review tier, at most 3 at once); `docs/agent/styleqa.md` | — |
 | `techdebt` | before PR / audit | forked, `analysis` tier; `scripts/techdebt-report.mjs` (rolling 7 reports + trend) | `techdebt-must-use-skill` |
 | `worktree-setup` | "setup worktree" (explicit only) | — | `worktree-setup-must-use-skill` |
 
@@ -101,6 +102,7 @@ writing stay on the main session's model.
 | `orch-check-plan`, `orch-check-bugs`, `orch-check-rules`, `orch-verify` | review | `/review-it` (the default `/ship` review) | candidate problems with file:line; keep / refuted verdicts with confidence |
 | `orch-security`, `orch-ui` | review | `/review-it` (sensitive paths only); `[ui]` cards no script can check | security problems; UI card results |
 | `skill-judge` | review | the nightly skill improver | a blind grade against assertions |
+| `styleqa-reviewer` | review | `/styleqa` (at most 3 at once) | one review file per page under the Style QA output folder (`docs/agent/styleqa.md`) |
 
 Every role agent follows `docs/agent/agent-roles.md`: non-interactive, evidence for every claim, a JSON result naming its model and effort.
 

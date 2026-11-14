@@ -129,14 +129,14 @@ per commit: `ok` or `conflict: <what>`. STOP for a go only on a `conflict`.
 
 ## Atomic Sub-tasks
 
-- [ ] V1: Write failing tests for the review queue bound and the idempotent merge first — queue and review-file fixtures — tools/test/styleqa-queue.test.mjs, tools/test/styleqa-merge.test.mjs, tools/fixtures/styleqa/**
-- [ ] V2: Bound what the model reads by building a per-page queue of the screenshots worth a look — smallest and largest width always, middle widths only with an S2/S3 finding, cap 24, skipped list — core/scripts/styleqa/queue.mjs
-- [ ] V3: Add the review-tier reviewer that judges screenshots against a shared rubric and the project's theme — agent file, rubric V1–V8 with its rules — core/.claude/agents/styleqa-reviewer.md, core/docs/agent/styleqa-rubric.md
-- [ ] V4: Fold the reviewers' findings into the same report with stable IDs, safely re-runnable — validation, IDs, one-line skip of a malformed file — core/scripts/styleqa/merge.mjs, core/scripts/styleqa/report.mjs
-- [ ] V5: Add the /styleqa skill that runs the whole flow and stops at a short summary — page resolution, servers, measured run, queue, at most 3 reviewers, merge, summary, fix-plan offer — core/.claude/skills/styleqa/SKILL.md
-- [ ] V6: Document adoption, adding pages and states, reading the report and the cost — core/docs/agent/styleqa.md
-- [ ] V7: Register the skill and the agent and raise the agent budget to 11 for it — model-routing row, workflow map, skills listing, size budget, install-check, agent-contract test — core/docs/agent/model-routing.md, core/docs/agent/workflow-map.md, core/.claude/commands/skills.md, tools/size-budget.json, tools/install-check.mjs, tools/test/agent-contracts.test.mjs, tools/test/size-budget.test.mjs
-- [ ] V8: Resync the kit's own copy and pass every check — node tools/sync.mjs --target . --apply — scripts/**, .claude/**, docs/agent/**, CHANGELOG.md
+- [x] V1: Write failing tests for the review queue bound and the idempotent merge first — queue and review-file fixtures — tools/test/styleqa-queue.test.mjs, tools/test/styleqa-merge.test.mjs, tools/fixtures/styleqa/**
+- [x] V2: Bound what the model reads by building a per-page queue of the screenshots worth a look — smallest and largest width always, middle widths only with an S2/S3 finding, cap 24, skipped list — core/scripts/styleqa/queue.mjs
+- [x] V3: Add the review-tier reviewer that judges screenshots against a shared rubric and the project's theme — agent file, rubric V1–V8 with its rules — core/.claude/agents/styleqa-reviewer.md, core/docs/agent/styleqa-rubric.md
+- [x] V4: Fold the reviewers' findings into the same report with stable IDs, safely re-runnable — validation, IDs, one-line skip of a malformed file — core/scripts/styleqa/merge.mjs, core/scripts/styleqa/report.mjs
+- [x] V5: Add the /styleqa skill that runs the whole flow and stops at a short summary — page resolution, servers, measured run, queue, at most 3 reviewers, merge, summary, fix-plan offer — core/.claude/skills/styleqa/SKILL.md
+- [x] V6: Document adoption, adding pages and states, reading the report and the cost — core/docs/agent/styleqa.md
+- [x] V7: Register the skill and the agent and raise the agent budget to 11 for it — model-routing row, workflow map, skills listing, size budget, install-check, agent-contract test — core/docs/agent/model-routing.md, core/docs/agent/workflow-map.md, core/.claude/commands/skills.md, tools/size-budget.json, tools/install-check.mjs, tools/test/agent-contracts.test.mjs, tools/test/size-budget.test.mjs
+- [x] V8: Resync the kit's own copy and pass every check — node tools/sync.mjs --target . --apply — scripts/**, .claude/**, docs/agent/**, CHANGELOG.md
 
 ## Technical Considerations
 - Dependencies: plans 117 (finding store, report) and 118 (sweep, screenshots).
@@ -163,3 +163,6 @@ per commit: `ok` or `conflict: <what>`. STOP for a go only on a `conflict`.
 
 ## Execution Notes
 - 2026-11-13 Planner: saved with plans 117 and 118 from the brief.
+- 2026-11-14 Builder: V1–V8 done. Evidence: npm run build/lint/test → exit 0; pack-check, drift-check --target ., install-check, workflow-link-check, e2e-check, acceptance-check --e2e → exit 0; node --test styleqa-queue (4 pass), styleqa-merge (6 pass), agent-contracts + size-budget → exit 0; scope-check --diff=origin/orch/styleqa → ok; instruction-load 799/800.
+- behaviour: measured findings carry no severity, so the summary counts measured findings by number and visual ones by high/medium/low.
+- behaviour: run.mjs now also writes `<out>/run.json` (date, coverage, notes, rails) so merge can redraw the same report with the visual findings in.

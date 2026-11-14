@@ -32,6 +32,7 @@ builder on `judgment` (`docs/agent/orchestrator.md`, "The run"); its failure par
 | `.claude/agents/orch-security.md` | review | `/review-it` and `/ship` Phase 2 (sensitive paths only) |
 | `.claude/agents/orch-ui.md` | review | `[ui]` cards no script can check |
 | `.claude/agents/skill-judge.md` | review | the nightly skill improver |
+| `.claude/agents/styleqa-reviewer.md` | review | `/styleqa` (`.claude/skills/styleqa/SKILL.md`): reads one page's screenshots, at most 3 at once |
 
 Shared contract of the role agents: `docs/agent/agent-roles.md`. Stays on the main model: `/plan` and its Architect +
 PM review, `/review`, `/fix`, `/security`, all code writing outside a run (`take-plan`), and every verdict.

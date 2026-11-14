@@ -1,0 +1,28 @@
+{
+  "$comment": "Style QA fixture page map (tools/test/styleqa-*.test.mjs).",
+  "pages": [
+    {
+      "slug": "dashboard",
+      "aliases": ["home", "панель"],
+      "title": "Dashboard",
+      "routes": ["/dashboard"],
+      "auth": true,
+      "states": [
+        { "name": "menu-open", "steps": [{ "action": "click", "target": "[data-qa=menu]" }] }
+      ]
+    },
+    {
+      "slug": "settings",
+      "aliases": ["prefs"],
+      "title": "Settings",
+      "routes": ["/settings", "/settings/:id"],
+      "idType": "number",
+      "auth": "admin",
+      "oneRow": true,
+      "states": [
+        { "name": "editing", "steps": [{ "action": "fill", "target": "#name", "value": "Sample" }, { "action": "waitFor", "target": ".saved" }] }
+      ]
+    }
+  ],
+  "excluded": [{ "route": "/logout", "why": "signs the user out" }]
+}

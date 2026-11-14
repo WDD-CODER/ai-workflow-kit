@@ -9,6 +9,16 @@ Releases are git tags `vX.Y.Z` with a GitHub release. Install or upgrade to one 
 
 ## [Unreleased]
 
+### Added
+
+- `/styleqa` (a skill): the measured Style QA audit plus a bounded visual review (`styleqa-reviewer`, review tier, at most 3 at once, at most 24 images per page) merged into one report with stable IDs. New: `scripts/styleqa/queue.mjs`, `merge.mjs`, `docs/agent/styleqa.md`, `styleqa-rubric.md`; `agentFiles.max` is 11.
+- **Style QA browser sweep: `node scripts/styleqa/run.mjs --layers=sweep`.** Playwright opens every page × state × width of the page map, an in-page probe measures layout (L1–L6), native-looking controls (U1), off-token values (T1–T3) and tap targets (G5), axe checks colour contrast (A1), and bounded screenshots (at most 4 viewport-high segments) are attached to each finding. A request guard aborts every non-GET request, so a run never writes to the server. New pack-contract key `styleqaRoutes` (the angular pack reads the router file) powers a map check that fails on a route in neither `pages` nor `excluded`; `--changed` limits the run to changed pages. `@playwright/test` and `@axe-core/playwright` come from the project (the engine stops with the install line when missing).
+- **Style QA engine, static layer: `node scripts/styleqa/run.mjs`.** It reads the project's stylesheets and lists the literals that bypass the design tokens: S1 a literal px width in a media query, S2 a colour literal outside the token definitions, S3 a font-size literal, each with file and line. Every finding has an ID that survives unrelated edits, is `new`, `known` or `gone`, and goes into one report (`.claude/styleqa/report.md`, git-ignored) ordered for fixing: summary, shared components to fix once, per page, rails, static findings by file. No token or credential reaches the report. Settings are the new `styleqa.*` keys of `kit.config.json` (install and sync refuse a bad value, naming the key); the page map is the project's own `docs/qa/styleqa-pages.json` (`--pages` takes a slug or an alias, `--list` prints them; an unknown name stops the run with every valid one). A theme-facts seed, `docs/qa/styleqa-theme.md`, ships too. The browser sweep and `/styleqa` come next.
+
+### Fixed
+
+- The Style QA page test passes on a machine with Playwright installed and no longer leaves an output folder beside its fixture.
+
 ## [3.2.3] - 2026-11-13
 
 Patch: no project action. Sync it between orchestrator runs, never during one. A project that keeps its own

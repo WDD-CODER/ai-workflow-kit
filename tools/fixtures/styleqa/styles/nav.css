@@ -1,0 +1,8 @@
+.nav {
+  color: var(--color-primary);
+}
+
+.nav a:hover {
+  color: #fff;
+  font-size: 1.25rem;
+}

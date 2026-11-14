@@ -1,0 +1,5 @@
+{
+  "$comment": "Style QA page map (project-owned; the kit writes it once). node scripts/styleqa/run.mjs reads it: --pages takes a slug or an alias, --list prints the pages. A page: { slug (lower-case, dashes), aliases (words in any language, matched exactly), title, routes (paths starting with /), idType (optional: the kind of id a route needs), auth (true, false or a ui.logins role), oneRow (optional true/false), states: [{ name, steps: [{ action: click | hover | fill | press | waitFor | scrollTo, target: <selector>, value (fill and press) }] }] }. Every page also has the state default. excluded: [{ route, why }] lists routes left out on purpose. The settings are the styleqa.* keys of kit.config.json; the /styleqa command docs explain the whole flow.",
+  "pages": [],
+  "excluded": []
+}

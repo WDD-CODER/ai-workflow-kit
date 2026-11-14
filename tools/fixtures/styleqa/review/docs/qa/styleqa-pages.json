@@ -1,0 +1,11 @@
+{
+  "$comment": "Style QA review fixture page map (tools/test/styleqa-queue.test.mjs, styleqa-merge.test.mjs).",
+  "pages": [
+    {
+      "slug": "dash", "title": "Dashboard", "routes": ["/dash"], "auth": false,
+      "states": [{ "name": "menu", "steps": [{ "action": "click", "target": "#menu" }] }]
+    },
+    { "slug": "other", "title": "Other page", "routes": ["/other"], "auth": false }
+  ],
+  "excluded": []
+}
