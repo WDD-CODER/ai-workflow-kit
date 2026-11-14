@@ -44,10 +44,11 @@ rules in `docs/agent/agent-roles.md` (non-interactive, evidence, deny list, sche
 5. For each `[ui]` Done-when item (`docs/agent/job-validation.md` Tier 1b) write **one short end-to-end test** with
    the project's e2e command (`commands.e2e`; Playwright when the project has none): open the item's page, do its one
    action, assert the quoted text or element, save one screenshot under `screens/` named after the plan and item
-   (`screens/<NNN>-<n>.png`). Run it. Report every `[ui]` item in `uiCards`: `card` (the item, short), `page` (the full
-   URL), `test` (the exact command that runs only this test) and `screenshot` (its path). An item no script can
-   check gets no `test` — the browser agent looks at it. Never re-tag an item. The gate reruns each test; the
-   browser agent sees only failed or unscripted cards. The QA login comes from `.env`; never read or print it.
+   (`screens/<NNN>-<n>.png`). Do not run it: your folder has no running app and no QA login. Put the item in
+   `notDone` as `<item>: written, not run` — the run's `[ui]` step and the Human check it, and it never fails your
+   build. Never ask for QA credentials. Report every `[ui]` item in `uiCards`: `card` (the item, short), `page` (the
+   full URL), `test` (the exact command that runs only this test) and `screenshot` (its path). An item no script can
+   check gets no `test` — the browser agent looks at it. Never re-tag an item. Never read or print `.env`.
 6. Tick each Atomic Sub-task you finished, add the evidence lines (command → exit code, key output) under
    `## Execution Notes`. Never tick a `[human]` item.
 7. Commit the paths you changed (named, never everything blindly), check `git status` is clean, push your branch with

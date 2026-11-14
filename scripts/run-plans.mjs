@@ -45,8 +45,8 @@ import { createLive } from './lib/run-live.mjs'
 import { review, blocking, problemLine } from './lib/plan-review.mjs'
 import { mergePlan, orchState } from './lib/plan-merge.mjs'
 import { runOrder, unitsOf, afterPark, blockedBy } from './lib/run-order.mjs'
-import { planBranch, planBranchProblem, runNameProblem, startTier, humanOnlyAsk, ASK_KINDS, askCard, ASK_ID_RE } from './lib/orch-run.mjs'
-import { ensureEnv, failingTree, depFolders, retryGit } from './lib/orch-folders.mjs'
+import { planBranch, planBranchProblem, runNameProblem, startTier, humanOnlyAsk, ASK_KINDS, askCard, ASK_ID_RE, failingLines, NO_PLAN_FILE_NOTE } from './lib/orch-run.mjs'
+import { ensureEnv, failingTree, depFolders, retryGit, dropScopeCommitsOnRef } from './lib/orch-folders.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
@@ -186,9 +186,18 @@ export function undoneItems(planText, notDone) {
       // Only a named item counts: its command, its opening words, or the whole note inside it — never shared words.
       return el.length >= 20 && low.includes(el)
     })
-    if (entry) found.push({ item: `[${item.tag}] ${item.text}`.slice(0, 200), reason: entry })
+    if (entry) found.push({ item: `[${item.tag}] ${item.text}`.slice(0, 200), reason: entry, tag: item.tag })
   }
   return found
+}
+/**
+ * The builder's undone items split in two: `fail`, the [auto] items, which fail the gate; `uiNotRun`, the [ui] items.
+ * A builder's folder has no running app and no QA login, so it can write a [ui] spec but never run it: a [ui] item is a
+ * note for the run's [ui] step and the Human, never a failure, a fix round or a tier change.
+ */
+export function undoneSplit(planText, notDone) {
+  const all = undoneItems(planText, notDone)
+  return { fail: all.filter((x) => x.tag !== 'ui'), uiNotRun: all.filter((x) => x.tag === 'ui') }
 }
 /** The main folder's servers a reason names: 'fe' (a dev server, the frontend), 'be' (a backend, a database, an API) or null. */
 export function serversNamed(reason) {
@@ -211,6 +220,19 @@ export function blameFinalGate({ output, merged }) {
     if (who.length === 1) owners.add(who[0])
   }
   return owners.size === 1 ? [...owners][0] : null
+}
+/** Does the failing output name any file a merged plan changed? `merged` is { nnn: [files the plan changed] }. */
+export function planFileNamed({ output, merged }) {
+  const text = String(output ?? '').replace(/\\/g, '/')
+  return Object.values(merged ?? {}).flat().some((f) => f && text.includes(f))
+}
+/**
+ * The run's stop reason when the final gate fails: the failing test names and the totals line (not the output's last
+ * lines), and, when no merged plan changed a file the output names, that it may be this machine.
+ */
+export function finalGateStopReason({ command, tail, merged }) {
+  const note = planFileNamed({ output: `${command}\n${tail}`, merged }) ? '' : ` — ${NO_PLAN_FILE_NOTE}`
+  return `${`final gate failed: ${command} — ${failingLines(tail).join(' / ')}`.slice(0, 600 - note.length)}${note}`
 }
 /** orchestrator.ciMirror as the plan gate runs it: allowed commands only, the trusted manifest check left to its own entry. */
 export function ciMirrorChecks(list, scripts = null, { manifest = false } = {}) {
@@ -1015,8 +1037,15 @@ async function main() {
         const onBase = git(ROOT, 'show', `${base}:${l.path}`)
         const planText = onBase.status === 0 ? onBase.out : readFileSync(join(ROOT, l.path), 'utf8')
         const builtins = { [scopeMarker(base, l.path)]: () => scopeCheck({ folder: wt, base, planText, planPath: l.path, hotspots: HOTSPOTS, upstream: UPSTREAM }) }
-        // A promised [auto]/[ui] Done-when item the builder reports as not done never reaches the merge.
-        const left = result ? undoneItems(planText, result.notDone) : []
+        // A promised [auto] Done-when item the builder reports as not done never reaches the merge. A [ui] item it
+        // reports as not done is a spec written but not run (its folder has no app and no QA login): a note and an
+        // unchecked card for the Human, never a failure, a fix round or a tier change.
+        const { fail: left, uiNotRun } = result ? undoneSplit(planText, result.notDone) : { fail: [], uiNotRun: [] }
+        for (const x of uiNotRun) {
+          note(`${x.item.slice(0, 160)}: written, not run — checked by the run's [ui] step / the Human`, nnn)
+          const card = x.item.replace(/^\[ui\]\s*/, '').replace(/^[\s-]+/, '').slice(0, 160)
+          if (card) setPlan(nnn, { card, 'card-status': 'unchecked', via: 'none' })
+        }
         if (left.length) {
           const first = left[0]
           const servers = serversNamed(first.reason)
@@ -1121,7 +1150,7 @@ async function main() {
       if (failure.escalate || ctx.round >= 2) {
         const h = state('handoff', {
           run: RUN, plan: nnn, 'reset-base': true, step: `round ${ctx.round}`, check: String(failure.check ?? failure.why).slice(0, 200),
-          tail: String(failure.tail ?? failure.why).split(/\r?\n/).slice(-5).join(' / ').slice(0, 390), tried: `${ctx.tier} builder, mode ${ctx.mode}`,
+          tail: failingLines(failure.tail ?? failure.why, { last: 5 }).join(' / ').slice(0, 390), tried: `${ctx.tier} builder, mode ${ctx.mode}`,
           failed: [`${failure.check ?? failure.why}`, ...ctx.findings.slice(0, 10).map((f) => `${f.id} ${f.file}:${f.line ?? '?'} ${f.rule ?? ''}`)].join(' | ').slice(0, 390),
           replan: result?.planChange?.needed === true ? 'yes' : 'no', 'replan-why': String(result?.planChange?.why ?? 'the builder gave no planChange').slice(0, 240),
         })
@@ -1358,11 +1387,13 @@ async function main() {
         const bad = g.results.find((x) => x.status !== 'pass')
         return g.status === 'pass' ? { ok: true } : { ok: false, command: bad?.command ?? '', tail: bad?.tail ?? '' }
       }
+      // { nnn: [files the plan changed] } of every plan merged into the run branch now
+      const changedByPlan = () => Object.fromEntries(outcomes.filter((x) => x.state === 'merged' && x.sha).map((x) => [x.nnn, git(mergeFolder, 'diff', '--name-only', '--no-renames', `${x.sha}^1`, x.sha).out.split('\n').map((f) => f.trim()).filter(Boolean)]))
       finalGate = await runFinal()
       // A failing command whose output names a file that exactly one merged plan changed: that plan gets one fix round in
       // its own folder (its tier, counted against maxFixRounds), a re-merge and a second final gate.
       if (!finalGate.ok) {
-        const changed = Object.fromEntries(merged.filter((x) => x.sha).map((x) => [x.nnn, git(mergeFolder, 'diff', '--name-only', '--no-renames', `${x.sha}^1`, x.sha).out.split('\n').map((f) => f.trim()).filter(Boolean)]))
+        const changed = changedByPlan()
         const blamed = blameFinalGate({ output: `${finalGate.command}\n${finalGate.tail}`, merged: changed })
         const prior = blamed ? merged.find((x) => x.nnn === blamed) : null
         if (blamed && prior && (Number(prior.round) || 0) + 1 <= MAX_FIX_ROUNDS) {
@@ -1399,7 +1430,9 @@ async function main() {
         }
       }
       if (!finalGate.ok) {
-        stopReason = `final gate failed: ${finalGate.command} — ${String(finalGate.tail).split('\n').slice(-3).join(' / ')}`.slice(0, 380)
+        const changed = changedByPlan()
+        if (!planFileNamed({ output: `${finalGate.command}\n${finalGate.tail}`, merged: changed })) finalGate.noPlanFile = true
+        stopReason = finalGateStopReason({ command: finalGate.command, tail: finalGate.tail, merged: changed })
         state('stop', { run: RUN, reason: stopReason })
       }
     }
@@ -1414,7 +1447,7 @@ async function main() {
   if (rows.length) state('decisions', { run: RUN, b64: b64(JSON.stringify(rows)) })
   const fin = state('finish', {
     run: RUN, 'final-gate': finalGate ? (finalGate.ok ? 'ok' : 'failed') : 'none',
-    ...(finalGate && !finalGate.ok && finalGate.command ? { 'final-gate-command-b64': b64(finalGate.command), 'final-gate-tail-b64': b64(String(finalGate.tail).slice(-2000)) } : {}),
+    ...(finalGate && !finalGate.ok && finalGate.command ? { 'final-gate-command-b64': b64(finalGate.command), 'final-gate-tail-b64': b64([...failingLines(finalGate.tail), String(finalGate.tail).slice(-2000)].join('\n')), ...(finalGate.noPlanFile ? { 'final-gate-no-plan-file': 'yes' } : {}) } : {}),
   })
   const mergedList = outcomes.filter((x) => x.state === 'merged').map((x) => x.nnn)
   const parkedList = outcomes.filter((x) => x.state === 'parked').map((x) => x.nnn)
@@ -1459,24 +1492,40 @@ function mergeChecksOf(checks) {
   return build ? [build] : []
 }
 
+const SCOPE_PUSH_TRIES = 3
 /**
  * A scope answer's paths, added to the plan's ```scope block on the run branch before the plan resumes: one commit in
  * the merge folder, pushed (the gate reads the scope from the run branch; plan-info merges it into the plan branch).
+ * One owner for the line (K8): a line origin already holds gets no commit of the run; a push that loses a race (the
+ * Planner pushed meanwhile) drops the local commit and tries again on the new origin, up to SCOPE_PUSH_TRIES times; a
+ * leftover local scope commit whose lines origin holds is dropped (dropScopeCommitsOnRef) instead of blocking.
  */
-function extendScope({ mergeFolder, runBranch, planPath, paths, id, run, nnn }) {
-  git(mergeFolder, 'fetch', '--quiet', 'origin')
-  const ff = git(mergeFolder, 'merge', '--quiet', '--ff-only', `origin/${runBranch}`)
-  if (ff.status !== 0) return { ok: false, error: `the merge folder does not fast-forward to origin/${runBranch}: ${lastLine(ff.err)}` }
-  const file = join(mergeFolder, planPath)
-  if (!existsSync(file)) return { ok: false, error: `${planPath} is not on ${runBranch}` }
-  const { text, added } = withScopeLines(readFileSync(file, 'utf8'), paths)
-  if (!added.length) return { ok: true, added }
-  writeFileSync(file, text)
-  for (const step of [['add', '--', planPath], ['commit', '--quiet', '-m', `plan(${nnn}): scope + ${added.join(', ')} — the answer to ask ${id} of run ${run}`], ['push', '--quiet', 'origin', `HEAD:refs/heads/${runBranch}`]]) {
-    const r = git(mergeFolder, ...step)
-    if (r.status !== 0) return { ok: false, error: `git ${step[0]}: ${lastLine(r.err || r.out)}` }
+export function extendScope({ mergeFolder, runBranch, planPath, paths, id, run, nnn }) {
+  let error = ''
+  for (let attempt = 1; attempt <= SCOPE_PUSH_TRIES; attempt++) {
+    git(mergeFolder, 'fetch', '--quiet', 'origin')
+    const ff = git(mergeFolder, 'merge', '--quiet', '--ff-only', `origin/${runBranch}`)
+    if (ff.status !== 0) {
+      const d = dropScopeCommitsOnRef(mergeFolder, `origin/${runBranch}`)
+      if (!d.ok) return { ok: false, error: `the merge folder does not fast-forward to origin/${runBranch}: ${lastLine(ff.err)} (${d.why})` }
+    }
+    const file = join(mergeFolder, planPath)
+    if (!existsSync(file)) return { ok: false, error: `${planPath} is not on ${runBranch}` }
+    const { text, added } = withScopeLines(readFileSync(file, 'utf8'), paths)
+    if (!added.length) return { ok: true, added }
+    writeFileSync(file, text)
+    for (const step of [['add', '--', planPath], ['commit', '--quiet', '-m', `plan(${nnn}): scope + ${added.join(', ')} — the answer to ask ${id} of run ${run}`]]) {
+      const r = git(mergeFolder, ...step)
+      if (r.status !== 0) return { ok: false, error: `git ${step[0]}: ${lastLine(r.err || r.out)}` }
+    }
+    const p = git(mergeFolder, 'push', '--quiet', 'origin', `HEAD:refs/heads/${runBranch}`)
+    if (p.status === 0) return { ok: true, added }
+    error = `git push: ${lastLine(p.err || p.out)}`
+    // The push lost: the local commit goes, so the merge folder fast-forwards to the new origin on the next try.
+    const back = git(mergeFolder, 'reset', '--quiet', '--keep', 'HEAD~1')
+    if (back.status !== 0) return { ok: false, error: `${error}; git reset --keep HEAD~1: ${lastLine(back.err || back.out)}` }
   }
-  return { ok: true, added }
+  return { ok: false, error: `${error} (${SCOPE_PUSH_TRIES} tries)` }
 }
 
 /** After the builder: no uncommitted file, at least one commit beyond the run branch, and the branch on origin. */

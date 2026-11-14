@@ -42,6 +42,8 @@ function fail(message) {
   console.error(`SLOT_SERVE: ${message}`)
   process.exit(1)
 }
+// Every exit prints a SLOT_SERVE line: an unexpected error too, not only a bare stack trace.
+process.on('uncaughtException', (e) => fail(`stopped by an unexpected error - ${String((e && e.message) || e).split('\n')[0]}`))
 
 // --- --main: the main folder's servers, for the orchestrator preflight -------------------------------------------
 const argValue = (name) => {
@@ -227,6 +229,8 @@ for (const [label, port] of toStart) {
   } else {
     spec = { cwd: repoRoot, args: frontendArgs(fePort) }
   }
+  // Said before the wait: a caller that gives up first (a shell timeout) still sees what was under way.
+  console.log(`SLOT_SERVE: ${label}=${port} starting - waiting up to ${START_TIMEOUT_MS[label] / 1000} s (log: .claude/${label}.log)`)
   const r = startServer({ label, port, logPath, timeoutMs: START_TIMEOUT_MS[label], ...spec })
   if (!r.ok) {
     errors.push(r.message)
